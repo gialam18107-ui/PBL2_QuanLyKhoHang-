@@ -66,6 +66,9 @@ Makefile
 !.vscode/settings.json
 !.vscode/tasks.json
 !.vscode/launch.json
+!.vscode/c_cpp_properties.json
+.cache/
+compile_commands.json
 
 # CLion (JetBrains)
 .idea/

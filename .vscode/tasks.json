@@ -1,0 +1,40 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "type": "shell",
+      "label": "Build C++ Project",
+      "command": "g++",
+      "args": [
+        "-std=c++17",
+        "-g",
+        "${workspaceFolder}/main.cpp",
+        "${workspaceFolder}/database/Column.cpp",
+        "${workspaceFolder}/database/Record.cpp",
+        "${workspaceFolder}/database/Constraint.cpp",
+        "${workspaceFolder}/database/Condition.cpp",
+        "${workspaceFolder}/database/ConditionGroup.cpp",
+        "${workspaceFolder}/database/Join.cpp",
+        "${workspaceFolder}/database/JoinedRecord.cpp",
+        "-o",
+        "${workspaceFolder}/app.exe"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": {
+        "owner": "cpp",
+        "fileLocation": ["relative", "${workspaceFolder}"],
+        "pattern": {
+          "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "severity": 4,
+          "message": 5
+        }
+      }
+    }
+  ]
+}

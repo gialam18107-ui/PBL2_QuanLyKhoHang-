@@ -1,0 +1,7 @@
+{
+  "clangd.arguments": [
+    "--query-driver=C:/msys64/ucrt64/bin/g++.exe,C:/msys64/ucrt64/bin/*",
+    "--background-index"
+  ],
+  "C_Cpp.intelliSenseEngine": "disabled"
+}
