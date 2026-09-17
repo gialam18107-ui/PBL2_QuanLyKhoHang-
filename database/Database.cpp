@@ -212,7 +212,7 @@ bool Database::insert(
         // ----------------------------------------------------
 
         if (
-            !fk->validateReference(
+            !fk->validate(
                 record,
                 referencedTable->getRows()
             )
@@ -389,7 +389,7 @@ bool Database::update(
 
 
             if (
-                !fk->validateReference(
+                !fk->validate(
                     updatedRecord,
                     referencedTable->getRows()
                 )
