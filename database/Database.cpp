@@ -214,6 +214,7 @@ bool Database::insert(
         if (
             !fk->validate(
                 record,
+                table->getRows(),
                 referencedTable->getRows()
             )
         )
@@ -391,6 +392,7 @@ bool Database::update(
             if (
                 !fk->validate(
                     updatedRecord,
+                    table->getRows(),
                     referencedTable->getRows()
                 )
             )
