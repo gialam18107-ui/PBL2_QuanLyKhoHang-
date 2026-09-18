@@ -3,12 +3,13 @@
   "tasks": [
     {
       "type": "shell",
-      "label": "Build C++ Project",
+      "label": "Build Active C++ File",
       "command": "g++",
       "args": [
         "-std=c++17",
         "-g",
-        "${workspaceFolder}/main.cpp",
+        "-I${workspaceFolder}",
+        "${file}",
         "${workspaceFolder}/database/Column.cpp",
         "${workspaceFolder}/database/Record.cpp",
         "${workspaceFolder}/database/Constraint.cpp",
@@ -16,8 +17,12 @@
         "${workspaceFolder}/database/ConditionGroup.cpp",
         "${workspaceFolder}/database/Join.cpp",
         "${workspaceFolder}/database/JoinedRecord.cpp",
+        "${workspaceFolder}/database/OrderBy.cpp",
+        "${workspaceFolder}/database/Table.cpp",
+        "${workspaceFolder}/database/Database.cpp",
+        "${workspaceFolder}/database/Query.cpp",
         "-o",
-        "${workspaceFolder}/app.exe"
+        "${workspaceFolder}/${fileBasenameNoExtension}.exe"
       ],
       "group": {
         "kind": "build",
@@ -25,7 +30,10 @@
       },
       "problemMatcher": {
         "owner": "cpp",
-        "fileLocation": ["relative", "${workspaceFolder}"],
+        "fileLocation": [
+          "relative",
+          "${workspaceFolder}"
+        ],
         "pattern": {
           "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
           "file": 1,
@@ -35,6 +43,144 @@
           "message": 5
         }
       }
+    },
+    {
+      "type": "shell",
+      "label": "Build Selected C++ File",
+      "command": "g++",
+      "args": [
+        "-std=c++17",
+        "-g",
+        "-I${workspaceFolder}",
+        "${workspaceFolder}/${input:targetCppFile}",
+        "${workspaceFolder}/database/Column.cpp",
+        "${workspaceFolder}/database/Record.cpp",
+        "${workspaceFolder}/database/Constraint.cpp",
+        "${workspaceFolder}/database/Condition.cpp",
+        "${workspaceFolder}/database/ConditionGroup.cpp",
+        "${workspaceFolder}/database/Join.cpp",
+        "${workspaceFolder}/database/JoinedRecord.cpp",
+        "${workspaceFolder}/database/OrderBy.cpp",
+        "${workspaceFolder}/database/Table.cpp",
+        "${workspaceFolder}/database/Database.cpp",
+        "${workspaceFolder}/database/Query.cpp",
+        "-o",
+        "${workspaceFolder}/${input:targetExecutableName}.exe"
+      ],
+      "group": "build",
+      "problemMatcher": {
+        "owner": "cpp",
+        "fileLocation": [
+          "relative",
+          "${workspaceFolder}"
+        ],
+        "pattern": {
+          "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "severity": 4,
+          "message": 5
+        }
+      }
+    },
+    {
+      "type": "shell",
+      "label": "Build main.cpp (app.exe)",
+      "command": "g++",
+      "args": [
+        "-std=c++17",
+        "-g",
+        "-I${workspaceFolder}",
+        "${workspaceFolder}/main.cpp",
+        "${workspaceFolder}/database/Column.cpp",
+        "${workspaceFolder}/database/Record.cpp",
+        "${workspaceFolder}/database/Constraint.cpp",
+        "${workspaceFolder}/database/Condition.cpp",
+        "${workspaceFolder}/database/ConditionGroup.cpp",
+        "${workspaceFolder}/database/Join.cpp",
+        "${workspaceFolder}/database/JoinedRecord.cpp",
+        "${workspaceFolder}/database/OrderBy.cpp",
+        "${workspaceFolder}/database/Table.cpp",
+        "${workspaceFolder}/database/Database.cpp",
+        "${workspaceFolder}/database/Query.cpp",
+        "-o",
+        "${workspaceFolder}/app.exe"
+      ],
+      "group": "build",
+      "problemMatcher": {
+        "owner": "cpp",
+        "fileLocation": [
+          "relative",
+          "${workspaceFolder}"
+        ],
+        "pattern": {
+          "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "severity": 4,
+          "message": 5
+        }
+      }
+    },
+    {
+      "type": "shell",
+      "label": "Build guiding.cpp",
+      "command": "g++",
+      "args": [
+        "-std=c++17",
+        "-g",
+        "-I${workspaceFolder}",
+        "${workspaceFolder}/guiding.cpp",
+        "${workspaceFolder}/database/Column.cpp",
+        "${workspaceFolder}/database/Record.cpp",
+        "${workspaceFolder}/database/Constraint.cpp",
+        "${workspaceFolder}/database/Condition.cpp",
+        "${workspaceFolder}/database/ConditionGroup.cpp",
+        "${workspaceFolder}/database/Join.cpp",
+        "${workspaceFolder}/database/JoinedRecord.cpp",
+        "${workspaceFolder}/database/OrderBy.cpp",
+        "${workspaceFolder}/database/Table.cpp",
+        "${workspaceFolder}/database/Database.cpp",
+        "${workspaceFolder}/database/Query.cpp",
+        "-o",
+        "${workspaceFolder}/guiding.exe"
+      ],
+      "group": "build",
+      "problemMatcher": {
+        "owner": "cpp",
+        "fileLocation": [
+          "relative",
+          "${workspaceFolder}"
+        ],
+        "pattern": {
+          "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "severity": 4,
+          "message": 5
+        }
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "id": "targetCppFile",
+      "type": "pickString",
+      "description": "Select the main .cpp file to build:",
+      "options": [
+        "main.cpp",
+        "guiding.cpp"
+      ],
+      "default": "main.cpp"
+    },
+    {
+      "id": "targetExecutableName",
+      "type": "promptString",
+      "description": "Enter the output executable name (without .exe):",
+      "default": "app"
     }
   ]
 }

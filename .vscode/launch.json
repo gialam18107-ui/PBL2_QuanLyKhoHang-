@@ -2,7 +2,21 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Run / Debug C++",
+      "name": "Debug Active File (${fileBasename})",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/${fileBasenameNoExtension}.exe",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "C:/msys64/ucrt64/bin/gdb.exe",
+      "preLaunchTask": "Build Active C++ File"
+    },
+    {
+      "name": "Debug main.cpp (app.exe)",
       "type": "cppdbg",
       "request": "launch",
       "program": "${workspaceFolder}/app.exe",
@@ -13,7 +27,21 @@
       "externalConsole": false,
       "MIMode": "gdb",
       "miDebuggerPath": "C:/msys64/ucrt64/bin/gdb.exe",
-      "preLaunchTask": "Build C++ Project"
+      "preLaunchTask": "Build main.cpp (app.exe)"
+    },
+    {
+      "name": "Debug guiding.cpp",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/guiding.exe",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "C:/msys64/ucrt64/bin/gdb.exe",
+      "preLaunchTask": "Build guiding.cpp"
     }
   ]
 }

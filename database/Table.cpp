@@ -326,7 +326,8 @@ bool Table::checkConstraints(
         if (
             !constraint->validate(
                 record,
-                existingRecords
+                existingRecords,
+                {}
             )
         )
         {
