@@ -3,5 +3,7 @@
     "--query-driver=C:/msys64/ucrt64/bin/g++.exe,C:/msys64/ucrt64/bin/*",
     "--background-index"
   ],
+  "editor.tabSize": 4,
+  "editor.detectIndentation": false,
   "C_Cpp.intelliSenseEngine": "disabled"
 }
