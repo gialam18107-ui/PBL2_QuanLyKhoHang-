@@ -141,6 +141,19 @@ public:
     // ========================================================
 
     vector<JoinedRecord> execute() const;
+
+
+    // ========================================================
+    // GETTERS
+    // ========================================================
+
+    Database& getDatabase() const;
+
+    const string& getBaseTable() const;
+
+    const vector<string>& getSelectedColumns() const;
+
+    const vector<Join>& getJoins() const;
 };
 
 #endif

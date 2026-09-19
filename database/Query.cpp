@@ -902,3 +902,28 @@ Query::execute() const
 
     return result;
 }
+
+
+// ============================================================
+// GETTERS
+// ============================================================
+
+Database& Query::getDatabase() const
+{
+    return database;
+}
+
+const string& Query::getBaseTable() const
+{
+    return baseTable;
+}
+
+const vector<string>& Query::getSelectedColumns() const
+{
+    return selectedColumns;
+}
+
+const vector<Join>& Query::getJoins() const
+{
+    return joins;
+}

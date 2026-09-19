@@ -1,0 +1,174 @@
+#include "TableIO.h"
+#include "CSVHelper.h"
+#include "schema/Schema.h"
+
+#include <fstream>
+#include <iostream>
+
+namespace DataIO
+{
+    bool TableIO::read(Table& table, const string& folderPath)
+    {
+        string filePath = folderPath;
+        if (!filePath.empty() && filePath.back() != '/' && filePath.back() != '\\')
+        {
+            filePath += "/";
+        }
+        filePath += table.getName() + ".csv";
+        return readFromFile(table, filePath);
+    }
+
+    bool TableIO::readFromFile(Table& table, const string& filePath)
+    {
+        // If table has no columns, populate them from Schema
+        if (table.getColumnCount() == 0)
+        {
+            auto schemaTable = Schema::createTable(table.getName());
+            if (schemaTable != nullptr)
+            {
+                for (const auto& col : schemaTable->getColumns())
+                {
+                    table.addColumn(col);
+                }
+                for (const auto& constraint : schemaTable->getConstraints())
+                {
+                    table.addConstraint(constraint);
+                }
+            }
+        }
+
+        ifstream file(filePath);
+        if (!file.is_open())
+        {
+            cerr << "[TableIO Error] Cannot open file for reading: " << filePath << endl;
+            return false;
+        }
+
+        string headerLine;
+        if (!getline(file, headerLine))
+        {
+            return false;
+        }
+
+        vector<string> headers = CSVHelper::parseLine(headerLine);
+        if (headers.empty())
+        {
+            return false;
+        }
+
+        string line;
+        while (getline(file, line))
+        {
+            if (line.empty()) continue;
+
+            vector<string> fields = CSVHelper::parseLine(line);
+            if (fields.empty()) continue;
+
+            Record record;
+            for (size_t i = 0; i < headers.size() && i < fields.size(); i++)
+            {
+                const string& colName = headers[i];
+                const string& valStr = fields[i];
+
+                const Column* col = table.getColumn(colName);
+                if (col != nullptr)
+                {
+                    if (col->getType() == DataType::INTEGER)
+                    {
+                        if (valStr.empty())
+                        {
+                            if (!col->getDefaultValue().empty())
+                            {
+                                record.set(colName, stoi(col->getDefaultValue()));
+                            }
+                        }
+                        else
+                        {
+                            try
+                            {
+                                record.set(colName, stoi(valStr));
+                            }
+                            catch (...)
+                            {
+                                cerr << "[TableIO Warning] Failed to parse integer for column " << colName << ": " << valStr << endl;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        record.set(colName, valStr);
+                    }
+                }
+                else
+                {
+                    record.set(colName, valStr);
+                }
+            }
+
+            table.insert(record);
+        }
+
+        return true;
+    }
+
+    bool TableIO::write(const Table& table, const string& folderPath)
+    {
+        string filePath = folderPath;
+        if (!filePath.empty() && filePath.back() != '/' && filePath.back() != '\\')
+        {
+            filePath += "/";
+        }
+        filePath += table.getName() + ".csv";
+        return writeToFile(table, filePath);
+    }
+
+    bool TableIO::writeToFile(const Table& table, const string& filePath)
+    {
+        ofstream file(filePath);
+        if (!file.is_open())
+        {
+            cerr << "[TableIO Error] Cannot open file for writing: " << filePath << endl;
+            return false;
+        }
+
+        const vector<Column>& columns = table.getColumns();
+        vector<string> headerNames;
+        for (const auto& col : columns)
+        {
+            headerNames.push_back(col.getName());
+        }
+
+        file << CSVHelper::formatLine(headerNames) << "\n";
+
+        for (const auto& record : table.getRows())
+        {
+            vector<string> rowFields;
+            for (const auto& col : columns)
+            {
+                if (record.has(col.getName()))
+                {
+                    Value val = record.get(col.getName());
+                    if (holds_alternative<int>(val))
+                    {
+                        rowFields.push_back(to_string(get<int>(val)));
+                    }
+                    else if (holds_alternative<double>(val))
+                    {
+                        rowFields.push_back(to_string(get<double>(val)));
+                    }
+                    else if (holds_alternative<string>(val))
+                    {
+                        rowFields.push_back(get<string>(val));
+                    }
+                }
+                else
+                {
+                    rowFields.push_back("");
+                }
+            }
+            file << CSVHelper::formatLine(rowFields) << "\n";
+        }
+
+        return true;
+    }
+}

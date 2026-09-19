@@ -49,7 +49,7 @@ out/
 CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
-Makefile
+!Makefile
 !Makefile.am
 !Makefile.in
 
@@ -85,3 +85,7 @@ cmake-build-*/
 # ====================================
 .DS_Store
 Thumbs.db
+# ====================================
+# 8. Data
+# ====================================
+data/

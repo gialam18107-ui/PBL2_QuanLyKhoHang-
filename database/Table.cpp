@@ -87,6 +87,11 @@ int Table::getColumnCount() const
     );
 }
 
+const vector<Column>& Table::getColumns() const
+{
+    return columns;
+}
+
 
 // ============================================================
 // CONSTRAINT

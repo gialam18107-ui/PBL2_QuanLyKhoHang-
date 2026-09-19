@@ -64,6 +64,8 @@ public:
 
     int getColumnCount() const;
 
+    const vector<Column>& getColumns() const;
+
 
     // ========================================================
     // CONSTRAINT
