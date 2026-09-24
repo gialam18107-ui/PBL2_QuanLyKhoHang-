@@ -26,6 +26,7 @@ Value Record::get(
 {
     auto it =
         values.find(columnName);
+    auto it = values.find(columnName);
 
     if (it == values.end())
     {
@@ -39,7 +40,14 @@ Value Record::get(
 }
 
 const unordered_map<string, Value>&
+const HashMap<string, Value>&
 Record::getValues() const
+{
+    return values;
+}
+
+HashMap<string, Value>&
+Record::getValues()
 {
     return values;
 }
@@ -82,7 +90,33 @@ void Record::print() const
             },
             item.second
         );
+        cout << valueToString(item.second) << endl;
+    }
+}
 
         cout << endl;
+bool Record::operator==(const Record& other) const
+{
+    if (values.size() != other.values.size())
+    {
+        return false;
     }
+    for (const auto& item : values)
+    {
+        auto it = other.values.find(item.first);
+        if (it == other.values.end())
+        {
+            return false;
+        }
+        if (item.second != it->second)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool Record::operator!=(const Record& other) const
+{
+    return !(*this == other);
 }

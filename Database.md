@@ -1,0 +1,26 @@
+- Use C++17.
+- Do not use any built-in data structure libraries (e.g., `vector`, `unordered_map`, etc.), and do not use smart pointers such as `shared_ptr` from the memory library. All data structures must be implemented from scratch, and proper destructors must be provided for all classes.
+- Implement a complete set of SQL features:
+- The database system must support all fundamental SQL features, including:
+
+  - Database creation (`CREATE DATABASE').
+  - Table creation (`CREATE TABLE`)
+  - Data insertion, updating, and deletion (`INSERT`, `UPDATE`, `DELETE`).
+  - Data retrieval using `SELECT`.
+  - Filtering records with `WHERE`.
+  - Sorting results with `ORDER BY`.
+  - Removing duplicate results with `DISTINCT`.
+  - Limiting query results (`LIMIT`).
+  - Aggregate functions (`COUNT`, `SUM`, `AVG`, `MIN`, `MAX`).
+  - Grouping data with `GROUP BY`.
+  - Filtering groups with `HAVING`.
+  - Table joins (`INNER JOIN`, `LEFT JOIN`, `RIGHT JOIN`, `FULL JOIN`).
+  - Subqueries.
+  - Set operations (`UNION`, `INTERSECT`, `EXCEPT`).
+  - Primary keys and foreign keys.
+  - Constraints (`NOT NULL`, `UNIQUE`, `DEFAULT`, `CHECK`).
+  - Index creation and management.
+  - Transactions (`BEGIN`, `COMMIT`, `ROLLBACK`).
+  - Basic user and permission management.
+- Provide comments/documentation for every database method and function.
+- Allow to refactor the code in database folder and data_io 

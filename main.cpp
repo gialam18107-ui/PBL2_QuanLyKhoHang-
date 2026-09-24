@@ -1,5 +1,6 @@
 #include <iostream>
 #include <vector>
+#include "database/Vector.h"
 #include "database/Column.h"
 #include "database/Record.h"
 #include "database/Constraint.h"
@@ -18,6 +19,9 @@ int main() {
     std::cout << " - "; colId.print(); std::cout << std::endl;
     std::cout << " - "; colName.print(); std::cout << std::endl;
     std::cout << " - "; colPrice.print(); std::cout << std::endl;
+    std::cout << " - "; colId.print();
+    std::cout << " - "; colName.print();
+    std::cout << " - "; colPrice.print();
 
     // 2. Test Records
     std::cout << "\n[2] Testing Records..." << std::endl;
@@ -33,11 +37,15 @@ int main() {
 
     std::cout << " Record 1: "; r1.print();
     std::cout << " Record 2: "; r2.print();
+    std::cout << " Record 1: " << std::endl; r1.print();
+    std::cout << " Record 2: " << std::endl; r2.print();
 
     // 3. Test Constraints (PrimaryKeyConstraint)
     std::cout << "\n[3] Testing Constraints..." << std::endl;
     PrimaryKeyConstraint pk("pk_product_id", "product_id");
     std::vector<Record> existingRecords = { r1 };
+    Vector<Record> existingRecords;
+    existingRecords.push_back(r1);
 
     Record duplicateRecord;
     duplicateRecord.set("product_id", 101);
