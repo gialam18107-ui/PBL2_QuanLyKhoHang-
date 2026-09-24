@@ -11,8 +11,8 @@ namespace DataIO
 {
     bool QueryIO::write(const Query& query, const string& filePath)
     {
-        vector<JoinedRecord> records = query.execute();
-        vector<string> headers = query.getSelectedColumns();
+        Vector<JoinedRecord> records = query.execute();
+        Vector<string> headers = query.getSelectedColumns();
 
         if (headers.empty() && !records.empty())
         {
@@ -20,7 +20,6 @@ namespace DataIO
             {
                 headers.push_back(pair.first);
             }
-            sort(headers.begin(), headers.end());
         }
 
         return writeResults(records, headers, filePath);
@@ -43,9 +42,11 @@ namespace DataIO
         return write(query, filePath);
     }
 
-    bool QueryIO::writeResults(const vector<JoinedRecord>& records,
-                               const vector<string>& headers,
-                               const string& filePath)
+    bool QueryIO::writeResults(
+        const Vector<JoinedRecord>& records,
+        const Vector<string>& headers,
+        const string& filePath
+    )
     {
         ofstream file(filePath);
         if (!file.is_open())
@@ -56,26 +57,17 @@ namespace DataIO
 
         file << CSVHelper::formatLine(headers) << "\n";
 
-        for (const auto& record : records)
+        for (size_t r = 0; r < records.size(); r++)
         {
-            vector<string> rowFields;
-            for (const auto& colName : headers)
+            const auto& record = records[r];
+            Vector<string> rowFields;
+            for (size_t c = 0; c < headers.size(); c++)
             {
+                const string& colName = headers[c];
                 if (record.has(colName))
                 {
                     JoinedValue val = record.get(colName);
-                    if (holds_alternative<int>(val))
-                    {
-                        rowFields.push_back(to_string(get<int>(val)));
-                    }
-                    else if (holds_alternative<double>(val))
-                    {
-                        rowFields.push_back(to_string(get<double>(val)));
-                    }
-                    else if (holds_alternative<string>(val))
-                    {
-                        rowFields.push_back(get<string>(val));
-                    }
+                    rowFields.push_back(valueToString(val));
                 }
                 else
                 {
@@ -88,18 +80,17 @@ namespace DataIO
         return true;
     }
 
-    vector<JoinedRecord> QueryIO::read(Query& query, const string& folderPath)
+    Vector<JoinedRecord> QueryIO::read(Query& query, const string& folderPath)
     {
-        // 1. Identify all tables referenced by the query
-        vector<string> requiredTables;
+        Vector<string> requiredTables;
         auto addRequiredTable = [&](const string& tableName) {
             if (tableName.empty())
             {
                 return;
             }
-            for (const auto& name : requiredTables)
+            for (size_t i = 0; i < requiredTables.size(); i++)
             {
-                if (name == tableName)
+                if (requiredTables[i] == tableName)
                 {
                     return;
                 }
@@ -108,39 +99,42 @@ namespace DataIO
         };
 
         addRequiredTable(query.getBaseTable());
-        for (const auto& join : query.getJoins())
+        for (size_t i = 0; i < query.getJoins().size(); i++)
         {
+            const auto& join = query.getJoins()[i];
             addRequiredTable(join.getLeftTable());
             addRequiredTable(join.getRightTable());
         }
 
-        // 2. Ensure each table is registered in Database and loaded from CSV
-        Database& db = query.getDatabase();
-        for (const string& tableName : requiredTables)
+        Database* db = query.getDatabase();
+        if (db != nullptr)
         {
-            auto table = db.getTable(tableName);
-            if (table == nullptr)
+            for (size_t i = 0; i < requiredTables.size(); i++)
             {
-                table = Schema::createTable(tableName);
-                if (table != nullptr)
+                const string& tableName = requiredTables[i];
+                auto table = db->getTable(tableName);
+                if (table == nullptr)
                 {
-                    db.addTable(table);
+                    table = Schema::createTable(tableName);
+                    if (table != nullptr)
+                    {
+                        db->addTable(table);
+                    }
                 }
-            }
 
-            if (table != nullptr && table->getRowCount() == 0)
-            {
-                TableIO::read(*table, folderPath);
+                if (table != nullptr && table->getRowCount() == 0)
+                {
+                    TableIO::read(*table, folderPath);
+                }
             }
         }
 
-        // 3. Execute and return results
         return query.execute();
     }
 
-    vector<JoinedRecord> QueryIO::readResults(const string& filePath)
+    Vector<JoinedRecord> QueryIO::readResults(const string& filePath)
     {
-        vector<JoinedRecord> results;
+        Vector<JoinedRecord> results;
 
         ifstream file(filePath);
         if (!file.is_open())
@@ -155,7 +149,7 @@ namespace DataIO
             return results;
         }
 
-        vector<string> headers = CSVHelper::parseLine(headerLine);
+        Vector<string> headers = CSVHelper::parseLine(headerLine);
         if (headers.empty())
         {
             return results;
@@ -166,7 +160,7 @@ namespace DataIO
         {
             if (line.empty()) continue;
 
-            vector<string> fields = CSVHelper::parseLine(line);
+            Vector<string> fields = CSVHelper::parseLine(line);
             if (fields.empty()) continue;
 
             JoinedRecord record;

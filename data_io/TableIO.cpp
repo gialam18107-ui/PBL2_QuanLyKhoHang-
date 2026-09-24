@@ -23,7 +23,7 @@ namespace DataIO
         // If table has no columns, populate them from Schema
         if (table.getColumnCount() == 0)
         {
-            auto schemaTable = Schema::createTable(table.getName());
+            Table* schemaTable = Schema::createTable(table.getName());
             if (schemaTable != nullptr)
             {
                 for (const auto& col : schemaTable->getColumns())
@@ -32,8 +32,9 @@ namespace DataIO
                 }
                 for (const auto& constraint : schemaTable->getConstraints())
                 {
-                    table.addConstraint(constraint);
+                    table.addConstraint(constraint->clone());
                 }
+                delete schemaTable;
             }
         }
 
@@ -50,7 +51,7 @@ namespace DataIO
             return false;
         }
 
-        vector<string> headers = CSVHelper::parseLine(headerLine);
+        Vector<string> headers = CSVHelper::parseLine(headerLine);
         if (headers.empty())
         {
             return false;
@@ -61,7 +62,7 @@ namespace DataIO
         {
             if (line.empty()) continue;
 
-            vector<string> fields = CSVHelper::parseLine(line);
+            Vector<string> fields = CSVHelper::parseLine(line);
             if (fields.empty()) continue;
 
             Record record;
@@ -131,8 +132,8 @@ namespace DataIO
             return false;
         }
 
-        const vector<Column>& columns = table.getColumns();
-        vector<string> headerNames;
+        const Vector<Column>& columns = table.getColumns();
+        Vector<string> headerNames;
         for (const auto& col : columns)
         {
             headerNames.push_back(col.getName());
@@ -142,24 +143,13 @@ namespace DataIO
 
         for (const auto& record : table.getRows())
         {
-            vector<string> rowFields;
+            Vector<string> rowFields;
             for (const auto& col : columns)
             {
                 if (record.has(col.getName()))
                 {
                     Value val = record.get(col.getName());
-                    if (holds_alternative<int>(val))
-                    {
-                        rowFields.push_back(to_string(get<int>(val)));
-                    }
-                    else if (holds_alternative<double>(val))
-                    {
-                        rowFields.push_back(to_string(get<double>(val)));
-                    }
-                    else if (holds_alternative<string>(val))
-                    {
-                        rowFields.push_back(get<string>(val));
-                    }
+                    rowFields.push_back(valueToString(val));
                 }
                 else
                 {

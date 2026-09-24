@@ -55,19 +55,21 @@ namespace DataIO
         return QueryIO::writeToFolder(query, dataFolder);
     }
 
-    vector<JoinedRecord> DataIO::read(Query& query)
+    Vector<JoinedRecord> DataIO::read(Query& query)
     {
         return QueryIO::read(query, dataFolder);
     }
 
-    vector<JoinedRecord> DataIO::readQueryResults(const string& filePath) const
+    Vector<JoinedRecord> DataIO::readQueryResults(const string& filePath) const
     {
         return QueryIO::readResults(filePath);
     }
 
-    bool DataIO::writeQueryResults(const vector<JoinedRecord>& records,
-                                  const vector<string>& headers,
-                                  const string& filePath) const
+    bool DataIO::writeQueryResults(
+        const Vector<JoinedRecord>& records,
+        const Vector<string>& headers,
+        const string& filePath
+    ) const
     {
         return QueryIO::writeResults(records, headers, filePath);
     }

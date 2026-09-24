@@ -2,7 +2,7 @@
 #define CSV_HELPER_H
 
 #include <string>
-#include <vector>
+#include "database/Vector.h"
 
 using namespace std;
 
@@ -12,13 +12,13 @@ namespace DataIO
     {
     public:
         // Parse a CSV line into individual string fields
-        static vector<string> parseLine(const string& line);
+        static Vector<string> parseLine(const string& line);
 
         // Format a field for CSV (escapes quotes, adds enclosing quotes if needed)
         static string escapeField(const string& field);
 
         // Format a vector of fields into a comma-separated CSV line
-        static string formatLine(const vector<string>& fields);
+        static string formatLine(const Vector<string>& fields);
 
         // Utility: trim whitespace from both ends
         static string trim(const string& str);

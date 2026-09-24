@@ -1,5 +1,4 @@
 #include "CSVHelper.h"
-
 #include <cctype>
 
 namespace DataIO
@@ -37,12 +36,11 @@ namespace DataIO
         return str;
     }
 
-    vector<string> CSVHelper::parseLine(const string& line)
+    Vector<string> CSVHelper::parseLine(const string& line)
     {
-        vector<string> result;
+        Vector<string> result;
         string cleanedLine = stripBOM(line);
 
-        // Remove trailing \r or \n if present
         while (!cleanedLine.empty() && (cleanedLine.back() == '\r' || cleanedLine.back() == '\n'))
         {
             cleanedLine.pop_back();
@@ -65,7 +63,6 @@ namespace DataIO
             {
                 if (c == '"')
                 {
-                    // Check for escaped quote ""
                     if (i + 1 < cleanedLine.size() && cleanedLine[i + 1] == '"')
                     {
                         currentField += '"';
@@ -74,7 +71,6 @@ namespace DataIO
                     }
                     else
                     {
-                        // Closing quote
                         inQuotes = false;
                         i++;
                         continue;
@@ -144,7 +140,7 @@ namespace DataIO
         return escaped;
     }
 
-    string CSVHelper::formatLine(const vector<string>& fields)
+    string CSVHelper::formatLine(const Vector<string>& fields)
     {
         string line = "";
         for (size_t i = 0; i < fields.size(); i++)
