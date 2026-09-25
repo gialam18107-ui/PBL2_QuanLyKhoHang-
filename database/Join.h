@@ -8,6 +8,10 @@ using namespace std;
 enum class JoinType
 {
     INNER
+    INNER,
+    LEFT,
+    RIGHT,
+    FULL
 };
 
 class Join
@@ -22,6 +26,7 @@ private:
     JoinType type;
 
 public:
+    Join() = default;
 
     Join(
         const string& leftTable,
@@ -43,3 +48,4 @@ public:
 };
 
 #endif
+#endif // JOIN_H
