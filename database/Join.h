@@ -7,7 +7,6 @@ using namespace std;
 
 enum class JoinType
 {
-    INNER
     INNER,
     LEFT,
     RIGHT,
@@ -48,4 +47,3 @@ public:
 };
 
 #endif
-#endif // JOIN_H

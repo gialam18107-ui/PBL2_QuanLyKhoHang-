@@ -14,9 +14,6 @@ void ConditionGroup::add(
     const Condition& condition
 )
 {
-    conditions.push_back(
-        condition
-    );
     conditions.push_back(condition);
 }
 
@@ -44,21 +41,10 @@ bool ConditionGroup::evaluate(
         ==
         LogicalOperator::AND
     )
-    if (operation == LogicalOperator::AND)
     {
-        for (
-            const Condition& condition
-            :
-            conditions
-        )
-        for (size_t i = 0; i < conditions.size(); i++)
+        for (size_t index = 0; index < conditions.size(); ++index)
         {
-            if (
-                !condition.evaluate(
-                    record
-                )
-            )
-            if (!conditions[i].evaluate(record))
+            if (!conditions[index].evaluate(record))
             {
                 return false;
             }
@@ -77,21 +63,10 @@ bool ConditionGroup::evaluate(
         ==
         LogicalOperator::OR
     )
-    if (operation == LogicalOperator::OR)
     {
-        for (
-            const Condition& condition
-            :
-            conditions
-        )
-        for (size_t i = 0; i < conditions.size(); i++)
+        for (size_t index = 0; index < conditions.size(); ++index)
         {
-            if (
-                condition.evaluate(
-                    record
-                )
-            )
-            if (conditions[i].evaluate(record))
+            if (conditions[index].evaluate(record))
             {
                 return true;
             }
@@ -107,16 +82,12 @@ bool ConditionGroup::evaluate(
 
 int ConditionGroup::size() const
 {
-    return static_cast<int>(
-        conditions.size()
-    );
     return static_cast<int>(conditions.size());
 }
 
 
-const vector<Condition>&
+const Vector<Condition>&
 ConditionGroup::getConditions() const
-const Vector<Condition>& ConditionGroup::getConditions() const
 {
     return conditions;
 }
@@ -124,7 +95,6 @@ const Vector<Condition>& ConditionGroup::getConditions() const
 
 LogicalOperator
 ConditionGroup::getOperation() const
-LogicalOperator ConditionGroup::getOperation() const
 {
     return operation;
 }

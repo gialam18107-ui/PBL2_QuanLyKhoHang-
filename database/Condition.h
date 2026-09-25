@@ -14,7 +14,6 @@ enum class CompareOperator
     LESS,
     LESS_EQUAL,
     GREATER,
-    GREATER_EQUAL
     GREATER_EQUAL,
     IS_NULL,
     IS_NOT_NULL,
@@ -75,4 +74,3 @@ public:
 };
 
 #endif
-#endif // CONDITION_H

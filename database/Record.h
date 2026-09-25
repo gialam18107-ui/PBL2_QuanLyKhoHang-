@@ -2,7 +2,6 @@
 #define RECORD_H
 
 #include <string>
-#include <unordered_map>
 #include <variant>
 #include <iostream>
 #include <stdexcept>
@@ -12,8 +11,6 @@
 
 using namespace std;
 
-using Value = variant<int, double, string>;
-// Value can be NULL (monostate), int, double, string, or bool
 using Value = variant<monostate, int, double, string, bool>;
 
 /**
@@ -56,11 +53,9 @@ inline string valueToString(const Value& v)
 class Record
 {
 private:
-    unordered_map<string, Value> values;
     HashMap<string, Value> values;
 
 public:
-    Record();
     Record() = default;
     Record(const Record& other) = default;
     Record(Record&& other) noexcept = default;
@@ -68,49 +63,15 @@ public:
     Record& operator=(Record&& other) noexcept = default;
     ~Record() = default;
 
-    void set(
-        const string& columnName,
-        const Value& value
-    );
-    /**
-     * @brief Set a column value.
-     */
     void set(const string& columnName, const Value& value);
 
-    bool has(
-        const string& columnName
-    ) const;
-    /**
-     * @brief Check whether a column exists in the record.
-     */
     bool has(const string& columnName) const;
 
-    Value get(
-        const string& columnName
-    ) const;
-    /**
-     * @brief Get value of a column.
-     */
     Value get(const string& columnName) const;
 
-    const unordered_map<string, Value>&
-    getValues() const;
-    /**
-     * @brief Get const reference to values map.
-     */
     const HashMap<string, Value>& getValues() const;
-
-    void remove(
-        const string& columnName
-    );
-    /**
-     * @brief Get non-const reference to values map.
-     */
     HashMap<string, Value>& getValues();
 
-    /**
-     * @brief Remove a column from the record.
-     */
     void remove(const string& columnName);
 
     /**
@@ -140,4 +101,3 @@ public:
 };
 
 #endif
-#endif // RECORD_H

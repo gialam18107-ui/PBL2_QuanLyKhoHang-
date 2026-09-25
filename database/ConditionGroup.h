@@ -1,8 +1,6 @@
 #ifndef CONDITION_GROUP_H
 #define CONDITION_GROUP_H
 
-#include <vector>
-
 #include "Vector.h"
 #include "Condition.h"
 
@@ -11,7 +9,6 @@ using namespace std;
 enum class LogicalOperator
 {
     AND,
-    OR
     OR,
     NOT
 };
@@ -23,14 +20,12 @@ enum class LogicalOperator
 class ConditionGroup
 {
 private:
-    vector<Condition> conditions;
     Vector<Condition> conditions;
     LogicalOperator operation;
 
 public:
 
     ConditionGroup(
-        LogicalOperator operation
         LogicalOperator operation = LogicalOperator::AND
     );
 
@@ -44,11 +39,9 @@ public:
 
     int size() const;
 
-    const vector<Condition>& getConditions() const;
     const Vector<Condition>& getConditions() const;
 
     LogicalOperator getOperation() const;
 };
 
 #endif
-#endif // CONDITION_GROUP_H

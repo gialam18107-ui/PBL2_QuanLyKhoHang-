@@ -1,222 +1,120 @@
-
 #include "Condition.h"
 
 using namespace std;
 
-static bool matchLike(const string& str, const string& pat, size_t sIdx = 0, size_t pIdx = 0)
+static bool matchLike(const string& text, const string& pattern, size_t textIndex = 0, size_t patternIndex = 0)
 {
-    if (pIdx == pat.size()) return sIdx == str.size();
-    if (pat[pIdx] == '%')
+    if (patternIndex == pattern.size()) return textIndex == text.size();
+    if (pattern[patternIndex] == '%')
     {
-        while (pIdx < pat.size() && pat[pIdx] == '%') pIdx++;
-        if (pIdx == pat.size()) return true;
-        for (size_t i = sIdx; i <= str.size(); i++)
+        while (patternIndex < pattern.size() && pattern[patternIndex] == '%') ++patternIndex;
+        if (patternIndex == pattern.size()) return true;
+        for (size_t index = textIndex; index <= text.size(); ++index)
         {
-            if (matchLike(str, pat, i, pIdx)) return true;
+            if (matchLike(text, pattern, index, patternIndex)) return true;
         }
         return false;
     }
-    if (sIdx < str.size() && (pat[pIdx] == '_' || pat[pIdx] == str[sIdx]))
-    {
-        return matchLike(str, pat, sIdx + 1, pIdx + 1);
-    }
-    return false;
+    return textIndex < text.size()
+        && (pattern[patternIndex] == '_' || pattern[patternIndex] == text[textIndex])
+        && matchLike(text, pattern, textIndex + 1, patternIndex + 1);
 }
 
-Condition::Condition(
-    const string& columnName,
-    CompareOperator operation,
-    const Value& compareValue
-)
+static bool isNumericValue(const Value& value)
+{
+    return holds_alternative<int>(value) || holds_alternative<double>(value);
+}
+
+static double numericValue(const Value& value)
+{
+    return holds_alternative<int>(value)
+        ? static_cast<double>(get<int>(value))
+        : get<double>(value);
+}
+
+Condition::Condition(const string& columnName, CompareOperator operation, const Value& compareValue)
     : columnName(columnName), operation(operation), compareValue(compareValue)
 {
-    this->columnName = columnName;
-    this->operation = operation;
-    this->compareValue = compareValue;
 }
 
-Condition::Condition(
-    const string& columnName,
-    CompareOperator operation
-)
+Condition::Condition(const string& columnName, CompareOperator operation)
     : columnName(columnName), operation(operation)
 {
 }
 
-Condition::Condition(
-    const string& columnName,
-    CompareOperator operation,
-    const Vector<Value>& inValues
-)
+Condition::Condition(const string& columnName, CompareOperator operation, const Vector<Value>& inValues)
     : columnName(columnName), operation(operation), inValues(inValues)
 {
 }
 
-Condition::Condition(
-    const string& columnName,
-    const Value& minVal,
-    const Value& maxVal
-)
+Condition::Condition(const string& columnName, const Value& minVal, const Value& maxVal)
     : columnName(columnName), operation(CompareOperator::BETWEEN), compareValue(minVal), secondCompareValue(maxVal)
 {
 }
 
-string Condition::getColumnName() const
-{
-    return columnName;
-}
-
-CompareOperator Condition::getOperation() const
-{
-    return operation;
-}
-
-const Value& Condition::getCompareValue() const
-{
-    return compareValue;
-}
+string Condition::getColumnName() const { return columnName; }
+CompareOperator Condition::getOperation() const { return operation; }
+const Value& Condition::getCompareValue() const { return compareValue; }
+const Value& Condition::getSecondCompareValue() const { return secondCompareValue; }
+const Vector<Value>& Condition::getInValues() const { return inValues; }
 
 bool Condition::evaluate(const Record& record) const
-const Value& Condition::getSecondCompareValue() const
 {
-    if (!record.has(columnName))
-    return secondCompareValue;
-}
-
-const Vector<Value>& Condition::getInValues() const
-{
-    return inValues;
+    if (operation == CompareOperator::IS_NULL) return !record.has(columnName) || isNull(record.get(columnName));
+    if (operation == CompareOperator::IS_NOT_NULL) return record.has(columnName) && !isNull(record.get(columnName));
+    return record.has(columnName) && evaluateValue(record.get(columnName));
 }
 
 bool Condition::evaluateValue(const Value& recordValue) const
 {
-    if (operation == CompareOperator::IS_NULL)
-    {
-        return isNull(recordValue);
-    }
-    if (operation == CompareOperator::IS_NOT_NULL)
-    {
-        return !isNull(recordValue);
-    }
+    if (operation == CompareOperator::IS_NULL) return isNull(recordValue);
+    if (operation == CompareOperator::IS_NOT_NULL) return !isNull(recordValue);
+    if (isNull(recordValue)) return false;
 
-    if (isNull(recordValue))
-    {
-        return false;
-    }
-
-    Value recordValue =
-        record.get(columnName);
-
-    switch (operation)
     if (operation == CompareOperator::IN || operation == CompareOperator::NOT_IN)
     {
-    case CompareOperator::EQUAL:
-        return recordValue == compareValue;
-
-    case CompareOperator::NOT_EQUAL:
-        return recordValue != compareValue;
-
-    case CompareOperator::LESS:
-        if (
-            recordValue.index()
-            != compareValue.index()
-        )
         bool found = false;
-        for (size_t i = 0; i < inValues.size(); i++)
+        for (size_t index = 0; index < inValues.size(); ++index)
         {
-            return false;
-            if (recordValue == inValues[i])
+            if (recordValue == inValues[index])
             {
                 found = true;
                 break;
             }
         }
-        return (operation == CompareOperator::IN) ? found : !found;
+        return operation == CompareOperator::IN ? found : !found;
     }
 
-        if (holds_alternative<int>(recordValue))
     if (operation == CompareOperator::LIKE)
     {
-        if (holds_alternative<string>(recordValue) && holds_alternative<string>(compareValue))
-        {
-            return get<int>(recordValue)
-                < get<int>(compareValue);
-            return matchLike(get<string>(recordValue), get<string>(compareValue));
-        }
-
-        if (holds_alternative<double>(recordValue))
-        {
-            return get<double>(recordValue)
-                < get<double>(compareValue);
-        }
-
-        if (holds_alternative<string>(recordValue))
-        {
-            return get<string>(recordValue)
-                < get<string>(compareValue);
-        }
-
-        return false;
+        return holds_alternative<string>(recordValue)
+            && holds_alternative<string>(compareValue)
+            && matchLike(get<string>(recordValue), get<string>(compareValue));
     }
 
-    case CompareOperator::LESS_EQUAL:
-        if (
-            recordValue.index()
-            != compareValue.index()
-        )
-        {
-            return false;
-        }
-    auto isNumeric = [](const Value& v) {
-        return holds_alternative<int>(v) || holds_alternative<double>(v);
-    };
-
-        if (holds_alternative<int>(recordValue))
-        {
-            return get<int>(recordValue)
-                <= get<int>(compareValue);
-        }
-    auto toDouble = [](const Value& v) -> double {
-        if (holds_alternative<int>(v)) return static_cast<double>(get<int>(v));
-        if (holds_alternative<double>(v)) return get<double>(v);
-        return 0.0;
-    };
-
-        if (holds_alternative<double>(recordValue))
     if (operation == CompareOperator::BETWEEN)
     {
-        if (isNumeric(recordValue) && isNumeric(compareValue) && isNumeric(secondCompareValue))
+        if (isNumericValue(recordValue) && isNumericValue(compareValue) && isNumericValue(secondCompareValue))
         {
-            return get<double>(recordValue)
-                <= get<double>(compareValue);
-            double rv = toDouble(recordValue);
-            return rv >= toDouble(compareValue) && rv <= toDouble(secondCompareValue);
+            double value = numericValue(recordValue);
+            return value >= numericValue(compareValue) && value <= numericValue(secondCompareValue);
         }
-
-        if (holds_alternative<string>(recordValue))
-        if (holds_alternative<string>(recordValue) && holds_alternative<string>(compareValue) && holds_alternative<string>(secondCompareValue))
+        if (holds_alternative<string>(recordValue)
+            && holds_alternative<string>(compareValue)
+            && holds_alternative<string>(secondCompareValue))
         {
-            return get<string>(recordValue)
-                <= get<string>(compareValue);
-            const string& s = get<string>(recordValue);
-            return s >= get<string>(compareValue) && s <= get<string>(secondCompareValue);
+            const string& value = get<string>(recordValue);
+            return value >= get<string>(compareValue) && value <= get<string>(secondCompareValue);
         }
-
         return false;
     }
 
-    case CompareOperator::GREATER:
-        if (
-            recordValue.index()
-            != compareValue.index()
-        )
-    if (isNumeric(recordValue) && isNumeric(compareValue))
+    if (isNumericValue(recordValue) && isNumericValue(compareValue))
     {
-        double left = toDouble(recordValue);
-        double right = toDouble(compareValue);
+        double left = numericValue(recordValue);
+        double right = numericValue(compareValue);
         switch (operation)
         {
-            return false;
         case CompareOperator::EQUAL: return left == right;
         case CompareOperator::NOT_EQUAL: return left != right;
         case CompareOperator::LESS: return left < right;
@@ -227,25 +125,13 @@ bool Condition::evaluateValue(const Value& recordValue) const
         }
     }
 
-        if (holds_alternative<int>(recordValue))
-        {
-            return get<int>(recordValue)
-                > get<int>(compareValue);
-        }
-    if (recordValue.index() != compareValue.index())
-    {
-        return false;
-    }
-
-        if (holds_alternative<double>(recordValue))
+    if (recordValue.index() != compareValue.index()) return false;
     if (holds_alternative<string>(recordValue))
     {
         const string& left = get<string>(recordValue);
         const string& right = get<string>(compareValue);
         switch (operation)
         {
-            return get<double>(recordValue)
-                > get<double>(compareValue);
         case CompareOperator::EQUAL: return left == right;
         case CompareOperator::NOT_EQUAL: return left != right;
         case CompareOperator::LESS: return left < right;
@@ -255,68 +141,12 @@ bool Condition::evaluateValue(const Value& recordValue) const
         default: return false;
         }
     }
-
-        if (holds_alternative<string>(recordValue))
-        {
-            return get<string>(recordValue)
-                > get<string>(compareValue);
-        }
-
     if (holds_alternative<bool>(recordValue))
     {
         bool left = get<bool>(recordValue);
         bool right = get<bool>(compareValue);
         if (operation == CompareOperator::EQUAL) return left == right;
         if (operation == CompareOperator::NOT_EQUAL) return left != right;
-        return false;
     }
-
-    case CompareOperator::GREATER_EQUAL:
-        if (
-            recordValue.index()
-            != compareValue.index()
-        )
-        {
-            return false;
-        }
     return false;
-}
-
-        if (holds_alternative<int>(recordValue))
-        {
-            return get<int>(recordValue)
-                >= get<int>(compareValue);
-        }
-bool Condition::evaluate(const Record& record) const
-{
-    if (operation == CompareOperator::IS_NULL)
-    {
-        if (!record.has(columnName)) return true;
-        return isNull(record.get(columnName));
-    }
-    if (operation == CompareOperator::IS_NOT_NULL)
-    {
-        if (!record.has(columnName)) return false;
-        return !isNull(record.get(columnName));
-    }
-
-        if (holds_alternative<double>(recordValue))
-        {
-            return get<double>(recordValue)
-                >= get<double>(compareValue);
-        }
-
-        if (holds_alternative<string>(recordValue))
-        {
-            return get<string>(recordValue)
-                >= get<string>(compareValue);
-        }
-
-    if (!record.has(columnName))
-    {
-        return false;
-    }
-
-    return false;
-    return evaluateValue(record.get(columnName));
 }

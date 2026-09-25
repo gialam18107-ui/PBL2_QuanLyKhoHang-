@@ -2,7 +2,6 @@
 #define CONSTRAINT_H
 
 #include <string>
-#include <vector>
 #include "Vector.h"
 #include "Record.h"
 #include "Condition.h"
@@ -13,7 +12,6 @@ enum class ConstraintType
 {
     PRIMARY_KEY,
     UNIQUE,
-    FOREIGN_KEY
     FOREIGN_KEY,
     NOT_NULL,
     DEFAULT,
@@ -54,8 +52,6 @@ public:
     */
     virtual bool validate(
         const Record& record,
-        const vector<Record>& existingRecords,
-        const vector<Record>& referencedRecords
         const Vector<Record>& existingRecords,
         const Vector<Record>& referencedRecords
     ) const = 0;
@@ -91,8 +87,6 @@ public:
 
     bool validate(
         const Record& record,
-        const vector<Record>& existingRecords,
-        const vector<Record>& referencedRecords
         const Vector<Record>& existingRecords,
         const Vector<Record>& referencedRecords
     ) const override;
@@ -128,8 +122,6 @@ public:
 
     bool validate(
         const Record& record,
-        const vector<Record>& existingRecords,
-        const vector<Record>& referencedRecords
         const Vector<Record>& existingRecords,
         const Vector<Record>& referencedRecords
     ) const override;
@@ -174,8 +166,6 @@ public:
 
     bool validate(
         const Record& record,
-        const vector<Record>& existingRecords,
-        const vector<Record>& referencedRecords
         const Vector<Record>& existingRecords,
         const Vector<Record>& referencedRecords
     ) const override;
@@ -188,7 +178,6 @@ public:
     ) const override;
 };
 
-#endif
 // ============================================================
 // NOT NULL CONSTRAINT
 // ============================================================

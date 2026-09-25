@@ -1,53 +1,51 @@
 #include "Query.h"
 
 #include <iostream>
-#include <algorithm>
+#include <stdexcept>
 
 using namespace std;
 
+static bool resolveColumn(const JoinedRecord& record, const string& column, Value& value)
+{
+    if (record.has(column))
+    {
+        value = record.get(column);
+        return true;
+    }
+    for (const auto& item : record.getValues())
+    {
+        size_t dot = item.first.find('.');
+        if (dot != string::npos && item.first.substr(dot + 1) == column)
+        {
+            value = item.second;
+            return true;
+        }
+    }
+    return false;
+}
 
-// ============================================================
-// CONSTRUCTOR
-// CONSTRUCTORS
-// ============================================================
+static string unqualified(const string& column)
+{
+    size_t dot = column.find_last_of('.');
+    return dot == string::npos ? column : column.substr(dot + 1);
+}
 
-Query::Query(
-    Database& database
-)
-    : database(database)
 Query::Query()
-    : database(nullptr),
-      hasSubqueryFrom(false),
-      isSubqueryIn(false),
-      isSubqueryNotIn(false),
-      isDistinct(false),
-      limitCount(-1),
-      offsetCount(0)
+    : database(nullptr), hasSubqueryFrom(false), isSubqueryIn(false),
+      isSubqueryNotIn(false), isDistinct(false), limitCount(-1), offsetCount(0)
 {
 }
 
 Query::Query(Database& database)
-    : database(&database),
-      hasSubqueryFrom(false),
-      isSubqueryIn(false),
-      isSubqueryNotIn(false),
-      isDistinct(false),
-      limitCount(-1),
-      offsetCount(0)
+    : database(&database), hasSubqueryFrom(false), isSubqueryIn(false),
+      isSubqueryNotIn(false), isDistinct(false), limitCount(-1), offsetCount(0)
 {
 }
 
-// ============================================================
-// FROM
-// FROM & SUBQUERIES
-// ============================================================
-
-Query& Query::from(
-    const string& tableName
-)
 Query& Query::from(const string& tableName)
 {
     baseTable = tableName;
+    tableAlias.clear();
     hasSubqueryFrom = false;
     return *this;
 }
@@ -55,50 +53,31 @@ Query& Query::from(const string& tableName)
 Query& Query::from(const Query& subquery, const string& alias)
 {
     tableAlias = alias;
+    baseTable.clear();
     hasSubqueryFrom = true;
     subqueryFromRecords = subquery.execute();
-
-    // Re-prefix records with the subquery alias
-    for (size_t i = 0; i < subqueryFromRecords.size(); i++)
+    for (size_t index = 0; index < subqueryFromRecords.size(); ++index)
     {
-        JoinedRecord newRecord;
-        for (const auto& pair : subqueryFromRecords[i].getValues())
-        {
-            string col = pair.first;
-            size_t dotPos = col.find('.');
-            string shortName = (dotPos != string::npos) ? col.substr(dotPos + 1) : col;
-            newRecord.set(alias + "." + shortName, pair.second);
-        }
-        subqueryFromRecords[i] = newRecord;
+        JoinedRecord renamed;
+        for (const auto& item : subqueryFromRecords[index].getValues())
+            renamed.set(alias + "." + unqualified(item.first), item.second);
+        subqueryFromRecords[index] = std::move(renamed);
     }
     return *this;
 }
 
-
-// ============================================================
-// SELECT
-// SELECT & DISTINCT
-// ============================================================
-
-Query& Query::select(
-    const vector<string>& columns
-)
 Query& Query::select(const Vector<string>& columns)
 {
     selectedColumns = columns;
     return *this;
 }
 
-Query& Query::select(std::initializer_list<string> columns)
+Query& Query::select(initializer_list<string> columns)
 {
     selectedColumns.clear();
-    for (const auto& col : columns)
-    {
-        selectedColumns.push_back(col);
-    }
+    for (const string& column : columns) selectedColumns.push_back(column);
     return *this;
 }
-
 
 Query& Query::selectAll()
 {
@@ -112,52 +91,27 @@ Query& Query::distinct(bool enable)
     return *this;
 }
 
-
-// ============================================================
-// JOIN
-// ============================================================
-
-Query& Query::join(
-    const Join& joinObject
-)
 Query& Query::join(const Join& joinObject)
 {
-    joins.push_back(
-        joinObject
-    );
-
     joins.push_back(joinObject);
     return *this;
 }
 
-
-// ============================================================
-// WHERE
-// WHERE & SUBQUERY IN / NOT IN
-// ============================================================
-
-Query& Query::where(
-    const Condition& condition
-)
 Query& Query::where(const Condition& condition)
 {
     singleCondition = condition;
-
     conditionGroup.reset();
-
+    isSubqueryIn = false;
+    isSubqueryNotIn = false;
     return *this;
 }
 
-
-Query& Query::where(
-    const ConditionGroup& group
-)
 Query& Query::where(const ConditionGroup& group)
 {
     conditionGroup = group;
-
     singleCondition.reset();
-
+    isSubqueryIn = false;
+    isSubqueryNotIn = false;
     return *this;
 }
 
@@ -167,67 +121,37 @@ Query& Query::whereIn(const string& column, const Query& subquery)
     isSubqueryIn = true;
     isSubqueryNotIn = false;
     subqueryInValues.clear();
-
-// ============================================================
-// ORDER BY
-// ============================================================
-    Vector<JoinedRecord> res = subquery.execute();
-    for (size_t i = 0; i < res.size(); i++)
+    Vector<JoinedRecord> result = subquery.execute();
+    for (size_t index = 0; index < result.size(); ++index)
     {
-        for (const auto& pair : res[i].getValues())
+        for (const auto& item : result[index].getValues())
         {
-            subqueryInValues.push_back(pair.second);
-            break; // take first column
+            subqueryInValues.push_back(item.second);
+            break;
         }
     }
+    singleCondition.reset();
+    conditionGroup.reset();
     return *this;
 }
 
-Query& Query::orderBy(
-    const OrderBy& orderByObject
-)
 Query& Query::whereNotIn(const string& column, const Query& subquery)
 {
-    order = orderByObject;
-
     whereIn(column, subquery);
     isSubqueryIn = false;
     isSubqueryNotIn = true;
     return *this;
 }
 
-
-// ============================================================
-// COMPARE VALUES
-// GROUP BY, AGGREGATES, HAVING
-// ============================================================
-
-bool Query::compareValues(
-    const Value& leftValue,
-    const Value& rightValue,
-    CompareOperator operation
-) const
 Query& Query::groupBy(const string& column)
 {
-    /*
-        Hai giá trị phải cùng kiểu.
-    */
     groupByColumns.push_back(column);
     return *this;
 }
 
-    if (
-        leftValue.index()
-        !=
-        rightValue.index()
-    )
 Query& Query::groupBy(const Vector<string>& columns)
 {
-    for (size_t i = 0; i < columns.size(); i++)
-    {
-        return false;
-        groupByColumns.push_back(columns[i]);
-    }
+    for (size_t index = 0; index < columns.size(); ++index) groupByColumns.push_back(columns[index]);
     return *this;
 }
 
@@ -237,21 +161,12 @@ Query& Query::aggregate(AggregateType type, const string& column, const string& 
     return *this;
 }
 
-    // ========================================================
-    // INTEGER
-    // ========================================================
-Query& Query::aggregate(const Aggregate& agg)
+Query& Query::aggregate(const Aggregate& aggregate)
 {
-    aggregates.push_back(agg);
+    aggregates.push_back(aggregate);
     return *this;
 }
 
-    if (
-        holds_alternative<int>(leftValue)
-    )
-    {
-        int left =
-            get<int>(leftValue);
 Query& Query::having(const Condition& condition)
 {
     havingCondition = condition;
@@ -259,8 +174,6 @@ Query& Query::having(const Condition& condition)
     return *this;
 }
 
-        int right =
-            get<int>(rightValue);
 Query& Query::having(const ConditionGroup& group)
 {
     havingConditionGroup = group;
@@ -268,1343 +181,411 @@ Query& Query::having(const ConditionGroup& group)
     return *this;
 }
 
-        switch (operation)
-        {
-        case CompareOperator::EQUAL:
-            return left == right;
-// ============================================================
-// ORDER BY, LIMIT, OFFSET
-// ============================================================
-
-        case CompareOperator::NOT_EQUAL:
-            return left != right;
-Query& Query::orderBy(const OrderBy& orderByObject)
+Query& Query::orderBy(const OrderBy& orderBy)
 {
-    orderBys.push_back(orderByObject);
+    orderBys.push_back(orderBy);
     return *this;
 }
 
-        case CompareOperator::LESS:
-            return left < right;
 Query& Query::orderBy(const string& columnName, SortOrder order)
 {
     orderBys.push_back(OrderBy(columnName, order));
     return *this;
 }
 
-        case CompareOperator::LESS_EQUAL:
-            return left <= right;
 Query& Query::limit(int count)
 {
-    limitCount = count;
+    limitCount = count < 0 ? 0 : count;
     return *this;
 }
 
-        case CompareOperator::GREATER:
-            return left > right;
 Query& Query::offset(int count)
 {
-    offsetCount = count;
+    offsetCount = count < 0 ? 0 : count;
     return *this;
 }
 
-        case CompareOperator::GREATER_EQUAL:
-            return left >= right;
+bool Query::compareValues(const Value& left, const Value& right, CompareOperator operation) const
+{
+    if (isNull(left) || isNull(right))
+    {
+        if (operation == CompareOperator::EQUAL) return isNull(left) && isNull(right);
+        if (operation == CompareOperator::NOT_EQUAL) return isNull(left) != isNull(right);
+        return false;
+    }
+    bool leftNumeric = holds_alternative<int>(left) || holds_alternative<double>(left);
+    bool rightNumeric = holds_alternative<int>(right) || holds_alternative<double>(right);
+    if (leftNumeric && rightNumeric)
+    {
+        double l = holds_alternative<int>(left) ? get<int>(left) : get<double>(left);
+        double r = holds_alternative<int>(right) ? get<int>(right) : get<double>(right);
+        switch (operation)
+        {
+        case CompareOperator::EQUAL: return l == r;
+        case CompareOperator::NOT_EQUAL: return l != r;
+        case CompareOperator::LESS: return l < r;
+        case CompareOperator::LESS_EQUAL: return l <= r;
+        case CompareOperator::GREATER: return l > r;
+        case CompareOperator::GREATER_EQUAL: return l >= r;
+        default: return false;
         }
-// ============================================================
-// INTERNAL PIPELINE: BUILD BASE RECORDS
-// ============================================================
+    }
+    if (left.index() != right.index()) return false;
+    if (holds_alternative<string>(left))
+    {
+        const string& l = get<string>(left);
+        const string& r = get<string>(right);
+        switch (operation)
+        {
+        case CompareOperator::EQUAL: return l == r;
+        case CompareOperator::NOT_EQUAL: return l != r;
+        case CompareOperator::LESS: return l < r;
+        case CompareOperator::LESS_EQUAL: return l <= r;
+        case CompareOperator::GREATER: return l > r;
+        case CompareOperator::GREATER_EQUAL: return l >= r;
+        default: return false;
+        }
+    }
+    if (holds_alternative<bool>(left))
+    {
+        bool l = get<bool>(left), r = get<bool>(right);
+        if (operation == CompareOperator::EQUAL) return l == r;
+        if (operation == CompareOperator::NOT_EQUAL) return l != r;
+    }
+    return false;
+}
+
+bool Query::evaluateCondition(const JoinedRecord& record, const Condition& condition) const
+{
+    Value value = monostate{};
+    bool found = resolveColumn(record, condition.getColumnName(), value);
+    if (!found && condition.getOperation() != CompareOperator::IS_NULL) return false;
+    return condition.evaluateValue(value);
+}
+
+bool Query::evaluateConditionGroup(const JoinedRecord& record, const ConditionGroup& group) const
+{
+    const Vector<Condition>& conditions = group.getConditions();
+    if (conditions.empty()) return false;
+    if (group.getOperation() == LogicalOperator::NOT) return !evaluateCondition(record, conditions[0]);
+    if (group.getOperation() == LogicalOperator::AND)
+    {
+        for (size_t index = 0; index < conditions.size(); ++index)
+            if (!evaluateCondition(record, conditions[index])) return false;
+        return true;
+    }
+    for (size_t index = 0; index < conditions.size(); ++index)
+        if (evaluateCondition(record, conditions[index])) return true;
+    return false;
+}
 
 Vector<JoinedRecord> Query::buildBaseRecords() const
 {
-    if (hasSubqueryFrom)
-    {
-        return subqueryFromRecords;
-    }
-
-    if (baseTable.empty())
-    {
-        return {};
-    }
-
-    // ========================================================
-    // DOUBLE
-    // ========================================================
-    if (database == nullptr)
-    {
-        return {};
-    }
-
-    if (
-        holds_alternative<double>(leftValue)
-    )
-    const Table* base = database->getTable(baseTable);
-    if (base == nullptr)
-    {
-        double left =
-            get<double>(leftValue);
-
-        double right =
-            get<double>(rightValue);
-
-        switch (operation)
-        {
-        case CompareOperator::EQUAL:
-            return left == right;
-
-        case CompareOperator::NOT_EQUAL:
-            return left != right;
-
-        case CompareOperator::LESS:
-            return left < right;
-
-        case CompareOperator::LESS_EQUAL:
-            return left <= right;
-
-        case CompareOperator::GREATER:
-            return left > right;
-
-        case CompareOperator::GREATER_EQUAL:
-            return left >= right;
-        }
-        cout << "Query failed: table not found: " << baseTable << endl;
-        return {};
-    }
-
-
-    // ========================================================
-    // STRING
-    // ========================================================
-
-    if (
-        holds_alternative<string>(leftValue)
-    )
+    if (hasSubqueryFrom) return subqueryFromRecords;
+    if (database == nullptr || baseTable.empty()) return {};
+    const Table* table = database->getTable(baseTable);
+    if (table == nullptr) return {};
     Vector<JoinedRecord> result;
-    for (size_t i = 0; i < base->getRows().size(); i++)
+    for (size_t rowIndex = 0; rowIndex < table->getRows().size(); ++rowIndex)
     {
-        const string& left =
-            get<string>(leftValue);
-
-        const string& right =
-            get<string>(rightValue);
-
-        switch (operation)
-        const Record& source = base->getRows()[i];
-        JoinedRecord jr;
-        for (const auto& pair : source.getValues())
+        JoinedRecord record;
+        const Record& row = table->getRows()[rowIndex];
+        for (const auto& item : row.getValues())
         {
-        case CompareOperator::EQUAL:
-            return left == right;
-
-        case CompareOperator::NOT_EQUAL:
-            return left != right;
-
-        case CompareOperator::LESS:
-            return left < right;
-
-        case CompareOperator::LESS_EQUAL:
-            return left <= right;
-
-        case CompareOperator::GREATER:
-            return left > right;
-
-        case CompareOperator::GREATER_EQUAL:
-            return left >= right;
-            jr.set(baseTable + "." + pair.first, pair.second);
+            record.set(baseTable + "." + item.first, item.second);
+            if (!tableAlias.empty()) record.set(tableAlias + "." + item.first, item.second);
         }
-        result.push_back(jr);
+        result.push_back(std::move(record));
     }
-
-    return false;
     return result;
 }
 
-
-// ============================================================
-// EVALUATE CONDITION
-// INTERNAL PIPELINE: APPLY JOINS (INNER, LEFT, RIGHT, FULL)
-// ============================================================
-
-bool Query::evaluateCondition(
-    const JoinedRecord& record,
-    const Condition& condition
-) const
 Vector<JoinedRecord> Query::applyJoins(Vector<JoinedRecord> records) const
 {
-    const string& columnName =
-        condition.getColumnName();
-
-
-    if (
-        !record.has(columnName)
-    )
-    if (database == nullptr)
+    if (database == nullptr) return records;
+    for (size_t joinIndex = 0; joinIndex < joins.size(); ++joinIndex)
     {
-        return false;
-        return records;
-    }
-
-    for (size_t j = 0; j < joins.size(); j++)
-    {
-        const Join& join = joins[j];
+        const Join& join = joins[joinIndex];
         const Table* rightTable = database->getTable(join.getRightTable());
-        if (rightTable == nullptr)
-        {
-            cout << "Query failed: join table not found: " << join.getRightTable() << endl;
-            return {};
-        }
-
-    Value recordValue =
-        record.get(columnName);
-        Vector<JoinedRecord> joinedResult;
-        Vector<bool> rightMatched(rightTable->getRows().size(), false);
-
-    Value compareValue =
-        condition.getCompareValue();
+        if (rightTable == nullptr) return {};
+        Vector<JoinedRecord> joined;
+        Vector<int> matched(rightTable->getRows().size(), 0);
         string leftKey = join.getLeftTable() + "." + join.getLeftColumn();
-        string rightKey = join.getRightColumn();
-
-        for (size_t l = 0; l < records.size(); l++)
+        string rightColumn = unqualified(join.getRightColumn());
+        for (size_t leftIndex = 0; leftIndex < records.size(); ++leftIndex)
         {
-            const JoinedRecord& leftRec = records[l];
+            const JoinedRecord& leftRecord = records[leftIndex];
+            Value leftValue = monostate{};
+            bool foundLeft = resolveColumn(leftRecord, leftKey, leftValue);
             bool foundMatch = false;
-
-    return compareValues(
-        recordValue,
-        compareValue,
-        condition.getOperation()
-    );
-}
-            if (leftRec.has(leftKey) && !isNull(leftRec.get(leftKey)))
+            if (foundLeft && !isNull(leftValue))
             {
-                Value leftVal = leftRec.get(leftKey);
-
-                for (size_t r = 0; r < rightTable->getRows().size(); r++)
+                for (size_t rightIndex = 0; rightIndex < rightTable->getRows().size(); ++rightIndex)
                 {
-                    const Record& rightRec = rightTable->getRows()[r];
-                    if (!rightRec.has(rightKey) || isNull(rightRec.get(rightKey)))
-                    {
-                        continue;
-                    }
-
-// ============================================================
-// EVALUATE CONDITION GROUP
-// ============================================================
-                    if (leftVal == rightRec.get(rightKey))
-                    {
-                        foundMatch = true;
-                        rightMatched[r] = true;
-
-bool Query::evaluateConditionGroup(
-    const JoinedRecord& record,
-    const ConditionGroup& group
-) const
-{
-    const vector<Condition>& conditions =
-        group.getConditions();
-                        JoinedRecord comb = leftRec;
-                        for (const auto& pair : rightRec.getValues())
-                        {
-                            comb.set(join.getRightTable() + "." + pair.first, pair.second);
-                        }
-                        joinedResult.push_back(comb);
-                    }
+                    const Record& rightRecord = rightTable->getRows()[rightIndex];
+                    if (!rightRecord.has(rightColumn) || isNull(rightRecord.get(rightColumn))) continue;
+                    if (leftValue != rightRecord.get(rightColumn)) continue;
+                    JoinedRecord combined = leftRecord;
+                    for (const auto& item : rightRecord.getValues())
+                        combined.set(join.getRightTable() + "." + item.first, item.second);
+                    joined.push_back(std::move(combined));
+                    matched[rightIndex] = 1;
+                    foundMatch = true;
                 }
             }
-
-
-    if (conditions.empty())
-    {
-        return false;
-    }
-
-
-    // ========================================================
-    // AND
-    // ========================================================
-
-    if (
-        group.getOperation()
-        ==
-        LogicalOperator::AND
-    )
-    {
-        for (
-            const Condition& condition
-            :
-            conditions
-        )
-        {
-            if (
-                !evaluateCondition(
-                    record,
-                    condition
-                )
-            )
-            // For LEFT JOIN or FULL JOIN: if no match, keep left row with NULL right columns
             if (!foundMatch && (join.getType() == JoinType::LEFT || join.getType() == JoinType::FULL))
             {
-                return false;
-                JoinedRecord comb = leftRec;
-                for (size_t c = 0; c < rightTable->getColumns().size(); c++)
-                {
-                    comb.set(join.getRightTable() + "." + rightTable->getColumns()[c].getName(), monostate{});
-                }
-                joinedResult.push_back(comb);
+                JoinedRecord combined = leftRecord;
+                for (size_t columnIndex = 0; columnIndex < rightTable->getColumns().size(); ++columnIndex)
+                    combined.set(join.getRightTable() + "." + rightTable->getColumns()[columnIndex].getName(), monostate{});
+                joined.push_back(std::move(combined));
             }
         }
-
-        return true;
-    }
-
-
-    // ========================================================
-    // OR
-    // ========================================================
-
-    if (
-        group.getOperation()
-        ==
-        LogicalOperator::OR
-    )
-    {
-        for (
-            const Condition& condition
-            :
-            conditions
-        )
-        // For RIGHT JOIN or FULL JOIN: add unmatched right rows with NULL left columns
         if (join.getType() == JoinType::RIGHT || join.getType() == JoinType::FULL)
         {
-            if (
-                evaluateCondition(
-                    record,
-                    condition
-                )
-            )
-            for (size_t r = 0; r < rightTable->getRows().size(); r++)
+            for (size_t rightIndex = 0; rightIndex < rightTable->getRows().size(); ++rightIndex)
             {
-                return true;
-                if (!rightMatched[r])
-                {
-                    const Record& rightRec = rightTable->getRows()[r];
-                    JoinedRecord comb;
-                    // Nullify existing left keys
-                    if (!records.empty())
-                    {
-                        for (const auto& pair : records[0].getValues())
-                        {
-                            comb.set(pair.first, monostate{});
-                        }
-                    }
-                    // Add right columns
-                    for (const auto& pair : rightRec.getValues())
-                    {
-                        comb.set(join.getRightTable() + "." + pair.first, pair.second);
-                    }
-                    joinedResult.push_back(comb);
-                }
+                if (matched[rightIndex]) continue;
+                JoinedRecord combined;
+                if (!records.empty())
+                    for (const auto& item : records[0].getValues()) combined.set(item.first, monostate{});
+                const Record& rightRecord = rightTable->getRows()[rightIndex];
+                for (const auto& item : rightRecord.getValues()) combined.set(join.getRightTable() + "." + item.first, item.second);
+                joined.push_back(std::move(combined));
             }
         }
-
-        return false;
-        records = joinedResult;
+        records = std::move(joined);
     }
-
-
-    return false;
     return records;
 }
 
-
-// ============================================================
-// BUILD JOINED RECORDS
-// INTERNAL PIPELINE: EVALUATE CONDITIONS
-// ============================================================
-
-vector<JoinedRecord>
-Query::buildJoinedRecords() const
-bool Query::evaluateCondition(const JoinedRecord& record, const Condition& condition) const
-{
-    vector<JoinedRecord> result;
-    string col = condition.getColumnName();
-    Value val = monostate{};
-
-
-    // ========================================================
-    // FROM
-    // ========================================================
-
-    if (baseTable.empty())
-    if (record.has(col))
-    {
-        cout
-            << "Query failed: "
-            << "FROM table is empty."
-            << endl;
-
-        return {};
-        val = record.get(col);
-    }
-    else
-    {
-        // Check if unqualified column matches (e.g. "price" matches "products.price")
-        bool found = false;
-        for (const auto& pair : record.getValues())
-        {
-            size_t dotPos = pair.first.find('.');
-            if (dotPos != string::npos && pair.first.substr(dotPos + 1) == col)
-            {
-                val = pair.second;
-                found = true;
-                break;
-            }
-        }
-        if (!found && condition.getOperation() != CompareOperator::IS_NULL)
-        {
-            return false;
-        }
-    }
-
-    return condition.evaluateValue(val);
-}
-
-    auto base =
-        database.getTable(
-            baseTable
-        );
-bool Query::evaluateConditionGroup(const JoinedRecord& record, const ConditionGroup& group) const
-{
-    const Vector<Condition>& conds = group.getConditions();
-    if (conds.empty()) return false;
-
-    if (base == nullptr)
-    if (group.getOperation() == LogicalOperator::NOT)
-    {
-        cout
-            << "Query failed: "
-            << "table not found: "
-            << baseTable
-            << endl;
-
-        return {};
-        return !evaluateCondition(record, conds[0]);
-    }
-
-
-    // ========================================================
-    // TẠO RECORD BAN ĐẦU
-    // ========================================================
-
-    for (
-        const Record& sourceRecord
-        :
-        base->getRows()
-    )
-    if (group.getOperation() == LogicalOperator::AND)
-    {
-        JoinedRecord joinedRecord;
-
-
-        for (
-            const auto& pair
-            :
-            sourceRecord.getValues()
-        )
-        for (size_t i = 0; i < conds.size(); i++)
-        {
-            joinedRecord.set(
-                baseTable
-                + "."
-                + pair.first,
-                pair.second
-            );
-            if (!evaluateCondition(record, conds[i])) return false;
-        }
-
-
-        result.push_back(
-            joinedRecord
-        );
-        return true;
-    }
-
-
-    // ========================================================
-    // XỬ LÝ JOIN
-    // ========================================================
-
-    for (
-        const Join& joinObject
-        :
-        joins
-    )
-    if (group.getOperation() == LogicalOperator::OR)
-    {
-        if (
-            joinObject.getType()
-            !=
-            JoinType::INNER
-        )
-        for (size_t i = 0; i < conds.size(); i++)
-        {
-            continue;
-            if (evaluateCondition(record, conds[i])) return true;
-        }
-        return false;
-    }
-
-    return false;
-}
-
-        auto rightTable =
-            database.getTable(
-                joinObject.getRightTable()
-            );
-// ============================================================
-// INTERNAL PIPELINE: APPLY WHERE & SUBQUERY IN
-// ============================================================
-
-        if (rightTable == nullptr)
 Vector<JoinedRecord> Query::applyWhere(const Vector<JoinedRecord>& records) const
 {
     Vector<JoinedRecord> result;
-
-    for (size_t i = 0; i < records.size(); i++)
+    for (size_t index = 0; index < records.size(); ++index)
     {
-        const JoinedRecord& r = records[i];
-
-        // 1. Single condition
-        if (singleCondition.has_value() && !evaluateCondition(r, singleCondition.value()))
-        {
-            cout
-                << "Query failed: "
-                << "table not found: "
-                << joinObject.getRightTable()
-                << endl;
-
-            return {};
-            continue;
-        }
-
-
-        if (
-            !rightTable->hasColumn(
-                joinObject.getRightColumn()
-            )
-        )
-        // 2. Condition group
-        if (conditionGroup.has_value() && !evaluateConditionGroup(r, conditionGroup.value()))
-        {
-            cout
-                << "Query failed: "
-                << "column not found: "
-                << joinObject.getRightTable()
-                << "."
-                << joinObject.getRightColumn()
-                << endl;
-
-            return {};
-            continue;
-        }
-
-
-        vector<JoinedRecord> joinedResult;
-
-
-        for (
-            const JoinedRecord& currentRecord
-            :
-            result
-        )
-        // 3. Subquery IN / NOT IN
+        const JoinedRecord& record = records[index];
+        if (singleCondition.has_value() && !evaluateCondition(record, singleCondition.value())) continue;
+        if (conditionGroup.has_value() && !evaluateConditionGroup(record, conditionGroup.value())) continue;
         if (isSubqueryIn || isSubqueryNotIn)
         {
-            string leftKey =
-                joinObject.getLeftTable()
-                + "."
-                + joinObject.getLeftColumn();
-            Value val = monostate{};
-            bool colFound = false;
-
-
-            if (
-                !currentRecord.has(leftKey)
-            )
-            if (r.has(subqueryInColumn))
-            {
-                continue;
-                val = r.get(subqueryInColumn);
-                colFound = true;
-            }
-
-
-            Value leftValue =
-                currentRecord.get(leftKey);
-
-
-            for (
-                const Record& rightRecord
-                :
-                rightTable->getRows()
-            )
-            else
-            {
-                if (
-                    !rightRecord.has(
-                        joinObject.getRightColumn()
-                    )
-                )
-                for (const auto& pair : r.getValues())
-                {
-                    continue;
-                    size_t dotPos = pair.first.find('.');
-                    if (dotPos != string::npos && pair.first.substr(dotPos + 1) == subqueryInColumn)
-                    {
-                        val = pair.second;
-                        colFound = true;
-                        break;
-                    }
-                }
-            }
-
-            if (!colFound) continue;
-
-                Value rightValue =
-                    rightRecord.get(
-                        joinObject.getRightColumn()
-                    );
-
-
-                if (
-                    leftValue.index()
-                    !=
-                    rightValue.index()
-                )
-            bool inList = false;
-            for (size_t s = 0; s < subqueryInValues.size(); s++)
-            {
-                if (val == subqueryInValues[s])
-                {
-                    continue;
-                    inList = true;
-                    break;
-                }
-            }
-
-            if (isSubqueryIn && !inList) continue;
-            if (isSubqueryNotIn && inList) continue;
+            Value value = monostate{};
+            bool foundColumn = resolveColumn(record, subqueryInColumn, value);
+            bool found = false;
+            if (foundColumn)
+                for (size_t valueIndex = 0; valueIndex < subqueryInValues.size(); ++valueIndex)
+                    if (value == subqueryInValues[valueIndex]) { found = true; break; }
+            if (isSubqueryIn ? !found : found) continue;
         }
-
-                if (
-                    leftValue != rightValue
-                )
-                {
-                    continue;
-                }
-        result.push_back(r);
+        result.push_back(record);
     }
-
     return result;
 }
 
-                // --------------------------------------------
-                // GHÉP RECORD
-                // --------------------------------------------
-// ============================================================
-// INTERNAL PIPELINE: GROUP BY & AGGREGATES
-// ============================================================
-
-                JoinedRecord newRecord =
-                    currentRecord;
 Vector<JoinedRecord> Query::applyGroupByAndAggregates(const Vector<JoinedRecord>& records) const
 {
-    if (groupByColumns.empty() && aggregates.empty())
+    if (aggregates.empty() && groupByColumns.empty()) return records;
+    Vector<Vector<JoinedRecord>> groups;
+    if (groupByColumns.empty())
     {
-        return records;
+        groups.push_back(records);
     }
-
-    // Case 1: No GROUP BY, but aggregate functions specified -> single record output
-    if (groupByColumns.empty() && !aggregates.empty())
+    else
     {
-        JoinedRecord aggRow;
-        for (size_t a = 0; a < aggregates.size(); a++)
+        for (size_t recordIndex = 0; recordIndex < records.size(); ++recordIndex)
         {
-            Value v = Aggregate::compute(aggregates[a].getType(), aggregates[a].getColumn(), records);
-            aggRow.set(aggregates[a].getOutputName(), v);
-        }
-        Vector<JoinedRecord> res;
-        res.push_back(aggRow);
-        return res;
-    }
-
-                for (
-                    const auto& pair
-                    :
-                    rightRecord.getValues()
-                )
-    // Case 2: GROUP BY specified
-    HashMap<string, Vector<JoinedRecord>> groups;
-    Vector<string> groupKeysOrder;
-
-    for (size_t i = 0; i < records.size(); i++)
-    {
-        const JoinedRecord& r = records[i];
-        string key;
-        for (size_t g = 0; g < groupByColumns.size(); g++)
-        {
-            const string& col = groupByColumns[g];
-            Value val = monostate{};
-            if (r.has(col))
+            size_t groupIndex = 0;
+            for (; groupIndex < groups.size(); ++groupIndex)
             {
-                val = r.get(col);
-            }
-            else
-            {
-                for (const auto& pair : r.getValues())
+                bool equal = true;
+                for (size_t keyIndex = 0; keyIndex < groupByColumns.size(); ++keyIndex)
                 {
-                    newRecord.set(
-                        joinObject.getRightTable()
-                        + "."
-                        + pair.first,
-                        pair.second
-                    );
-                    size_t dotPos = pair.first.find('.');
-                    if (dotPos != string::npos && pair.first.substr(dotPos + 1) == col)
-                    {
-                        val = pair.second;
-                        break;
-                    }
+                    Value left = monostate{}, right = monostate{};
+                    resolveColumn(groups[groupIndex][0], groupByColumns[keyIndex], left);
+                    resolveColumn(records[recordIndex], groupByColumns[keyIndex], right);
+                    if (left != right) { equal = false; break; }
                 }
+                if (equal) break;
             }
-            key += valueToString(val) + "||";
+            if (groupIndex == groups.size()) groups.push_back(Vector<JoinedRecord>());
+            groups[groupIndex].push_back(records[recordIndex]);
         }
-
-        if (!groups.contains(key))
-        {
-            groupKeysOrder.push_back(key);
-        }
-        groups[key].push_back(r);
     }
-
-                joinedResult.push_back(
-                    newRecord
-                );
     Vector<JoinedRecord> result;
-    for (size_t k = 0; k < groupKeysOrder.size(); k++)
+    for (size_t groupIndex = 0; groupIndex < groups.size(); ++groupIndex)
     {
-        const string& key = groupKeysOrder[k];
-        const Vector<JoinedRecord>& groupRows = groups[key];
-        JoinedRecord groupOut;
-
-        // Populate grouped column values
-        const JoinedRecord& firstRow = groupRows[0];
-        for (size_t g = 0; g < groupByColumns.size(); g++)
-        {
-            const string& col = groupByColumns[g];
-            if (firstRow.has(col))
+        JoinedRecord output;
+        if (!groups[groupIndex].empty())
+            for (size_t keyIndex = 0; keyIndex < groupByColumns.size(); ++keyIndex)
             {
-                groupOut.set(col, firstRow.get(col));
+                Value key = monostate{};
+                if (resolveColumn(groups[groupIndex][0], groupByColumns[keyIndex], key))
+                    output.set(groupByColumns[keyIndex], key);
             }
-            else
-            {
-                for (const auto& pair : firstRow.getValues())
-                {
-                    size_t dotPos = pair.first.find('.');
-                    if (dotPos != string::npos && pair.first.substr(dotPos + 1) == col)
-                    {
-                        groupOut.set(col, pair.second);
-                        break;
-                    }
-                }
-            }
-        }
-
-        // Compute aggregates for group
-        for (size_t a = 0; a < aggregates.size(); a++)
+        for (size_t aggregateIndex = 0; aggregateIndex < aggregates.size(); ++aggregateIndex)
         {
-            Value v = Aggregate::compute(aggregates[a].getType(), aggregates[a].getColumn(), groupRows);
-            groupOut.set(aggregates[a].getOutputName(), v);
+            const Aggregate& aggregate = aggregates[aggregateIndex];
+            output.set(aggregate.getOutputName(), Aggregate::compute(aggregate.getType(), aggregate.getColumn(), groups[groupIndex]));
         }
-
-        result =
-            joinedResult;
-        result.push_back(groupOut);
+        result.push_back(std::move(output));
     }
-
-
     return result;
 }
 
-
-// ============================================================
-// APPLY WHERE
-// INTERNAL PIPELINE: APPLY HAVING
-// ============================================================
-
-vector<JoinedRecord>
-Query::applyWhere(
-    const vector<JoinedRecord>& records
-) const
 Vector<JoinedRecord> Query::applyHaving(const Vector<JoinedRecord>& records) const
 {
-    if (
-        !singleCondition.has_value()
-        &&
-        !conditionGroup.has_value()
-    )
-    if (!havingCondition.has_value() && !havingConditionGroup.has_value())
-    {
-        return records;
-    }
-
-
-    vector<JoinedRecord> result;
-
-
-    for (
-        const JoinedRecord& record
-        :
-        records
-    )
     Vector<JoinedRecord> result;
-    for (size_t i = 0; i < records.size(); i++)
+    for (size_t index = 0; index < records.size(); ++index)
     {
-        bool matched = false;
-        const JoinedRecord& r = records[i];
-
-
-        if (
-            singleCondition.has_value()
-        )
-        if (havingCondition.has_value() && !evaluateCondition(r, havingCondition.value()))
-        {
-            matched =
-                evaluateCondition(
-                    record,
-                    singleCondition.value()
-                );
-            continue;
-        }
-        else
-
-        if (havingConditionGroup.has_value() && !evaluateConditionGroup(r, havingConditionGroup.value()))
-        {
-            matched =
-                evaluateConditionGroup(
-                    record,
-                    conditionGroup.value()
-                );
-            continue;
-        }
-
-
-        if (matched)
-        {
-            result.push_back(
-                record
-            );
-        }
-        result.push_back(r);
+        if (havingCondition.has_value() && !evaluateCondition(records[index], havingCondition.value())) continue;
+        if (havingConditionGroup.has_value() && !evaluateConditionGroup(records[index], havingConditionGroup.value())) continue;
+        result.push_back(records[index]);
     }
-
-
     return result;
 }
 
-
-// ============================================================
-// APPLY ORDER BY
-// INTERNAL PIPELINE: APPLY SELECT
-// ============================================================
-
-vector<JoinedRecord>
-Query::applyOrderBy(
-    vector<JoinedRecord> records
-) const
 Vector<JoinedRecord> Query::applySelect(const Vector<JoinedRecord>& records) const
 {
-    if (!order.has_value())
-    if (selectedColumns.empty())
-    {
-        return records;
-    }
-
+    if (selectedColumns.empty()) return records;
     Vector<JoinedRecord> result;
-
-    const string& columnName =
-        order->getColumnName();
-    for (size_t i = 0; i < records.size(); i++)
+    for (size_t rowIndex = 0; rowIndex < records.size(); ++rowIndex)
     {
-        const JoinedRecord& src = records[i];
-        JoinedRecord sel;
-
-
-    sort(
-        records.begin(),
-        records.end(),
-        [this, &columnName](
-            const JoinedRecord& a,
-            const JoinedRecord& b
-        )
-        for (size_t c = 0; c < selectedColumns.size(); c++)
+        JoinedRecord projected;
+        for (size_t columnIndex = 0; columnIndex < selectedColumns.size(); ++columnIndex)
         {
-            if (
-                !a.has(columnName)
-                ||
-                !b.has(columnName)
-            )
-            const string& col = selectedColumns[c];
-            if (src.has(col))
+            const string& column = selectedColumns[columnIndex];
+            if (column == "*")
             {
-                return false;
-                sel.set(col, src.get(col));
+                for (const auto& item : records[rowIndex].getValues()) projected.set(item.first, item.second);
+                continue;
             }
-            else
+            string prefix = column.substr(0, column.size() > 1 ? column.size() - 1 : 0);
+            if (column.size() > 2 && column.substr(column.size() - 2) == ".*")
             {
-                // Fallback: search for unqualified name or alias
-                for (const auto& pair : src.getValues())
-                {
-                    size_t dotPos = pair.first.find('.');
-                    if (dotPos != string::npos && pair.first.substr(dotPos + 1) == col)
-                    {
-                        sel.set(col, pair.second);
-                        break;
-                    }
-                }
+                for (const auto& item : records[rowIndex].getValues())
+                    if (item.first.compare(0, prefix.size(), prefix) == 0) projected.set(item.first, item.second);
+                continue;
             }
+            Value value = monostate{};
+            if (resolveColumn(records[rowIndex], column, value)) projected.set(column, value);
         }
-
-        result.push_back(sel);
+        result.push_back(std::move(projected));
     }
-
-            Value valueA =
-                a.get(columnName);
     return result;
 }
-
-            Value valueB =
-                b.get(columnName);
-// ============================================================
-// INTERNAL PIPELINE: APPLY DISTINCT
-// ============================================================
 
 Vector<JoinedRecord> Query::applyDistinct(const Vector<JoinedRecord>& records) const
 {
-    if (!isDistinct)
-    {
-        return records;
-    }
-
-            if (
-                valueA.index()
-                !=
-                valueB.index()
-            )
+    if (!isDistinct) return records;
     Vector<JoinedRecord> result;
-    for (size_t i = 0; i < records.size(); i++)
+    for (size_t index = 0; index < records.size(); ++index)
     {
-        bool dup = false;
-        for (size_t j = 0; j < result.size(); j++)
-        {
-            if (records[i] == result[j])
-            {
-                return false;
-                dup = true;
-                break;
-            }
-        }
-        if (!dup)
-        {
-            result.push_back(records[i]);
-        }
+        bool duplicate = false;
+        for (size_t prior = 0; prior < result.size(); ++prior)
+            if (records[index] == result[prior]) { duplicate = true; break; }
+        if (!duplicate) result.push_back(records[index]);
     }
     return result;
 }
 
-// ============================================================
-// INTERNAL PIPELINE: APPLY ORDER BY
-// ============================================================
-
-            bool ascending =
-                order->getOrder()
-                ==
-                SortOrder::ASC;
 Vector<JoinedRecord> Query::applyOrderBy(Vector<JoinedRecord> records) const
 {
-    if (orderBys.empty() || records.size() <= 1)
+    for (size_t orderIndex = orderBys.size(); orderIndex > 0; --orderIndex)
     {
-        return records;
-    }
-
-    auto isNumeric = [](const Value& v) {
-        return holds_alternative<int>(v) || holds_alternative<double>(v);
-    };
-
-            if (
-                holds_alternative<int>(
-                    valueA
-                )
-            )
-            {
-                int aValue =
-                    get<int>(valueA);
-    auto toDouble = [](const Value& v) -> double {
-        if (holds_alternative<int>(v)) return static_cast<double>(get<int>(v));
-        if (holds_alternative<double>(v)) return get<double>(v);
-        return 0.0;
-    };
-
-                int bValue =
-                    get<int>(valueB);
-
-                return ascending
-                    ? aValue < bValue
-                    : aValue > bValue;
-            }
-
-
-            if (
-                holds_alternative<double>(
-                    valueA
-                )
-            )
-    // Bubble sort or insertion sort on custom Vector for stable sorting
-    for (size_t i = 0; i < records.size(); i++)
-    {
-        for (size_t j = i + 1; j < records.size(); j++)
+        const OrderBy& order = orderBys[orderIndex - 1];
+        for (size_t index = 1; index < records.size(); ++index)
         {
-            for (size_t o = 0; o < orderBys.size(); o++)
+            size_t current = index;
+            while (current > 0)
             {
-                double aValue =
-                    get<double>(valueA);
-                const string& col = orderBys[o].getColumnName();
-                bool asc = (orderBys[o].getOrder() == SortOrder::ASC);
-
-                double bValue =
-                    get<double>(valueB);
-                Value valA = records[i].has(col) ? records[i].get(col) : monostate{};
-                Value valB = records[j].has(col) ? records[j].get(col) : monostate{};
-
-                return ascending
-                    ? aValue < bValue
-                    : aValue > bValue;
+                Value left = monostate{}, right = monostate{};
+                bool hasLeft = resolveColumn(records[current - 1], order.getColumnName(), left);
+                bool hasRight = resolveColumn(records[current], order.getColumnName(), right);
+                bool outOfOrder = hasLeft && hasRight
+                    && (order.getOrder() == SortOrder::ASC
+                        ? compareValues(left, right, CompareOperator::GREATER)
+                        : compareValues(left, right, CompareOperator::LESS));
+                if (!outOfOrder) break;
+                JoinedRecord temp = std::move(records[current - 1]);
+                records[current - 1] = std::move(records[current]);
+                records[current] = std::move(temp);
+                --current;
             }
-                // Handle NULLs: NULL is considered smaller than any value
-                if (isNull(valA) && !isNull(valB))
-                {
-                    if (!asc) { std::swap(records[i], records[j]); }
-                    break;
-                }
-                if (!isNull(valA) && isNull(valB))
-                {
-                    if (asc) { std::swap(records[i], records[j]); }
-                    break;
-                }
-                if (isNull(valA) && isNull(valB))
-                {
-                    continue;
-                }
-
-                if (isNumeric(valA) && isNumeric(valB))
-                {
-                    double da = toDouble(valA);
-                    double db = toDouble(valB);
-                    if (da != db)
-                    {
-                        if (asc ? (da > db) : (da < db))
-                        {
-                            std::swap(records[i], records[j]);
-                        }
-                        break;
-                    }
-                    continue;
-                }
-
-            if (
-                holds_alternative<string>(
-                    valueA
-                )
-            )
-            {
-                const string& aValue =
-                    get<string>(valueA);
-
-                const string& bValue =
-                    get<string>(valueB);
-
-                return ascending
-                    ? aValue < bValue
-                    : aValue > bValue;
-                if (holds_alternative<string>(valA) && holds_alternative<string>(valB))
-                {
-                    const string& sa = get<string>(valA);
-                    const string& sb = get<string>(valB);
-                    if (sa != sb)
-                    {
-                        if (asc ? (sa > sb) : (sa < sb))
-                        {
-                            std::swap(records[i], records[j]);
-                        }
-                        break;
-                    }
-                    continue;
-                }
-            }
-
-
-            return false;
         }
-    );
     }
-
-
     return records;
 }
 
-
-// ============================================================
-// APPLY SELECT
-// INTERNAL PIPELINE: APPLY LIMIT & OFFSET
-// ============================================================
-
-vector<JoinedRecord>
-Query::applySelect(
-    const vector<JoinedRecord>& records
-) const
 Vector<JoinedRecord> Query::applyLimitAndOffset(const Vector<JoinedRecord>& records) const
 {
-    /*
-        SELECT *.
-    */
-
-    if (selectedColumns.empty())
-    if (offsetCount <= 0 && limitCount < 0)
-    {
-        return records;
-    }
-
     Vector<JoinedRecord> result;
-    size_t start = offsetCount > 0 ? static_cast<size_t>(offsetCount) : 0;
-    size_t count = 0;
-
-    vector<JoinedRecord> result;
-
-
-    for (
-        const JoinedRecord& sourceRecord
-        :
-        records
-    )
-    for (size_t i = start; i < records.size(); i++)
-    {
-        JoinedRecord selectedRecord;
-
-
-        for (
-            const string& columnName
-            :
-            selectedColumns
-        )
-        if (limitCount >= 0 && count >= static_cast<size_t>(limitCount))
-        {
-            if (
-                !sourceRecord.has(
-                    columnName
-                )
-            )
-            {
-                continue;
-            }
-
-
-            selectedRecord.set(
-                columnName,
-                sourceRecord.get(
-                    columnName
-                )
-            );
-            break;
-        }
-
-
-        result.push_back(
-            selectedRecord
-        );
-        result.push_back(records[i]);
-        count++;
-    }
-
-
+    size_t start = static_cast<size_t>(offsetCount);
+    if (start >= records.size()) return result;
+    size_t end = records.size();
+    if (limitCount >= 0 && static_cast<size_t>(limitCount) < end - start) end = start + static_cast<size_t>(limitCount);
+    for (size_t index = start; index < end; ++index) result.push_back(records[index]);
     return result;
 }
 
-
-// ============================================================
-// EXECUTE
-// ============================================================
-
-vector<JoinedRecord>
-Query::execute() const
 Vector<JoinedRecord> Query::execute() const
 {
-    /*
-        1. FROM + JOIN
-    */
-    Vector<JoinedRecord> res = buildBaseRecords();
-    res = applyJoins(res);
-    res = applyWhere(res);
-    res = applyGroupByAndAggregates(res);
-    res = applyHaving(res);
-    res = applySelect(res);
-    res = applyDistinct(res);
-    res = applyOrderBy(res);
-    res = applyLimitAndOffset(res);
-    return res;
+    Vector<JoinedRecord> records = buildBaseRecords();
+    records = applyJoins(std::move(records));
+    records = applyWhere(records);
+    records = applyGroupByAndAggregates(records);
+    records = applyHaving(records);
+    records = applyOrderBy(std::move(records));
+    records = applySelect(records);
+    records = applyDistinct(records);
+    return applyLimitAndOffset(records);
 }
-
-    vector<JoinedRecord> result =
-        buildJoinedRecords();
-// ============================================================
-// SET OPERATIONS (UNION, INTERSECT, EXCEPT)
-// ============================================================
 
 Vector<JoinedRecord> Query::unionWith(const Query& other, bool distinctOnly) const
 {
-    Vector<JoinedRecord> resA = execute();
-    Vector<JoinedRecord> resB = other.execute();
-
-    /*
-        2. WHERE
-    */
-    Vector<JoinedRecord> combined = resA;
-    for (size_t i = 0; i < resB.size(); i++)
+    Vector<JoinedRecord> result = execute();
+    Vector<JoinedRecord> right = other.execute();
+    for (size_t index = 0; index < right.size(); ++index) result.push_back(right[index]);
+    if (!distinctOnly) return result;
+    Vector<JoinedRecord> unique;
+    for (size_t index = 0; index < result.size(); ++index)
     {
-        combined.push_back(resB[i]);
+        bool exists = false;
+        for (size_t prior = 0; prior < unique.size(); ++prior)
+            if (result[index] == unique[prior]) { exists = true; break; }
+        if (!exists) unique.push_back(result[index]);
     }
-
-    result =
-        applyWhere(result);
-    if (distinctOnly)
-    {
-        Vector<JoinedRecord> distinctResult;
-        for (size_t i = 0; i < combined.size(); i++)
-        {
-            bool exists = false;
-            for (size_t j = 0; j < distinctResult.size(); j++)
-            {
-                if (combined[i] == distinctResult[j])
-                {
-                    exists = true;
-                    break;
-                }
-            }
-            if (!exists)
-            {
-                distinctResult.push_back(combined[i]);
-            }
-        }
-        return distinctResult;
-    }
-
-    return combined;
+    return unique;
 }
 
-    /*
-        3. ORDER BY
-    */
 Vector<JoinedRecord> Query::intersectWith(const Query& other) const
 {
-    Vector<JoinedRecord> resA = execute();
-    Vector<JoinedRecord> resB = other.execute();
-    Vector<JoinedRecord> result;
-
-    result =
-        applyOrderBy(result);
-    for (size_t i = 0; i < resA.size(); i++)
-    {
-        for (size_t j = 0; j < resB.size(); j++)
-        {
-            if (resA[i] == resB[j])
-            {
-                bool alreadyIn = false;
-                for (size_t k = 0; k < result.size(); k++)
-                {
-                    if (result[k] == resA[i])
-                    {
-                        alreadyIn = true;
-                        break;
-                    }
-                }
-                if (!alreadyIn)
-                {
-                    result.push_back(resA[i]);
-                }
-                break;
-            }
-        }
-    }
-
+    Vector<JoinedRecord> left = execute(), right = other.execute(), result;
+    for (size_t index = 0; index < left.size(); ++index)
+        for (size_t rightIndex = 0; rightIndex < right.size(); ++rightIndex)
+            if (left[index] == right[rightIndex]) { result.push_back(left[index]); break; }
     return result;
 }
 
-    /*
-        4. SELECT
-    */
 Vector<JoinedRecord> Query::exceptWith(const Query& other) const
 {
-    Vector<JoinedRecord> resA = execute();
-    Vector<JoinedRecord> resB = other.execute();
-    Vector<JoinedRecord> result;
-
-    result =
-        applySelect(result);
-    for (size_t i = 0; i < resA.size(); i++)
+    Vector<JoinedRecord> left = execute(), right = other.execute(), result;
+    for (size_t index = 0; index < left.size(); ++index)
     {
-        bool foundInB = false;
-        for (size_t j = 0; j < resB.size(); j++)
-        {
-            if (resA[i] == resB[j])
-            {
-                foundInB = true;
-                break;
-            }
-        }
-        if (!foundInB)
-        {
-            result.push_back(resA[i]);
-        }
+        bool found = false;
+        for (size_t rightIndex = 0; rightIndex < right.size(); ++rightIndex)
+            if (left[index] == right[rightIndex]) { found = true; break; }
+        if (!found) result.push_back(left[index]);
     }
-
-
     return result;
 }
 
-
-// ============================================================
-// GETTERS
-// ============================================================
-
 Database& Query::getDatabase() const
-Database* Query::getDatabase() const
 {
-    return database;
+    if (database == nullptr) throw runtime_error("Query has no database");
+    return *database;
 }
 
-const string& Query::getBaseTable() const
-{
-    return baseTable;
-}
-
-const vector<string>& Query::getSelectedColumns() const
-const Vector<string>& Query::getSelectedColumns() const
-{
-    return selectedColumns;
-}
-
-const vector<Join>& Query::getJoins() const
-const Vector<Join>& Query::getJoins() const
-{
-    return joins;
-}
+const string& Query::getBaseTable() const { return baseTable; }
+const Vector<string>& Query::getSelectedColumns() const { return selectedColumns; }
+const Vector<Join>& Query::getJoins() const { return joins; }
 
