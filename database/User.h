@@ -48,20 +48,43 @@ private:
 
 public:
     User() = default;
+
+    /**
+     * @brief Construct user with username and raw password (password is hashed internally).
+     */
     User(const string& username, const string& password);
 
+    /// Get user's login username.
     string getUsername() const;
+
+    /**
+     * @brief Verify whether a plain text password matches the user's stored hash.
+     * @return true if password is correct.
+     */
     bool verifyPassword(const string& password) const;
 
+    /// Grant a global database permission (applies across all tables).
     void grantGlobal(Permission permission);
+
+    /// Revoke a global permission.
     void revokeGlobal(Permission permission);
+
+    /// Check if user has global permission.
     bool hasGlobal(Permission permission) const;
 
+    /// Grant permission specifically on a named table.
     void grant(const string& tableName, Permission permission);
+
+    /// Revoke permission on a named table.
     void revoke(const string& tableName, Permission permission);
+
+    /// Check if user has permission on table (checks both table-level and global permissions).
     bool hasPermission(const string& tableName, Permission permission) const;
 
+    /// Get all global permissions granted to this user.
     const Vector<Permission>& getGlobalPermissions() const;
+
+    /// Get permissions granted specifically for a table.
     Vector<Permission> getTablePermissions(const string& tableName) const;
 };
 

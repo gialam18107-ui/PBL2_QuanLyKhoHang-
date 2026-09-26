@@ -32,7 +32,7 @@ int main() {
   // TEST 1: SCHEMA INITIALIZATION
   // ========================================================
   printBanner("TEST 1: Schema Table Names & Topological Order");
-  vector<string> tableNames = Schema::getTableNames();
+  Vector<string> tableNames = Schema::getTableNames();
   cout << "[+] Total tables defined in schema: " << tableNames.size() << endl;
   assert(tableNames.size() == 26);
   for (size_t i = 0; i < tableNames.size(); i++) {
@@ -113,7 +113,7 @@ int main() {
                "category.category_name", "brand.brand", "product.quantity"})
       .where(Condition("product.quantity", CompareOperator::GREATER_EQUAL, 20));
 
-  vector<JoinedRecord> queryResults = productQuery.execute();
+  Vector<JoinedRecord> queryResults = productQuery.execute();
   cout << "[+] Products with quantity >= 20: " << queryResults.size()
        << " records found." << endl;
   assert(queryResults.size() > 0);
@@ -134,7 +134,7 @@ int main() {
   // TEST 6: QUERY IO (READ QUERY RESULTS FROM CSV)
   // ========================================================
   printBanner("TEST 6: QueryIO - Read Exported Query Results from CSV");
-  vector<JoinedRecord> importedResults = QueryIO::readResults(queryExportFile);
+  Vector<JoinedRecord> importedResults = QueryIO::readResults(queryExportFile);
   cout << "[+] Imported " << importedResults.size()
        << " query records from CSV." << endl;
   assert(importedResults.size() == queryResults.size());
@@ -155,7 +155,7 @@ int main() {
 
   // freshDb has no tables loaded yet; QueryIO::read should load unit_inventory
   // from data/
-  vector<JoinedRecord> availableUnits = QueryIO::read(freshQuery, "data");
+  Vector<JoinedRecord> availableUnits = QueryIO::read(freshQuery, "data");
   cout << "[+] Available units query returned: " << availableUnits.size()
        << " units." << endl;
   assert(availableUnits.size() > 0);
@@ -194,7 +194,7 @@ int main() {
        << queryCpuExport << endl;
 
   // Query API: read query results back
-  vector<JoinedRecord> cpuReloaded = io.readQueryResults(queryCpuExport);
+  Vector<JoinedRecord> cpuReloaded = io.readQueryResults(queryCpuExport);
   assert(cpuReloaded.size() == qCpu.execute().size());
   cout << "[+] io.readQueryResults: Read " << cpuReloaded.size()
        << " records back from CSV." << endl;

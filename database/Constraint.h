@@ -66,16 +66,23 @@ public:
 
 
 // ============================================================
-// PRIMARY KEY
 // PRIMARY KEY CONSTRAINT
 // ============================================================
 
+/**
+ * @brief Enforces uniqueness and non-null values for primary key column.
+ */
 class PrimaryKeyConstraint : public Constraint
 {
 private:
     string columnName;
 
 public:
+    /**
+     * @brief Construct a PrimaryKeyConstraint.
+     * @param name Constraint identifier (e.g. "pk_product").
+     * @param columnName Primary key column name.
+     */
     PrimaryKeyConstraint(
         const string& name,
         const string& columnName
@@ -83,6 +90,7 @@ public:
 
     Constraint* clone() const override;
 
+    /// Get targeted primary key column name.
     string getColumnName() const;
 
     bool validate(
@@ -101,16 +109,23 @@ public:
 
 
 // ============================================================
-// UNIQUE
 // UNIQUE CONSTRAINT
 // ============================================================
 
+/**
+ * @brief Enforces that all non-null values in the target column are distinct.
+ */
 class UniqueConstraint : public Constraint
 {
 private:
     string columnName;
 
 public:
+    /**
+     * @brief Construct a UniqueConstraint.
+     * @param name Constraint identifier (e.g. "uq_product_code").
+     * @param columnName Target column name.
+     */
     UniqueConstraint(
         const string& name,
         const string& columnName
@@ -118,6 +133,7 @@ public:
 
     Constraint* clone() const override;
 
+    /// Get targeted unique column name.
     string getColumnName() const;
 
     bool validate(
@@ -136,19 +152,27 @@ public:
 
 
 // ============================================================
-// FOREIGN KEY
 // FOREIGN KEY CONSTRAINT
 // ============================================================
 
+/**
+ * @brief Enforces referential integrity by requiring column values to exist in referenced parent table.
+ */
 class ForeignKeyConstraint : public Constraint
 {
 private:
     string columnName;
-
     string referenceTable;
     string referenceColumn;
 
 public:
+    /**
+     * @brief Construct a ForeignKeyConstraint.
+     * @param name Constraint identifier (e.g. "fk_product_category").
+     * @param columnName Child table column name.
+     * @param referenceTable Parent table name.
+     * @param referenceColumn Parent referenced column name.
+     */
     ForeignKeyConstraint(
         const string& name,
         const string& columnName,
@@ -158,10 +182,13 @@ public:
 
     Constraint* clone() const override;
 
+    /// Get child column name.
     string getColumnName() const;
 
+    /// Get referenced parent table name.
     string getReferenceTable() const;
 
+    /// Get referenced parent column name.
     string getReferenceColumn() const;
 
     bool validate(
@@ -181,12 +208,19 @@ public:
 // ============================================================
 // NOT NULL CONSTRAINT
 // ============================================================
+
+/**
+ * @brief Enforces that a column value cannot be NULL (monostate).
+ */
 class NotNullConstraint : public Constraint
 {
 private:
     string columnName;
 
 public:
+    /**
+     * @brief Construct a NotNullConstraint.
+     */
     NotNullConstraint(
         const string& name,
         const string& columnName
@@ -194,6 +228,7 @@ public:
 
     Constraint* clone() const override;
 
+    /// Get targeted column name.
     string getColumnName() const;
 
     bool validate(
@@ -206,6 +241,10 @@ public:
 // ============================================================
 // DEFAULT CONSTRAINT
 // ============================================================
+
+/**
+ * @brief Specifies a default value when a column is omitted during insertion.
+ */
 class DefaultConstraint : public Constraint
 {
 private:
@@ -213,6 +252,9 @@ private:
     Value defaultValue;
 
 public:
+    /**
+     * @brief Construct a DefaultConstraint.
+     */
     DefaultConstraint(
         const string& name,
         const string& columnName,
@@ -221,7 +263,10 @@ public:
 
     Constraint* clone() const override;
 
+    /// Get targeted column name.
     string getColumnName() const;
+
+    /// Get specified default value.
     const Value& getDefaultValue() const;
 
     bool validate(
@@ -234,12 +279,21 @@ public:
 // ============================================================
 // CHECK CONSTRAINT
 // ============================================================
+
+/**
+ * @brief Enforces a logical condition on row values (e.g. price > 0, rating >= 1).
+ */
 class CheckConstraint : public Constraint
 {
 private:
     Condition condition;
 
 public:
+    /**
+     * @brief Construct a CheckConstraint.
+     * @param name Constraint identifier.
+     * @param condition Condition that all rows must satisfy.
+     */
     CheckConstraint(
         const string& name,
         const Condition& condition
@@ -247,6 +301,7 @@ public:
 
     Constraint* clone() const override;
 
+    /// Get the validation condition.
     const Condition& getCondition() const;
 
     bool validate(

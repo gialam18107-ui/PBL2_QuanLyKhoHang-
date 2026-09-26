@@ -63,15 +63,35 @@ public:
     Record& operator=(Record&& other) noexcept = default;
     ~Record() = default;
 
+    /**
+     * @brief Set or update a column's value in this record.
+     * @param columnName Name of the column.
+     * @param value Value (can be int, double, string, bool, or monostate{} for NULL).
+     * @example r.set("product_name", string("Core i5")); r.set("quantity", 20);
+     */
     void set(const string& columnName, const Value& value);
 
+    /**
+     * @brief Check whether a column exists in this record.
+     */
     bool has(const string& columnName) const;
 
+    /**
+     * @brief Retrieve the value of a column. Throws std::runtime_error if column not found.
+     * @param columnName Target column name.
+     * @return Value SQL variant value. Use std::get<T>() to access primitive type.
+     */
     Value get(const string& columnName) const;
 
+    /// Get const reference to internal column-value map.
     const HashMap<string, Value>& getValues() const;
+
+    /// Get mutable reference to internal column-value map.
     HashMap<string, Value>& getValues();
 
+    /**
+     * @brief Remove a column from the record.
+     */
     void remove(const string& columnName);
 
     /**

@@ -106,7 +106,7 @@ namespace DataIO
             addRequiredTable(join.getRightTable());
         }
 
-        Database* db = query.getDatabase();
+        Database* db = &query.getDatabase();
         if (db != nullptr)
         {
             for (size_t i = 0; i < requiredTables.size(); i++)

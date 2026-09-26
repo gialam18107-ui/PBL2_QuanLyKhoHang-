@@ -43,6 +43,25 @@ string Aggregate::getOutputName() const
     return fn + "(" + column + ")";
 }
 
+static bool getRecordValue(const JoinedRecord& record, const string& column, Value& out)
+{
+    if (record.has(column))
+    {
+        out = record.get(column);
+        return true;
+    }
+    for (const auto& item : record.getValues())
+    {
+        size_t dot = item.first.find('.');
+        if (dot != string::npos && item.first.substr(dot + 1) == column)
+        {
+            out = item.second;
+            return true;
+        }
+    }
+    return false;
+}
+
 Value Aggregate::compute(
     AggregateType type,
     const string& column,
@@ -59,7 +78,8 @@ Value Aggregate::compute(
         int count = 0;
         for (size_t i = 0; i < records.size(); i++)
         {
-            if (records[i].has(column) && !isNull(records[i].get(column)))
+            Value val = monostate{};
+            if (getRecordValue(records[i], column, val) && !isNull(val))
             {
                 count++;
             }
@@ -90,9 +110,9 @@ Value Aggregate::compute(
 
         for (size_t i = 0; i < records.size(); i++)
         {
-            if (records[i].has(column))
+            Value val = monostate{};
+            if (getRecordValue(records[i], column, val))
             {
-                Value val = records[i].get(column);
                 if (!isNull(val) && isNumeric(val))
                 {
                     if (holds_alternative<double>(val)) hasDouble = true;
@@ -126,8 +146,8 @@ Value Aggregate::compute(
 
         for (size_t i = 0; i < records.size(); i++)
         {
-            if (!records[i].has(column)) continue;
-            Value val = records[i].get(column);
+            Value val = monostate{};
+            if (!getRecordValue(records[i], column, val)) continue;
             if (isNull(val)) continue;
 
             if (!hasVal)

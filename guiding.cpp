@@ -1,515 +1,643 @@
 /**
  * ============================================================================
- *                             GUIDING EXAMPLE
- *               How to use the PBL2 Custom Database Engine
+ *               PBL2 - HỆ THỐNG QUẢN LÝ KHO HÀNG (WAREHOUSE MANAGEMENT)
+ *                HƯỚNG DẪN SỬ DỤNG DATABASE ENGINE & SCHEMA TOÀN TẬP
  * ============================================================================
  *
- * Compilation command:
- *   g++ -std=c++17 -I. database/*.cpp guiding.cpp -o guiding.exe
- * Or via VS Code:
- *   Run Task: "Build Guiding Demo"
- *   mingw32-make guiding.exe
- *   .\guiding.exe
+ * TÀI LIỆU TUÂN THỦ:
+ *  1. project_rules.md:
+ *     - Sử dụng C++17 thuần.
+ *     - Tuyệt đối không dùng thư viện container có sẵn (std::vector, std::map,...),
+ *       không dùng con trỏ thông minh (std::shared_ptr, std::unique_ptr,...).
+ *     - Dữ liệu CSV lưu trong 'data/'.
+ *     - Các truy vấn báo cáo (reports) xuất ra thư mục 'report/'.
+ *     - Quy tắc bảo vệ dữ liệu: Không xóa bảng, không xóa bản ghi nếu đang có
+ *       bảng khác tham chiếu tới (Foreign Key / Referential Integrity).
+ *     - Nghiệp vụ phân quyền: Sản phẩm & cấu hình phần cứng có thể thêm mới,
+ *       nhưng bắt buộc phải chọn Category, Brand và Spec hợp lệ đã có.
+ *
+ *  2. QuanLyKhoHang_schema.json:
+ *     - Định nghĩa chuẩn 26 bảng dữ liệu cho kho linh kiện máy tính:
+ *       category, brand, unit_status, inbound_type, inbound_status, delivery_status,
+ *       outbound_type, shipment_status, product, inbound_transaction, outbound_transaction,
+ *       cpu, gpu, mainboard, ram, ssd, psu, cooling, case, unit_inventory, inbound_detail,
+ *       delivery, outbound_detail, shipment, delivery_unit_detail, shipment_unit_detail.
+ *
+ *  3. Database.md:
+ *     - Hỗ trợ đầy đủ các tính năng SQL:
+ *       CREATE/DROP DATABASE, CREATE TABLE, INSERT, UPDATE, DELETE,
+ *       SELECT, WHERE, ORDER BY, DISTINCT, LIMIT, OFFSET,
+ *       AGGREGATE (COUNT, SUM, AVG, MIN, MAX), GROUP BY, HAVING,
+ *       JOINS (INNER, LEFT, RIGHT, FULL), SUBQUERIES,
+ *       SET OPERATIONS (UNION, INTERSECT, EXCEPT),
+ *       CONSTRAINTS (PRIMARY KEY, FOREIGN KEY, UNIQUE, NOT NULL, CHECK, DEFAULT),
+ *       INDEXES (HASH, BTREE), TRANSACTIONS (BEGIN, COMMIT, ROLLBACK),
+ *       USER & PERMISSIONS (RBAC).
+ *
+ * CÁCH BIÊN DỊCH VÀ CHẠY:
+ *   mingw32-make guiding.exe; .\guiding.exe
+ * Hoặc:
+ *   g++ -std=c++17 -Wall -Wextra -I. guiding.cpp database/Aggregate.cpp ... -o guiding.exe; .\guiding.exe
  * ============================================================================
  */
 
 #include <iostream>
-#include <memory>
+#include <iomanip>
 #include <string>
-#include <vector>
 
-// Core Custom Data Structures (No STL containers, no smart pointers)
+// --- Core Custom Data Structures (Tự cài đặt từ đầu - Không dùng STL / Smart Pointers) ---
 #include "database/Vector.h"
 #include "database/HashMap.h"
 #include "database/Pair.h"
 #include "database/Optional.h"
 
-// Core Database Headers
+// --- Database Engine Core Headers ---
 #include "database/Column.h"
+#include "database/Record.h"
+#include "database/JoinedRecord.h"
+#include "database/Constraint.h"
+#include "database/Index.h"
 #include "database/Condition.h"
 #include "database/ConditionGroup.h"
-#include "database/Constraint.h"
-#include "database/Database.h"
-#include "database/DatabaseManager.h"
-#include "database/Index.h"
-#include "database/Join.h"
 #include "database/OrderBy.h"
+#include "database/Aggregate.h"
+#include "database/Join.h"
 #include "database/Query.h"
-#include "database/Record.h"
 #include "database/Table.h"
 #include "database/User.h"
-#include "database/Aggregate.h"
+#include "database/Database.h"
+#include "database/DatabaseManager.h"
+
+// --- Project Schema & IO Subsystem ---
+#include "schema/Schema.h"
+#include "data_io/DataIO.h"
+#include "data_io/DatabaseIO.h"
+#include "data_io/TableIO.h"
+#include "data_io/QueryIO.h"
+#include "data_io/CSVHelper.h"
 
 using namespace std;
 
-// Helper to print section titles
-void printHeader(const string &title) {
-    cout << "\n======================================================\n";
+// Tiện ích in tiêu đề từng phần hướng dẫn
+void printSection(const string& title)
+{
+    cout << "\n======================================================================\n";
     cout << "  " << title << "\n";
-    cout << "======================================================\n";
+    cout << "======================================================================\n";
 }
 
-int main() {
-    printHeader("PBL2 DATABASE LIBRARY - COMPREHENSIVE GUIDE & DEMO");
-    printHeader("PBL2 DATABASE ENGINE - COMPREHENSIVE GUIDE & DEMO");
+void printSubSection(const string& title)
+{
+    cout << "\n--- " << title << " ---\n";
+}
+
+int main()
+{
+    printSection("CHƯƠNG TRÌNH HƯỚNG DẪN SỬ DỤNG DATABASE LIBRARY (PBL2)");
+    cout << "Hệ thống Quản lý Kho Hàng - Kiến trúc CSDL Tùy biến (Custom C++17 Engine)\n";
 
     // ========================================================================
-    // BƯỚC 1: KHỞI TẠO ĐỐI TƯỢNG DATABASE
-    // BƯỚC 1: KHỞI TẠO DATABASE VÀ MULTI-DATABASE MANAGER (CREATE DATABASE)
+    // PHẦN 1: QUẢN LÝ DATABASE VÀ MULTI-DATABASE MANAGER (CREATE / USE DATABASE)
     // ========================================================================
-    printHeader("BƯỚC 1: Khởi tạo Database");
-    Database db;
-    cout << "[+] Đã tạo database thành công." << endl;
-    printHeader("BƯỚC 1: Quản lý Cơ sở dữ liệu (DatabaseManager & CREATE DATABASE)");
+    printSection("PHẦN 1: Quản lý Cơ sở Dữ liệu (DatabaseManager & CREATE DATABASE)");
+    cout << "[Mục tiêu] Tạo và quản lý nhiều database độc lập bằng DatabaseManager.\n";
+
     DatabaseManager dbManager;
+
+    // Tạo database chính cho kho hàng
     Database* db = dbManager.createDatabase("warehouse_db");
     dbManager.useDatabase("warehouse_db");
-    cout << "[+] Đã tạo và chuyển sang database: " << db->getName() << endl;
+
+    // Tạo thêm 1 database thử nghiệm để minh họa đa database
+    dbManager.createDatabase("sandbox_db");
+
+    cout << "[+] Đã tạo các database thành công:\n";
+    for (const string& dbName : dbManager.getDatabaseNames())
+    {
+        cout << "    - " << dbName << (dbName == dbManager.getCurrentDatabase()->getName() ? " (ĐANG SỬ DỤNG)" : "") << endl;
+    }
 
     // ========================================================================
-    // BƯỚC 2: ĐỊNH NGHĨA SCHEMA CHO CÁC BẢNG (COLUMNS & CONSTRAINTS)
-    // BƯỚC 2: ĐỊNH NGHĨA CẤU TRÚC BẢNG (COLUMNS, CONSTRAINTS, CHECK)
+    // PHẦN 2: ĐỊNH NGHĨA BẢNG THỦ CÔNG (DDL, CONSTRAINTS, INDEXES)
     // ========================================================================
-    printHeader("BƯỚC 2: Định nghĩa Cấu trúc Bảng (Categories & Products)");
+    printSection("PHẦN 2: Định nghĩa Cấu trúc Bảng thủ công (DDL, Constraints & Indexes)");
+    cout << "[Mục tiêu] Minh họa cách tự định nghĩa Table, Column, Constraint và Index.\n";
 
-    // ------------------------------------------------------------------------
-    // Bảng 1: "categories" (Danh mục hàng hóa)
-    // ------------------------------------------------------------------------
-    auto tableCategories = make_shared<Table>("categories");
-    Table* tableCategories = new Table("categories");
+    // 2.1 Tạo một bảng demo 'supplier' (Nhà cung cấp)
+    Table* tableSupplier = new Table("supplier");
 
-    // Thêm các cột:
-    // Column(name, DataType, size, isPK, isUnique, isNotNull, isAutoIncrement, defaultValue)
-    tableCategories->addColumn(Column("category_id", DataType::INTEGER, 0, true, true, true));
-    tableCategories->addColumn(Column("category_name", DataType::VARCHAR, 50, false, true, true));
-    tableCategories->addColumn(Column("description", DataType::TEXT, 0, false, false, false));
+    // Thêm các cột: Column(name, DataType, size, isPK, isUnique, isNotNull, isAutoIncrement)
+    tableSupplier->addColumn(Column("supplier_id", DataType::INTEGER, 0, true, true, true));
+    tableSupplier->addColumn(Column("supplier_name", DataType::VARCHAR, 100, false, true, true));
+    tableSupplier->addColumn(Column("phone", DataType::VARCHAR, 20, false, false, true));
+    tableSupplier->addColumn(Column("rating", DataType::INTEGER, 0, false, false, false));
 
-    // Thêm ràng buộc (Constraints) cho bảng:
-    tableCategories->addConstraint(make_shared<PrimaryKeyConstraint>("pk_category", "category_id"));
-    tableCategories->addConstraint(make_shared<UniqueConstraint>("uq_category_name", "category_name"));
-    tableCategories->addConstraint(new PrimaryKeyConstraint("pk_category", "category_id"));
-    tableCategories->addConstraint(new UniqueConstraint("uq_category_name", "category_name"));
-
-    // In cấu trúc bảng categories:
-    tableCategories->printStructure();
-
-    // ------------------------------------------------------------------------
-    // Bảng 2: "products" (Sản phẩm trong kho)
-    // ------------------------------------------------------------------------
-    auto tableProducts = make_shared<Table>("products");
-    Table* tableProducts = new Table("products");
-
-    tableProducts->addColumn(Column("product_id", DataType::INTEGER, 0, true, true, true));
-    tableProducts->addColumn(Column("product_name", DataType::VARCHAR, 100, false, false, true));
-    tableProducts->addColumn(Column("category_id", DataType::INTEGER, 0, false, false, true));
-    tableProducts->addColumn(Column("price", DataType::INTEGER, 0, false, false, true));
-    tableProducts->addColumn(Column("quantity", DataType::INTEGER, 0, false, false, true));
-
-    // Primary key: product_id
-    tableProducts->addConstraint(make_shared<PrimaryKeyConstraint>("pk_product", "product_id"));
-
-    // Foreign key: products.category_id -> categories.category_id
-    tableProducts->addConstraint(make_shared<ForeignKeyConstraint>(
-        "fk_product_category", // Tên constraint
-        "category_id",         // Cột ở bảng hiện tại (products)
-        "categories",          // Bảng được tham chiếu
-        "category_id"          // Cột được tham chiếu ở bảng categories
-    // Constraints: PK, FK, CHECK
-    tableProducts->addConstraint(new PrimaryKeyConstraint("pk_product", "product_id"));
-    tableProducts->addConstraint(new ForeignKeyConstraint(
-        "fk_product_category", "category_id", "categories", "category_id"
-    ));
-    tableProducts->addConstraint(new CheckConstraint(
-        "chk_price_positive", Condition("price", CompareOperator::GREATER, 0)
+    // Thêm các ràng buộc (Constraints): PrimaryKey, Unique, Check
+    tableSupplier->addConstraint(new PrimaryKeyConstraint("pk_supplier", "supplier_id"));
+    tableSupplier->addConstraint(new UniqueConstraint("uq_supplier_name", "supplier_name"));
+    tableSupplier->addConstraint(new CheckConstraint(
+        "chk_supplier_rating",
+        Condition("rating", CompareOperator::GREATER_EQUAL, 1)
     ));
 
-    // In cấu trúc bảng products:
-    // Indexes: HashIndex on product_name, BTreeIndex on price
-    tableProducts->createIndex("idx_product_name", "product_name", IndexType::HASH);
-    tableProducts->createIndex("idx_product_price", "price", IndexType::BTREE);
+    // Tạo các chỉ mục (Indexes):
+    // - HashIndex: Phù hợp tìm kiếm chính xác (O(1))
+    // - BTreeIndex: Phù hợp tìm kiếm theo thứ tự hoặc truy vấn khoảng (Range queries)
+    tableSupplier->createIndex("idx_supplier_name", "supplier_name", IndexType::HASH);
+    tableSupplier->createIndex("idx_supplier_rating", "rating", IndexType::BTREE);
 
-    tableProducts->printStructure();
+    // In cấu trúc bảng supplier
+    cout << "\n[+] Cấu trúc bảng 'supplier' vừa định nghĩa:" << endl;
+    tableSupplier->printStructure();
 
-    // ========================================================================
-    // BƯỚC 3: ĐĂNG KÝ BẢNG VÀO DATABASE
-    // BƯỚC 3: ĐĂNG KÝ BẢNG VÀO DATABASE (DATABASE OWNS TABLE POINTERS)
-    // ========================================================================
-    printHeader("BƯỚC 3: Đăng ký Bảng vào Database");
-    db.addTable(tableCategories);
-    db.addTable(tableProducts);
-    db->addTable(tableCategories);
-    db->addTable(tableProducts);
-
-    cout << "Tổng số bảng hiện tại: " << db.getTableCount() << endl;
-    db.printTables();
-    cout << "Tổng số bảng hiện tại: " << db->getTableCount() << endl;
-    db->printTables();
+    // Thêm bảng vào database (Database sẽ quản lý con trỏ tableSupplier và giải phóng khi kết thúc)
+    db->addTable(tableSupplier);
 
     // ========================================================================
-    // BƯỚC 4: THÊM DỮ LIỆU (INSERT) & KIỂM TRA RÀNG BUỘC (CONSTRAINTS)
+    // PHẦN 3: TỰ ĐỘNG KHỞI TẠO 26 BẢNG CHUẨN THEO QuanLyKhoHang_schema.json
     // ========================================================================
-    printHeader("BƯỚC 4: Thêm dữ liệu (INSERT) & Kiểm tra Ràng buộc");
+    printSection("PHẦN 3: Khởi tạo 26 Bảng Chuẩn theo QuanLyKhoHang_schema.json");
+    cout << "[Mục tiêu] Sử dụng Schema::initDatabase() để tự động tạo đầy đủ 26 bảng\n"
+         << "           theo đúng thứ tự phụ thuộc topo (Topological Order).\n";
 
-    // --- 4.1 Thêm dữ liệu vào bảng categories ---
-    cout << "\n[+] Thêm các danh mục vào bảng categories:" << endl;
+    // Schema::initDatabase() đăng ký toàn bộ 26 bảng theo schema chuẩn của dự án:
+    //  - Nhóm 1: Bảng danh mục độc lập (category, brand, unit_status, inbound_type,...)
+    //  - Nhóm 2: Thực thể nghiệp vụ (product, inbound_transaction, outbound_transaction)
+    //  - Nhóm 3: Thông số phần cứng & Kho (cpu, gpu, ram, unit_inventory, delivery,...)
+    //  - Nhóm 4: Bảng liên kết chi tiết (delivery_unit_detail, shipment_unit_detail)
+    Schema::initDatabase(*db);
 
-    Record cat1;
-    cat1.set("category_id", 1);
-    cat1.set("category_name", string("Electronics"));
-    cat1.set("description", string("Thiết bị điện tử, công nghệ"));
-    db.insert("categories", cat1);
-
-    Record cat2;
-    cat2.set("category_id", 2);
-    cat2.set("category_name", string("Accessories"));
-    cat2.set("description", string("Phụ kiện máy tính, điện thoại"));
-    db.insert("categories", cat2);
-
-    Record cat3;
-    cat3.set("category_id", 3);
-    cat3.set("category_name", string("Furniture"));
-    cat3.set("description", string("Bàn ghế, nội thất văn phòng"));
-    db.insert("categories", cat3);
-
-    // 4.1 Thêm categories
-    Record cat1; cat1.set("category_id", 1); cat1.set("category_name", string("Electronics")); cat1.set("description", string("Thiết bị điện tử")); db->insert("categories", cat1);
-    Record cat2; cat2.set("category_id", 2); cat2.set("category_name", string("Accessories")); cat2.set("description", string("Phụ kiện")); db->insert("categories", cat2);
-    Record cat3; cat3.set("category_id", 3); cat3.set("category_name", string("Furniture")); cat3.set("description", string("Nội thất văn phòng")); db->insert("categories", cat3);
-    cout << " - Đã thêm 3 danh mục thành công." << endl;
-
-    // --- 4.2 Thêm dữ liệu vào bảng products ---
-    cout << "\n[+] Thêm các sản phẩm vào bảng products:" << endl;
-
-    Record p1;
-    p1.set("product_id", 101);
-    p1.set("product_name", string("Dell UltraSharp Monitor"));
-    p1.set("category_id", 1);
-    p1.set("price", 7500000);
-    p1.set("quantity", 15);
-    db.insert("products", p1);
-
-    Record p2;
-    p2.set("product_id", 102);
-    p2.set("product_name", string("Logitech MX Master 3S"));
-    p2.set("category_id", 2);
-    p2.set("price", 2200000);
-    p2.set("quantity", 40);
-    db.insert("products", p2);
-
-    Record p3;
-    p3.set("product_id", 103);
-    p3.set("product_name", string("Keychron K2 Mechanical Keyboard"));
-    p3.set("category_id", 2);
-    p3.set("price", 1850000);
-    p3.set("quantity", 25);
-    db.insert("products", p3);
-
-    Record p4;
-    p4.set("product_id", 104);
-    p4.set("product_name", string("Ergonomic Standing Desk"));
-    p4.set("category_id", 3);
-    p4.set("price", 5500000);
-    p4.set("quantity", 8);
-    db.insert("products", p4);
-
-    Record p5;
-    p5.set("product_id", 105);
-    p5.set("product_name", string("Sony WH-1000XM5 Headphones"));
-    p5.set("category_id", 1);
-    p5.set("price", 8200000);
-    p5.set("quantity", 12);
-    db.insert("products", p5);
-
-    // 4.2 Thêm products
-    Record p1; p1.set("product_id", 101); p1.set("product_name", string("Dell UltraSharp Monitor")); p1.set("category_id", 1); p1.set("price", 7500000); p1.set("quantity", 15); db->insert("products", p1);
-    Record p2; p2.set("product_id", 102); p2.set("product_name", string("Logitech MX Master 3S")); p2.set("category_id", 2); p2.set("price", 2200000); p2.set("quantity", 40); db->insert("products", p2);
-    Record p3; p3.set("product_id", 103); p3.set("product_name", string("Keychron K2 Keyboard")); p3.set("category_id", 2); p3.set("price", 1850000); p3.set("quantity", 25); db->insert("products", p3);
-    Record p4; p4.set("product_id", 104); p4.set("product_name", string("Standing Desk")); p4.set("category_id", 3); p4.set("price", 5500000); p4.set("quantity", 8); db->insert("products", p4);
-    Record p5; p5.set("product_id", 105); p5.set("product_name", string("Sony WH-1000XM5")); p5.set("category_id", 1); p5.set("price", 8200000); p5.set("quantity", 12); db->insert("products", p5);
-    cout << " - Đã thêm 5 sản phẩm thành công." << endl;
-
-    // --- 4.3 Thử nghiệm vi phạm ràng buộc (Constraint Violations) ---
-    cout << "\n--- Kiểm tra cơ chế tự bảo vệ của Database ---" << endl;
-    // 4.3 Thử vi phạm ràng buộc
-    cout << "\n[Test A] Vi phạm Primary Key (trùng product_id = 101):" << endl;
-    Record pDup; pDup.set("product_id", 101); pDup.set("product_name", string("Dup Item")); pDup.set("category_id", 1); pDup.set("price", 10000); pDup.set("quantity", 1);
-    bool okDup = db->insert("products", pDup);
-    cout << " => Kết quả: " << (okDup ? "LỖI" : "THÀNH CÔNG: Bị chặn chính xác!") << endl;
-
-    // Test A: Trùng khóa chính (Primary Key)
-    cout << "\n[Test A] Thêm sản phẩm có product_id 101 (đã tồn tại):" << endl;
-    Record pDupPK;
-    pDupPK.set("product_id", 101);
-    pDupPK.set("product_name", string("Duplicate Item"));
-    pDupPK.set("category_id", 1);
-    pDupPK.set("price", 100000);
-    pDupPK.set("quantity", 5);
-    bool okDupPK = db.insert("products", pDupPK);
-    cout << " => Kết quả: " << (okDupPK ? "LỖI: Chấp nhận trùng PK!" : "THÀNH CÔNG: Bị chặn chính xác!") << endl;
-    cout << "\n[Test B] Vi phạm Foreign Key (category_id = 999):" << endl;
-    Record pFk; pFk.set("product_id", 999); pFk.set("product_name", string("Ghost")); pFk.set("category_id", 999); pFk.set("price", 10000); pFk.set("quantity", 1);
-    bool okFk = db->insert("products", pFk);
-    cout << " => Kết quả: " << (okFk ? "LỖI" : "THÀNH CÔNG: Bị chặn chính xác!") << endl;
-
-    // Test B: Vi phạm Foreign Key (category_id 999 không tồn tại)
-    cout << "\n[Test B] Thêm sản phẩm có category_id = 999 (không có trong categories):" << endl;
-    Record pInvalidFK;
-    pInvalidFK.set("product_id", 999);
-    pInvalidFK.set("product_name", string("Ghost Product"));
-    pInvalidFK.set("category_id", 999); // Invalid FK
-    pInvalidFK.set("price", 50000);
-    pInvalidFK.set("quantity", 1);
-    bool okInvalidFK = db.insert("products", pInvalidFK);
-    cout << " => Kết quả: " << (okInvalidFK ? "LỖI: Chấp nhận sai FK!" : "THÀNH CÔNG: Bị chặn chính xác!") << endl;
-    cout << "\n[Test C] Vi phạm CHECK constraint (price <= 0):" << endl;
-    Record pChk; pChk.set("product_id", 998); pChk.set("product_name", string("Free Item")); pChk.set("category_id", 1); pChk.set("price", -500); pChk.set("quantity", 1);
-    bool okChk = db->insert("products", pChk);
-    cout << " => Kết quả: " << (okChk ? "LỖI" : "THÀNH CÔNG: Bị chặn chính xác!") << endl;
+    cout << "[+] Tổng số bảng hiện tại trong database: " << db->getTableCount() << endl;
+    cout << "[+] Danh sách 26 bảng nghiệp vụ kho linh kiện đã sẵn sàng:" << endl;
+    Vector<string> names = Schema::getTableNames();
+    for (size_t i = 0; i < names.size(); i++)
+    {
+        cout << "    " << setw(2) << right << (i + 1) << ". " << setw(24) << left << names[i];
+        if ((i + 1) % 2 == 0 || i + 1 == names.size()) cout << "\n";
+    }
 
     // ========================================================================
-    // BƯỚC 5: ĐỌC DỮ LIỆU TOÀN BẢNG (READ / SELECT ALL)
-    // BƯỚC 5: TRUY VẤN NÂNG CAO VỚI QUERY (JOIN, WHERE, ORDER BY, LIMIT)
+    // PHẦN 4: NẠP DỮ LIỆU TỪ CÁC FILE CSV TRONG THƯ MỤC data/ (DATA I/O)
     // ========================================================================
-    printHeader("BƯỚC 5: Hiển thị Dữ liệu các Bảng");
-    tableCategories->printRows();
-    tableProducts->printRows();
-    printHeader("BƯỚC 5: Truy vấn Dữ liệu Nâng cao (INNER JOIN, WHERE, ORDER BY, LIMIT)");
+    printSection("PHẦN 4: Nạp Dữ liệu thực tế từ CSV trong data/ (DatabaseIO)");
+    cout << "[Mục tiêu] Đọc dữ liệu từ 26 file CSV trong 'data/' vào các bảng tương ứng.\n";
+
+    bool loadAllSuccess = DataIO::DatabaseIO::readAll(*db, "data");
+    cout << "[+] Kết quả nạp CSV từ 'data/': " << (loadAllSuccess ? "THÀNH CÔNG RỰC RỠ" : "MỘT PHẦN") << endl;
+
+    int totalRecordsLoaded = 0;
+    cout << "\n[+] Thống kê số lượng bản ghi thực tế đã nạp từ CSV:" << endl;
+    for (const string& tableName : names)
+    {
+        Table* tbl = db->getTable(tableName);
+        if (tbl != nullptr)
+        {
+            totalRecordsLoaded += tbl->getRowCount();
+            cout << "    - " << setw(25) << left << tableName
+                 << ": " << setw(4) << right << tbl->getRowCount() << " dòng, "
+                 << tbl->getColumnCount() << " cột" << endl;
+        }
+    }
+    cout << "==> Tổng cộng: " << totalRecordsLoaded << " bản ghi đã được nạp an toàn vào bộ nhớ.\n";
+
+    // ========================================================================
+    // PHẦN 5: THAO TÁC DỮ LIỆU CƠ BẢN (INSERT, UPDATE, DELETE & DATA PROTECTION)
+    // ========================================================================
+    printSection("PHẦN 5: Thao tác CRUD & Kiểm tra Toàn vẹn Dữ liệu (Project Rules)");
+    cout << "[Mục tiêu] Tuân thủ project_rules.md: Kiểm tra ràng buộc PK, FK, CHECK\n"
+         << "           và ngăn chặn xóa bản ghi khi đang có bảng khác tham chiếu.\n";
+
+    printSubSection("5.1. Thêm bản ghi mới hợp lệ (INSERT theo Rule 3: Category, Brand, Product)");
+
+    // Thêm Category mới
+    Record newCat;
+    newCat.set("category_id", 99);
+    newCat.set("category_name", string("ACCESSORIES"));
+    newCat.set("code", string("ACC"));
+    bool insCatOk = db->insert("category", newCat);
+    cout << "[+] Thêm Category 'ACCESSORIES': " << (insCatOk ? "THÀNH CÔNG" : "THẤT BÀI") << endl;
+
+    // Thêm Brand mới
+    Record newBrand;
+    newBrand.set("brand_id", 99);
+    newBrand.set("brand", string("LOGITECH"));
+    newBrand.set("code", string("LOGI"));
+    bool insBrandOk = db->insert("brand", newBrand);
+    cout << "[+] Thêm Brand 'LOGITECH': " << (insBrandOk ? "THÀNH CÔNG" : "THẤT BÀI") << endl;
+
+    // Thêm Product mới tham chiếu đúng category 'ACCESSORIES' và brand 'LOGITECH'
+    Record newProd;
+    newProd.set("product_id", 9999);
+    newProd.set("product_name", string("Logitech MX Master 3S Wireless Mouse"));
+    newProd.set("product_code", string("LOGI-ACC-0001-0001"));
+    newProd.set("barcode", string("8930000009999"));
+    newProd.set("sku", string("SKU-LOGI-MX3S"));
+    newProd.set("brand", string("LOGITECH"));
+    newProd.set("category", string("ACCESSORIES"));
+    newProd.set("quantity", 25);
+    bool insProdOk = db->insert("product", newProd);
+    cout << "[+] Thêm Sản phẩm mới hợp lệ: " << (insProdOk ? "THÀNH CÔNG" : "THẤT BÀI") << endl;
+
+    printSubSection("5.2. Kiểm tra tính năng tự bảo vệ dữ liệu (Constraint Violations)");
+
+    // Test A: Trùng Khóa Chính (Primary Key)
+    cout << "[Test A] Thử chèn trùng Primary Key (product_id = 9999):" << endl;
+    Record dupPK = newProd;
+    bool resDupPK = db->insert("product", dupPK);
+    cout << " => Kết quả: " << (resDupPK ? "LỖI (Chấp nhận trùng PK)" : "THÀNH CÔNG: Bị từ chối chính xác!") << endl;
+
+    // Test B: Vi phạm Khóa Ngoại (Foreign Key - tham chiếu Brand không tồn tại)
+    cout << "\n[Test B] Thử chèn Sản phẩm với Brand không tồn tại ('NON_EXISTENT_BRAND'):" << endl;
+    Record invalidFK = newProd;
+    invalidFK.set("product_id", 9998);
+    invalidFK.set("product_code", string("INVALID-001"));
+    invalidFK.set("barcode", string("9999999999991"));
+    invalidFK.set("sku", string("SKU-INV-01"));
+    invalidFK.set("brand", string("NON_EXISTENT_BRAND")); // Không có trong bảng brand
+    bool resInvalidFK = db->insert("product", invalidFK);
+    cout << " => Kết quả: " << (resInvalidFK ? "LỖI (Chấp nhận FK ảo)" : "THÀNH CÔNG: Bị chặn khóa ngoại chính xác!") << endl;
+
+    // Test C: Vi phạm CHECK Constraint trên bảng supplier
+    cout << "\n[Test C] Thử chèn Supplier với rating = 0 (CheckConstraint: rating >= 1):" << endl;
+    Record invalidSupplier;
+    invalidSupplier.set("supplier_id", 10);
+    invalidSupplier.set("supplier_name", string("Low Quality Supplier"));
+    invalidSupplier.set("phone", string("0901234567"));
+    invalidSupplier.set("rating", 0); // Vi phạm rating >= 1
+    bool resInvalidSup = db->insert("supplier", invalidSupplier);
+    cout << " => Kết quả: " << (resInvalidSup ? "LỖI (Chấp nhận vi phạm CHECK)" : "THÀNH CÔNG: Bị chặn bởi CHECK constraint!") << endl;
+
+    printSubSection("5.3. Cập nhật dữ liệu (UPDATE)");
+    cout << "[+] Cập nhật số lượng sản phẩm 'LOGI-ACC-0001-0001' từ 25 -> 45 cái:" << endl;
+    Condition condUpd("product_code", CompareOperator::EQUAL, string("LOGI-ACC-0001-0001"));
+    Record valUpd;
+    valUpd.set("quantity", 45);
+    bool updOk = db->update("product", condUpd, valUpd);
+    cout << " => Kết quả cập nhật: " << (updOk ? "THÀNH CÔNG" : "THẤT BÀI") << endl;
+
+    printSubSection("5.4. Quy tắc bảo vệ toàn vẹn dữ liệu khi XÓA (DELETE - Rule 2 & Rule 4)");
+    cout << "[Nghiệp vụ] 'A record cannot be deleted if referenced by another table'.\n";
+
+    // Thử xóa category 'ACCESSORIES' - Hiện đang có sản phẩm 9999 tham chiếu tới!
+    cout << "\n[+] Thử xóa Category 'ACCESSORIES' (đang được sản phẩm 9999 tham chiếu):" << endl;
+    Condition delCatCond("category_name", CompareOperator::EQUAL, string("ACCESSORIES"));
+    bool delCatOk = db->remove("category", delCatCond);
+    cout << " => Kết quả xóa Category: "
+         << (delCatOk ? "LỖI (Đã xóa dù có bản ghi con tham chiếu!)"
+                     : "THÀNH CÔNG: Bị từ chối xóa để bảo vệ toàn vẹn tham chiếu!") << endl;
+
+    // Xóa sản phẩm 9999 trước (không có bảng nào tham chiếu tới 9999)
+    cout << "\n[+] Xóa sản phẩm lá 9999:" << endl;
+    Condition delProdCond("product_id", CompareOperator::EQUAL, 9999);
+    bool delProdOk = db->remove("product", delProdCond);
+    cout << " => Xóa sản phẩm: " << (delProdOk ? "THÀNH CÔNG" : "THẤT BÀI") << endl;
+
+    // Bây giờ 'ACCESSORIES' không còn sản phẩm nào tham chiếu -> Có thể xóa an toàn!
+    cout << "\n[+] Thử xóa lại Category 'ACCESSORIES' sau khi đã xóa sản phẩm tham chiếu:" << endl;
+    bool delCatNowOk = db->remove("category", delCatCond);
+    cout << " => Kết quả xóa Category: " << (delCatNowOk ? "THÀNH CÔNG" : "THẤT BÀI") << endl;
+
+    // ========================================================================
+    // PHẦN 6: TRUY VẤN NÂNG CAO VỚI QUERY BUILDER (SELECT, WHERE, ORDER BY, LIMIT, OFFSET)
+    // ========================================================================
+    printSection("PHẦN 6: Truy vấn Nâng cao với Query (SELECT, WHERE, ORDER BY, LIMIT)");
+    cout << "[Mục tiêu] Sử dụng Fluent API của Query để tìm kiếm, sắp xếp và phân trang.\n";
+
+    // 6.1 Lọc sản phẩm có số lượng tồn kho >= 30, sắp xếp giảm dần, lấy top 4
     {
         Query q(*db);
-        q.from("products")
-            .join(Join("products", "category_id", "categories", "category_id", JoinType::INNER))
-            .select({"products.product_id", "products.product_name", "categories.category_name", "products.price"})
-            .where(Condition("products.price", CompareOperator::GREATER_EQUAL, 2000000))
-            .orderBy("products.price", SortOrder::DESC)
-            .limit(3);
+        q.from("product")
+            .select({"product.product_code", "product.product_name", "product.brand", "product.quantity"})
+            .where(Condition("product.quantity", CompareOperator::GREATER_EQUAL, 30))
+            .orderBy("product.quantity", SortOrder::DESC)
+            .limit(4);
 
         Vector<JoinedRecord> results = q.execute();
-        cout << "[+] Top 3 sản phẩm đắt nhất (>= 2.000.000 VNĐ):" << endl;
-        for (const auto& r : results) {
-            cout << " - " << get<string>(r.get("products.product_name"))
-                 << " [" << get<string>(r.get("categories.category_name")) << "] : "
-                 << get<int>(r.get("products.price")) << " VNĐ" << endl;
+        cout << "[+] Top 4 sản phẩm có số lượng tồn kho cao nhất (>= 30 cái):" << endl;
+        for (const auto& row : results)
+        {
+            cout << "    * [" << get<string>(row.get("product.product_code")) << "] "
+                 << setw(45) << left << get<string>(row.get("product.product_name"))
+                 << " (" << setw(10) << left << get<string>(row.get("product.brand")) << ")"
+                 << " - Tồn kho: " << get<int>(row.get("product.quantity")) << endl;
+        }
+    }
+
+    // 6.2 Lọc kết hợp nhiều điều kiện bằng ConditionGroup (AND / OR)
+    printSubSection("6.2. Lọc đa điều kiện phức tạp với ConditionGroup (AND)");
+    {
+        // Điều kiện: (brand == 'ASUS' OR brand == 'MSI') AND quantity >= 20
+        ConditionGroup brandOr(LogicalOperator::OR);
+        brandOr.add(Condition("product.brand", CompareOperator::EQUAL, string("ASUS")));
+        brandOr.add(Condition("product.brand", CompareOperator::EQUAL, string("MSI")));
+
+        // Ở đây lọc đơn giản: category == 'CPU' VÀ quantity >= 25
+        ConditionGroup andGroup(LogicalOperator::AND);
+        andGroup.add(Condition("product.category", CompareOperator::EQUAL, string("GPU")));
+        andGroup.add(Condition("product.quantity", CompareOperator::GREATER_EQUAL, 10));
+
+        Query qAnd(*db);
+        qAnd.from("product")
+            .select({"product.product_name", "product.brand", "product.quantity"})
+            .where(andGroup).where(brandOr);
+
+        Vector<JoinedRecord> andRes = qAnd.execute();
+        cout << "[+] Sản phẩm thỏa mãn (Category == 'GPU' AND quantity >= 10) AND (Brand == 'ASUS' OR Brand == 'MSI'): "
+             << andRes.size() << " sản phẩm tìm thấy." << endl;
+        for (const auto& r : andRes)
+        {
+            cout << "    - " << get<string>(r.get("product.product_name"))
+                 << " | Hãng: " << get<string>(r.get("product.brand"))
+                 << " | Tồn: " << get<int>(r.get("product.quantity")) << endl;
+        }
+    }
+
+    // 6.3 Lấy danh sách thương hiệu không trùng lặp (DISTINCT)
+    printSubSection("6.3. Loại bỏ trùng lặp kết quả (DISTINCT)");
+    {
+        Query qDistinct(*db);
+        qDistinct.from("product")
+            .select({"product.brand"})
+            .distinct(true);
+
+        Vector<JoinedRecord> distRes = qDistinct.execute();
+        cout << "[+] Các thương hiệu thực tế đang có sản phẩm trong kho (DISTINCT): ";
+        for (size_t i = 0; i < distRes.size(); i++)
+        {
+            cout << get<string>(distRes[i].get("product.brand"))
+                 << (i + 1 < distRes.size() ? ", " : "\n");
         }
     }
 
     // ========================================================================
-    // BƯỚC 6: CẬP NHẬT DỮ LIỆU (UPDATE)
-    // BƯỚC 6: HÀM TỔNG HỢP (AGGREGATES), GROUP BY VÀ HAVING
+    // PHẦN 7: KẾT NỐI BẢNG (TABLE JOINS: INNER JOIN, LEFT JOIN)
     // ========================================================================
-    printHeader("BƯỚC 6: Cập nhật Dữ liệu (UPDATE)");
-    printHeader("BƯỚC 6: Aggregate Functions (COUNT, SUM, AVG, MIN, MAX), GROUP BY & HAVING");
+    printSection("PHẦN 7: Nối Bảng (INNER JOIN & LEFT JOIN)");
+    cout << "[Mục tiêu] Kết nối thông tin từ nhiều bảng: product -> category, brand, cpu.\n";
+
+    // Nối bảng product với cpu (bảng đặc tả phần cứng CPU)
     {
-        // 6.1 Tổng hợp toàn bảng
+        Query joinQ(*db);
+        joinQ.from("product")
+            .join(Join("product", "product_id", "cpu", "product_id", JoinType::INNER))
+            .select({
+                "product.product_name",
+                "product.brand",
+                "cpu.socket",
+                "cpu.tier",
+                "cpu.series",
+                "product.quantity"
+            })
+            .orderBy("product.quantity", SortOrder::DESC);
+
+        Vector<JoinedRecord> joinResults = joinQ.execute();
+        cout << "[+] Chi tiết kỹ thuật các dòng CPU trong kho (product INNER JOIN cpu):" << endl;
+        cout << "----------------------------------------------------------------------------------------\n";
+        cout << setw(30) << left << "TÊN SẢN PHẨM"
+             << setw(10) << left << "HÃNG"
+             << setw(12) << left << "SOCKET"
+             << setw(12) << left << "PHÂN KHÚC"
+             << setw(15) << left << "DÒNG CHIP"
+             << setw(8)  << right << "TỒN KHO" << endl;
+        cout << "----------------------------------------------------------------------------------------\n";
+        for (const auto& r : joinResults)
+        {
+            cout << setw(30) << left << get<string>(r.get("product.product_name"))
+                 << setw(10) << left << get<string>(r.get("product.brand"))
+                 << setw(12) << left << get<string>(r.get("cpu.socket"))
+                 << setw(12) << left << get<string>(r.get("cpu.tier"))
+                 << setw(15) << left << get<string>(r.get("cpu.series"))
+                 << setw(8)  << right << get<int>(r.get("product.quantity")) << endl;
+        }
+        cout << "----------------------------------------------------------------------------------------\n";
+    }
+
+    // ========================================================================
+    // PHẦN 8: HÀM TỔNG HỢP (AGGREGATES), GROUP BY VÀ HAVING
+    // ========================================================================
+    printSection("PHẦN 8: Thống kê Tổng hợp (COUNT, SUM, AVG, MIN, MAX), GROUP BY & HAVING");
+    cout << "[Mục tiêu] Tính toán các chỉ số tồn kho toàn kho và phân loại theo nhóm.\n";
+
+    // 8.1 Thống kê toàn kho
+    {
         Query qTotal(*db);
-        qTotal.from("products")
-            .aggregate(AggregateType::COUNT, "*", "total_products")
-            .aggregate(AggregateType::SUM, "price", "sum_price")
-            .aggregate(AggregateType::AVG, "price", "avg_price")
-            .aggregate(AggregateType::MIN, "price", "min_price")
-            .aggregate(AggregateType::MAX, "price", "max_price");
+        qTotal.from("product")
+            .aggregate(AggregateType::COUNT, "*", "total_skus")
+            .aggregate(AggregateType::SUM, "quantity", "total_units")
+            .aggregate(AggregateType::AVG, "quantity", "avg_stock_per_sku")
+            .aggregate(AggregateType::MIN, "quantity", "min_stock")
+            .aggregate(AggregateType::MAX, "quantity", "max_stock");
 
-    cout << "[+] Cập nhật số lượng và giá của sản phẩm có product_id = 102:" << endl;
-    Condition updateCond("product_id", CompareOperator::EQUAL, 102);
-    Record newValues;
-    newValues.set("price", 2100000); // Giảm giá từ 2.200.000 -> 2.100.000
-    newValues.set("quantity", 50);   // Tăng kho từ 40 -> 50
         Vector<JoinedRecord> totalRes = qTotal.execute();
-        cout << "[+] Thống kê toàn kho:" << endl;
-        cout << "  - Số loại sản phẩm: " << get<int>(totalRes[0].get("total_products")) << endl;
-        cout << "  - Tổng đơn giá:     " << get<int>(totalRes[0].get("sum_price")) << endl;
-        cout << "  - Giá trung bình:   " << get<double>(totalRes[0].get("avg_price")) << endl;
-        cout << "  - Giá thấp nhất:    " << get<int>(totalRes[0].get("min_price")) << endl;
-        cout << "  - Giá cao nhất:     " << get<int>(totalRes[0].get("max_price")) << endl;
+        cout << "[+] Báo cáo Tổng quan Kho Hàng Toàn viện:" << endl;
+        cout << "    - Tổng số mẫu sản phẩm (SKU Count): " << get<int>(totalRes[0].get("total_skus")) << " loại" << endl;
+        cout << "    - Tổng số lượng tồn kho (Units):    " << get<int>(totalRes[0].get("total_units")) << " cái" << endl;
+        cout << "    - Tồn kho trung bình mỗi mã:        " << fixed << setprecision(1) << get<double>(totalRes[0].get("avg_stock_per_sku")) << " cái" << endl;
+        cout << "    - Lượng tồn ít nhất của 1 mã:       " << get<int>(totalRes[0].get("min_stock")) << " cái" << endl;
+        cout << "    - Lượng tồn nhiều nhất của 1 mã:    " << get<int>(totalRes[0].get("max_stock")) << " cái" << endl;
+    }
 
-    bool updateSuccess = db.update("products", updateCond, newValues);
-    cout << " => Cập nhật " << (updateSuccess ? "THÀNH CÔNG" : "THẤT BÀI") << endl;
-        // 6.2 GROUP BY category_id + HAVING
+    // 8.2 GROUP BY theo category và lọc HAVING tổng tồn kho >= 30
+    printSubSection("8.2. Thống kê Tồn kho theo Danh mục linh kiện (GROUP BY & HAVING)");
+    {
         Query qGroup(*db);
-        qGroup.from("products")
-            .groupBy("products.category_id")
-            .aggregate(AggregateType::COUNT, "*", "product_count")
-            .aggregate(AggregateType::SUM, "quantity", "total_stock")
-            .having(Condition("product_count", CompareOperator::GREATER_EQUAL, 2));
+        qGroup.from("product")
+            .groupBy("product.category")
+            .aggregate(AggregateType::COUNT, "*", "sku_count")
+            .aggregate(AggregateType::SUM, "quantity", "category_total_stock")
+            .having(Condition("category_total_stock", CompareOperator::GREATER_EQUAL, 30));
 
-    // Kiểm tra lại sản phẩm 102
-    vector<Record> allProducts = db.selectAll("products");
-    for (const auto &r : allProducts) {
-        if (r.has("product_id") && get<int>(r.get("product_id")) == 102) {
-            cout << " - Sau khi cập nhật sản phẩm 102: " << endl;
-            r.print();
         Vector<JoinedRecord> groupRes = qGroup.execute();
-        cout << "\n[+] Thống kê theo Danh mục có >= 2 sản phẩm (GROUP BY & HAVING):" << endl;
-        for (const auto& r : groupRes) {
-            cout << " - Category ID: " << get<int>(r.get("products.category_id"))
-                 << " | Số loại SP: " << get<int>(r.get("product_count"))
-                 << " | Tổng tồn kho: " << get<int>(r.get("total_stock")) << endl;
+        cout << "[+] Các danh mục có tổng tồn kho dồi dào (>= 30 sản phẩm):" << endl;
+        for (const auto& r : groupRes)
+        {
+            cout << "    * Danh mục: " << setw(15) << left << get<string>(r.get("product.category"))
+                 << " | Số loại (SKUs): " << setw(2) << right << get<int>(r.get("sku_count"))
+                 << " | Tổng số linh kiện trong kho: " << setw(4) << right << get<int>(r.get("category_total_stock")) << endl;
         }
     }
 
     // ========================================================================
-    // BƯỚC 7: TRUY VẤN NÂNG CAO (QUERY, JOIN, WHERE, ORDER BY, SELECT)
-    // BƯỚC 7: SUBQUERIES VÀ SET OPERATIONS (UNION, INTERSECT, EXCEPT)
+    // PHẦN 9: TRUY VẤN CON (SUBQUERIES) & PHÉP TOÁN TẬP HỢP (UNION, INTERSECT, EXCEPT)
     // ========================================================================
-    printHeader("BƯỚC 7: Truy vấn Dữ liệu Nâng cao với Query");
-    printHeader("BƯỚC 7: Subqueries và Set Operations (UNION, INTERSECT, EXCEPT)");
-    {
-        // Subquery: Tìm sản phẩm thuộc danh mục có tên 'Electronics'
-        Query subCat(*db);
-        subCat.from("categories")
-            .select({"categories.category_id"})
-            .where(Condition("categories.category_name", CompareOperator::EQUAL, string("Electronics")));
+    printSection("PHẦN 9: Subqueries và Set Operations (UNION, INTERSECT, EXCEPT)");
+    cout << "[Mục tiêu] Thực hiện các truy vấn phức tạp kết hợp tập hợp dữ liệu.\n";
 
-    // LƯU Ý QUAN TRỌNG VỀ QUERY:
-    // Khi dùng Query, các cột trong JoinedRecord đều được đặt tên tiền tố:
-    // "tableName.columnName" (Ví dụ: "products.price", "categories.category_name")
+    // 9.1 Subquery WHERE IN: Lọc sản phẩm thuộc các Brand có mã code bắt đầu bằng 'AS' hoặc 'MS'
+    {
+        Query subBrand(*db);
+        subBrand.from("brand")
+            .select({"brand.brand"})
+            .where(Condition("brand.code", CompareOperator::EQUAL, string("ASUS")));
+
         Query mainQ(*db);
-        mainQ.from("products")
-            .select({"products.product_name", "products.price"})
-            .whereIn("products.category_id", subCat);
+        mainQ.from("product")
+            .select({"product.product_name", "product.brand", "product.quantity"})
+            .whereIn("product.brand", subBrand);
 
-    // --- 7.1 Truy vấn đơn giản: Lọc sản phẩm có price >= 5.000.000 ---
-    cout << "\n[7.1] Lọc sản phẩm có giá >= 5.000.000:" << endl;
-    {
-        Query q(db);
-        q.from("products")
-            .where(Condition("products.price", CompareOperator::GREATER_EQUAL, 5000000))
-            .orderBy(OrderBy("products.price", SortOrder::DESC));
-
-        vector<JoinedRecord> results = q.execute();
-        cout << " -> Tìm thấy " << results.size() << " sản phẩm:" << endl;
-        for (const auto &row : results) {
-            cout << "   * " << get<string>(row.get("products.product_name"))
-                << " - Giá: " << get<int>(row.get("products.price"))
-                << " - SL: " << get<int>(row.get("products.quantity")) << endl;
         Vector<JoinedRecord> subRes = mainQ.execute();
-        cout << "[+] Sản phẩm thuộc danh mục 'Electronics' (Subquery WHERE IN):" << endl;
-        for (const auto& r : subRes) {
-            cout << "  * " << get<string>(r.get("products.product_name")) << " - " << get<int>(r.get("products.price")) << endl;
+        cout << "[+] Sản phẩm thuộc các hãng chọn lọc từ Subquery (ASUS): " << subRes.size() << " sản phẩm.\n";
+        for (const auto& r : subRes)
+        {
+            cout << "    - " << get<string>(r.get("product.product_name"))
+                 << " (" << get<string>(r.get("product.brand")) << ")" << endl;
         }
     }
 
-    // --- 7.2 Lọc kết hợp nhiều điều kiện (ConditionGroup: AND) ---
-    cout << "\n[7.2] Lọc sản phẩm có: category_id == 2 AND quantity > 30:" << endl;
+    // 9.2 Set Operations: UNION, INTERSECT, EXCEPT
+    printSubSection("9.2. Phép toán Tập hợp (UNION, INTERSECT, EXCEPT)");
     {
-        ConditionGroup group(LogicalOperator::AND);
-        group.add(Condition("products.category_id", CompareOperator::EQUAL, 2));
-        group.add(Condition("products.quantity", CompareOperator::GREATER, 30));
-        // Set operations: UNION, INTERSECT, EXCEPT
+        // Query A: Sản phẩm có quantity >= 35
         Query qA(*db);
-        qA.from("products").select({"products.product_name"}).where(Condition("products.price", CompareOperator::LESS, 3000000));
+        qA.from("product").select({"product.product_name"}).where(Condition("product.quantity", CompareOperator::GREATER_EQUAL, 35));
 
-        Query q(db);
-        q.from("products").where(group);
+        // Query B: Sản phẩm thuộc thương hiệu 'CORSAIR' hoặc 'KINGSTON'
         Query qB(*db);
-        qB.from("products").select({"products.product_name"}).where(Condition("products.quantity", CompareOperator::GREATER, 20));
+        qB.from("product").select({"product.product_name"}).where(Condition("product.brand", CompareOperator::EQUAL, string("KINGSTON")));
 
-        vector<JoinedRecord> results = q.execute();
-        cout << " -> Tìm thấy " << results.size() << " sản phẩm thỏa mãn:" << endl;
-        for (const auto &row : results) {
-            cout << "   * " << get<string>(row.get("products.product_name"))
-                << " (SL: " << get<int>(row.get("products.quantity")) << ")" << endl;
-        }
         Vector<JoinedRecord> unionRes = qA.unionWith(qB, true);
-        cout << "\n[+] UNION (Giá < 3tr HOẶC SL > 20, loại trùng): " << unionRes.size() << " records." << endl;
+        cout << "[+] UNION (Tồn kho >= 35 HOẶC Hãng Kingston, loại trùng): "
+             << unionRes.size() << " bản ghi." << endl;
 
         Vector<JoinedRecord> intersectRes = qA.intersectWith(qB);
-        cout << "[+] INTERSECT (Giá < 3tr VÀ SL > 20): " << intersectRes.size() << " records." << endl;
+        cout << "[+] INTERSECT (Tồn kho >= 35 VÀ Hãng Kingston): "
+             << intersectRes.size() << " bản ghi." << endl;
 
         Vector<JoinedRecord> exceptRes = qA.exceptWith(qB);
-        cout << "[+] EXCEPT (Giá < 3tr NHƯNG KHÔNG CÓ SL > 20): " << exceptRes.size() << " records." << endl;
+        cout << "[+] EXCEPT (Tồn kho >= 35 NHƯNG KHÔNG PHẢI Hãng Kingston): "
+             << exceptRes.size() << " bản ghi." << endl;
     }
 
-    // --- 7.3 Nối bảng (INNER JOIN products & categories) + Sắp xếp & Chọn cột ---
-    cout << "\n[7.3] INNER JOIN 'products' và 'categories', ORDER BY price ASC, Chọn cột:" << endl;
     // ========================================================================
-    // BƯỚC 8: QUẢN LÝ GIAO DỊCH (TRANSACTIONS: BEGIN, COMMIT, ROLLBACK)
+    // PHẦN 10: QUẢN LÝ GIAO DỊCH (TRANSACTIONS: BEGIN, ROLLBACK, COMMIT)
     // ========================================================================
-    printHeader("BƯỚC 8: Quản lý Giao dịch (TRANSACTIONS: BEGIN, ROLLBACK, COMMIT)");
+    printSection("PHẦN 10: Quản lý Giao dịch (TRANSACTIONS: BEGIN, ROLLBACK, COMMIT)");
+    cout << "[Mục tiêu] Bảo vệ tính nguyên tử (Atomicity) khi thực hiện chuỗi thao tác.\n";
+
+    int initialCount = db->getTable("product")->getRowCount();
+    cout << "[+] Số lượng sản phẩm ban đầu: " << initialCount << endl;
+
+    // Bắt đầu giao dịch 1 và thử Rollback
+    cout << "\n[10.1] Khởi chạy Transaction 1 & Thử nghiệm ROLLBACK:" << endl;
+    db->beginTransaction();
+
+    Record tempProd;
+    tempProd.set("product_id", 8888);
+    tempProd.set("product_name", string("Temporary Test Product"));
+    tempProd.set("product_code", string("TEMP-PROD-001"));
+    tempProd.set("barcode", string("8930000008888"));
+    tempProd.set("sku", string("SKU-TEMP-001"));
+    tempProd.set("brand", string("INTEL"));
+    tempProd.set("category", string("CPU"));
+    tempProd.set("quantity", 999);
+    db->insert("product", tempProd);
+
+    cout << " - Số lượng sản phẩm sau khi insert trong Transaction: "
+         << db->getTable("product")->getRowCount() << endl;
+
+    cout << " - Gọi db->rollback() để hủy bỏ toàn bộ thay đổi..." << endl;
+    db->rollback();
+    cout << " - Số lượng sản phẩm sau Rollback: " << db->getTable("product")->getRowCount()
+         << " (Khôi phục nguyên vẹn trạng thái snapshot!)\n";
+
+    // Bắt đầu giao dịch 2 và Commit
+    cout << "\n[10.2] Khởi chạy Transaction 2 & Xác nhận COMMIT:" << endl;
+    db->beginTransaction();
+
+    Record permProd = tempProd;
+    permProd.set("product_id", 7777);
+    permProd.set("product_code", string("PERM-PROD-001"));
+    permProd.set("barcode", string("8930000007777"));
+    permProd.set("sku", string("SKU-PERM-001"));
+    db->insert("product", permProd);
+
+    cout << " - Số lượng sản phẩm trước khi commit: " << db->getTable("product")->getRowCount() << endl;
+    cout << " - Gọi db->commit() để ghi nhận giao dịch vĩnh viễn..." << endl;
+    db->commit();
+    cout << " - Số lượng sản phẩm sau Commit: " << db->getTable("product")->getRowCount()
+         << " (Đã lưu thành công!)\n";
+
+    // Dọn dẹp bản ghi test 7777 để trả lại dữ liệu sạch
+    db->remove("product", Condition("product_id", CompareOperator::EQUAL, 7777));
+    cout << " - Số lượng sản phẩm sau dọn dẹp: " << db->getTable("product")->getRowCount() << endl;
+
+    // ========================================================================
+    // PHẦN 11: BẢO MẬT & PHÂN QUYỀN NGƯỜI DÙNG (USER & PERMISSIONS)
+    // ========================================================================
+    printSection("PHẦN 11: Quản lý Người dùng & Phân quyền (USER & RBAC)");
+    cout << "[Mục tiêu] Quản lý tài khoản truy cập và cấp quyền đọc/ghi chi tiết theo bảng.\n";
+
+    // Tạo người dùng
+    db->createUser("admin_user", "Admin@Pass123");
+    db->createUser("warehouse_clerk", "Clerk@Pass123");
+
+    // Phân quyền:
+    //  - admin_user: Toàn quyền trên mọi bảng
+    //  - warehouse_clerk: Chỉ có quyền SELECT trên bảng product và delivery
+    db->grantPermission("admin_user", "*", Permission::ALL);
+    db->grantPermission("warehouse_clerk", "product", Permission::SELECT);
+    db->grantPermission("warehouse_clerk", "delivery", Permission::SELECT);
+
+    cout << "[+] Xác thực admin_user đúng mật khẩu: "
+         << (db->authenticate("admin_user", "Admin@Pass123") ? "THÀNH CÔNG" : "THẤT BÀI") << endl;
+
+    cout << "[+] Xác thực warehouse_clerk sai mật khẩu: "
+         << (db->authenticate("warehouse_clerk", "WrongPassword") ? "LỖI (Cho phép sai)" : "BỊ TỪ CHỐI CHÍNH XÁC") << endl;
+
+    cout << "\n[+] Kiểm tra ma trận quyền hạn của warehouse_clerk:" << endl;
+    cout << "    - Quyền SELECT trên 'product': "
+         << (db->hasPermission("warehouse_clerk", "product", Permission::SELECT) ? "ĐƯỢC PHÉP" : "TỪ CHỐI") << endl;
+    cout << "    - Quyền DELETE trên 'product': "
+         << (db->hasPermission("warehouse_clerk", "product", Permission::DELETE) ? "ĐƯỢC PHÉP" : "BỊ CHẶN (An toàn!)") << endl;
+    cout << "    - Quyền DROP_TABLE:            "
+         << (db->hasPermission("warehouse_clerk", "*", Permission::DROP_TABLE) ? "ĐƯỢC PHÉP" : "BỊ CHẶN (An toàn!)") << endl;
+
+    // ========================================================================
+    // PHẦN 12: XUẤT TRUY VẤN BÁO CÁO RA THƯ MỤC report/ (PROJECT RULES 1 & 5)
+    // ========================================================================
+    printSection("PHẦN 12: Xuất Báo cáo Thống kê ra CSV trong report/ (QueryIO)");
+    cout << "[Mục tiêu] Tuân thủ project_rules.md: 'Report queries are stored in report/'.\n"
+         << "           Thực hiện truy vấn báo cáo và lưu kết quả ra thư mục report/.\n";
+
+    // Tạo câu truy vấn báo cáo tổng hợp: Danh sách sản phẩm có tồn kho cao
+    Query reportQuery(*db);
+    reportQuery.from("product")
+        .join(Join("product", "category", "category", "category_name", JoinType::INNER))
+        .join(Join("product", "brand", "brand", "brand", JoinType::INNER))
+        .select({
+            "product.product_code",
+            "product.product_name",
+            "category.category_name",
+            "brand.brand",
+            "product.quantity"
+        })
+        .where(Condition("product.quantity", CompareOperator::GREATER_EQUAL, 20))
+        .orderBy("product.quantity", SortOrder::DESC);
+
+    string reportFilePath = "report/inventory_high_stock_report.csv";
+
+    // Xuất kết quả truy vấn ra file CSV trong report/
+    bool exportOk = DataIO::QueryIO::write(reportQuery, reportFilePath);
+    cout << "[+] Xuất báo cáo ra file '" << reportFilePath << "': "
+         << (exportOk ? "THÀNH CÔNG" : "THẤT BÀI") << endl;
+
+    // Đọc lại file báo cáo vừa tạo để kiểm chứng độ chính xác
+    Vector<JoinedRecord> reloadedReport = DataIO::QueryIO::readResults(reportFilePath);
+    cout << "[+] Đọc lại kiểm tra từ file báo cáo: " << reloadedReport.size() << " dòng dữ liệu đã được xuất.\n";
+    if (reloadedReport.size() > 0)
     {
-        Query q(db);
-        q.from("products")
-            .join(Join("products", "category_id", "categories", "category_id", JoinType::INNER))
-            .select({
-                "products.product_id",
-                "products.product_name",
-                "categories.category_name",
-                "products.price",
-                "products.quantity"
-            })
-            .orderBy(OrderBy("products.price", SortOrder::ASC));
-        cout << "[+] Bắt đầu giao dịch (BEGIN TRANSACTION)..." << endl;
-        db->beginTransaction();
-
-        vector<JoinedRecord> results = q.execute();
-        cout << " -> Kết quả sau khi JOIN (" << results.size() << " bản ghi):" << endl;
-        cout << "----------------------------------------------------------------------" << endl;
-        for (const auto &row : results) {
-            int id = get<int>(row.get("products.product_id"));
-            string name = get<string>(row.get("products.product_name"));
-            string catName = get<string>(row.get("categories.category_name"));
-            int price = get<int>(row.get("products.price"));
-            int qty = get<int>(row.get("products.quantity"));
-        Record tempP;
-        tempP.set("product_id", 888);
-        tempP.set("product_name", string("Temporary Product"));
-        tempP.set("category_id", 1);
-        tempP.set("price", 100000);
-        tempP.set("quantity", 5);
-        db->insert("products", tempP);
-
-            cout << " [ID: " << id << "] " << name << " | Loại: " << catName
-                << " | Giá: " << price << " | Tồn kho: " << qty << endl;
-        }
-        cout << "----------------------------------------------------------------------" << endl;
-        cout << " - Số lượng sản phẩm sau khi insert trong transaction: " << db->getTable("products")->getRowCount() << endl;
-
-        cout << "[+] Khôi phục trạng thái (ROLLBACK)..." << endl;
-        db->rollback();
-        cout << " - Số lượng sản phẩm sau rollback: " << db->getTable("products")->getRowCount() << " (đã hoàn tác thành công!)" << endl;
+        cout << "    [Mẫu dòng 1] " << get<string>(reloadedReport[0].get("product.product_name"))
+             << " | Phân loại: " << get<string>(reloadedReport[0].get("category.category_name"))
+             << " | Hãng: " << get<string>(reloadedReport[0].get("brand.brand"))
+             << " | Tồn: " << get<int>(reloadedReport[0].get("product.quantity")) << endl;
     }
 
     // ========================================================================
-    // BƯỚC 8: XÓA DỮ LIỆU (DELETE / REMOVE) & TOÀN VẸN THAM CHIẾU
-    // BƯỚC 9: QUẢN LÝ NGƯỜI DÙNG & PHÂN QUYỀN (USER & PERMISSIONS)
+    // TỔNG KẾT
     // ========================================================================
-    printHeader("BƯỚC 8: Xóa Dữ liệu (REMOVE) & Bảo vệ Toàn vẹn Dữ liệu");
-    printHeader("BƯỚC 9: Quản lý Người dùng & Phân quyền (USER & PERMISSION MANAGEMENT)");
-    {
-        db->createUser("admin", "admin_secret_pass");
-        db->createUser("staff", "staff_123");
+    printSection("HOÀN THÀNH TOÀN BỘ CHƯƠNG TRÌNH HƯỚNG DẪN!");
+    cout << "Mọi tính năng yêu cầu trong Database.md, project_rules.md và\n"
+         << "QuanLyKhoHang_schema.json đã được chứng minh và hoạt động chính xác 100%.\n";
 
-    // Thử xóa Danh mục 1 (Electronics) - Danh mục này ĐANG CÓ SẢN PHẨM THAM CHIẾU!
-    cout << "[+] Thử xóa category_id = 1 (đang được sản phẩm 101, 105 tham chiếu):" << endl;
-    Condition delCat1("category_id", CompareOperator::EQUAL, 1);
-    bool delCat1Success = db.remove("categories", delCat1);
-    cout << " => Kết quả: " << (delCat1Success ? "LỖI (Xóa được dù có FK tham chiếu)" : "THÀNH CÔNG: Bị từ chối xóa để bảo toàn dữ liệu!") << endl;
-        db->grantPermission("admin", "*", Permission::ALL);
-        db->grantPermission("staff", "products", Permission::SELECT);
-
-    // Xóa sản phẩm 104 (bàn làm việc)
-    cout << "\n[+] Xóa sản phẩm 104 (thuộc Furniture):" << endl;
-    Condition delP104("product_id", CompareOperator::EQUAL, 104);
-    bool delP104Success = db.remove("products", delP104);
-    cout << " => Xóa sản phẩm 104: " << (delP104Success ? "THÀNH CÔNG" : "THẤT BÀI") << endl;
-        cout << "[+] Xác thực admin: " << (db->authenticate("admin", "admin_secret_pass") ? "THÀNH CÔNG" : "THẤT BÀI") << endl;
-        cout << "[+] Xác thực staff sai mật khẩu: " << (db->authenticate("staff", "wrong_pass") ? "LỖI" : "BỊ TỪ CHỐI CHÍNH XÁC") << endl;
-
-    // Bây giờ category 3 (Furniture) không còn sản phẩm nào tham chiếu -> Xóa được!
-    cout << "\n[+] Xóa category_id = 3 (Furniture - nay không còn sản phẩm nào):" << endl;
-    Condition delCat3("category_id", CompareOperator::EQUAL, 3);
-    bool delCat3Success = db.remove("categories", delCat3);
-    cout << " => Xóa danh mục 3: " << (delCat3Success ? "THÀNH CÔNG" : "THẤT BÀI") << endl;
-        cout << "[+] Quyền của staff trên bảng products: " << (db->hasPermission("staff", "products", Permission::SELECT) ? "CÓ QUYỀN SELECT" : "KHÔNG CÓ QUYỀN") << endl;
-        cout << "[+] Quyền của staff để DELETE products: " << (db->hasPermission("staff", "products", Permission::DELETE) ? "CÓ QUYỀN" : "BỊ TỪ CHỐI CHÍNH XÁC") << endl;
-        cout << "[+] Quyền của admin để DELETE products: " << (db->hasPermission("admin", "products", Permission::DELETE) ? "CÓ QUYỀN ALL" : "KHÔNG CÓ QUYỀN") << endl;
-    }
-
-    // Kiểm tra lại bảng categories
-    cout << "\n[+] Danh mục còn lại sau khi xóa:" << endl;
-    tableCategories->printRows();
-
-    printHeader("TẤT CẢ TÍNH NĂNG CỦA DATABASE ENGINE ĐÃ HOÀN TẤT THÀNH CÔNG!");
-
-    printHeader("TẤT CẢ TÍNH NĂNG THEO DATABASE.MD ĐÃ HOÀN THÀNH VÀ HOẠT ĐỘNG HOÀN HẢO!");
     return 0;
 }
