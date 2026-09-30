@@ -95,6 +95,22 @@ namespace DataIO
                             }
                         }
                     }
+                    else if (col->getType() == DataType::BOOLEAN)
+                    {
+                        if (valStr.empty())
+                        {
+                            if (!col->getDefaultValue().empty())
+                            {
+                                bool b = (col->getDefaultValue() == "1" || col->getDefaultValue() == "true" || col->getDefaultValue() == "TRUE");
+                                record.set(colName, b);
+                            }
+                        }
+                        else
+                        {
+                            bool b = (valStr == "1" || valStr == "true" || valStr == "TRUE" || valStr == "True");
+                            record.set(colName, b);
+                        }
+                    }
                     else
                     {
                         record.set(colName, valStr);

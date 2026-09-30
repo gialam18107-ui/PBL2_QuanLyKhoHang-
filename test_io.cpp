@@ -34,7 +34,7 @@ int main() {
   printBanner("TEST 1: Schema Table Names & Topological Order");
   Vector<string> tableNames = Schema::getTableNames();
   cout << "[+] Total tables defined in schema: " << tableNames.size() << endl;
-  assert(tableNames.size() == 26);
+  assert(tableNames.size() == 32);
   for (size_t i = 0; i < tableNames.size(); i++) {
     cout << "  " << setw(2) << (i + 1) << ". " << tableNames[i] << endl;
   }
@@ -77,14 +77,14 @@ int main() {
   cout << "[PASS] TableIO write and round-trip test passed.\n";
 
   // ========================================================
-  // TEST 4: DATABASE-LEVEL READ ALL (ALL 26 TABLES)
+  // TEST 4: DATABASE-LEVEL READ ALL (ALL 32 TABLES)
   // ========================================================
-  printBanner("TEST 4: DatabaseIO - Read All 26 Tables into Database");
+  printBanner("TEST 4: DatabaseIO - Read All 32 Tables into Database");
   Database db;
   bool readAllOk = DatabaseIO::readAll(db, "data");
   cout << "[+] Database readAll result: " << (readAllOk ? "SUCCESS" : "PARTIAL")
        << endl;
-  assert(db.getTableCount() == 26);
+  assert(db.getTableCount() == 32);
 
   int totalRecords = 0;
   for (const string &name : tableNames) {
@@ -96,7 +96,7 @@ int main() {
     assert(tbl->getRowCount() > 0);
     totalRecords += tbl->getRowCount();
   }
-  cout << "[+] Total database records loaded across 26 tables: " << totalRecords
+  cout << "[+] Total database records loaded across 32 tables: " << totalRecords
        << endl;
   cout << "[PASS] DatabaseIO readAll test passed.\n";
 
@@ -200,6 +200,58 @@ int main() {
        << " records back from CSV." << endl;
 
   cout << "[PASS] Unified DataIO facade test passed.\n";
+
+  // ========================================================
+  // TEST 9: DATA TYPE VALIDATION & TYPE VIOLATION REJECTION
+  // ========================================================
+  printBanner("TEST 9: Data Type Validation & Type Violation Handling");
+
+  // Case A: Inserting string into an INTEGER column (product_id)
+  Record wrongIntRecord;
+  wrongIntRecord.set("product_id", string("NOT_AN_INTEGER"));
+  wrongIntRecord.set("product_name", string("Corrupted Int Product"));
+  wrongIntRecord.set("product_code", string("ERR-INT-001"));
+  wrongIntRecord.set("barcode", string("8939999999999"));
+  wrongIntRecord.set("sku", string("SKU-ERR-INT"));
+  wrongIntRecord.set("brand", string("INTEL"));
+  wrongIntRecord.set("category", string("CPU"));
+  wrongIntRecord.set("is_sold", false);
+  wrongIntRecord.set("quantity", 10);
+
+  bool wrongIntAccepted = db.insert("product", wrongIntRecord);
+  cout << "[+] Inserting string into INTEGER product_id result: "
+       << (wrongIntAccepted ? "ACCEPTED (BUG)" : "REJECTED (EXPECTED)") << endl;
+  assert(!wrongIntAccepted);
+
+  // Case B: Inserting int into a VARCHAR column (category_name)
+  Record wrongVarcharRecord;
+  wrongVarcharRecord.set("category_id", 999);
+  wrongVarcharRecord.set("category_name", 12345); // int instead of string
+  wrongVarcharRecord.set("code", string("FAIL"));
+
+  bool wrongVarcharAccepted = db.insert("category", wrongVarcharRecord);
+  cout << "[+] Inserting int into VARCHAR category_name result: "
+       << (wrongVarcharAccepted ? "ACCEPTED (BUG)" : "REJECTED (EXPECTED)") << endl;
+  assert(!wrongVarcharAccepted);
+
+  // Case C: Inserting string into a BOOLEAN column (is_sold)
+  Record wrongBoolRecord;
+  wrongBoolRecord.set("product_id", 99999);
+  wrongBoolRecord.set("product_name", string("Invalid Bool Product"));
+  wrongBoolRecord.set("product_code", string("ERR-BOOL-001"));
+  wrongBoolRecord.set("barcode", string("8939999999998"));
+  wrongBoolRecord.set("sku", string("SKU-ERR-BOOL"));
+  wrongBoolRecord.set("brand", string("INTEL"));
+  wrongBoolRecord.set("category", string("CPU"));
+  wrongBoolRecord.set("is_sold", string("NOT_A_BOOLEAN")); // string instead of bool
+  wrongBoolRecord.set("quantity", 10);
+
+  bool wrongBoolAccepted = db.insert("product", wrongBoolRecord);
+  cout << "[+] Inserting string into BOOLEAN is_sold result: "
+       << (wrongBoolAccepted ? "ACCEPTED (BUG)" : "REJECTED (EXPECTED)") << endl;
+  assert(!wrongBoolAccepted);
+
+  cout << "[PASS] Data type validation & type violation handling passed.\n";
 
   // ========================================================
   // CLEANUP TEMPORARY TEST CSV FILES

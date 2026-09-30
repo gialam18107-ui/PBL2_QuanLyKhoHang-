@@ -122,6 +122,9 @@ string Column::getTypeName() const
 
     case DataType::DATE:
         return "DATE";
+
+    case DataType::BOOLEAN:
+        return "BOOLEAN";
     }
 
     return "UNKNOWN";

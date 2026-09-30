@@ -311,19 +311,26 @@ bool Table::checkDataType(const Column& column, const Value& value) const
     case DataType::TEXT:
     case DataType::DATE:
         return holds_alternative<string>(value);
+    case DataType::BOOLEAN:
+        return holds_alternative<bool>(value);
     }
     return true;
 }
 
 bool Table::checkConstraints(const Record& record, int ignoreRowIndex) const
 {
+    const Vector<Record>* targetRows = &rows;
     Vector<Record> validRows;
-    for (size_t i = 0; i < rows.size(); i++)
+    if (ignoreRowIndex >= 0 && ignoreRowIndex < static_cast<int>(rows.size()))
     {
-        if (static_cast<int>(i) != ignoreRowIndex)
+        for (size_t i = 0; i < rows.size(); i++)
         {
-            validRows.push_back(rows[i]);
+            if (static_cast<int>(i) != ignoreRowIndex)
+            {
+                validRows.push_back(rows[i]);
+            }
         }
+        targetRows = &validRows;
     }
 
     for (size_t i = 0; i < constraints.size(); i++)
@@ -335,7 +342,7 @@ bool Table::checkConstraints(const Record& record, int ignoreRowIndex) const
             continue;
         }
 
-        if (!c->validate(record, validRows, {}))
+        if (!c->validate(record, *targetRows, {}))
         {
             cout << "Constraint failed: " << c->getName() << endl;
             return false;
@@ -384,6 +391,11 @@ bool Table::insert(const Record& record)
                 {
                     try { recordToInsert.set(colName, stoi(col.getDefaultValue())); }
                     catch (...) { recordToInsert.set(colName, 0); }
+                }
+                else if (col.getType() == DataType::BOOLEAN)
+                {
+                    bool b = (col.getDefaultValue() == "1" || col.getDefaultValue() == "true" || col.getDefaultValue() == "TRUE");
+                    recordToInsert.set(colName, b);
                 }
                 else
                 {

@@ -2102,7 +2102,7 @@
           "unique": false,
           "notNull": true,
           "increment": false,
-          "comment": "",
+          "comment": "INTEL/AMD",
           "size": 255
         },
         {

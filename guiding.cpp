@@ -234,6 +234,7 @@ int main()
     newProd.set("sku", string("SKU-LOGI-MX3S"));
     newProd.set("brand", string("LOGITECH"));
     newProd.set("category", string("ACCESSORIES"));
+    newProd.set("is_sold", false);
     newProd.set("quantity", 25);
     bool insProdOk = db->insert("product", newProd);
     cout << "[+] Thêm Sản phẩm mới hợp lệ: " << (insProdOk ? "THÀNH CÔNG" : "THẤT BÀI") << endl;
@@ -267,6 +268,16 @@ int main()
     bool resInvalidSup = db->insert("supplier", invalidSupplier);
     cout << " => Kết quả: " << (resInvalidSup ? "LỖI (Chấp nhận vi phạm CHECK)" : "THÀNH CÔNG: Bị chặn bởi CHECK constraint!") << endl;
 
+    // Test D: Vi phạm kiểu dữ liệu (Data Type Violation)
+    cout << "\n[Test D] Thử chèn bản ghi sai kiểu dữ liệu (Chèn int vào cột varchar):" << endl;
+    Record invalidTypeProd = newProd;
+    invalidTypeProd.set("product_id", int(10));
+    invalidTypeProd.set("product_code", int(123456));
+    invalidTypeProd.set("barcode", string("8930000008888"));
+    invalidTypeProd.set("sku", string("SKU-INV-TYPE-01"));
+    bool resInvalidType = db->insert("product", invalidTypeProd);
+    cout << " => Kết quả: " << (resInvalidType ? "LỖI (Chấp nhận sai kiểu dữ liệu)" : "THÀNH CÔNG: Bị từ chối do sai kiểu dữ liệu chính xác!") << endl;
+
     printSubSection("5.3. Cập nhật dữ liệu (UPDATE)");
     cout << "[+] Cập nhật số lượng sản phẩm 'LOGI-ACC-0001-0001' từ 25 -> 45 cái:" << endl;
     Condition condUpd("product_code", CompareOperator::EQUAL, string("LOGI-ACC-0001-0001"));
@@ -277,6 +288,7 @@ int main()
 
     printSubSection("5.4. Quy tắc bảo vệ toàn vẹn dữ liệu khi XÓA (DELETE - Rule 2 & Rule 4)");
     cout << "[Nghiệp vụ] 'A record cannot be deleted if referenced by another table'.\n";
+    
 
     // Thử xóa category 'ACCESSORIES' - Hiện đang có sản phẩm 9999 tham chiếu tới!
     cout << "\n[+] Thử xóa Category 'ACCESSORIES' (đang được sản phẩm 9999 tham chiếu):" << endl;
@@ -468,7 +480,7 @@ int main()
         Query subBrand(*db);
         subBrand.from("brand")
             .select({"brand.brand"})
-            .where(Condition("brand.code", CompareOperator::EQUAL, string("ASUS")));
+            .where(Condition("brand.code", CompareOperator::LIKE, string("%S%")));
 
         Query mainQ(*db);
         mainQ.from("product")
@@ -529,6 +541,7 @@ int main()
     tempProd.set("sku", string("SKU-TEMP-001"));
     tempProd.set("brand", string("INTEL"));
     tempProd.set("category", string("CPU"));
+    tempProd.set("is_sold", false);
     tempProd.set("quantity", 999);
     db->insert("product", tempProd);
 

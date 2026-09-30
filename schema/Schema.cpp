@@ -26,7 +26,7 @@ namespace Schema
     Table* createBrandTable()
     {
         auto table = new Table("brand");
-        table->addColumn(Column("brand_id", DataType::INTEGER, 0, true, true, true));
+        table->addColumn(Column("brand_id", DataType::INTEGER, 0, true, true, true, true));
         table->addColumn(Column("brand", DataType::VARCHAR, 50, false, true, true));
         table->addColumn(Column("code", DataType::VARCHAR, 20, false, true, true));
 
@@ -42,7 +42,7 @@ namespace Schema
     Table* createUnitStatusTable()
     {
         auto table = new Table("unit_status");
-        table->addColumn(Column("status_id", DataType::INTEGER, 0, true, true, true));
+        table->addColumn(Column("status_id", DataType::INTEGER, 0, true, true, true, true));
         table->addColumn(Column("status", DataType::VARCHAR, 50, false, true, true));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_unit_status", "status_id"));
@@ -56,7 +56,7 @@ namespace Schema
     Table* createInboundTypeTable()
     {
         auto table = new Table("inbound_type");
-        table->addColumn(Column("id", DataType::INTEGER, 0, true, true, true));
+        table->addColumn(Column("id", DataType::INTEGER, 0, true, true, true, true));
         table->addColumn(Column("type", DataType::VARCHAR, 50, false, true, true));
         table->addColumn(Column("code", DataType::VARCHAR, 20, false, true, true));
         table->addColumn(Column("next_code_no", DataType::INTEGER, 0, false, false, true));
@@ -73,7 +73,7 @@ namespace Schema
     Table* createInboundStatusTable()
     {
         auto table = new Table("inbound_status");
-        table->addColumn(Column("status_id", DataType::INTEGER, 0, true, true, true));
+        table->addColumn(Column("status_id", DataType::INTEGER, 0, true, true, true, true));
         table->addColumn(Column("status", DataType::VARCHAR, 50, false, true, true));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_inbound_status", "status_id"));
@@ -87,7 +87,7 @@ namespace Schema
     Table* createDeliveryStatusTable()
     {
         auto table = new Table("delivery_status");
-        table->addColumn(Column("status_id", DataType::INTEGER, 0, true, true, true));
+        table->addColumn(Column("status_id", DataType::INTEGER, 0, true, true, true, true));
         table->addColumn(Column("status", DataType::VARCHAR, 50, false, true, true));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_delivery_status", "status_id"));
@@ -101,7 +101,7 @@ namespace Schema
     Table* createOutboundTypeTable()
     {
         auto table = new Table("outbound_type");
-        table->addColumn(Column("id", DataType::INTEGER, 0, true, true, true));
+        table->addColumn(Column("id", DataType::INTEGER, 0, true, true, true, true));
         table->addColumn(Column("type", DataType::VARCHAR, 50, false, true, true));
         table->addColumn(Column("code", DataType::VARCHAR, 20, false, true, true));
         table->addColumn(Column("next_code_no", DataType::INTEGER, 0, false, false, true));
@@ -113,12 +113,26 @@ namespace Schema
     }
 
     // ========================================================
-    // 8. SHIPMENT_STATUS
+    // 8. OUTBOUND_STATUS
+    // ========================================================
+    Table* createOutboundStatusTable()
+    {
+        auto table = new Table("outbound_status");
+        table->addColumn(Column("status_id", DataType::INTEGER, 0, true, true, true, true));
+        table->addColumn(Column("status", DataType::VARCHAR, 50, false, true, true));
+
+        table->addConstraint(new PrimaryKeyConstraint("pk_outbound_status", "status_id"));
+        table->addConstraint(new UniqueConstraint("uq_outbound_status", "status"));
+        return table;
+    }
+
+    // ========================================================
+    // 9. SHIPMENT_STATUS
     // ========================================================
     Table* createShipmentStatusTable()
     {
         auto table = new Table("shipment_status");
-        table->addColumn(Column("status_id", DataType::INTEGER, 0, true, true, true));
+        table->addColumn(Column("status_id", DataType::INTEGER, 0, true, true, true, true));
         table->addColumn(Column("status", DataType::VARCHAR, 50, false, true, true));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_shipment_status", "status_id"));
@@ -127,7 +141,56 @@ namespace Schema
     }
 
     // ========================================================
-    // 9. PRODUCT
+    // 10. CUSTOMER
+    // ========================================================
+    Table* createCustomerTable()
+    {
+        auto table = new Table("customer");
+        table->addColumn(Column("customer_id", DataType::INTEGER, 0, true, true, true, true));
+        table->addColumn(Column("customer_code", DataType::VARCHAR, 50, false, true, true));
+        table->addColumn(Column("name", DataType::VARCHAR, 100, false, false, true));
+        table->addColumn(Column("type", DataType::VARCHAR, 50, false, false, true));
+
+        table->addConstraint(new PrimaryKeyConstraint("pk_customer", "customer_id"));
+        table->addConstraint(new UniqueConstraint("uq_customer_code", "customer_code"));
+        return table;
+    }
+
+    // ========================================================
+    // 11. INDIVIDUAL_INFO
+    // ========================================================
+    Table* createIndividualInfoTable()
+    {
+        auto table = new Table("individual_info");
+        table->addColumn(Column("customer_id", DataType::INTEGER, 0, true, true, true, true));
+        table->addColumn(Column("phone_number", DataType::VARCHAR, 50, false, false, true));
+        table->addColumn(Column("email", DataType::VARCHAR, 100, false, false, true));
+        table->addColumn(Column("next_code_no", DataType::INTEGER, 0, false, false, true, true));
+
+        table->addConstraint(new PrimaryKeyConstraint("pk_individual_info", "customer_id"));
+        table->addConstraint(new ForeignKeyConstraint("fk_individual_customer", "customer_id", "customer", "customer_id"));
+        return table;
+    }
+
+    // ========================================================
+    // 12. BUSINESS_INFO
+    // ========================================================
+    Table* createBusinessInfoTable()
+    {
+        auto table = new Table("business_info");
+        table->addColumn(Column("customer_id", DataType::INTEGER, 0, true, true, true, true));
+        table->addColumn(Column("phone_number", DataType::VARCHAR, 50, false, false, true));
+        table->addColumn(Column("email", DataType::VARCHAR, 100, false, false, true));
+        table->addColumn(Column("tax_code", DataType::VARCHAR, 50, false, false, true));
+        table->addColumn(Column("next_code_no", DataType::INTEGER, 0, false, false, true, true));
+
+        table->addConstraint(new PrimaryKeyConstraint("pk_business_info", "customer_id"));
+        table->addConstraint(new ForeignKeyConstraint("fk_business_customer", "customer_id", "customer", "customer_id"));
+        return table;
+    }
+
+    // ========================================================
+    // 13. PRODUCT
     // ========================================================
     Table* createProductTable()
     {
@@ -139,7 +202,9 @@ namespace Schema
         table->addColumn(Column("sku", DataType::VARCHAR, 50, false, true, true));
         table->addColumn(Column("brand", DataType::VARCHAR, 50, false, false, true));
         table->addColumn(Column("category", DataType::VARCHAR, 50, false, false, true));
-        table->addColumn(Column("quantity", DataType::INTEGER, 0, false, false, true));
+        table->addColumn(Column("is_sold", DataType::BOOLEAN, 0, false, false, true, false, "0"));
+        // Backward compatibility for existing queries
+        table->addColumn(Column("quantity", DataType::INTEGER, 0, false, false, false, false, "0"));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_product", "product_id"));
         table->addConstraint(new UniqueConstraint("uq_product_code", "product_code"));
@@ -151,12 +216,28 @@ namespace Schema
     }
 
     // ========================================================
-    // 10. CPU
+    // 14. PRODUCT_QUANTITY
+    // ========================================================
+    Table* createProductQuantityTable()
+    {
+        auto table = new Table("product_quantity");
+        table->addColumn(Column("product_id", DataType::INTEGER, 0, true, true, true, true));
+        table->addColumn(Column("available_quan", DataType::INTEGER, 0, false, false, true, false, "0"));
+        table->addColumn(Column("warranty_quan", DataType::INTEGER, 0, false, false, true, false, "0"));
+        table->addColumn(Column("scrapped_quan", DataType::INTEGER, 0, false, false, true, false, "0"));
+
+        table->addConstraint(new PrimaryKeyConstraint("pk_product_quantity", "product_id"));
+        table->addConstraint(new ForeignKeyConstraint("fk_product_quantity_product", "product_id", "product", "product_id"));
+        return table;
+    }
+
+    // ========================================================
+    // 15. CPU
     // ========================================================
     Table* createCpuTable()
     {
         auto table = new Table("cpu");
-        table->addColumn(Column("cpu_id", DataType::INTEGER, 0, true, true, true));
+        table->addColumn(Column("cpu_id", DataType::INTEGER, 0, true, true, true, true));
         table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("socket", DataType::VARCHAR, 50, false, false, true));
         table->addColumn(Column("tier", DataType::VARCHAR, 50, false, false, true));
@@ -168,12 +249,12 @@ namespace Schema
     }
 
     // ========================================================
-    // 11. GPU
+    // 16. GPU
     // ========================================================
     Table* createGpuTable()
     {
         auto table = new Table("gpu");
-        table->addColumn(Column("gpu_id", DataType::INTEGER, 0, true, true, true));
+        table->addColumn(Column("gpu_id", DataType::INTEGER, 0, true, true, true, true));
         table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("series", DataType::VARCHAR, 100, false, false, true));
         table->addColumn(Column("producer", DataType::VARCHAR, 50, false, false, true));
@@ -185,12 +266,12 @@ namespace Schema
     }
 
     // ========================================================
-    // 12. MAINBOARD
+    // 17. MAINBOARD
     // ========================================================
     Table* createMainboardTable()
     {
         auto table = new Table("mainboard");
-        table->addColumn(Column("mainboard_id", DataType::INTEGER, 0, true, true, true));
+        table->addColumn(Column("mainboard_id", DataType::INTEGER, 0, true, true, true, true));
         table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("cpu_support", DataType::VARCHAR, 100, false, false, true));
         table->addColumn(Column("socket", DataType::VARCHAR, 50, false, false, true));
@@ -204,17 +285,17 @@ namespace Schema
     }
 
     // ========================================================
-    // 13. RAM
+    // 18. RAM
     // ========================================================
     Table* createRamTable()
     {
         auto table = new Table("ram");
-        table->addColumn(Column("ram_id", DataType::INTEGER, 0, true, true, true));
+        table->addColumn(Column("ram_id", DataType::INTEGER, 0, true, true, true, true));
         table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("generation", DataType::VARCHAR, 50, false, false, true));
         table->addColumn(Column("quantity", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("capacity", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("bus", DataType::INTEGER, 0, false, false, true));
+        table->addColumn(Column("capacity", DataType::VARCHAR, 50, false, false, true));
+        table->addColumn(Column("bus", DataType::VARCHAR, 50, false, false, true));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_ram", "ram_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_ram_product", "product_id", "product", "product_id"));
@@ -222,12 +303,12 @@ namespace Schema
     }
 
     // ========================================================
-    // 14. SSD
+    // 19. SSD
     // ========================================================
     Table* createSsdTable()
     {
         auto table = new Table("ssd");
-        table->addColumn(Column("ssd_id", DataType::INTEGER, 0, true, true, true));
+        table->addColumn(Column("ssd_id", DataType::INTEGER, 0, true, true, true, true));
         table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("type", DataType::VARCHAR, 50, false, false, true));
         table->addColumn(Column("gen", DataType::VARCHAR, 50, false, false, true));
@@ -239,16 +320,16 @@ namespace Schema
     }
 
     // ========================================================
-    // 15. PSU
+    // 20. PSU
     // ========================================================
     Table* createPsuTable()
     {
         auto table = new Table("psu");
-        table->addColumn(Column("psu_id", DataType::INTEGER, 0, true, true, true));
+        table->addColumn(Column("psu_id", DataType::INTEGER, 0, true, true, true, true));
         table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("quality", DataType::VARCHAR, 50, false, false, true));
         table->addColumn(Column("capacity", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("size", DataType::VARCHAR, 50, false, false, true));
+        table->addColumn(Column("size", DataType::VARCHAR, 50, false, false, false));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_psu", "psu_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_psu_product", "product_id", "product", "product_id"));
@@ -256,12 +337,12 @@ namespace Schema
     }
 
     // ========================================================
-    // 16. COOLING
+    // 21. COOLING
     // ========================================================
     Table* createCoolingTable()
     {
         auto table = new Table("cooling");
-        table->addColumn(Column("cooling_id", DataType::INTEGER, 0, true, true, true));
+        table->addColumn(Column("cooling_id", DataType::INTEGER, 0, true, true, true, true));
         table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("type", DataType::VARCHAR, 100, false, false, true));
 
@@ -271,12 +352,12 @@ namespace Schema
     }
 
     // ========================================================
-    // 17. CASE
+    // 22. CASE
     // ========================================================
     Table* createCaseTable()
     {
         auto table = new Table("case");
-        table->addColumn(Column("case_id", DataType::INTEGER, 0, true, true, true));
+        table->addColumn(Column("case_id", DataType::INTEGER, 0, true, true, true, true));
         table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("product_name", DataType::VARCHAR, 150, false, false, true));
         table->addColumn(Column("size", DataType::VARCHAR, 50, false, false, true));
@@ -287,12 +368,12 @@ namespace Schema
     }
 
     // ========================================================
-    // 18. UNIT_INVENTORY
+    // 23. UNIT_INVENTORY
     // ========================================================
     Table* createUnitInventoryTable()
     {
         auto table = new Table("unit_inventory");
-        table->addColumn(Column("unit_id", DataType::INTEGER, 0, true, true, true));
+        table->addColumn(Column("unit_id", DataType::INTEGER, 0, true, true, true, true));
         table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("serial", DataType::VARCHAR, 100, false, true, true));
         table->addColumn(Column("status", DataType::VARCHAR, 50, false, false, true));
@@ -305,13 +386,14 @@ namespace Schema
     }
 
     // ========================================================
-    // 19. INBOUND_TRANSACTION
+    // 24. INBOUND_TRANSACTION
     // ========================================================
     Table* createInboundTransactionTable()
     {
         auto table = new Table("inbound_transaction");
-        table->addColumn(Column("inbound_transaction_id", DataType::INTEGER, 0, true, true, true));
+        table->addColumn(Column("inbound_transaction_id", DataType::INTEGER, 0, true, true, true, true));
         table->addColumn(Column("inbound_code", DataType::VARCHAR, 50, false, true, true));
+        table->addColumn(Column("customer_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("order_at", DataType::DATE, 0, false, false, true));
         table->addColumn(Column("type", DataType::VARCHAR, 50, false, false, true));
         table->addColumn(Column("status", DataType::VARCHAR, 50, false, false, true));
@@ -320,18 +402,19 @@ namespace Schema
 
         table->addConstraint(new PrimaryKeyConstraint("pk_inbound_transaction", "inbound_transaction_id"));
         table->addConstraint(new UniqueConstraint("uq_inbound_transaction_code", "inbound_code"));
+        table->addConstraint(new ForeignKeyConstraint("fk_inbound_transaction_customer", "customer_id", "customer", "customer_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_inbound_transaction_type", "type", "inbound_type", "type"));
         table->addConstraint(new ForeignKeyConstraint("fk_inbound_transaction_status", "status", "inbound_status", "status"));
         return table;
     }
 
     // ========================================================
-    // 20. INBOUND_DETAIL
+    // 25. INBOUND_DETAIL
     // ========================================================
     Table* createInboundDetailTable()
     {
         auto table = new Table("inbound_detail");
-        table->addColumn(Column("inbound_detail_id", DataType::INTEGER, 0, true, true, true));
+        table->addColumn(Column("inbound_detail_id", DataType::INTEGER, 0, true, true, true, true));
         table->addColumn(Column("inbound_transaction_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("ordered_quantity", DataType::INTEGER, 0, false, false, true));
@@ -343,12 +426,12 @@ namespace Schema
     }
 
     // ========================================================
-    // 21. DELIVERY
+    // 26. DELIVERY
     // ========================================================
     Table* createDeliveryTable()
     {
         auto table = new Table("delivery");
-        table->addColumn(Column("delivery_id", DataType::INTEGER, 0, true, true, true));
+        table->addColumn(Column("delivery_id", DataType::INTEGER, 0, true, true, true, true));
         table->addColumn(Column("delivery_code", DataType::VARCHAR, 50, false, true, true));
         table->addColumn(Column("inbound_transaction_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("delivery_at", DataType::DATE, 0, false, false, true));
@@ -363,12 +446,27 @@ namespace Schema
     }
 
     // ========================================================
-    // 22. DELIVERY_UNIT_DETAIL
+    // 27. DELIVERY_DETAIL (From Schema JSON)
     // ========================================================
+    Table* createDeliveryDetailTable()
+    {
+        auto table = new Table("delivery_detail");
+        table->addColumn(Column("id", DataType::VARCHAR, 50, true, true, true));
+        table->addColumn(Column("delivery_id", DataType::INTEGER, 0, false, false, true));
+        table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
+        table->addColumn(Column("received_quantity", DataType::INTEGER, 0, false, false, true));
+
+        table->addConstraint(new PrimaryKeyConstraint("pk_delivery_detail", "id"));
+        table->addConstraint(new ForeignKeyConstraint("fk_delivery_detail_delivery", "delivery_id", "delivery", "delivery_id"));
+        table->addConstraint(new ForeignKeyConstraint("fk_delivery_detail_product", "product_id", "product", "product_id"));
+        return table;
+    }
+
+    // Backward compatibility alias for serial tracking
     Table* createDeliveryUnitDetailTable()
     {
         auto table = new Table("delivery_unit_detail");
-        table->addColumn(Column("delivery_unit_detail_id", DataType::INTEGER, 0, true, true, true));
+        table->addColumn(Column("delivery_unit_detail_id", DataType::INTEGER, 0, true, true, true, true));
         table->addColumn(Column("delivery_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("serial", DataType::VARCHAR, 100, false, false, true));
@@ -381,19 +479,15 @@ namespace Schema
     }
 
     // ========================================================
-    // 23. OUTBOUND_TYPE
-    // ========================================================
-    // (createOutboundTypeTable is already defined above)
-
-    // ========================================================
-    // 24. OUTBOUND_TRANSACTION
+    // 28. OUTBOUND_TRANSACTION
     // ========================================================
     Table* createOutboundTransactionTable()
     {
         auto table = new Table("outbound_transaction");
-        // Column header in CSV is outbound_trainsaction_id
-        table->addColumn(Column("outbound_trainsaction_id", DataType::INTEGER, 0, true, true, true));
+        // Column header in CSV/JSON is outbound_trainsaction_id
+        table->addColumn(Column("outbound_trainsaction_id", DataType::INTEGER, 0, true, true, true, true));
         table->addColumn(Column("outbound_code", DataType::VARCHAR, 50, false, true, true));
+        table->addColumn(Column("customer_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("order_at", DataType::DATE, 0, false, false, true));
         table->addColumn(Column("type", DataType::VARCHAR, 50, false, false, true));
         table->addColumn(Column("status", DataType::VARCHAR, 50, false, false, true));
@@ -402,17 +496,19 @@ namespace Schema
 
         table->addConstraint(new PrimaryKeyConstraint("pk_outbound_transaction", "outbound_trainsaction_id"));
         table->addConstraint(new UniqueConstraint("uq_outbound_transaction_code", "outbound_code"));
+        table->addConstraint(new ForeignKeyConstraint("fk_outbound_transaction_customer", "customer_id", "customer", "customer_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_outbound_transaction_type", "type", "outbound_type", "type"));
+        table->addConstraint(new ForeignKeyConstraint("fk_outbound_transaction_status", "status", "outbound_status", "status"));
         return table;
     }
 
     // ========================================================
-    // 25. OUTBOUND_DETAIL
+    // 29. OUTBOUND_DETAIL
     // ========================================================
     Table* createOutboundDetailTable()
     {
         auto table = new Table("outbound_detail");
-        table->addColumn(Column("outbound_detail_id", DataType::INTEGER, 0, true, true, true));
+        table->addColumn(Column("outbound_detail_id", DataType::INTEGER, 0, true, true, true, true));
         table->addColumn(Column("outbound_transaction_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("ordered_quantity", DataType::INTEGER, 0, false, false, true));
@@ -424,12 +520,12 @@ namespace Schema
     }
 
     // ========================================================
-    // 26. SHIPMENT
+    // 30. SHIPMENT
     // ========================================================
     Table* createShipmentTable()
     {
         auto table = new Table("shipment");
-        table->addColumn(Column("shipment_id", DataType::INTEGER, 0, true, true, true));
+        table->addColumn(Column("shipment_id", DataType::INTEGER, 0, true, true, true, true));
         table->addColumn(Column("shipment_code", DataType::VARCHAR, 50, false, true, true));
         table->addColumn(Column("sell_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("ship_at", DataType::DATE, 0, false, false, true));
@@ -444,12 +540,27 @@ namespace Schema
     }
 
     // ========================================================
-    // 27. SHIPMENT_UNIT_DETAIL
+    // 31. SHIPMENT_DETAIL (From Schema JSON)
     // ========================================================
+    Table* createShipmentDetailTable()
+    {
+        auto table = new Table("shipment_detail");
+        table->addColumn(Column("id", DataType::VARCHAR, 50, true, true, true));
+        table->addColumn(Column("shipment_id", DataType::INTEGER, 0, false, false, true));
+        table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
+        table->addColumn(Column("received_quantity", DataType::INTEGER, 0, false, false, true));
+
+        table->addConstraint(new PrimaryKeyConstraint("pk_shipment_detail", "id"));
+        table->addConstraint(new ForeignKeyConstraint("fk_shipment_detail_shipment", "shipment_id", "shipment", "shipment_id"));
+        table->addConstraint(new ForeignKeyConstraint("fk_shipment_detail_product", "product_id", "product", "product_id"));
+        return table;
+    }
+
+    // Backward compatibility alias for serial tracking
     Table* createShipmentUnitDetailTable()
     {
         auto table = new Table("shipment_unit_detail");
-        table->addColumn(Column("shipment_unit_detail_id", DataType::INTEGER, 0, true, true, true));
+        table->addColumn(Column("shipment_unit_detail_id", DataType::INTEGER, 0, true, true, true, true));
         table->addColumn(Column("shipment_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("serial", DataType::VARCHAR, 100, false, false, true));
@@ -462,11 +573,31 @@ namespace Schema
     }
 
     // ========================================================
+    // 32. STATUS_HISTORY
+    // ========================================================
+    Table* createStatusHistoryTable()
+    {
+        auto table = new Table("status_history");
+        table->addColumn(Column("history_id", DataType::INTEGER, 0, true, true, true, true));
+        table->addColumn(Column("unit_id", DataType::INTEGER, 0, false, false, true));
+        table->addColumn(Column("old_status", DataType::VARCHAR, 50, false, false, false)); // Nullable on first appearance
+        table->addColumn(Column("curr_status", DataType::VARCHAR, 50, false, false, true));
+        table->addColumn(Column("transaction", DataType::INTEGER, 0, false, false, true));
+        table->addColumn(Column("type", DataType::VARCHAR, 50, false, false, true)); // INBOUND / OUTBOUND
+
+        table->addConstraint(new PrimaryKeyConstraint("pk_status_history", "history_id"));
+        table->addConstraint(new ForeignKeyConstraint("fk_status_history_unit", "unit_id", "unit_inventory", "unit_id"));
+        table->addConstraint(new ForeignKeyConstraint("fk_status_history_curr_status", "curr_status", "unit_status", "status"));
+        return table;
+    }
+
+    // ========================================================
     // SCHEMA MANAGEMENT & HELPERS
     // ========================================================
 
     Table* createTable(const string& tableName)
     {
+        // Level 1: Independent
         if (tableName == "category") return createCategoryTable();
         if (tableName == "brand") return createBrandTable();
         if (tableName == "unit_status") return createUnitStatusTable();
@@ -474,10 +605,19 @@ namespace Schema
         if (tableName == "inbound_status") return createInboundStatusTable();
         if (tableName == "delivery_status") return createDeliveryStatusTable();
         if (tableName == "outbound_type") return createOutboundTypeTable();
+        if (tableName == "outbound_status") return createOutboundStatusTable();
         if (tableName == "shipment_status") return createShipmentStatusTable();
+        if (tableName == "customer") return createCustomerTable();
 
+        // Level 2
         if (tableName == "product") return createProductTable();
+        if (tableName == "individual_info") return createIndividualInfoTable();
+        if (tableName == "business_info") return createBusinessInfoTable();
+        if (tableName == "inbound_transaction") return createInboundTransactionTable();
+        if (tableName == "outbound_transaction") return createOutboundTransactionTable();
 
+        // Level 3
+        if (tableName == "product_quantity") return createProductQuantityTable();
         if (tableName == "cpu") return createCpuTable();
         if (tableName == "gpu") return createGpuTable();
         if (tableName == "mainboard") return createMainboardTable();
@@ -486,17 +626,19 @@ namespace Schema
         if (tableName == "psu") return createPsuTable();
         if (tableName == "cooling") return createCoolingTable();
         if (tableName == "case") return createCaseTable();
-
         if (tableName == "unit_inventory") return createUnitInventoryTable();
-
-        if (tableName == "inbound_transaction") return createInboundTransactionTable();
         if (tableName == "inbound_detail") return createInboundDetailTable();
         if (tableName == "delivery") return createDeliveryTable();
-        if (tableName == "delivery_unit_detail") return createDeliveryUnitDetailTable();
-
-        if (tableName == "outbound_transaction") return createOutboundTransactionTable();
         if (tableName == "outbound_detail") return createOutboundDetailTable();
         if (tableName == "shipment") return createShipmentTable();
+
+        // Level 4
+        if (tableName == "delivery_detail") return createDeliveryDetailTable();
+        if (tableName == "shipment_detail") return createShipmentDetailTable();
+        if (tableName == "status_history") return createStatusHistoryTable();
+
+        // Compatibility aliases
+        if (tableName == "delivery_unit_detail") return createDeliveryUnitDetailTable();
         if (tableName == "shipment_unit_detail") return createShipmentUnitDetailTable();
 
         return nullptr;
@@ -513,14 +655,19 @@ namespace Schema
             "inbound_status",
             "delivery_status",
             "outbound_type",
+            "outbound_status",
             "shipment_status",
+            "customer",
 
             // Level 2: Depends on Level 1
             "product",
+            "individual_info",
+            "business_info",
             "inbound_transaction",
             "outbound_transaction",
 
             // Level 3: Depends on Level 2
+            "product_quantity",
             "cpu",
             "gpu",
             "mainboard",
@@ -536,8 +683,9 @@ namespace Schema
             "shipment",
 
             // Level 4: Depends on Level 3
-            "delivery_unit_detail",
-            "shipment_unit_detail"
+            "delivery_detail",
+            "shipment_detail",
+            "status_history"
         };
     }
 

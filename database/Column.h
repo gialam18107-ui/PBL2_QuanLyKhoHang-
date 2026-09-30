@@ -11,7 +11,8 @@ enum class DataType
     VARCHAR,
     CHAR,
     TEXT,
-    DATE
+    DATE,
+    BOOLEAN
 };
 
 class Column

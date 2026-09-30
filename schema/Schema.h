@@ -14,7 +14,7 @@ namespace Schema
     // INDIVIDUAL TABLE FACTORIES (Return raw pointer Table*)
     // ========================================================
 
-    // Independent lookup / dimension tables
+    // Independent lookup / dimension tables (Level 1)
     Table* createCategoryTable();
     Table* createBrandTable();
     Table* createUnitStatusTable();
@@ -22,12 +22,19 @@ namespace Schema
     Table* createInboundStatusTable();
     Table* createDeliveryStatusTable();
     Table* createOutboundTypeTable();
+    Table* createOutboundStatusTable();
     Table* createShipmentStatusTable();
+    Table* createCustomerTable();
 
-    // Master entity tables
+    // Level 2 tables
     Table* createProductTable();
+    Table* createIndividualInfoTable();
+    Table* createBusinessInfoTable();
+    Table* createInboundTransactionTable();
+    Table* createOutboundTransactionTable();
 
-    // Product specification / sub-tables
+    // Level 3 tables
+    Table* createProductQuantityTable();
     Table* createCpuTable();
     Table* createGpuTable();
     Table* createMainboardTable();
@@ -36,20 +43,19 @@ namespace Schema
     Table* createPsuTable();
     Table* createCoolingTable();
     Table* createCaseTable();
-
-    // Inventory units
     Table* createUnitInventoryTable();
-
-    // Inbound transactions & deliveries
-    Table* createInboundTransactionTable();
     Table* createInboundDetailTable();
     Table* createDeliveryTable();
-    Table* createDeliveryUnitDetailTable();
-
-    // Outbound transactions & shipments
-    Table* createOutboundTransactionTable();
     Table* createOutboundDetailTable();
     Table* createShipmentTable();
+
+    // Level 4 tables
+    Table* createDeliveryDetailTable();
+    Table* createShipmentDetailTable();
+    Table* createStatusHistoryTable();
+
+    // Backward-compatibility aliases
+    Table* createDeliveryUnitDetailTable();
     Table* createShipmentUnitDetailTable();
 
     // ========================================================
@@ -59,13 +65,13 @@ namespace Schema
     // Create a table by its name
     Table* createTable(const string& tableName);
 
-    // Get all table names in topological dependency order
+    // Get all 32 table names in topological dependency order
     Vector<string> getTableNames();
 
-    // Create all 26 tables in topological dependency order
+    // Create all 32 tables in topological dependency order
     Vector<Table*> createAllTables();
 
-    // Register all 26 tables into a Database
+    // Register all tables into a Database
     void initDatabase(Database& db);
 }
 
