@@ -592,6 +592,18 @@ namespace Schema
     }
 
     // ========================================================
+    // SPECIFICATION SUB-TABLE FACTORY (Rule 6 & Rule 10.4)
+    // ========================================================
+    Table* createSpecTable(const string& specName)
+    {
+        auto table = new Table(specName);
+        table->addColumn(Column("id", DataType::INTEGER, 0, true, true, true, true));
+        table->addColumn(Column("spec", DataType::VARCHAR, 255, false, false, true));
+        table->addConstraint(new PrimaryKeyConstraint("pk_" + specName, "id"));
+        return table;
+    }
+
+    // ========================================================
     // SCHEMA MANAGEMENT & HELPERS
     // ========================================================
 

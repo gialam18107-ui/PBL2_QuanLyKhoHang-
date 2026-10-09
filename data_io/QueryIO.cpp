@@ -1,11 +1,9 @@
 #include "QueryIO.h"
 #include "CSVHelper.h"
-#include "TableIO.h"
-#include "schema/Schema.h"
+#include "DatabaseIO.h"
 
 #include <fstream>
 #include <iostream>
-#include <algorithm>
 
 namespace DataIO
 {
@@ -113,18 +111,9 @@ namespace DataIO
             {
                 const string& tableName = requiredTables[i];
                 auto table = db->getTable(tableName);
-                if (table == nullptr)
+                if (table == nullptr || table->getRowCount() == 0)
                 {
-                    table = Schema::createTable(tableName);
-                    if (table != nullptr)
-                    {
-                        db->addTable(table);
-                    }
-                }
-
-                if (table != nullptr && table->getRowCount() == 0)
-                {
-                    TableIO::read(*table, folderPath);
+                    DatabaseIO::readTable(*db, tableName, folderPath);
                 }
             }
         }

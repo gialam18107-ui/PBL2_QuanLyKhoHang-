@@ -98,7 +98,7 @@
           "unique": true,
           "notNull": true,
           "increment": false,
-          "comment": "ASUS\nMSI\nINTEL\nAMD\nNVI\nSAM\nGIG",
+          "comment": "ASUS\nMSI\nASR\nGIG\nINTEL\nAMD\nNVI\nSAM\nWD\nCOR\nKIN\nGSKI",
           "size": 5
         }
       ],
@@ -2102,7 +2102,7 @@
           "unique": false,
           "notNull": true,
           "increment": false,
-          "comment": "INTEL/AMD",
+          "comment": "Intel/AMD",
           "size": 255
         },
         {
@@ -2385,19 +2385,6 @@
           "increment": false,
           "comment": "producer_code + category_code+next_code_no(producer)+next_code_no(category)\n\nINTEL-CPU-0001-0001\nNVI-GPU-0032-0034\nSAM-SSD-0003-0031\nAMD-GPU-0323-2323",
           "size": 20
-        },
-        {
-          "id": "VO6xdhouKtbyZUfe4TB7P",
-          "name": "product_name",
-          "type": "VARCHAR",
-          "default": "",
-          "check": "",
-          "primary": false,
-          "unique": false,
-          "notNull": true,
-          "increment": false,
-          "comment": "",
-          "size": 255
         },
         {
           "id": "stLRLLncNdBnraXvn2Vdx",
@@ -2999,6 +2986,87 @@
           "increment": false,
           "comment": "INBOUND/OUTBOUND",
           "size": 255
+        }
+      ],
+      "comment": "",
+      "indices": [],
+      "uniqueConstraints": [],
+      "color": "#7a1717",
+      "collapsed": false
+    },
+    {
+      "id": "8ZDmb-M2UnBOrIMqOrxi_",
+      "name": "PRODUCT_QUANTITY_QUERY",
+      "x": 3700.2143585270314,
+      "y": -982.4029266121915,
+      "locked": false,
+      "fields": [
+        {
+          "name": "product_code",
+          "type": "VARCHAR",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "unsigned": true,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "id": "_GitqrWHUYshmXwdhXvf1",
+          "size": 255
+        },
+        {
+          "id": "kClFiX3I2AUVN9yvsWqdk",
+          "name": "product_name",
+          "type": "VARCHAR",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": 255
+        },
+        {
+          "id": "04va6O7Yu4hrb13myaEqc",
+          "name": "available_quantity",
+          "type": "INTEGER",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": "",
+          "values": []
+        },
+        {
+          "id": "thD22e4g7qsmCM7YLmjtL",
+          "name": "warranty_quantity",
+          "type": "INTEGER",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": "",
+          "values": []
+        },
+        {
+          "id": "N9xuaktlwdprjPmYfgNsg",
+          "name": "scrapped_quantity",
+          "type": "",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": ""
         }
       ],
       "comment": "",
@@ -3703,19 +3771,8 @@
     },
     {
       "id": 4,
-      "x": -473.74165624480673,
-      "y": -604.1634762542133,
-      "title": "note_4",
-      "content": "Các thông số của sản phẩm chỉ được phép chọn thông qua danh sách thông số có sẵn. Nhưng danh sách thông số này có thể tùy ý thêm/bớt\nVí dụ: RAM hiện có DDR4, DDR5, thì chỉ được phép chọn một trong hai ở phần generation. Nhưng sau này có thêm DDR6 thì danh sách chọn sẽ +1.",
-      "locked": false,
-      "color": "#fcf7ac",
-      "height": 210,
-      "width": 364.6819304736329
-    },
-    {
-      "id": 5,
-      "x": 642.5298471080594,
-      "y": -794.8668376118744,
+      "x": 323.72260119426113,
+      "y": -649.8300809217768,
       "title": "note_5",
       "content": "Nếu đã có liên kết với các bảng khác thì không được phép xóa, đặc biệt là product, inbound, outbound, delivery, shipment.",
       "locked": false,
@@ -3724,7 +3781,7 @@
       "width": 397.1859502369924
     },
     {
-      "id": 6,
+      "id": 5,
       "x": 1150.7743394180493,
       "y": 82.15072283898621,
       "title": "note_6",
@@ -3735,7 +3792,7 @@
       "width": 270.1247820711329
     },
     {
-      "id": 7,
+      "id": 6,
       "x": 3722.3774700805716,
       "y": 226.00008269151448,
       "title": "QUERY_REPORT_1 - Báo cáo nhập/xuất (theo tháng/năm)",
@@ -3746,7 +3803,7 @@
       "width": 518.3372966276955
     },
     {
-      "id": 8,
+      "id": 7,
       "x": 3709.127959190699,
       "y": 454.24364444825085,
       "title": "QUERY_REPORT_2 - Báo cáo tồn (Theo ngày/tháng)",
@@ -3755,6 +3812,28 @@
       "color": "#fcf7ac",
       "height": 90,
       "width": 479.9234550891799
+    },
+    {
+      "id": 8,
+      "x": 3457.1273148912824,
+      "y": -1180.0309740433777,
+      "title": "note_9",
+      "content": "Product_query và product_quantity luôn đi chung với nhau.\nChỉ hiện product_query trên UI khi mà ta sổ cửa sổ phụ của product xuống, còn dòng chính vẫn là product_quantity_query",
+      "locked": false,
+      "color": "#fcf7ac",
+      "height": 162,
+      "width": 415.8018888287345
+    },
+    {
+      "id": 9,
+      "x": -314.8031897561047,
+      "y": -924.3861464418753,
+      "title": "Folder",
+      "content": "-all inbound/outbound transactions, delivery and shipment go to transactions folder\n-status_history, unit_inventory go to unit folder\n-product_quantity, product, cpu, mainboard, gpu, ram, ssd, psu, cooling, case, brand, category go to products folder\n-each cat_specs folder contains some sub tables (with only 2 columns, one is id(key), others is spec) for its specs. For example: ssd_specs has 3 sub table: type, gen, capacity\n-customer, individual_infor and business_info go to customers folder\n-all type and status table go to status_type folder",
+      "locked": false,
+      "color": "#fcf7ac",
+      "height": 306,
+      "width": 460.7165343199221
     }
   ],
   "subjectAreas": [
@@ -3802,9 +3881,9 @@
       "id": 4,
       "name": "QUERY_FOR_INTERFACE",
       "x": 2794.1234450821057,
-      "y": -1027.5608627039776,
-      "width": 980.2906642027228,
-      "height": 879.5424049114913,
+      "y": -1017.9137790330374,
+      "width": 1210.5996533854996,
+      "height": 869.8953212405511,
       "color": "#4e177a",
       "locked": false
     },

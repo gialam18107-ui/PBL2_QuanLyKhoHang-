@@ -43,7 +43,6 @@ Users are allowed to add new records to the following tables:
 - `PSU`
 - `Cooling`
 - `Case`
-- `Category`
 - `Brand`
 
 When adding a new `Products` record, the user must select an existing:
@@ -187,7 +186,10 @@ The generator is responsible for generating **transaction-related test data only
 - CSV output must contain data that can be imported and validated by the main system without violating schema or business rules.
 - The crawler must not modify or delete the database schema or existing database records unless explicitly required by a separate import process.
 
+---
+
 ## 9. UI Rules
+
 - Use Qt Widgets with C++17.
 - Keep UI code separate from database, custom data structures, and business logic.
 - UI code can be saved in `ui/`.
@@ -195,3 +197,90 @@ The generator is responsible for generating **transaction-related test data only
 - Do not move database logic, inventory rules, or core application data management into UI classes.
 - When modifying an existing UI, preserve existing behavior unless the change explicitly requires otherwise.
 - Do not modify generated Qt files such as `ui_*.h` directly when using Qt Designer.
+
+---
+
+## 10. File Organization Rules
+
+Project files must be organized by the business domain of the corresponding tables.
+
+### 10.1 Transactions
+
+The `transactions/` folder contains all inbound and outbound transaction-related tables:
+
+- All inbound transactions
+- All outbound transactions
+- `Delivery`
+- `Shipment`
+
+### 10.2 Units
+
+The `unit/` folder contains unit-level inventory data:
+
+- `status_history`
+- `unit_inventory`
+
+### 10.3 Products
+
+The `products/` folder contains product and product-reference tables:
+
+- `product_quantity`
+- `product`
+- `CPU`
+- `Mainboard`
+- `GPU`
+- `RAM`
+- `SSD`
+- `PSU`
+- `Cooling`
+- `Case`
+- `Brand`
+- `Category`
+
+### 10.4 Category Specifications
+
+Each category must have its own `<category>_specs/` folder.
+
+- Each `<category>_specs/` folder contains the specification sub-tables belonging to that category.
+- Each specification sub-table contains exactly two columns:
+  - an `id` key column
+  - a `spec` value column
+- Specification sub-tables must contain only values applicable to their corresponding category/specification.
+
+For example:
+
+```text
+ssd_specs/
+├── type
+├── gen
+└── capacity
+```
+
+Each of `type`, `gen`, and `capacity` contains only:
+
+```text
+id
+spec
+```
+
+### 10.5 Customers
+
+The `customers/` folder contains customer-related tables:
+
+- `customer`
+- `individual_infor`
+- `business_info`
+
+### 10.6 Status and Type Tables
+
+The `status_type/` folder contains **all status and type master tables**.
+
+- Status tables
+- Type tables
+- `UnitStatus` master data, if represented as a separate table by the schema
+
+### 10.7 Organization Consistency
+
+- A table file must be placed in the folder corresponding to its business domain.
+- Related join/detail tables must remain with the domain of the business process they belong to, unless the schema or project structure explicitly requires otherwise.
+- File organization must not change table names, column names, keys, relationships, or the schema defined in `QuanLyKhoHang_schema.json`.

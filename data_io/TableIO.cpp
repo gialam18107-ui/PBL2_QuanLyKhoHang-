@@ -2,6 +2,7 @@
 #include "CSVHelper.h"
 #include "schema/Schema.h"
 
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 
@@ -55,6 +56,22 @@ namespace DataIO
         if (headers.empty())
         {
             return false;
+        }
+
+        // If table still has no columns (e.g. dynamic spec table), initialize from headers
+        if (table.getColumnCount() == 0)
+        {
+            for (const auto& h : headers)
+            {
+                if (h == "id")
+                {
+                    table.addColumn(Column(h, DataType::INTEGER, 0, true, true, true, true));
+                }
+                else
+                {
+                    table.addColumn(Column(h, DataType::VARCHAR, 255, false, false, true));
+                }
+            }
         }
 
         string line;
@@ -141,6 +158,15 @@ namespace DataIO
 
     bool TableIO::writeToFile(const Table& table, const string& filePath)
     {
+        // Ensure parent directory exists
+        try {
+            filesystem::path p(filePath);
+            if (p.has_parent_path())
+            {
+                filesystem::create_directories(p.parent_path());
+            }
+        } catch (...) {}
+
         ofstream file(filePath);
         if (!file.is_open())
         {

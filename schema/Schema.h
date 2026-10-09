@@ -58,6 +58,9 @@ namespace Schema
     Table* createDeliveryUnitDetailTable();
     Table* createShipmentUnitDetailTable();
 
+    // Specification sub-tables (Rule 6 & Rule 10.4)
+    Table* createSpecTable(const string& specName);
+
     // ========================================================
     // SCHEMA MANAGEMENT & HELPERS
     // ========================================================
