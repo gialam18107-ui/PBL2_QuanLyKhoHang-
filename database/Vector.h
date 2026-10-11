@@ -28,7 +28,7 @@ private:
         T* newBuffer = static_cast<T*>(::operator new(newCap * sizeof(T)));
         for (size_t i = 0; i < sz; i++)
         {
-            new (&newBuffer[i]) T(std::move(elements[i]));
+            new (&newBuffer[i]) T(std::move(elements[i])); //Placement New
             elements[i].~T();
         }
         if (elements)
@@ -397,7 +397,7 @@ public:
         for (size_t i = index; i + 1 < sz; i++)
         {
             new (&elements[i]) T(std::move(elements[i + 1]));
-            elements[i + 1].~T();
+            elements[i + 1].~T(); //Phải hủy thì mới chơi bài new placement đc
         }
         sz--;
     }

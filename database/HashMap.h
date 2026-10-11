@@ -112,7 +112,7 @@ private:
 
     void rehash(size_t newBucketCount)
     {
-        Entry** newBuckets = new Entry*[newBucketCount]();
+        Entry** newBuckets = new Entry*[newBucketCount](); //Dấu ngoặc ở cuối dùng để đặt mọi giá trị trong ô nhớ = 0
         for (size_t i = 0; i < bucketCount; i++)
         {
             Entry* curr = buckets[i];

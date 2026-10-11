@@ -7,6 +7,7 @@
 #include "database/Vector.h"
 
 namespace user_query{
+    //Query for interface
     void product_query(Database *db, Vector<JoinedRecord> &results, bool is_sold);
     void product_quantity_query(Database *db, Vector<JoinedRecord> &results);
     void unit_inventory_query(Database *db, Vector<JoinedRecord> &results);

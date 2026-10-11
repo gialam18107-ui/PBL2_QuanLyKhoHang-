@@ -3,3 +3,10 @@ CompileFlags:
   Add:
     - -std=c++17
     - -I.
+    - -IC:/msys64/ucrt64/include/qt6
+    - -IC:/msys64/ucrt64/include/qt6/QtCore
+    - -IC:/msys64/ucrt64/include/qt6/QtGui
+    - -IC:/msys64/ucrt64/include/qt6/QtWidgets
+    - -DQT_CORE_LIB
+    - -DQT_GUI_LIB
+    - -DQT_WIDGETS_LIB

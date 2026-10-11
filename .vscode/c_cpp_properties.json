@@ -3,12 +3,19 @@
     {
       "name": "Win32",
       "includePath": [
-        "${workspaceFolder}/**"
+        "${workspaceFolder}/**",
+        "C:/msys64/ucrt64/include/qt6",
+        "C:/msys64/ucrt64/include/qt6/QtCore",
+        "C:/msys64/ucrt64/include/qt6/QtGui",
+        "C:/msys64/ucrt64/include/qt6/QtWidgets"
       ],
       "defines": [
         "_DEBUG",
         "UNICODE",
-        "_UNICODE"
+        "_UNICODE",
+        "QT_CORE_LIB",
+        "QT_GUI_LIB",
+        "QT_WIDGETS_LIB"
       ],
       "compilerPath": "C:/msys64/ucrt64/bin/g++.exe",
       "cStandard": "c17",
