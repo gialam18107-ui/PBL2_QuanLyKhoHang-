@@ -1,5 +1,5 @@
 CXX = g++
-CXXFLAGS = -std=c++17 -Wall -Wextra -I. -MMD -MP
+CXXFLAGS = -g -std=c++17 -Wall -Wextra -I. -MMD -MP
 
 QT_CXXFLAGS = $(shell pkg-config --cflags Qt6Widgets)
 QT_LIBS = $(shell pkg-config --libs Qt6Widgets)
