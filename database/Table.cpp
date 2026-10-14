@@ -17,6 +17,8 @@ Table::Table(const Table& other)
     : name(other.name),
       columns(other.columns),
       rows(other.rows),
+      deletedRows(other.deletedRows),
+      deletedRowCount(other.deletedRowCount),
       autoIncrementCounters(other.autoIncrementCounters)
 {
     for (size_t i = 0; i < other.constraints.size(); i++)
@@ -33,10 +35,13 @@ Table::Table(Table&& other) noexcept
     : name(std::move(other.name)),
       columns(std::move(other.columns)),
       rows(std::move(other.rows)),
+      deletedRows(std::move(other.deletedRows)),
+      deletedRowCount(other.deletedRowCount),
       constraints(std::move(other.constraints)),
       indexes(std::move(other.indexes)),
       autoIncrementCounters(std::move(other.autoIncrementCounters))
 {
+    other.deletedRowCount = 0;
 }
 
 Table& Table::operator=(const Table& other)
@@ -58,6 +63,8 @@ Table& Table::operator=(const Table& other)
         name = other.name;
         columns = other.columns;
         rows = other.rows;
+        deletedRows = other.deletedRows;
+        deletedRowCount = other.deletedRowCount;
         autoIncrementCounters = other.autoIncrementCounters;
 
         for (size_t i = 0; i < other.constraints.size(); i++)
@@ -91,9 +98,12 @@ Table& Table::operator=(Table&& other) noexcept
         name = std::move(other.name);
         columns = std::move(other.columns);
         rows = std::move(other.rows);
+        deletedRows = std::move(other.deletedRows);
+        deletedRowCount = other.deletedRowCount;
         constraints = std::move(other.constraints);
         indexes = std::move(other.indexes);
         autoIncrementCounters = std::move(other.autoIncrementCounters);
+        other.deletedRowCount = 0;
     }
     return *this;
 }
@@ -202,6 +212,47 @@ bool Table::addConstraint(Constraint* constraint)
     }
 
     constraints.push_back(constraint);
+
+    // Primary-key, unique and foreign-key columns are frequent lookup/join keys.
+    // Create a HASH index automatically unless an index already covers the column.
+    string indexedColumn;
+    if (const auto* primaryKey = dynamic_cast<const PrimaryKeyConstraint*>(constraint))
+    {
+        indexedColumn = primaryKey->getColumnName();
+    }
+    else if (const auto* uniqueConstraint = dynamic_cast<const UniqueConstraint*>(constraint))
+    {
+        indexedColumn = uniqueConstraint->getColumnName();
+    }
+    else if (const auto* foreignKey = dynamic_cast<const ForeignKeyConstraint*>(constraint))
+    {
+        indexedColumn = foreignKey->getColumnName();
+    }
+
+    if (!indexedColumn.empty() && hasColumn(indexedColumn))
+    {
+        bool columnAlreadyIndexed = false;
+        for (size_t i = 0; i < indexes.size(); ++i)
+        {
+            if (indexes[i]->getColumnName() == indexedColumn)
+            {
+                columnAlreadyIndexed = true;
+                break;
+            }
+        }
+
+        if (!columnAlreadyIndexed)
+        {
+            string indexName = "__auto_hash_" + indexedColumn;
+            int suffix = 1;
+            while (hasIndex(indexName))
+            {
+                indexName = "__auto_hash_" + indexedColumn + "_" + to_string(suffix++);
+            }
+            createIndex(indexName, indexedColumn, IndexType::HASH);
+        }
+    }
+
     return true;
 }
 
@@ -238,7 +289,12 @@ bool Table::createIndex(const string& indexName, const string& columnName, Index
         newIdx = new BTreeIndex(indexName, columnName);
     }
 
-    newIdx->build(rows);
+    Vector<Record> indexRows;
+    for (size_t rowIndex = 0; rowIndex < rows.size(); ++rowIndex)
+    {
+        indexRows.push_back(isRowDeleted(rowIndex) ? Record() : rows[rowIndex]);
+    }
+    newIdx->build(indexRows);
     indexes.push_back(newIdx);
     return true;
 }
@@ -318,26 +374,98 @@ bool Table::checkDataType(const Column& column, const Value& value) const
 bool Table::checkConstraints(const Record& record, int ignoreRowIndex) const
 {
     Vector<Record> validRows;
-    for (size_t i = 0; i < rows.size(); i++)
-    {
-        if (static_cast<int>(i) != ignoreRowIndex)
-        {
-            validRows.push_back(rows[i]);
-        }
-    }
+    bool validRowsBuilt = false;
 
     for (size_t i = 0; i < constraints.size(); i++)
     {
-        const Constraint* c = constraints[i];
-        // ForeignKey is checked by Database
-        if (c->getType() == ConstraintType::FOREIGN_KEY)
+        const Constraint* constraint = constraints[i];
+        if (constraint->getType() == ConstraintType::FOREIGN_KEY)
         {
+            // Foreign keys are validated by Database against the referenced table.
             continue;
         }
 
-        if (!c->validate(record, validRows, {}))
+        string constrainedColumn;
+        if (const auto* primaryKey = dynamic_cast<const PrimaryKeyConstraint*>(constraint))
         {
-            cout << "Constraint failed: " << c->getName() << endl;
+            constrainedColumn = primaryKey->getColumnName();
+        }
+        else if (const auto* uniqueConstraint = dynamic_cast<const UniqueConstraint*>(constraint))
+        {
+            constrainedColumn = uniqueConstraint->getColumnName();
+        }
+
+        const Index* columnIndex = nullptr;
+        if (!constrainedColumn.empty())
+        {
+            for (size_t index = 0; index < indexes.size(); ++index)
+            {
+                if (indexes[index]->getColumnName() == constrainedColumn)
+                {
+                    columnIndex = indexes[index];
+                    break;
+                }
+            }
+        }
+
+        if (columnIndex != nullptr)
+        {
+            const bool primaryKey = constraint->getType() == ConstraintType::PRIMARY_KEY;
+            if (!record.has(constrainedColumn) || isNull(record.get(constrainedColumn)))
+            {
+                if (primaryKey)
+                {
+                    cout << "Constraint failed: " << constraint->getName() << endl;
+                    return false;
+                }
+                // UNIQUE permits missing/NULL values in this implementation.
+                continue;
+            }
+
+            const Value candidateValue = record.get(constrainedColumn);
+            const Vector<size_t> candidates = columnIndex->find(candidateValue);
+            bool duplicate = false;
+            for (size_t candidate = 0; candidate < candidates.size(); ++candidate)
+            {
+                const size_t rowIndex = candidates[candidate];
+                if (rowIndex == static_cast<size_t>(ignoreRowIndex) && ignoreRowIndex >= 0)
+                {
+                    continue;
+                }
+                if (rowIndex < rows.size()
+                    && !isRowDeleted(rowIndex)
+                    && rows[rowIndex].has(constrainedColumn)
+                    && rows[rowIndex].get(constrainedColumn) == candidateValue)
+                {
+                    duplicate = true;
+                    break;
+                }
+            }
+            if (duplicate)
+            {
+                cout << "Constraint failed: " << constraint->getName() << endl;
+                return false;
+            }
+            continue;
+        }
+
+        // Build the legacy validation input only when a non-indexed constraint
+        // requires it, avoiding a full copy of all rows for indexed PK/UNIQUE.
+        if (!validRowsBuilt)
+        {
+            for (size_t rowIndex = 0; rowIndex < rows.size(); ++rowIndex)
+            {
+                if (!isRowDeleted(rowIndex) && static_cast<int>(rowIndex) != ignoreRowIndex)
+                {
+                    validRows.push_back(rows[rowIndex]);
+                }
+            }
+            validRowsBuilt = true;
+        }
+
+        if (!constraint->validate(record, validRows, {}))
+        {
+            cout << "Constraint failed: " << constraint->getName() << endl;
             return false;
         }
     }
@@ -424,6 +552,7 @@ bool Table::insert(const Record& record)
 
     size_t newRowIdx = rows.size();
     rows.push_back(recordToInsert);
+    deletedRows.push_back(0);
 
     // Update indexes
     for (size_t i = 0; i < indexes.size(); i++)
@@ -444,6 +573,7 @@ bool Table::update(const Condition& condition, const Record& newValues)
 
     for (size_t i = 0; i < rows.size(); i++)
     {
+        if (isRowDeleted(i)) continue;
         if (!condition.evaluate(rows[i]))
         {
             continue;
@@ -497,6 +627,7 @@ bool Table::update(const ConditionGroup& group, const Record& newValues)
 
     for (size_t i = 0; i < rows.size(); i++)
     {
+        if (isRowDeleted(i)) continue;
         if (!group.evaluate(rows[i]))
         {
             continue;
@@ -546,27 +677,22 @@ bool Table::update(const ConditionGroup& group, const Record& newValues)
 bool Table::remove(const Condition& condition)
 {
     bool anyRemoved = false;
-    Vector<Record> remainingRows;
 
     for (size_t i = 0; i < rows.size(); i++)
     {
-        if (condition.evaluate(rows[i]))
+        if (!isRowDeleted(i) && condition.evaluate(rows[i]))
         {
+            deletedRows[i] = 1;
+            ++deletedRowCount;
             anyRemoved = true;
-        }
-        else
-        {
-            remainingRows.push_back(rows[i]);
         }
     }
 
     if (anyRemoved)
     {
-        rows = std::move(remainingRows);
-        // Rebuild all indexes after removal
-        for (size_t i = 0; i < indexes.size(); i++)
+        if (deletedRowCount >= rows.size() / 2)
         {
-            indexes[i]->build(rows);
+            compactRows();
         }
     }
 
@@ -576,26 +702,22 @@ bool Table::remove(const Condition& condition)
 bool Table::remove(const ConditionGroup& group)
 {
     bool anyRemoved = false;
-    Vector<Record> remainingRows;
 
     for (size_t i = 0; i < rows.size(); i++)
     {
-        if (group.evaluate(rows[i]))
+        if (!isRowDeleted(i) && group.evaluate(rows[i]))
         {
+            deletedRows[i] = 1;
+            ++deletedRowCount;
             anyRemoved = true;
-        }
-        else
-        {
-            remainingRows.push_back(rows[i]);
         }
     }
 
     if (anyRemoved)
     {
-        rows = std::move(remainingRows);
-        for (size_t i = 0; i < indexes.size(); i++)
+        if (deletedRowCount >= rows.size() / 2)
         {
-            indexes[i]->build(rows);
+            compactRows();
         }
     }
 
@@ -604,7 +726,12 @@ bool Table::remove(const ConditionGroup& group)
 
 int Table::getRowCount() const
 {
-    return static_cast<int>(rows.size());
+    return static_cast<int>(rows.size() - deletedRowCount);
+}
+
+bool Table::isRowDeleted(size_t rowIndex) const
+{
+    return rowIndex < deletedRows.size() && deletedRows[rowIndex] != 0;
 }
 
 const Vector<Record>& Table::getRows() const
@@ -620,9 +747,41 @@ Vector<Record>& Table::getRows()
 void Table::clear()
 {
     rows.clear();
+    deletedRows.clear();
+    deletedRowCount = 0;
     for (size_t i = 0; i < indexes.size(); i++)
     {
         indexes[i]->clear();
+    }
+}
+
+void Table::compactRows()
+{
+    Vector<Record> activeRows;
+    activeRows.reserve(rows.size() - deletedRowCount);
+    for (size_t rowIndex = 0; rowIndex < rows.size(); ++rowIndex)
+    {
+        if (!isRowDeleted(rowIndex))
+        {
+            activeRows.push_back(rows[rowIndex]);
+        }
+    }
+
+    rows = std::move(activeRows);
+    deletedRows.clear();
+    for (size_t rowIndex = 0; rowIndex < rows.size(); ++rowIndex)
+    {
+        deletedRows.push_back(0);
+    }
+    deletedRowCount = 0;
+    rebuildIndexes();
+}
+
+void Table::rebuildIndexes()
+{
+    for (size_t index = 0; index < indexes.size(); ++index)
+    {
+        indexes[index]->build(rows);
     }
 }
 
@@ -658,15 +817,17 @@ void Table::printRows() const
     cout << "TABLE DATA: " << name << endl;
     cout << "-----------------------------" << endl;
 
-    if (rows.empty())
+    if (getRowCount() == 0)
     {
         cout << "No records." << endl;
         return;
     }
 
+    size_t displayedRow = 0;
     for (size_t i = 0; i < rows.size(); i++)
     {
-        cout << "Record " << (i + 1) << ":" << endl;
+        if (isRowDeleted(i)) continue;
+        cout << "Record " << (++displayedRow) << ":" << endl;
         rows[i].print();
         cout << endl;
     }
