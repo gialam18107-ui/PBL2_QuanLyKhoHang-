@@ -135,6 +135,15 @@ void AVLTreeIndex::clear()
     tree.clear();
 }
 
+/*
+Nguyên lý hoạt động:
+- Vẫn tuân theo nguyên tắc từ nhỏ đến lớn
+- Nếu back() là node có key == value thì bên trái của nó sẽ nhỏ hơn node này
+=> Không cần quan tâm đến bên trái
+- Nếu như back() ko phải là node có key == value thì chứng tỏ các node trong vector
+đều có key > value. Mà theo ý số 1 thì ko sẽ có cách nào lấy được phần tử tiếp theo key <= value
+------ Đừng cố gắng chứng minh lại ------
+*/
 Vector<size_t> AVLTreeIndex::find(const Value& value) const
 {
     Vector<size_t> result;
