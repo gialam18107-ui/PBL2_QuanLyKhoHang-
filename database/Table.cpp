@@ -396,7 +396,7 @@ bool Table::checkConstraints(const Record& record, int ignoreRowIndex) const
 
         if (!c->validate(record, validRows, {}))
         {
-            cout << "Constraint failed: " << constraint->getName() << endl;
+            cout << "Constraint failed: " << c->getName() << endl;
             return false;
         }
     }
