@@ -377,12 +377,16 @@ bool Table::checkConstraints(const Record& record, int ignoreRowIndex) const
 {
     const Vector<Record>* targetRows = &rows;
     Vector<Record> validRows;
-    for (size_t i = 0; i < rows.size(); i++)
+    if (ignoreRowIndex >= 0 && ignoreRowIndex < static_cast<int>(rows.size()))
     {
-        if (static_cast<int>(i) != ignoreRowIndex)
+        for (size_t i = 0; i < rows.size(); i++)
         {
-            validRows.push_back(rows[i]);
+            if (static_cast<int>(i) != ignoreRowIndex && !isRowDeleted(i))
+            {
+                validRows.push_back(rows[i]);
+            }
         }
+        targetRows = &validRows;
     }
 
     for (size_t i = 0; i < constraints.size(); i++)
@@ -394,7 +398,57 @@ bool Table::checkConstraints(const Record& record, int ignoreRowIndex) const
             continue;
         }
 
-        if (!c->validate(record, validRows, {}))
+        // Fast path for PrimaryKey and Unique constraints using existing index
+        if (c->getType() == ConstraintType::PRIMARY_KEY || c->getType() == ConstraintType::UNIQUE)
+        {
+            string colName;
+            if (const auto* pk = dynamic_cast<const PrimaryKeyConstraint*>(c)) colName = pk->getColumnName();
+            else if (const auto* uq = dynamic_cast<const UniqueConstraint*>(c)) colName = uq->getColumnName();
+
+            if (!colName.empty() && record.has(colName))
+            {
+                const Value& val = record.get(colName);
+                if (c->getType() == ConstraintType::PRIMARY_KEY && isNull(val))
+                {
+                    cout << "Constraint failed: " << c->getName() << endl;
+                    return false;
+                }
+                if (!isNull(val))
+                {
+                    const Index* idx = nullptr;
+                    for (size_t k = 0; k < indexes.size(); ++k)
+                    {
+                        if (indexes[k]->getColumnName() == colName)
+                        {
+                            idx = indexes[k];
+                            break;
+                        }
+                    }
+                    if (idx != nullptr)
+                    {
+                        Vector<size_t> matches = idx->find(val);
+                        bool violated = false;
+                        for (size_t m = 0; m < matches.size(); ++m)
+                        {
+                            size_t rIdx = matches[m];
+                            if (!isRowDeleted(rIdx) && static_cast<int>(rIdx) != ignoreRowIndex)
+                            {
+                                violated = true;
+                                break;
+                            }
+                        }
+                        if (violated)
+                        {
+                            cout << "Constraint failed: " << c->getName() << endl;
+                            return false;
+                        }
+                        continue; // Index check passed!
+                    }
+                }
+            }
+        }
+
+        if (!c->validate(record, *targetRows, {}))
         {
             cout << "Constraint failed: " << c->getName() << endl;
             return false;

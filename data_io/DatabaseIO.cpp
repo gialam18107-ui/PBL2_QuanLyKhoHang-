@@ -149,6 +149,7 @@ namespace DataIO
                 cerr << "[DatabaseIO Warning] Failed to read table: " << tableName << endl;
                 allSuccess = false;
             }
+            cout  << "Read table " << tableName << " successfully\n";
         }
         return allSuccess;
     }
