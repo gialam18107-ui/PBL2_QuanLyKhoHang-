@@ -284,9 +284,13 @@ bool Table::createIndex(const string& indexName, const string& columnName, Index
     {
         newIdx = new HashIndex(indexName, columnName);
     }
-    else
+    else if (type == IndexType::AVL)
     {
-        newIdx = new BTreeIndex(indexName, columnName);
+        newIdx = new AVLTreeIndex(indexName, columnName);
+    }
+    else if (type == IndexType::HASH_TREE)
+    {
+        newIdx = new HashTreeIndex(indexName, columnName);
     }
 
     Vector<Record> indexRows;

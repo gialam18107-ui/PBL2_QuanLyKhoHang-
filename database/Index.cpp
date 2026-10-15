@@ -1,5 +1,4 @@
 #include "Index.h"
-#include <algorithm>
 
 Index::Index(
     const string& name,
@@ -57,29 +56,16 @@ void HashIndex::build(const Vector<Record>& records)
 void HashIndex::insert(const Value& value, size_t rowIndex)
 {
     string key = valueToHashKey(value);
-    indexMap[key].push_back(rowIndex);
+    indexMap[key] = rowIndex;
 }
 
 void HashIndex::remove(const Value& value, size_t rowIndex)
 {
     string key = valueToHashKey(value);
     auto it = indexMap.find(key);
-    if (it != indexMap.end())
+    if (it != indexMap.end() && it->second == rowIndex)
     {
-        Vector<size_t>& rowIndices = it->second;
-        for (size_t i = 0; i < rowIndices.size(); i++)
-        {
-            if (rowIndices[i] == rowIndex)
-            {
-                rowIndices[i] = rowIndices[rowIndices.size() - 1];
-                rowIndices.pop_back();
-                break;
-            }
-        }
-        if (rowIndices.empty())
-        {
-            indexMap.erase(key);
-        }
+        indexMap.erase(key);
     }
 }
 
@@ -90,13 +76,14 @@ void HashIndex::clear()
 
 Vector<size_t> HashIndex::find(const Value& value) const
 {
+    Vector<size_t> result;
     string key = valueToHashKey(value);
     auto it = indexMap.find(key);
     if (it != indexMap.end())
     {
-        return it->second;
+        result.push_back(it->second);
     }
-    return {};
+    return result;
 }
 
 Vector<size_t> HashIndex::findRange(const Value& /*minVal*/, const Value& /*maxVal*/) const
@@ -105,152 +92,156 @@ Vector<size_t> HashIndex::findRange(const Value& /*minVal*/, const Value& /*maxV
 }
 
 // ============================================================
-// BTREE INDEX (Ordered Index Implementation)
+// AVL TREE INDEX
 // ============================================================
 
-bool BTreeIndex::valueLess(const Value& a, const Value& b)
-{
-    auto isNum = [](const Value& v) {
-        return holds_alternative<int>(v) || holds_alternative<double>(v);
-    };
-    auto toDbl = [](const Value& v) -> double {
-        if (holds_alternative<int>(v)) return static_cast<double>(get<int>(v));
-        if (holds_alternative<double>(v)) return get<double>(v);
-        return 0.0;
-    };
-
-    if (isNum(a) && isNum(b))
-    {
-        return toDbl(a) < toDbl(b);
-    }
-    if (a.index() != b.index())
-    {
-        return a.index() < b.index();
-    }
-    if (holds_alternative<string>(a))
-    {
-        return get<string>(a) < get<string>(b);
-    }
-    if (holds_alternative<bool>(a))
-    {
-        return !get<bool>(a) && get<bool>(b);
-    }
-    return false;
-}
-
-bool BTreeIndex::valueEqual(const Value& a, const Value& b)
-{
-    auto isNum = [](const Value& v) {
-        return holds_alternative<int>(v) || holds_alternative<double>(v);
-    };
-    auto toDbl = [](const Value& v) -> double {
-        if (holds_alternative<int>(v)) return static_cast<double>(get<int>(v));
-        if (holds_alternative<double>(v)) return get<double>(v);
-        return 0.0;
-    };
-
-    if (isNum(a) && isNum(b))
-    {
-        return toDbl(a) == toDbl(b);
-    }
-    return a == b;
-}
-
-BTreeIndex::BTreeIndex(
+AVLTreeIndex::AVLTreeIndex(
     const string& name,
     const string& columnName
 )
-    : Index(name, columnName, IndexType::BTREE)
+    : Index(name, columnName, IndexType::AVL)
 {
 }
 
-Index* BTreeIndex::clone() const
+Index* AVLTreeIndex::clone() const
 {
-    return new BTreeIndex(*this);
+    return new AVLTreeIndex(*this);
 }
 
-void BTreeIndex::build(const Vector<Record>& records)
+void AVLTreeIndex::build(const Vector<Record>& records)
 {
     clear();
     for (size_t i = 0; i < records.size(); i++)
     {
         if (records[i].has(columnName))
         {
-            entries.push_back(makePair(records[i].get(columnName), i));
+            insert(records[i].get(columnName), i);
         }
     }
-    std::sort(entries.begin(), entries.end(), [](const Pair<Value, size_t>& left, const Pair<Value, size_t>& right) {
-        if (valueLess(left.first, right.first)) return true;
-        if (valueLess(right.first, left.first)) return false;
-        return left.second > right.second;
-    });
 }
 
-size_t BTreeIndex::lowerBound(const Value& value) const
+void AVLTreeIndex::insert(const Value& value, size_t rowIndex)
 {
-    size_t left = 0;
-    size_t right = entries.size();
-    while (left < right)
-    {
-        const size_t mid = left + (right - left) / 2;
-        if (valueLess(entries[mid].first, value))
-        {
-            left = mid + 1;
-        }
-        else
-        {
-            right = mid;
-        }
-    }
-    return left;
+    tree.insert(makePair(value, rowIndex), 0);
 }
 
-void BTreeIndex::insert(const Value& value, size_t rowIndex)
+void AVLTreeIndex::remove(const Value& value, size_t rowIndex)
 {
-    entries.insert(lowerBound(value), makePair(value, rowIndex));
+    tree.remove(makePair(value, rowIndex));
 }
 
-void BTreeIndex::remove(const Value& value, size_t rowIndex)
+void AVLTreeIndex::clear()
 {
-    size_t entryIndex = lowerBound(value);
-    while (entryIndex < entries.size() && valueEqual(entries[entryIndex].first, value))
-    {
-        if (entries[entryIndex].second == rowIndex)
-        {
-            entries.erase(entryIndex);
-            return;
-        }
-        ++entryIndex;
-    }
+    tree.clear();
 }
 
-void BTreeIndex::clear()
-{
-    entries.clear();
-}
-
-Vector<size_t> BTreeIndex::find(const Value& value) const
+Vector<size_t> AVLTreeIndex::find(const Value& value) const
 {
     Vector<size_t> result;
-    size_t entryIndex = lowerBound(value);
-    while (entryIndex < entries.size() && valueEqual(entries[entryIndex].first, value))
+    for (const auto& node : tree)
     {
-        result.push_back(entries[entryIndex].second);
-        ++entryIndex;
+        if (node.key.first == value)
+        {
+            result.push_back(node.key.second);
+        }
+        else if (value < node.key.first)
+        {
+            break;
+        }
     }
     return result;
 }
 
-Vector<size_t> BTreeIndex::findRange(const Value& minVal, const Value& maxVal) const
+Vector<size_t> AVLTreeIndex::findRange(const Value& minVal, const Value& maxVal) const
 {
     Vector<size_t> result;
-    if (valueLess(maxVal, minVal)) return result;
+    if (maxVal < minVal) return result;
 
-    size_t entryIndex = lowerBound(minVal);
-    while (entryIndex < entries.size() && !valueLess(maxVal, entries[entryIndex].first))
+    for (const auto& node : tree)
     {
-        result.push_back(entries[entryIndex].second);
-        ++entryIndex;
+        if (node.key.first < minVal)
+        {
+            continue;
+        }
+        if (maxVal < node.key.first)
+        {
+            break;
+        }
+        result.push_back(node.key.second);
     }
     return result;
+}
+
+// ============================================================
+// HASH TREE INDEX
+// ============================================================
+
+HashTreeIndex::HashTreeIndex(
+    const string& name,
+    const string& columnName
+)
+    : Index(name, columnName, IndexType::HASH_TREE)
+{
+}
+
+Index* HashTreeIndex::clone() const
+{
+    return new HashTreeIndex(*this);
+}
+
+void HashTreeIndex::build(const Vector<Record>& records)
+{
+    clear();
+    for (size_t i = 0; i < records.size(); i++)
+    {
+        if (records[i].has(columnName))
+        {
+            insert(records[i].get(columnName), i);
+        }
+    }
+}
+
+void HashTreeIndex::insert(const Value& value, size_t rowIndex)
+{
+    string key = valueToHashKey(value);
+    indexMap[key].insert(rowIndex, 0);
+}
+
+void HashTreeIndex::remove(const Value& value, size_t rowIndex)
+{
+    string key = valueToHashKey(value);
+    auto it = indexMap.find(key);
+    if (it != indexMap.end())
+    {
+        it->second.remove(rowIndex);
+        if (it->second.empty())
+        {
+            indexMap.erase(key);
+        }
+    }
+}
+
+void HashTreeIndex::clear()
+{
+    indexMap.clear();
+}
+
+Vector<size_t> HashTreeIndex::find(const Value& value) const
+{
+    Vector<size_t> result;
+    string key = valueToHashKey(value);
+    auto it = indexMap.find(key);
+    if (it != indexMap.end())
+    {
+        for (const auto& node : it->second)
+        {
+            result.push_back(node.key);
+        }
+    }
+    return result;
+}
+
+Vector<size_t> HashTreeIndex::findRange(const Value& /*minVal*/, const Value& /*maxVal*/) const
+{
+    return {};
 }

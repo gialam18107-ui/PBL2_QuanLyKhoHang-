@@ -5,6 +5,7 @@
 #include "datastructure/vector/Vector.h"
 #include "datastructure/hashmap/HashMap.h"
 #include "datastructure/hashmap/Pair.h"
+#include "datastructure/avltree/AvlTree.h"
 #include "Record.h"
 
 using namespace std;
@@ -12,11 +13,12 @@ using namespace std;
 enum class IndexType
 {
     HASH,
-    BTREE
+    AVL,
+    HASH_TREE
 };
 
 /**
- * @brief Abstract base class for table indexes (HashIndex, BTreeIndex).
+ * @brief Abstract base class for table indexes (HashIndex, AVLTreeIndex, HashTreeIndex).
  */
 class Index
 {
@@ -42,7 +44,7 @@ public:
     /// Get indexed column name.
     string getColumnName() const;
 
-    /// Get index type (HASH or BTREE).
+    /// Get index type (HASH, AVL, HASH_TREE).
     IndexType getType() const;
 
     /**
@@ -71,14 +73,14 @@ public:
     virtual void clear() = 0;
 
     /**
-     * @brief Find all row indices matching an exact value (O(1) in HashIndex, O(log N) in BTree).
+     * @brief Find all row indices matching an exact value.
      * @param value Value to search for.
      * @return Vector<size_t> Matching row indices.
      */
     virtual Vector<size_t> find(const Value& value) const = 0;
 
     /**
-     * @brief Range query: find all row indices where minVal <= value <= maxVal (supported by BTree).
+     * @brief Range query: find all row indices where minVal <= value <= maxVal (supported by AVLTreeIndex).
      * @param minVal Inclusive lower bound.
      * @param maxVal Inclusive upper bound.
      */
@@ -86,23 +88,18 @@ public:
 };
 
 // ============================================================
-// HASH INDEX
+// HASH INDEX (Direct 1-1: HashMap<string, size_t>)
 // ============================================================
 
 /**
- * @brief Hash-based table index for O(1) exact equality lookups.
+ * @brief Hash-based table index mapping each key to a single rowIndex.
  */
 class HashIndex : public Index
 {
 private:
-    HashMap<string, Vector<size_t>> indexMap;
+    HashMap<string, size_t> indexMap;
 
 public:
-    /**
-     * @brief Construct a HashIndex on a column.
-     * @param name Index name (e.g. "idx_product_name").
-     * @param columnName Target column name.
-     */
     HashIndex(
         const string& name,
         const string& columnName
@@ -120,29 +117,49 @@ public:
 };
 
 // ============================================================
-// Ordered vector index. Lookups use binary search; insertions and removals
-// may shift entries.
+// AVL TREE INDEX (Key: Pair<Value, size_t>, Value: dummy char)
 // ============================================================
 
 /**
- * @brief Ordered B-Tree index supporting both equality and range queries (findRange).
+ * @brief AVL tree index supporting exact match and range queries.
+ * Key stores Pair<Value, size_t> (value and rowIndex), value of tree node is a dummy char.
  */
-class BTreeIndex : public Index
+class AVLTreeIndex : public Index
 {
 private:
-    Vector<Pair<Value, size_t>> entries;
-
-    static bool valueLess(const Value& a, const Value& b);
-    static bool valueEqual(const Value& a, const Value& b);
-    size_t lowerBound(const Value& value) const;
+    AvlTree<Pair<Value, size_t>, char> tree;
 
 public:
-    /**
-     * @brief Construct a BTreeIndex on a column.
-     * @param name Index name (e.g. "idx_product_price").
-     * @param columnName Target column name.
-     */
-    BTreeIndex(
+    AVLTreeIndex(
+        const string& name,
+        const string& columnName
+    );
+
+    Index* clone() const override;
+
+    void build(const Vector<Record>& records) override;
+    void insert(const Value& value, size_t rowIndex) override;
+    void remove(const Value& value, size_t rowIndex) override;
+    void clear() override;
+
+    Vector<size_t> find(const Value& value) const override;
+    Vector<size_t> findRange(const Value& minVal, const Value& maxVal) const override;
+};
+
+// ============================================================
+// HASH TREE INDEX (HashMap<string, AvlTree<size_t, char>>)
+// ============================================================
+
+/**
+ * @brief Composite index combining HashMap for value buckets and AvlTree for row indices.
+ */
+class HashTreeIndex : public Index
+{
+private:
+    HashMap<string, AvlTree<size_t, char>> indexMap;
+
+public:
+    HashTreeIndex(
         const string& name,
         const string& columnName
     );

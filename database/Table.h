@@ -80,7 +80,7 @@ public:
      * @brief Create an index on a specific column.
      * @param indexName Unique identifier for the index.
      * @param columnName Target column to index.
-     * @param type Index type (IndexType::HASH for equality, IndexType::BTREE for range).
+     * @param type Index type (IndexType::HASH, IndexType::AVL for range, IndexType::HASH_TREE).
      * @return true if index was created and built.
      */
     bool createIndex(const string& indexName, const string& columnName, IndexType type = IndexType::HASH);
