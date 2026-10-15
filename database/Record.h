@@ -10,8 +10,8 @@
 #include <limits>
 #include <sstream>
 
-#include "HashMap.h"
-#include "Vector.h"
+#include "datastructure/hashmap/HashMap.h"
+#include "datastructure/vector/Vector.h"
 
 using namespace std;
 

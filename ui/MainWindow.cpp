@@ -303,7 +303,7 @@ void MainWindow::refreshQuery(int index)
 
     QElapsedTimer timer;
     timer.start();
-    Vector<JoinedRecord> results;
+    Vector<Record> results;
 
     switch (index) {
     case 0:

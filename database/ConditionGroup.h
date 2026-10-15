@@ -1,7 +1,7 @@
 #ifndef CONDITION_GROUP_H
 #define CONDITION_GROUP_H
 
-#include "Vector.h"
+#include "datastructure/vector/Vector.h"
 #include "Condition.h"
 
 using namespace std;

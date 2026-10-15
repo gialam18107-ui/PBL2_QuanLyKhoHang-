@@ -13,8 +13,8 @@
 #include <vector>
 #include <string>
 
-#include "database/JoinedRecord.h"
-#include "database/Vector.h"
+#include "datastructure/vector/Vector.h"
+#include "database/Record.h"
 
 class QueryTableWidget : public QWidget
 {
@@ -22,7 +22,7 @@ public:
     explicit QueryTableWidget(const QString& title, const QString& description, QWidget* parent = nullptr);
 
     void setColumns(const QStringList& displayHeaders, const std::vector<std::string>& columnKeys);
-    void setData(const Vector<JoinedRecord>& records);
+    void setData(const Vector<Record>& records);
     void setRefreshCallback(std::function<void()> callback);
     void addExtraControl(QWidget* widget);
 

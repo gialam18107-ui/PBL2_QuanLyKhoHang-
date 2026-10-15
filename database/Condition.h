@@ -3,7 +3,7 @@
 
 #include <string>
 #include "Record.h"
-#include "Vector.h"
+#include "datastructure/vector/Vector.h"
 
 using namespace std;
 

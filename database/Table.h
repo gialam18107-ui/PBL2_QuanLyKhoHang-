@@ -3,8 +3,8 @@
 
 #include <string>
 
-#include "Vector.h"
-#include "HashMap.h"
+#include "datastructure/vector/Vector.h"
+#include "datastructure/hashmap/HashMap.h"
 #include "Column.h"
 #include "Record.h"
 #include "Constraint.h"

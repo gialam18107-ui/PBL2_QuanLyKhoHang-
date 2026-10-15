@@ -25,7 +25,7 @@ Tuân thủ nghiêm ngặt **Quy tắc 7 (Generator Rules)** trong [project_rule
 
 3. **Cài đặt thuần C++17 (Rule 1)**:
    - Không sử dụng các container có sẵn của STL (`std::vector`, `std::map`, `std::unordered_map`...).
-   - Sử dụng các cấu trúc dữ liệu tự viết: `database/Vector.h`, `database/HashMap.h`, `database/Pair.h`.
+   - Sử dụng các cấu trúc dữ liệu tự viết: `datastructure/vector/Vector.h`, `datastructure/hashmap/HashMap.h`, `datastructure/hashmap/Pair.h`.
 
 ---
 

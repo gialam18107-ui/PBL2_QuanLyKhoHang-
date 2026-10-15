@@ -3,7 +3,7 @@
 
 #include <string>
 #include "database/Database.h"
-#include "database/Vector.h"
+#include "datastructure/vector/Vector.h"
 
 using namespace std;
 

@@ -2,9 +2,9 @@
 #define GENERATOR_H
 
 #include <string>
-#include "database/Vector.h"
-#include "database/HashMap.h"
-#include "database/Pair.h"
+#include "datastructure/vector/Vector.h"
+#include "datastructure/hashmap/HashMap.h"
+#include "datastructure/hashmap/Pair.h"
 #include "database/Database.h"
 #include "database/Table.h"
 #include "database/Record.h"

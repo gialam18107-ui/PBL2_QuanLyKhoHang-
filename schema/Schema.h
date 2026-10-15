@@ -2,7 +2,7 @@
 #define SCHEMA_H
 
 #include <string>
-#include "database/Vector.h"
+#include "datastructure/vector/Vector.h"
 #include "database/Table.h"
 #include "database/Database.h"
 

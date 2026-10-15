@@ -2,16 +2,13 @@
 #define DATA_IO_H
 
 #include <string>
-#include "database/Vector.h"
+#include "datastructure/vector/Vector.h"
 
 #include "database/Table.h"
-#include "database/Query.h"
 #include "database/Database.h"
-#include "database/JoinedRecord.h"
 
 #include "CSVHelper.h"
 #include "TableIO.h"
-#include "QueryIO.h"
 #include "DatabaseIO.h"
 
 using namespace std;
@@ -41,19 +38,6 @@ namespace DataIO
         bool read(Table& table, const string& filePath);
         bool write(const Table& table) const;
         bool write(const Table& table, const string& filePath) const;
-
-        // ========================================================
-        // QUERY IO
-        // ========================================================
-        bool write(const Query& query, const string& filePath) const;
-        bool write(const Query& query) const;
-        Vector<JoinedRecord> read(Query& query);
-        Vector<JoinedRecord> readQueryResults(const string& filePath) const;
-        bool writeQueryResults(
-            const Vector<JoinedRecord>& records,
-            const Vector<string>& headers,
-            const string& filePath
-        ) const;
 
         // ========================================================
         // DATABASE IO

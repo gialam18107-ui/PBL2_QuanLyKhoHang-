@@ -165,7 +165,7 @@ QString QueryTableWidget::formatValue(const Value& val)
     return "-";
 }
 
-void QueryTableWidget::setData(const Vector<JoinedRecord>& records)
+void QueryTableWidget::setData(const Vector<Record>& records)
 {
     tableWidget->setSortingEnabled(false);
     tableWidget->setUpdatesEnabled(false);

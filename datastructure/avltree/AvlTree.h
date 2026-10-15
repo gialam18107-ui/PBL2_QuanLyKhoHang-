@@ -1,7 +1,7 @@
 #ifndef AVLTREE_H
 #define AVLTREE_H
 
-#include "database/Vector.h"
+#include "datastructure/vector/Vector.h"
 #include <cstddef>
 #include <iostream>
 #include <utility>

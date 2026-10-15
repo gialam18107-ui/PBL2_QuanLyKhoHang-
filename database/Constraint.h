@@ -2,7 +2,7 @@
 #define CONSTRAINT_H
 
 #include <string>
-#include "Vector.h"
+#include "datastructure/vector/Vector.h"
 #include "Record.h"
 #include "Condition.h"
 

@@ -9,7 +9,7 @@
 // ----------------------------------------------------------------------------
 // 1. Hàm chuyên biệt dùng 2 vòng lặp FOR tuần tự (KHÔNG break - so khớp đầy đủ N * M)
 // ----------------------------------------------------------------------------
-void specialized_unit_inventory_query_no_break(Database* db, Vector<JoinedRecord>& results)
+void specialized_unit_inventory_query_no_break(Database* db, Vector<Record>& results)
 {
     Table* unitTable = db->getTable("unit_inventory");
     Table* prodTable = db->getTable("product");
@@ -29,7 +29,7 @@ void specialized_unit_inventory_query_no_break(Database* db, Vector<JoinedRecord
             const Record& prod = prodRows[j];
             if (uid == prod.get("product_id"))
             {
-                JoinedRecord jr;
+                Record jr;
                 jr.set("product.product_name", prod.get("product_name"));
                 jr.set("unit_inventory.serial", unit.get("serial"));
                 jr.set("unit_inventory.status", unit.get("status"));
@@ -42,7 +42,7 @@ void specialized_unit_inventory_query_no_break(Database* db, Vector<JoinedRecord
 // ----------------------------------------------------------------------------
 // 2. Hàm chuyên biệt dùng 2 vòng lặp FOR tuần tự (CÓ break khi tìm thấy 1-1)
 // ----------------------------------------------------------------------------
-void specialized_unit_inventory_query_with_break(Database* db, Vector<JoinedRecord>& results)
+void specialized_unit_inventory_query_with_break(Database* db, Vector<Record>& results)
 {
     Table* unitTable = db->getTable("unit_inventory");
     Table* prodTable = db->getTable("product");
@@ -62,7 +62,7 @@ void specialized_unit_inventory_query_with_break(Database* db, Vector<JoinedReco
             const Record& prod = prodRows[j];
             if (uid == prod.get("product_id"))
             {
-                JoinedRecord jr;
+                Record jr;
                 jr.set("product.product_name", prod.get("product_name"));
                 jr.set("unit_inventory.serial", unit.get("serial"));
                 jr.set("unit_inventory.status", unit.get("status"));
@@ -76,7 +76,7 @@ void specialized_unit_inventory_query_with_break(Database* db, Vector<JoinedReco
 // ----------------------------------------------------------------------------
 // 3. Hàm chuyên biệt dùng Hash Join O(N + M) (Để đối chiếu với duyệt tuần tự)
 // ----------------------------------------------------------------------------
-void specialized_unit_inventory_query_hash_join(Database* db, Vector<JoinedRecord>& results)
+void specialized_unit_inventory_query_hash_join(Database* db, Vector<Record>& results)
 {
     Table* unitTable = db->getTable("unit_inventory");
     Table* prodTable = db->getTable("product");
@@ -102,7 +102,7 @@ void specialized_unit_inventory_query_hash_join(Database* db, Vector<JoinedRecor
         auto it = prodMap.find(uid);
         if (it != prodMap.end())
         {
-            JoinedRecord jr;
+            Record jr;
             jr.set("product.product_name", it->second);
             jr.set("unit_inventory.serial", unitRows[i].get("serial"));
             jr.set("unit_inventory.status", unitRows[i].get("status"));
@@ -124,7 +124,7 @@ int main()
 
     // Test 1: user_query::unit_inventory_query (Query Builder Engine)
     {
-        Vector<JoinedRecord> results;
+        Vector<Record> results;
         auto t1 = std::chrono::high_resolution_clock::now();
         user_query::unit_inventory_query(&db, results);
         auto t2 = std::chrono::high_resolution_clock::now();
@@ -137,7 +137,7 @@ int main()
 
     // Test 2: 2 vong for tuan tu (KHONG break)
     {
-        Vector<JoinedRecord> results;
+        Vector<Record> results;
         auto t1 = std::chrono::high_resolution_clock::now();
         specialized_unit_inventory_query_no_break(&db, results);
         auto t2 = std::chrono::high_resolution_clock::now();
@@ -150,7 +150,7 @@ int main()
 
     // Test 3: 2 vong for tuan tu (CO break ngay khi tim thay 1-1)
     {
-        Vector<JoinedRecord> results;
+        Vector<Record> results;
         auto t1 = std::chrono::high_resolution_clock::now();
         specialized_unit_inventory_query_with_break(&db, results);
         auto t2 = std::chrono::high_resolution_clock::now();
@@ -163,7 +163,7 @@ int main()
 
     // Test 4: Hash Join O(N + M)
     {
-        Vector<JoinedRecord> results;
+        Vector<Record> results;
         auto t1 = std::chrono::high_resolution_clock::now();
         specialized_unit_inventory_query_hash_join(&db, results);
         auto t2 = std::chrono::high_resolution_clock::now();

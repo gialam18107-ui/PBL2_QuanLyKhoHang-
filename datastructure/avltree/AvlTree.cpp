@@ -2,7 +2,7 @@
 #define AVLTREE_CPP
 #include "AvlTree.h"
 
-#include "database/Vector.h"
+#include "datastructure/vector/Vector.h"
 #include <stdexcept>
 #include <utility>
 

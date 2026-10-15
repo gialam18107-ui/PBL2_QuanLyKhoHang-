@@ -2,8 +2,8 @@
 #define DATABASE_MANAGER_H
 
 #include <string>
-#include "Vector.h"
-#include "HashMap.h"
+#include "datastructure/vector/Vector.h"
+#include "datastructure/hashmap/HashMap.h"
 #include "Database.h"
 
 using namespace std;

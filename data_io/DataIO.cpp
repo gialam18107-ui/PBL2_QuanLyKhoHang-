@@ -36,7 +36,7 @@ namespace DataIO
 
     bool DataIO::read(Table& table)
     {
-        return TableIO::read(table, dataFolder);
+        return TableIO::read(table, DatabaseIO::getTableFolder(table.getName(), dataFolder));
     }
 
     bool DataIO::read(Table& table, const string& filePath)
@@ -46,7 +46,7 @@ namespace DataIO
 
     bool DataIO::write(const Table& table) const
     {
-        return TableIO::write(table, dataFolder);
+        return TableIO::write(table, DatabaseIO::getTableFolder(table.getName(), dataFolder));
     }
 
     bool DataIO::write(const Table& table, const string& filePath) const
@@ -54,38 +54,6 @@ namespace DataIO
         return TableIO::writeToFile(table, filePath);
     }
 
-    // ========================================================
-    // QUERY IO
-    // ========================================================
-
-    bool DataIO::write(const Query& query, const string& filePath) const
-    {
-        return QueryIO::write(query, filePath);
-    }
-
-    bool DataIO::write(const Query& query) const
-    {
-        return QueryIO::writeToFolder(query, dataFolder);
-    }
-
-    Vector<JoinedRecord> DataIO::read(Query& query)
-    {
-        return QueryIO::read(query, dataFolder);
-    }
-
-    Vector<JoinedRecord> DataIO::readQueryResults(const string& filePath) const
-    {
-        return QueryIO::readResults(filePath);
-    }
-
-    bool DataIO::writeQueryResults(
-        const Vector<JoinedRecord>& records,
-        const Vector<string>& headers,
-        const string& filePath
-    ) const
-    {
-        return QueryIO::writeResults(records, headers, filePath);
-    }
 
     // ========================================================
     // DATABASE IO

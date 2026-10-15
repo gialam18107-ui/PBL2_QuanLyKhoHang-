@@ -2,8 +2,8 @@
 #define DATABASE_H
 
 #include <string>
-#include "Vector.h"
-#include "HashMap.h"
+#include "datastructure/vector/Vector.h"
+#include "datastructure/hashmap/HashMap.h"
 #include "Table.h"
 #include "Condition.h"
 #include "ConditionGroup.h"

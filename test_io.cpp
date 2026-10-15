@@ -6,14 +6,11 @@
 
 #include "database/Condition.h"
 #include "database/Database.h"
-#include "database/Join.h"
-#include "database/Query.h"
 #include "database/Table.h"
 
 #include "data_io/CSVHelper.h"
 #include "data_io/DataIO.h"
 #include "data_io/DatabaseIO.h"
-#include "data_io/QueryIO.h"
 #include "data_io/TableIO.h"
 #include "schema/Schema.h"
 
@@ -46,14 +43,14 @@ int main() {
   // ========================================================
   printBanner("TEST 2: TableIO - Read category and brand from CSV");
   Table categoryTable("category");
-  bool catReadOk = TableIO::read(categoryTable, "data");
+  bool catReadOk = TableIO::read(categoryTable, DatabaseIO::getTableFolder("category", "data"));
   assert(catReadOk);
   cout << "[+] Read 'category' table from domain: " << categoryTable.getRowCount()
        << " rows." << endl;
   assert(categoryTable.getRowCount() > 0);
 
   Table brandTable("brand");
-  bool brandReadOk = TableIO::read(brandTable, "data");
+  bool brandReadOk = TableIO::read(brandTable, DatabaseIO::getTableFolder("brand", "data"));
   assert(brandReadOk);
   cout << "[+] Read 'brand' table from domain: " << brandTable.getRowCount() << " rows."
        << endl;
@@ -103,71 +100,9 @@ int main() {
   cout << "[PASS] DatabaseIO readAll test passed.\n";
 
   // ========================================================
-  // TEST 5: QUERY & QUERY IO (WRITE QUERY RESULTS TO CSV)
+  // TEST 5: UNIFIED DATAIO FACADE API
   // ========================================================
-  printBanner("TEST 5: QueryIO - Execute Query & Export to CSV");
-  Query productQuery(db);
-  productQuery.from("product")
-      .join(Join("product", "category", "category", "category_name",
-                 JoinType::INNER))
-      .join(Join("product", "brand", "brand", "brand", JoinType::INNER))
-      .select({"product.product_code", "product.product_name",
-               "category.category_name", "brand.brand", "product.quantity"})
-      .where(Condition("product.quantity", CompareOperator::GREATER_EQUAL, 20));
-
-  Vector<JoinedRecord> queryResults = productQuery.execute();
-  cout << "[+] Products with quantity >= 20: " << queryResults.size()
-       << " records found." << endl;
-  assert(queryResults.size() > 0);
-  for (const auto &r : queryResults) {
-    cout << "   * [CODE: " << get<string>(r.get("product.product_code")) << "] "
-         << get<string>(r.get("product.product_name")) << " ("
-         << get<string>(r.get("category.category_name")) << " / "
-         << get<string>(r.get("brand.brand"))
-         << ") - SL: " << get<int>(r.get("product.quantity")) << endl;
-  }
-
-  string queryExportFile = "data/query_product_stock_report.csv";
-  bool queryWriteOk = QueryIO::write(productQuery, queryExportFile);
-  assert(queryWriteOk);
-  cout << "[+] Query results exported to: " << queryExportFile << endl;
-
-  // ========================================================
-  // TEST 6: QUERY IO (READ QUERY RESULTS FROM CSV)
-  // ========================================================
-  printBanner("TEST 6: QueryIO - Read Exported Query Results from CSV");
-  Vector<JoinedRecord> importedResults = QueryIO::readResults(queryExportFile);
-  cout << "[+] Imported " << importedResults.size()
-       << " query records from CSV." << endl;
-  assert(importedResults.size() == queryResults.size());
-  assert(get<string>(importedResults[0].get("product.product_name")) ==
-         get<string>(queryResults[0].get("product.product_name")));
-  cout << "[PASS] QueryIO export and import test passed.\n";
-
-  // ========================================================
-  // TEST 7: QUERY IO (AUTO-LOAD TABLES FOR QUERY FROM DOMAIN)
-  // ========================================================
-  printBanner(
-      "TEST 7: QueryIO - Auto-load Tables into Fresh Database for Query");
-  Database freshDb;
-  Query freshQuery(freshDb);
-  freshQuery.from("unit_inventory")
-      .where(Condition("unit_inventory.status", CompareOperator::EQUAL,
-                       string("AVAILABLE")));
-
-  // freshDb has no tables loaded yet; QueryIO::read loads unit_inventory from data/unit/
-  Vector<JoinedRecord> availableUnits = QueryIO::read(freshQuery, "data");
-  cout << "[+] Available units query returned: " << availableUnits.size()
-       << " units." << endl;
-  assert(availableUnits.size() > 0);
-  assert(freshDb.getTable("unit_inventory") != nullptr);
-  assert(freshDb.getTable("unit_inventory")->getRowCount() > 0);
-  cout << "[PASS] QueryIO auto-load test passed.\n";
-
-  // ========================================================
-  // TEST 8: UNIFIED DATAIO FACADE API
-  // ========================================================
-  printBanner("TEST 8: Unified DataIO Facade API");
+  printBanner("TEST 5: Unified DataIO Facade API (Table API)");
   ::DataIO::DataIO io("data");
 
   // Table API: read and write
@@ -181,24 +116,6 @@ int main() {
   bool ioWriteTableOk = io.write(cpuTable, cpuExport);
   assert(ioWriteTableOk);
   cout << "[+] io.write(Table, path): Wrote to " << cpuExport << endl;
-
-  // Query API: write query
-  Query qCpu(db);
-  qCpu.from("cpu")
-      .join(Join("cpu", "product_id", "product", "product_id", JoinType::INNER))
-      .select({"cpu.cpu_id", "product.product_name", "cpu.socket", "cpu.tier"});
-
-  string queryCpuExport = "data/query_cpu_detail.csv";
-  bool ioWriteQueryOk = io.write(qCpu, queryCpuExport);
-  assert(ioWriteQueryOk);
-  cout << "[+] io.write(Query, path): Wrote CPU query report to "
-       << queryCpuExport << endl;
-
-  // Query API: read query results back
-  Vector<JoinedRecord> cpuReloaded = io.readQueryResults(queryCpuExport);
-  assert(cpuReloaded.size() == qCpu.execute().size());
-  cout << "[+] io.readQueryResults: Read " << cpuReloaded.size()
-       << " records back from CSV." << endl;
 
   cout << "[PASS] Unified DataIO facade test passed.\n";
 
@@ -445,9 +362,7 @@ int main() {
   // CLEANUP TEMPORARY TEST CSV FILES
   // ========================================================
   remove(testBrandOut.c_str());
-  remove(queryExportFile.c_str());
   remove(cpuExport.c_str());
-  remove(queryCpuExport.c_str());
   cout << "\n[+] Cleaned up temporary test CSV files.\n";
 
   printBanner("ALL TESTS COMPLETED SUCCESSFULLY! SYSTEM 100% OPERATIONAL!");
