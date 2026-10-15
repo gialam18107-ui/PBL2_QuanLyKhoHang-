@@ -72,6 +72,8 @@ public:
 
         bool operator==(const iterator& other) const;
         bool operator!=(const iterator& other) const;
+
+        friend class AvlTree;
     };
 
     class const_iterator
@@ -92,6 +94,8 @@ public:
 
         bool operator==(const const_iterator& other) const;
         bool operator!=(const const_iterator& other) const;
+
+        friend class AvlTree;
     };
 
     iterator begin();
@@ -101,6 +105,12 @@ public:
     const_iterator end() const;
     const_iterator cbegin() const;
     const_iterator cend() const;
+
+    template <typename TargetKey>
+    iterator lower_bound(const TargetKey& key);
+
+    template <typename TargetKey>
+    const_iterator lower_bound(const TargetKey& key) const;
 
     AvlTree();
     AvlTree(const AvlTree &other);

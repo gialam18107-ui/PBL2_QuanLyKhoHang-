@@ -87,6 +87,82 @@ struct Pair
         if (other.first < first) return false;
         return second < other.second;
     }
+
+    bool operator>(const Pair& other) const
+    {
+        return other < *this;
+    }
+
+    bool operator<=(const Pair& other) const
+    {
+        return !(other < *this);
+    }
+
+    bool operator>=(const Pair& other) const
+    {
+        return !(*this < other);
+    }
+
+    // Comparison between Pair<T1, T2> and T1 (first element)
+    bool operator==(const T1& val) const
+    {
+        return first == val;
+    }
+
+    bool operator!=(const T1& val) const
+    {
+        return first != val;
+    }
+
+    bool operator<(const T1& val) const
+    {
+        return first < val;
+    }
+
+    bool operator>(const T1& val) const
+    {
+        return val < first;
+    }
+
+    bool operator<=(const T1& val) const
+    {
+        return !(val < first);
+    }
+
+    bool operator>=(const T1& val) const
+    {
+        return !(first < val);
+    }
+
+    friend bool operator==(const T1& val, const Pair& p)
+    {
+        return val == p.first;
+    }
+
+    friend bool operator!=(const T1& val, const Pair& p)
+    {
+        return val != p.first;
+    }
+
+    friend bool operator<(const T1& val, const Pair& p)
+    {
+        return val < p.first;
+    }
+
+    friend bool operator>(const T1& val, const Pair& p)
+    {
+        return p.first < val;
+    }
+
+    friend bool operator<=(const T1& val, const Pair& p)
+    {
+        return !(p.first < val);
+    }
+
+    friend bool operator>=(const T1& val, const Pair& p)
+    {
+        return !(val < p.first);
+    }
 };
 
 template <typename T1, typename T2>

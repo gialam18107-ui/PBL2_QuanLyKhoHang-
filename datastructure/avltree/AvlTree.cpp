@@ -215,6 +215,48 @@ typename AvlTree<K, V>::const_iterator AvlTree<K, V>::cend() const
 }
 
 template <typename K, typename V>
+template <typename TargetKey>
+typename AvlTree<K, V>::iterator AvlTree<K, V>::lower_bound(const TargetKey& key)
+{
+    iterator it;
+    Node* curr = root;
+    while (curr != nullptr)
+    {
+        if (!(curr->key < key))
+        {
+            it.nodeStack.push_back(curr);
+            curr = curr->left;
+        }
+        else
+        {
+            curr = curr->right;
+        }
+    }
+    return it;
+}
+
+template <typename K, typename V>
+template <typename TargetKey>
+typename AvlTree<K, V>::const_iterator AvlTree<K, V>::lower_bound(const TargetKey& key) const
+{
+    const_iterator it;
+    const Node* curr = root;
+    while (curr != nullptr)
+    {
+        if (!(curr->key < key))
+        {
+            it.nodeStack.push_back(curr);
+            curr = curr->left;
+        }
+        else
+        {
+            curr = curr->right;
+        }
+    }
+    return it;
+}
+
+template <typename K, typename V>
 size_t AvlTree<K, V>::getSize() const
 {
     return size;

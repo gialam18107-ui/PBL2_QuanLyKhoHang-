@@ -138,16 +138,9 @@ void AVLTreeIndex::clear()
 Vector<size_t> AVLTreeIndex::find(const Value& value) const
 {
     Vector<size_t> result;
-    for (const auto& node : tree)
+    for (auto it = tree.lower_bound(value); it != tree.end() && it->key == value; ++it)
     {
-        if (node.key.first == value)
-        {
-            result.push_back(node.key.second);
-        }
-        else if (value < node.key.first)
-        {
-            break;
-        }
+        result.push_back(it->key.second);
     }
     return result;
 }
@@ -157,17 +150,9 @@ Vector<size_t> AVLTreeIndex::findRange(const Value& minVal, const Value& maxVal)
     Vector<size_t> result;
     if (maxVal < minVal) return result;
 
-    for (const auto& node : tree)
+    for (auto it = tree.lower_bound(minVal); it != tree.end() && !(maxVal < it->key); ++it)
     {
-        if (node.key.first < minVal)
-        {
-            continue;
-        }
-        if (maxVal < node.key.first)
-        {
-            break;
-        }
-        result.push_back(node.key.second);
+        result.push_back(it->key.second);
     }
     return result;
 }
