@@ -120,7 +120,8 @@ public:
 };
 
 // ============================================================
-// BTREE INDEX (Ordered Index)
+// Ordered vector index. Lookups use binary search; insertions and removals
+// may shift entries.
 // ============================================================
 
 /**
@@ -133,6 +134,7 @@ private:
 
     static bool valueLess(const Value& a, const Value& b);
     static bool valueEqual(const Value& a, const Value& b);
+    size_t lowerBound(const Value& value) const;
 
 public:
     /**

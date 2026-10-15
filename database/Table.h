@@ -20,12 +20,16 @@ private:
     string name;
     Vector<Column> columns;
     Vector<Record> rows;
+    Vector<unsigned char> deletedRows;
+    size_t deletedRowCount = 0;
     Vector<Constraint*> constraints;
     Vector<Index*> indexes;
     HashMap<string, int> autoIncrementCounters;
 
     bool checkDataType(const Column& column, const Value& value) const;
     bool checkConstraints(const Record& record, int ignoreRowIndex = -1) const;
+    void compactRows();
+    void rebuildIndexes();
 
 public:
     explicit Table(const string& name = "");
@@ -128,8 +132,7 @@ public:
 
     /// Get total number of rows in the table.
     int getRowCount() const;
-
-    /// Get const reference to stored rows.
+    bool isRowDeleted(size_t rowIndex) const;
     const Vector<Record>& getRows() const;
 
     /// Get mutable reference to stored rows.

@@ -5,6 +5,10 @@
 #include <variant>
 #include <iostream>
 #include <stdexcept>
+#include <cmath>
+#include <iomanip>
+#include <limits>
+#include <sstream>
 
 #include "HashMap.h"
 #include "Vector.h"
@@ -44,6 +48,70 @@ inline string valueToString(const Value& v)
         return get<bool>(v) ? "TRUE" : "FALSE";
     }
     return "";
+}
+
+/**
+ * @brief Produces a collision-safe, typed key for hash indexes and hash joins.
+ * Numeric int/double values that compare equal in Condition::evaluateValue share
+ * the same key; strings and booleans always have distinct type prefixes.
+ * This is intentionally separate from valueToString(), which is used for I/O.
+ */
+inline string valueToHashKey(const Value& v)
+{
+    if (holds_alternative<monostate>(v))
+    {
+        return "null:";
+    }
+    if (holds_alternative<int>(v))
+    {
+        return "number:int:" + to_string(get<int>(v));
+    }
+    if (holds_alternative<double>(v))
+    {
+        const double number = get<double>(v);
+        if (isfinite(number)
+            && trunc(number) == number
+            && number >= static_cast<double>(numeric_limits<int>::min())
+            && number <= static_cast<double>(numeric_limits<int>::max()))
+        {
+            return "number:int:" + to_string(static_cast<int>(number));
+        }
+
+        ostringstream stream;
+        stream << "number:double:" << setprecision(numeric_limits<double>::max_digits10) << number;
+        return stream.str();
+    }
+    if (holds_alternative<string>(v))
+    {
+        return "string:" + get<string>(v);
+    }
+    if (holds_alternative<bool>(v))
+    {
+        return get<bool>(v) ? "bool:1" : "bool:0";
+    }
+    return "unknown:";
+}
+
+/**
+ * @brief Hash key matching std::variant's type-sensitive equality semantics.
+ * Used for operations (DISTINCT/IN/set operations/GROUP BY) that historically
+ * compare Values directly rather than treating int and double as equivalent.
+ */
+inline string valueToExactHashKey(const Value& v)
+{
+    if (holds_alternative<monostate>(v)) return "exact:null";
+    if (holds_alternative<int>(v)) return "exact:int:" + to_string(get<int>(v));
+    if (holds_alternative<double>(v))
+    {
+        const double number = get<double>(v);
+        if (number == 0.0) return "exact:double:0"; // +0.0 == -0.0
+        ostringstream stream;
+        stream << "exact:double:" << setprecision(numeric_limits<double>::max_digits10) << number;
+        return stream.str();
+    }
+    if (holds_alternative<string>(v)) return "exact:string:" + get<string>(v);
+    if (holds_alternative<bool>(v)) return get<bool>(v) ? "exact:bool:1" : "exact:bool:0";
+    return "exact:unknown";
 }
 
 /**

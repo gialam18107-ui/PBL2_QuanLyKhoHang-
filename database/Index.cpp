@@ -56,13 +56,13 @@ void HashIndex::build(const Vector<Record>& records)
 
 void HashIndex::insert(const Value& value, size_t rowIndex)
 {
-    string key = valueToString(value);
+    string key = valueToHashKey(value);
     indexMap[key].push_back(rowIndex);
 }
 
 void HashIndex::remove(const Value& value, size_t rowIndex)
 {
-    string key = valueToString(value);
+    string key = valueToHashKey(value);
     auto it = indexMap.find(key);
     if (it != indexMap.end())
     {
@@ -71,7 +71,8 @@ void HashIndex::remove(const Value& value, size_t rowIndex)
         {
             if (rowIndices[i] == rowIndex)
             {
-                rowIndices.erase(i);
+                rowIndices[i] = rowIndices[rowIndices.size() - 1];
+                rowIndices.pop_back();
                 break;
             }
         }
@@ -89,7 +90,7 @@ void HashIndex::clear()
 
 Vector<size_t> HashIndex::find(const Value& value) const
 {
-    string key = valueToString(value);
+    string key = valueToHashKey(value);
     auto it = indexMap.find(key);
     if (it != indexMap.end())
     {
@@ -175,18 +176,23 @@ void BTreeIndex::build(const Vector<Record>& records)
     {
         if (records[i].has(columnName))
         {
-            insert(records[i].get(columnName), i);
+            entries.push_back(makePair(records[i].get(columnName), i));
         }
     }
+    std::sort(entries.begin(), entries.end(), [](const Pair<Value, size_t>& left, const Pair<Value, size_t>& right) {
+        if (valueLess(left.first, right.first)) return true;
+        if (valueLess(right.first, left.first)) return false;
+        return left.second > right.second;
+    });
 }
 
-void BTreeIndex::insert(const Value& value, size_t rowIndex)
+size_t BTreeIndex::lowerBound(const Value& value) const
 {
     size_t left = 0;
     size_t right = entries.size();
     while (left < right)
     {
-        size_t mid = left + (right - left) / 2;
+        const size_t mid = left + (right - left) / 2;
         if (valueLess(entries[mid].first, value))
         {
             left = mid + 1;
@@ -196,18 +202,25 @@ void BTreeIndex::insert(const Value& value, size_t rowIndex)
             right = mid;
         }
     }
-    entries.insert(left, makePair(value, rowIndex));
+    return left;
+}
+
+void BTreeIndex::insert(const Value& value, size_t rowIndex)
+{
+    entries.insert(lowerBound(value), makePair(value, rowIndex));
 }
 
 void BTreeIndex::remove(const Value& value, size_t rowIndex)
 {
-    for (size_t i = 0; i < entries.size(); i++)
+    size_t entryIndex = lowerBound(value);
+    while (entryIndex < entries.size() && valueEqual(entries[entryIndex].first, value))
     {
-        if (valueEqual(entries[i].first, value) && entries[i].second == rowIndex)
+        if (entries[entryIndex].second == rowIndex)
         {
-            entries.erase(i);
-            break;
+            entries.erase(entryIndex);
+            return;
         }
+        ++entryIndex;
     }
 }
 
@@ -219,24 +232,11 @@ void BTreeIndex::clear()
 Vector<size_t> BTreeIndex::find(const Value& value) const
 {
     Vector<size_t> result;
-    size_t left = 0;
-    size_t right = entries.size();
-    while (left < right)
+    size_t entryIndex = lowerBound(value);
+    while (entryIndex < entries.size() && valueEqual(entries[entryIndex].first, value))
     {
-        size_t mid = left + (right - left) / 2;
-        if (valueLess(entries[mid].first, value))
-        {
-            left = mid + 1;
-        }
-        else
-        {
-            right = mid;
-        }
-    }
-    while (left < entries.size() && valueEqual(entries[left].first, value))
-    {
-        result.push_back(entries[left].second);
-        left++;
+        result.push_back(entries[entryIndex].second);
+        ++entryIndex;
     }
     return result;
 }
@@ -244,24 +244,13 @@ Vector<size_t> BTreeIndex::find(const Value& value) const
 Vector<size_t> BTreeIndex::findRange(const Value& minVal, const Value& maxVal) const
 {
     Vector<size_t> result;
-    size_t left = 0;
-    size_t right = entries.size();
-    while (left < right)
+    if (valueLess(maxVal, minVal)) return result;
+
+    size_t entryIndex = lowerBound(minVal);
+    while (entryIndex < entries.size() && !valueLess(maxVal, entries[entryIndex].first))
     {
-        size_t mid = left + (right - left) / 2;
-        if (valueLess(entries[mid].first, minVal))
-        {
-            left = mid + 1;
-        }
-        else
-        {
-            right = mid;
-        }
-    }
-    while (left < entries.size() && !valueLess(maxVal, entries[left].first))
-    {
-        result.push_back(entries[left].second);
-        left++;
+        result.push_back(entries[entryIndex].second);
+        ++entryIndex;
     }
     return result;
 }

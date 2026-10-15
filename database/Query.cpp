@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <stdexcept>
+#include <algorithm>
 
 using namespace std;
 
@@ -28,6 +29,35 @@ static string unqualified(const string& column)
 {
     size_t dot = column.find_last_of('.');
     return dot == string::npos ? column : column.substr(dot + 1);
+}
+
+static string joinedRecordHashKey(const JoinedRecord& record)
+{
+    Vector<string> keys = record.getValues().getKeys();
+    if (keys.size() > 1) std::sort(keys.begin(), keys.end());
+
+    string key = "record:";
+    for (size_t index = 0; index < keys.size(); ++index)
+    {
+        const string& column = keys[index];
+        const string valueKey = valueToExactHashKey(record.get(column));
+        key += to_string(column.size()) + ":" + column;
+        key += to_string(valueKey.size()) + ":" + valueKey;
+    }
+    return key;
+}
+
+static string groupHashKey(const JoinedRecord& record, const Vector<string>& columns)
+{
+    string key = "group:";
+    for (size_t index = 0; index < columns.size(); ++index)
+    {
+        Value value = monostate{};
+        resolveColumn(record, columns[index], value);
+        const string valueKey = valueToExactHashKey(value);
+        key += to_string(valueKey.size()) + ":" + valueKey;
+    }
+    return key;
 }
 
 Query::Query()
@@ -285,9 +315,69 @@ Vector<JoinedRecord> Query::buildBaseRecords() const
     if (database == nullptr || baseTable.empty()) return {};
     const Table* table = database->getTable(baseTable);
     if (table == nullptr) return {};
-    Vector<JoinedRecord> result;
-    for (size_t rowIndex = 0; rowIndex < table->getRows().size(); ++rowIndex)
+
+    Vector<size_t> rowCandidates;
+    bool usedIndex = false;
+
+    // Use an equality index to avoid materializing rows that WHERE will discard.
+    // The normal WHERE pass still evaluates the condition, preserving semantics.
+    if (singleCondition.has_value()
+        && singleCondition.value().getOperation() == CompareOperator::EQUAL
+        && !isNull(singleCondition.value().getCompareValue()))
     {
+        const string conditionColumn = singleCondition.value().getColumnName();
+        const size_t dot = conditionColumn.find_last_of('.');
+        bool belongsToBaseTable = false;
+        if (dot != string::npos)
+        {
+            const string qualifier = conditionColumn.substr(0, dot);
+            belongsToBaseTable = qualifier == baseTable
+                || (!tableAlias.empty() && qualifier == tableAlias);
+        }
+        else
+        {
+            // In a joined query, an unqualified column can be ambiguous. Keep
+            // the original scan in that case rather than choosing the wrong index.
+            belongsToBaseTable = joins.empty();
+        }
+
+        if (belongsToBaseTable)
+        {
+            const string columnName = unqualified(conditionColumn);
+            const Vector<Index*>& indexes = table->getIndexes();
+            for (size_t index = 0; index < indexes.size(); ++index)
+            {
+                if (indexes[index]->getColumnName() == columnName)
+                {
+                    rowCandidates = indexes[index]->find(singleCondition.value().getCompareValue());
+                    usedIndex = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (usedIndex)
+    {
+        // Updates can append an index entry at a later row position; sort IDs
+        // to keep the normal table order when no ORDER BY has been requested.
+        std::sort(rowCandidates.begin(), rowCandidates.end());
+    }
+    else
+    {
+        rowCandidates.clear();
+        for (size_t rowIndex = 0; rowIndex < table->getRows().size(); ++rowIndex)
+        {
+            rowCandidates.push_back(rowIndex);
+        }
+    }
+
+    Vector<JoinedRecord> result;
+    for (size_t candidate = 0; candidate < rowCandidates.size(); ++candidate)
+    {
+        const size_t rowIndex = rowCandidates[candidate];
+        if (rowIndex >= table->getRows().size()) continue;
+        if (table->isRowDeleted(rowIndex)) continue;
         JoinedRecord record;
         const Record& row = table->getRows()[rowIndex];
         for (const auto& item : row.getValues())
@@ -308,49 +398,115 @@ Vector<JoinedRecord> Query::applyJoins(Vector<JoinedRecord> records) const
         const Join& join = joins[joinIndex];
         const Table* rightTable = database->getTable(join.getRightTable());
         if (rightTable == nullptr) return {};
+
+        const Vector<Record>& rightRows = rightTable->getRows();
         Vector<JoinedRecord> joined;
-        Vector<int> matched(rightTable->getRows().size(), 0);
-        string leftKey = join.getLeftTable() + "." + join.getLeftColumn();
-        string rightColumn = unqualified(join.getRightColumn());
+        Vector<int> matched(rightRows.size(), 0);
+        const string leftKey = join.getLeftTable() + "." + join.getLeftColumn();
+        const string rightColumn = unqualified(join.getRightColumn());
+
+        // Prefer a maintained table index. If the right join column is not
+        // indexed, build a temporary hash lookup once (hash join) rather than
+        // scanning the entire right table for every left row.
+        const Index* rightIndex = nullptr;
+        const Vector<Index*>& indexes = rightTable->getIndexes();
+        for (size_t index = 0; index < indexes.size(); ++index)
+        {
+            if (indexes[index]->getColumnName() == rightColumn)
+            {
+                rightIndex = indexes[index];
+                break;
+            }
+        }
+
+        HashMap<string, Vector<size_t>> temporaryLookup;
+        if (rightIndex == nullptr)
+        {
+            for (size_t rightIndexValue = 0; rightIndexValue < rightRows.size(); ++rightIndexValue)
+            {
+                const Record& rightRecord = rightRows[rightIndexValue];
+                if (rightTable->isRowDeleted(rightIndexValue)) continue;
+                if (!rightRecord.has(rightColumn)) continue;
+                const Value rightValue = rightRecord.get(rightColumn);
+                if (isNull(rightValue)) continue;
+                temporaryLookup[valueToHashKey(rightValue)].push_back(rightIndexValue);
+            }
+        }
+
         for (size_t leftIndex = 0; leftIndex < records.size(); ++leftIndex)
         {
             const JoinedRecord& leftRecord = records[leftIndex];
             Value leftValue = monostate{};
-            bool foundLeft = resolveColumn(leftRecord, leftKey, leftValue);
+            const bool foundLeft = resolveColumn(leftRecord, leftKey, leftValue);
             bool foundMatch = false;
+
             if (foundLeft && !isNull(leftValue))
             {
-                for (size_t rightIndex = 0; rightIndex < rightTable->getRows().size(); ++rightIndex)
+                Vector<size_t> rightCandidates;
+                if (rightIndex != nullptr)
                 {
-                    const Record& rightRecord = rightTable->getRows()[rightIndex];
-                    if (!rightRecord.has(rightColumn) || isNull(rightRecord.get(rightColumn))) continue;
+                    rightCandidates = rightIndex->find(leftValue);
+                    std::sort(rightCandidates.begin(), rightCandidates.end());
+                }
+                else
+                {
+                    auto lookupIt = temporaryLookup.find(valueToHashKey(leftValue));
+                    if (lookupIt != temporaryLookup.end())
+                    {
+                        rightCandidates = lookupIt->second;
+                    }
+                }
+
+                for (size_t candidate = 0; candidate < rightCandidates.size(); ++candidate)
+                {
+                    const size_t rightRowIndex = rightCandidates[candidate];
+                    if (rightRowIndex >= rightRows.size()) continue;
+                    if (rightTable->isRowDeleted(rightRowIndex)) continue;
+                    const Record& rightRecord = rightRows[rightRowIndex];
+                    if (!rightRecord.has(rightColumn)) continue;
+                    if (isNull(rightRecord.get(rightColumn))) continue;
+                    // Retain the existing JOIN equality semantics, even if a
+                    // numeric canonical key yielded a cross-type candidate.
                     if (leftValue != rightRecord.get(rightColumn)) continue;
+
                     JoinedRecord combined = leftRecord;
                     for (const auto& item : rightRecord.getValues())
+                    {
                         combined.set(join.getRightTable() + "." + item.first, item.second);
+                    }
                     joined.push_back(std::move(combined));
-                    matched[rightIndex] = 1;
+                    matched[rightRowIndex] = 1;
                     foundMatch = true;
                 }
             }
+
             if (!foundMatch && (join.getType() == JoinType::LEFT || join.getType() == JoinType::FULL))
             {
                 JoinedRecord combined = leftRecord;
                 for (size_t columnIndex = 0; columnIndex < rightTable->getColumns().size(); ++columnIndex)
+                {
                     combined.set(join.getRightTable() + "." + rightTable->getColumns()[columnIndex].getName(), monostate{});
+                }
                 joined.push_back(std::move(combined));
             }
         }
+
         if (join.getType() == JoinType::RIGHT || join.getType() == JoinType::FULL)
         {
-            for (size_t rightIndex = 0; rightIndex < rightTable->getRows().size(); ++rightIndex)
+            for (size_t rightRowIndex = 0; rightRowIndex < rightRows.size(); ++rightRowIndex)
             {
-                if (matched[rightIndex]) continue;
+                if (rightTable->isRowDeleted(rightRowIndex)) continue;
+                if (matched[rightRowIndex]) continue;
                 JoinedRecord combined;
                 if (!records.empty())
+                {
                     for (const auto& item : records[0].getValues()) combined.set(item.first, monostate{});
-                const Record& rightRecord = rightTable->getRows()[rightIndex];
-                for (const auto& item : rightRecord.getValues()) combined.set(join.getRightTable() + "." + item.first, item.second);
+                }
+                const Record& rightRecord = rightRows[rightRowIndex];
+                for (const auto& item : rightRecord.getValues())
+                {
+                    combined.set(join.getRightTable() + "." + item.first, item.second);
+                }
                 joined.push_back(std::move(combined));
             }
         }
@@ -362,6 +518,15 @@ Vector<JoinedRecord> Query::applyJoins(Vector<JoinedRecord> records) const
 Vector<JoinedRecord> Query::applyWhere(const Vector<JoinedRecord>& records) const
 {
     Vector<JoinedRecord> result;
+    HashMap<string, Vector<Value>> subqueryLookup;
+    if (isSubqueryIn || isSubqueryNotIn)
+    {
+        for (size_t valueIndex = 0; valueIndex < subqueryInValues.size(); ++valueIndex)
+        {
+            subqueryLookup[valueToExactHashKey(subqueryInValues[valueIndex])].push_back(subqueryInValues[valueIndex]);
+        }
+    }
+
     for (size_t index = 0; index < records.size(); ++index)
     {
         const JoinedRecord& record = records[index];
@@ -370,11 +535,23 @@ Vector<JoinedRecord> Query::applyWhere(const Vector<JoinedRecord>& records) cons
         if (isSubqueryIn || isSubqueryNotIn)
         {
             Value value = monostate{};
-            bool foundColumn = resolveColumn(record, subqueryInColumn, value);
+            const bool foundColumn = resolveColumn(record, subqueryInColumn, value);
             bool found = false;
             if (foundColumn)
-                for (size_t valueIndex = 0; valueIndex < subqueryInValues.size(); ++valueIndex)
-                    if (value == subqueryInValues[valueIndex]) { found = true; break; }
+            {
+                auto lookup = subqueryLookup.find(valueToExactHashKey(value));
+                if (lookup != subqueryLookup.end())
+                {
+                    for (size_t candidate = 0; candidate < lookup->second.size(); ++candidate)
+                    {
+                        if (value == lookup->second[candidate])
+                        {
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+            }
             if (isSubqueryIn ? !found : found) continue;
         }
         result.push_back(record);
@@ -392,22 +569,34 @@ Vector<JoinedRecord> Query::applyGroupByAndAggregates(const Vector<JoinedRecord>
     }
     else
     {
+        HashMap<string, Vector<size_t>> groupBuckets;
         for (size_t recordIndex = 0; recordIndex < records.size(); ++recordIndex)
         {
-            size_t groupIndex = 0;
-            for (; groupIndex < groups.size(); ++groupIndex)
+            const string key = groupHashKey(records[recordIndex], groupByColumns);
+            Vector<size_t>& candidates = groupBuckets[key];
+            size_t groupIndex = groups.size();
+            for (size_t candidate = 0; candidate < candidates.size(); ++candidate)
             {
+                const size_t candidateGroup = candidates[candidate];
                 bool equal = true;
                 for (size_t keyIndex = 0; keyIndex < groupByColumns.size(); ++keyIndex)
                 {
                     Value left = monostate{}, right = monostate{};
-                    resolveColumn(groups[groupIndex][0], groupByColumns[keyIndex], left);
+                    resolveColumn(groups[candidateGroup][0], groupByColumns[keyIndex], left);
                     resolveColumn(records[recordIndex], groupByColumns[keyIndex], right);
                     if (left != right) { equal = false; break; }
                 }
-                if (equal) break;
+                if (equal)
+                {
+                    groupIndex = candidateGroup;
+                    break;
+                }
             }
-            if (groupIndex == groups.size()) groups.push_back(Vector<JoinedRecord>());
+            if (groupIndex == groups.size())
+            {
+                groups.push_back(Vector<JoinedRecord>());
+                candidates.push_back(groupIndex);
+            }
             groups[groupIndex].push_back(records[recordIndex]);
         }
     }
@@ -478,12 +667,25 @@ Vector<JoinedRecord> Query::applyDistinct(const Vector<JoinedRecord>& records) c
 {
     if (!isDistinct) return records;
     Vector<JoinedRecord> result;
+    HashMap<string, Vector<size_t>> seen;
     for (size_t index = 0; index < records.size(); ++index)
     {
+        const string key = joinedRecordHashKey(records[index]);
+        Vector<size_t>& candidates = seen[key];
         bool duplicate = false;
-        for (size_t prior = 0; prior < result.size(); ++prior)
-            if (records[index] == result[prior]) { duplicate = true; break; }
-        if (!duplicate) result.push_back(records[index]);
+        for (size_t candidate = 0; candidate < candidates.size(); ++candidate)
+        {
+            if (records[index] == result[candidates[candidate]])
+            {
+                duplicate = true;
+                break;
+            }
+        }
+        if (!duplicate)
+        {
+            candidates.push_back(result.size());
+            result.push_back(records[index]);
+        }
     }
     return result;
 }
@@ -542,38 +744,94 @@ Vector<JoinedRecord> Query::execute() const
 
 Vector<JoinedRecord> Query::unionWith(const Query& other, bool distinctOnly) const
 {
-    Vector<JoinedRecord> result = execute();
+    Vector<JoinedRecord> result;
+    Vector<JoinedRecord> left = execute();
     Vector<JoinedRecord> right = other.execute();
-    for (size_t index = 0; index < right.size(); ++index) result.push_back(right[index]);
-    if (!distinctOnly) return result;
-    Vector<JoinedRecord> unique;
-    for (size_t index = 0; index < result.size(); ++index)
+    if (!distinctOnly)
     {
-        bool exists = false;
-        for (size_t prior = 0; prior < unique.size(); ++prior)
-            if (result[index] == unique[prior]) { exists = true; break; }
-        if (!exists) unique.push_back(result[index]);
+        for (size_t index = 0; index < left.size(); ++index) result.push_back(left[index]);
+        for (size_t index = 0; index < right.size(); ++index) result.push_back(right[index]);
+        return result;
     }
-    return unique;
+
+    HashMap<string, Vector<size_t>> seen;
+    for (size_t side = 0; side < 2; ++side)
+    {
+        const Vector<JoinedRecord>& input = side == 0 ? left : right;
+        for (size_t index = 0; index < input.size(); ++index)
+        {
+            const string key = joinedRecordHashKey(input[index]);
+            Vector<size_t>& candidates = seen[key];
+            bool exists = false;
+            for (size_t candidate = 0; candidate < candidates.size(); ++candidate)
+            {
+                if (input[index] == result[candidates[candidate]])
+                {
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists)
+            {
+                candidates.push_back(result.size());
+                result.push_back(input[index]);
+            }
+        }
+    }
+    return result;
 }
 
 Vector<JoinedRecord> Query::intersectWith(const Query& other) const
 {
-    Vector<JoinedRecord> left = execute(), right = other.execute(), result;
+    Vector<JoinedRecord> left = execute();
+    Vector<JoinedRecord> right = other.execute();
+    Vector<JoinedRecord> result;
+    HashMap<string, Vector<size_t>> rightLookup;
+    for (size_t index = 0; index < right.size(); ++index)
+    {
+        rightLookup[joinedRecordHashKey(right[index])].push_back(index);
+    }
     for (size_t index = 0; index < left.size(); ++index)
-        for (size_t rightIndex = 0; rightIndex < right.size(); ++rightIndex)
-            if (left[index] == right[rightIndex]) { result.push_back(left[index]); break; }
+    {
+        auto lookup = rightLookup.find(joinedRecordHashKey(left[index]));
+        if (lookup == rightLookup.end()) continue;
+        for (size_t candidate = 0; candidate < lookup->second.size(); ++candidate)
+        {
+            if (left[index] == right[lookup->second[candidate]])
+            {
+                result.push_back(left[index]);
+                break;
+            }
+        }
+    }
     return result;
 }
 
 Vector<JoinedRecord> Query::exceptWith(const Query& other) const
 {
-    Vector<JoinedRecord> left = execute(), right = other.execute(), result;
+    Vector<JoinedRecord> left = execute();
+    Vector<JoinedRecord> right = other.execute();
+    Vector<JoinedRecord> result;
+    HashMap<string, Vector<size_t>> rightLookup;
+    for (size_t index = 0; index < right.size(); ++index)
+    {
+        rightLookup[joinedRecordHashKey(right[index])].push_back(index);
+    }
     for (size_t index = 0; index < left.size(); ++index)
     {
         bool found = false;
-        for (size_t rightIndex = 0; rightIndex < right.size(); ++rightIndex)
-            if (left[index] == right[rightIndex]) { found = true; break; }
+        auto lookup = rightLookup.find(joinedRecordHashKey(left[index]));
+        if (lookup != rightLookup.end())
+        {
+            for (size_t candidate = 0; candidate < lookup->second.size(); ++candidate)
+            {
+                if (left[index] == right[lookup->second[candidate]])
+                {
+                    found = true;
+                    break;
+                }
+            }
+        }
         if (!found) result.push_back(left[index]);
     }
     return result;
@@ -588,4 +846,3 @@ Database& Query::getDatabase() const
 const string& Query::getBaseTable() const { return baseTable; }
 const Vector<string>& Query::getSelectedColumns() const { return selectedColumns; }
 const Vector<Join>& Query::getJoins() const { return joins; }
-

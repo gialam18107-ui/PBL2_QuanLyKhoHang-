@@ -111,6 +111,42 @@ void Database::printTables() const
     for (const auto& item : tables) cout << "- " << item.first << endl;
 }
 
+static bool containsColumnValue(const Table& table, const string& columnName, const Value& value)
+{
+    const Vector<Index*>& indexes = table.getIndexes();
+    for (size_t index = 0; index < indexes.size(); ++index)
+    {
+        if (indexes[index]->getColumnName() != columnName) continue;
+        const Vector<size_t> candidates = indexes[index]->find(value);
+        const Vector<Record>& rows = table.getRows();
+        for (size_t candidate = 0; candidate < candidates.size(); ++candidate)
+        {
+            const size_t rowIndex = candidates[candidate];
+            if (rowIndex < rows.size()
+                && !table.isRowDeleted(rowIndex)
+                && rows[rowIndex].has(columnName)
+                && rows[rowIndex].get(columnName) == value)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Keep compatibility for referenced columns that are not indexed.
+    const Vector<Record>& rows = table.getRows();
+    for (size_t rowIndex = 0; rowIndex < rows.size(); ++rowIndex)
+    {
+        if (!table.isRowDeleted(rowIndex)
+            && rows[rowIndex].has(columnName)
+            && rows[rowIndex].get(columnName) == value)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool Database::insert(const string& tableName, const Record& record)
 {
     Table* table = getTable(tableName);
@@ -125,7 +161,7 @@ bool Database::insert(const string& tableName, const Record& record)
             || isNull(record.get(foreignKey->getColumnName()))) continue;
         const Table* referenced = getTable(foreignKey->getReferenceTable());
         if (referenced == nullptr
-            || !foreignKey->validate(record, table->getRows(), referenced->getRows()))
+            || !containsColumnValue(*referenced, foreignKey->getReferenceColumn(), record.get(foreignKey->getColumnName())))
         {
             cout << "Foreign key constraint failed: " << constraint->getName() << endl;
             return false;
@@ -137,7 +173,14 @@ bool Database::insert(const string& tableName, const Record& record)
 Vector<Record> Database::selectAll(const string& tableName) const
 {
     const Table* table = getTable(tableName);
-    return table == nullptr ? Vector<Record>() : table->getRows();
+    Vector<Record> result;
+    if (table == nullptr) return result;
+    const Vector<Record>& rows = table->getRows();
+    for (size_t rowIndex = 0; rowIndex < rows.size(); ++rowIndex)
+    {
+        if (!table->isRowDeleted(rowIndex)) result.push_back(rows[rowIndex]);
+    }
+    return result;
 }
 
 static bool validateForeignKeyUpdates(
@@ -157,8 +200,15 @@ static bool validateForeignKeyUpdates(
         auto* foreignKey = dynamic_cast<ForeignKeyConstraint*>(constraint);
         if (foreignKey == nullptr || !newValues.has(foreignKey->getColumnName())) continue;
         const Table* referenced = database.getTable(foreignKey->getReferenceTable());
-        if (referenced == nullptr
-            || !foreignKey->validate(updated, table.getRows(), referenced->getRows())) return false;
+        if (referenced == nullptr) return false;
+        if (!updated.has(foreignKey->getColumnName()) || isNull(updated.get(foreignKey->getColumnName())))
+        {
+            continue; // NULL foreign-key values are permitted by this implementation.
+        }
+        if (!containsColumnValue(*referenced, foreignKey->getReferenceColumn(), updated.get(foreignKey->getColumnName())))
+        {
+            return false;
+        }
     }
     return true;
 }
@@ -169,6 +219,7 @@ bool Database::update(const string& tableName, const Condition& condition, const
     if (table == nullptr) return false;
     for (size_t index = 0; index < table->getRows().size(); ++index)
     {
+        if (table->isRowDeleted(index)) continue;
         const Record& row = table->getRows()[index];
         if (condition.evaluate(row) && !validateForeignKeyUpdates(*this, *table, row, newValues)) return false;
     }
@@ -181,6 +232,7 @@ bool Database::update(const string& tableName, const ConditionGroup& group, cons
     if (table == nullptr) return false;
     for (size_t index = 0; index < table->getRows().size(); ++index)
     {
+        if (table->isRowDeleted(index)) continue;
         const Record& row = table->getRows()[index];
         if (group.evaluate(row) && !validateForeignKeyUpdates(*this, *table, row, newValues)) return false;
     }
@@ -203,12 +255,7 @@ static bool isReferenced(Database& database, const string& tableName, const Vect
                 const Record& parent = removedRows[removedIndex];
                 if (!parent.has(foreignKey->getReferenceColumn())) continue;
                 Value parentValue = parent.get(foreignKey->getReferenceColumn());
-                for (size_t rowIndex = 0; rowIndex < childTable->getRows().size(); ++rowIndex)
-                {
-                    const Record& child = childTable->getRows()[rowIndex];
-                    if (child.has(foreignKey->getColumnName())
-                        && child.get(foreignKey->getColumnName()) == parentValue) return true;
-                }
+                if (containsColumnValue(*childTable, foreignKey->getColumnName(), parentValue)) return true;
             }
         }
     }
@@ -221,7 +268,8 @@ bool Database::remove(const string& tableName, const Condition& condition)
     if (table == nullptr) return false;
     Vector<Record> removed;
     for (size_t index = 0; index < table->getRows().size(); ++index)
-        if (condition.evaluate(table->getRows()[index])) removed.push_back(table->getRows()[index]);
+        if (!table->isRowDeleted(index) && condition.evaluate(table->getRows()[index]))
+            removed.push_back(table->getRows()[index]);
     return !isReferenced(*this, tableName, removed) && table->remove(condition);
 }
 
@@ -231,7 +279,8 @@ bool Database::remove(const string& tableName, const ConditionGroup& group)
     if (table == nullptr) return false;
     Vector<Record> removed;
     for (size_t index = 0; index < table->getRows().size(); ++index)
-        if (group.evaluate(table->getRows()[index])) removed.push_back(table->getRows()[index]);
+        if (!table->isRowDeleted(index) && group.evaluate(table->getRows()[index]))
+            removed.push_back(table->getRows()[index]);
     return !isReferenced(*this, tableName, removed) && table->remove(group);
 }
 
