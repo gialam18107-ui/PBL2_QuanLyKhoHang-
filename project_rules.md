@@ -297,3 +297,9 @@ The `status_type/` folder contains **all status and type master tables**.
 
 ### 10.2 Implement Query
 - The query is written in `schema/UserQuery.*`
+
+## 12. Index
+- When adding new index in the table, index name must be: `index_type + index_column` (index_type = hash_tree, hash, avl_tree)
+- avl_tree for date
+- hash_tree for column having certain values but many duplicates (Eg: attribute in category like cpu's socket, product.is_sold,...)
+- hash for column with unique value (usually dont need to care because of unique and primary key constrain)
