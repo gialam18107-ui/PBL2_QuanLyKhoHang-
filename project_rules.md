@@ -284,3 +284,16 @@ The `status_type/` folder contains **all status and type master tables**.
 - A table file must be placed in the folder corresponding to its business domain.
 - Related join/detail tables must remain with the domain of the business process they belong to, unless the schema or project structure explicitly requires otherwise.
 - File organization must not change table names, column names, keys, relationships, or the schema defined in `QuanLyKhoHang_schema.json`.
+
+## 11. Query
+- The functions are placed in namespace <Query>
+- The library is set in `query`
+- Data in the table is read-only. Remember to extract data from table (using index if needing) to Vector<Record> before processing
+### 10.1 Pre-built function
+- Pre-build 3 functions: sum, count, sort for both one column and a pair of columns.
+- Pre-build functions are implemented on Vetor<Record>.
+- About sort: Sort directly on the pass-by-value Vector. Allow to use c++ built-in sort.
+- Other functions: Using HashTable to count and sum
+
+### 10.2 Implement Query
+- The query is written in `schema/UserQuery.*`
