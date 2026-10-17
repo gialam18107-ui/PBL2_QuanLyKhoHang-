@@ -153,6 +153,7 @@ namespace Schema
 
         table->addConstraint(new PrimaryKeyConstraint("pk_customer", "customer_id"));
         table->addConstraint(new UniqueConstraint("uq_customer_code", "customer_code"));
+        table->createIndex("hash_tree_type", "type", IndexType::HASH_TREE);
         return table;
     }
 
@@ -212,6 +213,7 @@ namespace Schema
         table->addConstraint(new UniqueConstraint("uq_product_sku", "sku"));
         table->addConstraint(new ForeignKeyConstraint("fk_product_brand", "brand", "brand", "brand"));
         table->addConstraint(new ForeignKeyConstraint("fk_product_category", "category", "category", "category_name"));
+        table->createIndex("hash_tree_is_sold", "is_sold", IndexType::HASH_TREE);
         return table;
     }
 
@@ -245,6 +247,9 @@ namespace Schema
 
         table->addConstraint(new PrimaryKeyConstraint("pk_cpu", "cpu_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_cpu_product", "product_id", "product", "product_id"));
+        table->createIndex("hash_tree_socket", "socket", IndexType::HASH_TREE);
+        table->createIndex("hash_tree_tier", "tier", IndexType::HASH_TREE);
+        table->createIndex("hash_tree_series", "series", IndexType::HASH_TREE);
         return table;
     }
 
@@ -262,6 +267,9 @@ namespace Schema
 
         table->addConstraint(new PrimaryKeyConstraint("pk_gpu", "gpu_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_gpu_product", "product_id", "product", "product_id"));
+        table->createIndex("hash_tree_series", "series", IndexType::HASH_TREE);
+        table->createIndex("hash_tree_producer", "producer", IndexType::HASH_TREE);
+        table->createIndex("hash_tree_vram", "vram", IndexType::HASH_TREE);
         return table;
     }
 
@@ -281,6 +289,11 @@ namespace Schema
 
         table->addConstraint(new PrimaryKeyConstraint("pk_mainboard", "mainboard_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_mainboard_product", "product_id", "product", "product_id"));
+        table->createIndex("hash_tree_cpu_support", "cpu_support", IndexType::HASH_TREE);
+        table->createIndex("hash_tree_socket", "socket", IndexType::HASH_TREE);
+        table->createIndex("hash_tree_size", "size", IndexType::HASH_TREE);
+        table->createIndex("hash_tree_chipset", "chipset", IndexType::HASH_TREE);
+        table->createIndex("hash_tree_ram_support", "ram_support", IndexType::HASH_TREE);
         return table;
     }
 
@@ -299,6 +312,9 @@ namespace Schema
 
         table->addConstraint(new PrimaryKeyConstraint("pk_ram", "ram_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_ram_product", "product_id", "product", "product_id"));
+        table->createIndex("hash_tree_generation", "generation", IndexType::HASH_TREE);
+        table->createIndex("hash_tree_capacity", "capacity", IndexType::HASH_TREE);
+        table->createIndex("hash_tree_bus", "bus", IndexType::HASH_TREE);
         return table;
     }
 
@@ -316,6 +332,9 @@ namespace Schema
 
         table->addConstraint(new PrimaryKeyConstraint("pk_ssd", "ssd_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_ssd_product", "product_id", "product", "product_id"));
+        table->createIndex("hash_tree_type", "type", IndexType::HASH_TREE);
+        table->createIndex("hash_tree_gen", "gen", IndexType::HASH_TREE);
+        table->createIndex("hash_tree_capacity", "capacity", IndexType::HASH_TREE);
         return table;
     }
 
@@ -333,6 +352,9 @@ namespace Schema
 
         table->addConstraint(new PrimaryKeyConstraint("pk_psu", "psu_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_psu_product", "product_id", "product", "product_id"));
+        table->createIndex("hash_tree_quality", "quality", IndexType::HASH_TREE);
+        table->createIndex("hash_tree_capacity", "capacity", IndexType::HASH_TREE);
+        table->createIndex("hash_tree_size", "size", IndexType::HASH_TREE);
         return table;
     }
 
@@ -348,6 +370,7 @@ namespace Schema
 
         table->addConstraint(new PrimaryKeyConstraint("pk_cooling", "cooling_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_cooling_product", "product_id", "product", "product_id"));
+        table->createIndex("hash_tree_type", "type", IndexType::HASH_TREE);
         return table;
     }
 
@@ -364,6 +387,7 @@ namespace Schema
 
         table->addConstraint(new PrimaryKeyConstraint("pk_case", "case_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_case_product", "product_id", "product", "product_id"));
+        table->createIndex("hash_tree_size", "size", IndexType::HASH_TREE);
         return table;
     }
 
@@ -405,6 +429,7 @@ namespace Schema
         table->addConstraint(new ForeignKeyConstraint("fk_inbound_transaction_customer", "customer_id", "customer", "customer_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_inbound_transaction_type", "type", "inbound_type", "type"));
         table->addConstraint(new ForeignKeyConstraint("fk_inbound_transaction_status", "status", "inbound_status", "status"));
+        table->createIndex("avl_tree_order_at", "order_at", IndexType::AVL);
         return table;
     }
 
@@ -442,6 +467,8 @@ namespace Schema
         table->addConstraint(new UniqueConstraint("uq_delivery_code", "delivery_code"));
         table->addConstraint(new ForeignKeyConstraint("fk_delivery_inbound_txn", "inbound_transaction_id", "inbound_transaction", "inbound_transaction_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_delivery_status", "status", "delivery_status", "status"));
+        table->createIndex("avl_tree_delivery_at", "delivery_at", IndexType::AVL);
+        table->createIndex("avl_tree_expected_at", "expected_at", IndexType::AVL);
         return table;
     }
 
@@ -499,6 +526,7 @@ namespace Schema
         table->addConstraint(new ForeignKeyConstraint("fk_outbound_transaction_customer", "customer_id", "customer", "customer_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_outbound_transaction_type", "type", "outbound_type", "type"));
         table->addConstraint(new ForeignKeyConstraint("fk_outbound_transaction_status", "status", "outbound_status", "status"));
+        table->createIndex("avl_tree_order_at", "order_at", IndexType::AVL);
         return table;
     }
 
@@ -536,6 +564,8 @@ namespace Schema
         table->addConstraint(new UniqueConstraint("uq_shipment_code", "shipment_code"));
         table->addConstraint(new ForeignKeyConstraint("fk_shipment_outbound_txn", "sell_id", "outbound_transaction", "outbound_trainsaction_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_shipment_status", "status", "shipment_status", "status"));
+        table->createIndex("avl_tree_ship_at", "ship_at", IndexType::AVL);
+        table->createIndex("avl_tree_expected_at", "expected_at", IndexType::AVL);
         return table;
     }
 
@@ -588,6 +618,7 @@ namespace Schema
         table->addConstraint(new PrimaryKeyConstraint("pk_status_history", "history_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_status_history_unit", "unit_id", "unit_inventory", "unit_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_status_history_curr_status", "curr_status", "unit_status", "status"));
+        table->createIndex("hash_tree_type", "type", IndexType::HASH_TREE);
         return table;
     }
 
