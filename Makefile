@@ -12,12 +12,12 @@ CORE_OBJS = $(patsubst %.cpp, $(BUILD_DIR)/%.o, $(CORE_SRCS))
 UI_SRCS = $(wildcard ui/*.cpp)
 UI_OBJS = $(patsubst %.cpp, $(BUILD_DIR)/%.o, $(UI_SRCS))
 
-BUILD_DIRS = $(BUILD_DIR) $(BUILD_DIR)/database $(BUILD_DIR)/schema $(BUILD_DIR)/data_io $(BUILD_DIR)/generator $(BUILD_DIR)/ui $(BUILD_DIR)/test $(BUILD_DIR)/test/test_index
+BUILD_DIRS = $(BUILD_DIR) $(BUILD_DIR)/database $(BUILD_DIR)/schema $(BUILD_DIR)/data_io $(BUILD_DIR)/generator $(BUILD_DIR)/ui $(BUILD_DIR)/test
 
 GENERATOR_SRCS = $(wildcard generator/*.cpp)
 GENERATOR_OBJS = $(patsubst %.cpp, $(BUILD_DIR)/%.o, $(GENERATOR_SRCS))
 
-TEST_SRCS = $(wildcard test/*.cpp) $(wildcard test/test_index/*.cpp)
+TEST_SRCS = $(wildcard test/*.cpp)
 TEST_OBJS = $(patsubst %.cpp, $(BUILD_DIR)/%.o, $(TEST_SRCS))
 
 all: test_io.exe generator.exe app.exe
@@ -30,9 +30,6 @@ $(BUILD_DIR)/main.o: main.cpp | $(BUILD_DIRS)
 	$(CXX) $(CXXFLAGS) $(QT_CXXFLAGS) -c $< -o $@
 
 # Compile test files into $(BUILD_DIR)/test
-$(BUILD_DIR)/test/test_index/%.o: test/test_index/%.cpp | $(BUILD_DIRS)
-	$(CXX) $(CXXFLAGS) -c $< -o $@
-
 $(BUILD_DIR)/test/%.o: test/%.cpp | $(BUILD_DIRS)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
@@ -69,12 +66,6 @@ test/%.exe: $(BUILD_DIR)/test/%.o $(CORE_OBJS)
 
 # Pattern to build any <name>.exe from test source $(BUILD_DIR)/test/<name>.o + CORE_OBJS
 %.exe: $(BUILD_DIR)/test/%.o $(CORE_OBJS)
-	$(CXX) $(CXXFLAGS) $^ -o $@
-
-test_index.exe: $(BUILD_DIR)/test/test_index/test_index.o $(CORE_OBJS)
-	$(CXX) $(CXXFLAGS) $^ -o $@
-
-test/test_index/%.exe: $(BUILD_DIR)/test/test_index/%.o $(CORE_OBJS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 # Run a test executable by name: e.g. mingw32-make run_test_avl_index
