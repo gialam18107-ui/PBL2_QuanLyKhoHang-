@@ -214,19 +214,25 @@ bool Table::addConstraint(Constraint* constraint)
     constraints.push_back(constraint);
 
     // Primary-key, unique and foreign-key columns are frequent lookup/join keys.
-    // Create a HASH index automatically unless an index already covers the column.
+    // Create an index automatically unless an index already covers the column.
+    // Primary-key and Unique use HASH (1-1 mapping).
+    // Foreign-key uses HASH_TREE to support 1-to-many relationships (multiple rows per key).
     string indexedColumn;
+    IndexType indexType = IndexType::HASH;
     if (const auto* primaryKey = dynamic_cast<const PrimaryKeyConstraint*>(constraint))
     {
         indexedColumn = primaryKey->getColumnName();
+        indexType = IndexType::HASH;
     }
     else if (const auto* uniqueConstraint = dynamic_cast<const UniqueConstraint*>(constraint))
     {
         indexedColumn = uniqueConstraint->getColumnName();
+        indexType = IndexType::HASH;
     }
     else if (const auto* foreignKey = dynamic_cast<const ForeignKeyConstraint*>(constraint))
     {
         indexedColumn = foreignKey->getColumnName();
+        indexType = IndexType::HASH_TREE;
     }
 
     if (!indexedColumn.empty() && hasColumn(indexedColumn))
@@ -243,13 +249,14 @@ bool Table::addConstraint(Constraint* constraint)
 
         if (!columnAlreadyIndexed)
         {
-            string indexName = "__auto_hash_" + indexedColumn;
+            string prefix = (indexType == IndexType::HASH_TREE) ? "__auto_hash_tree_" : "__auto_hash_";
+            string indexName = prefix + indexedColumn;
             int suffix = 1;
             while (hasIndex(indexName))
             {
-                indexName = "__auto_hash_" + indexedColumn + "_" + to_string(suffix++);
+                indexName = prefix + indexedColumn + "_" + to_string(suffix++);
             }
-            createIndex(indexName, indexedColumn, IndexType::HASH);
+            createIndex(indexName, indexedColumn, indexType);
         }
     }
 
