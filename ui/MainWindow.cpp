@@ -164,7 +164,7 @@ void MainWindow::setupPages()
             user_query::product_query(db, results, col, Value(v1.toStdString()));
         }
         productWidget->setData(results);
-        statusLabel->setText(QString("Lọc PRODUCT_QUERY theo [%1 = %2] tìm thấy: %3 bản ghi (%4 ms)")
+        statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên PRODUCT_QUERY [%1 = %2]: %3 bản ghi (%4 ms)")
             .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(productWidget);
@@ -200,7 +200,7 @@ void MainWindow::setupPages()
             user_query::product_quantity_query(db, results, col, Value(v1.toStdString()));
         }
         productQuantityWidget->setData(results);
-        statusLabel->setText(QString("Lọc PRODUCT_QUANTITY theo [%1 = %2] tìm thấy: %3 bản ghi (%4 ms)")
+        statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên PRODUCT_QUANTITY [%1 = %2]: %3 bản ghi (%4 ms)")
             .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(productQuantityWidget);
@@ -229,7 +229,7 @@ void MainWindow::setupPages()
         Vector<Record> results;
         user_query::unit_inventory_query(db, results, col, Value(v1.toStdString()));
         unitInventoryWidget->setData(results);
-        statusLabel->setText(QString("Lọc UNIT_INVENTORY theo [%1 = %2] tìm thấy: %3 bản ghi (%4 ms)")
+        statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên UNIT_INVENTORY [%1 = %2]: %3 bản ghi (%4 ms)")
             .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(unitInventoryWidget);
@@ -257,7 +257,7 @@ void MainWindow::setupPages()
         Vector<Record> results;
         user_query::status_history_query(db, results, col, Value(v1.toStdString()));
         statusHistoryWidget->setData(results);
-        statusLabel->setText(QString("Lọc STATUS_HISTORY theo [%1 = %2] tìm thấy: %3 bản ghi (%4 ms)")
+        statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên STATUS_HISTORY [%1 = %2]: %3 bản ghi (%4 ms)")
             .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(statusHistoryWidget);
@@ -288,11 +288,11 @@ void MainWindow::setupPages()
         Vector<Record> results;
         if (isRange) {
             user_query::inbound_transaction_query(db, results, col, Value(v1.toStdString()), Value(v2.toStdString()));
-            statusLabel->setText(QString("Lọc INBOUND_TXN theo [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
+            statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên INBOUND_TXN [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
                 .arg(QString::fromStdString(col)).arg(v1).arg(v2).arg(results.size()).arg(timer.elapsed()));
         } else {
             user_query::inbound_transaction_query(db, results, col, Value(v1.toStdString()));
-            statusLabel->setText(QString("Lọc INBOUND_TXN theo [%1 = %2]: %3 bản ghi (%4 ms)")
+            statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên INBOUND_TXN [%1 = %2]: %3 bản ghi (%4 ms)")
                 .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
         }
         inboundTxnWidget->setData(results);
@@ -323,7 +323,7 @@ void MainWindow::setupPages()
         Vector<Record> results;
         user_query::inbound_detail_query(db, results, col, Value(v1.toStdString()));
         inboundDetailWidget->setData(results);
-        statusLabel->setText(QString("Lọc INBOUND_DETAIL theo [%1 = %2]: %3 bản ghi (%4 ms)")
+        statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên INBOUND_DETAIL [%1 = %2]: %3 bản ghi (%4 ms)")
             .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(inboundDetailWidget);
@@ -354,11 +354,11 @@ void MainWindow::setupPages()
         Vector<Record> results;
         if (isRange) {
             user_query::delivery_query(db, results, col, Value(v1.toStdString()), Value(v2.toStdString()));
-            statusLabel->setText(QString("Lọc DELIVERY theo [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
+            statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên DELIVERY [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
                 .arg(QString::fromStdString(col)).arg(v1).arg(v2).arg(results.size()).arg(timer.elapsed()));
         } else {
             user_query::delivery_query(db, results, col, Value(v1.toStdString()));
-            statusLabel->setText(QString("Lọc DELIVERY theo [%1 = %2]: %3 bản ghi (%4 ms)")
+            statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên DELIVERY [%1 = %2]: %3 bản ghi (%4 ms)")
                 .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
         }
         deliveryWidget->setData(results);
@@ -391,11 +391,11 @@ void MainWindow::setupPages()
         Vector<Record> results;
         if (isRange) {
             user_query::delivery_detail_query(db, results, col, Value(v1.toStdString()), Value(v2.toStdString()));
-            statusLabel->setText(QString("Lọc DELIVERY_DETAIL theo [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
+            statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên DELIVERY_DETAIL [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
                 .arg(QString::fromStdString(col)).arg(v1).arg(v2).arg(results.size()).arg(timer.elapsed()));
         } else {
             user_query::delivery_detail_query(db, results, col, Value(v1.toStdString()));
-            statusLabel->setText(QString("Lọc DELIVERY_DETAIL theo [%1 = %2]: %3 bản ghi (%4 ms)")
+            statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên DELIVERY_DETAIL [%1 = %2]: %3 bản ghi (%4 ms)")
                 .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
         }
         deliveryDetailWidget->setData(results);
@@ -428,11 +428,11 @@ void MainWindow::setupPages()
         Vector<Record> results;
         if (isRange) {
             user_query::outbound_transaction_query(db, results, col, Value(v1.toStdString()), Value(v2.toStdString()));
-            statusLabel->setText(QString("Lọc OUTBOUND_TXN theo [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
+            statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên OUTBOUND_TXN [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
                 .arg(QString::fromStdString(col)).arg(v1).arg(v2).arg(results.size()).arg(timer.elapsed()));
         } else {
             user_query::outbound_transaction_query(db, results, col, Value(v1.toStdString()));
-            statusLabel->setText(QString("Lọc OUTBOUND_TXN theo [%1 = %2]: %3 bản ghi (%4 ms)")
+            statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên OUTBOUND_TXN [%1 = %2]: %3 bản ghi (%4 ms)")
                 .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
         }
         outboundTxnWidget->setData(results);
@@ -463,7 +463,7 @@ void MainWindow::setupPages()
         Vector<Record> results;
         user_query::outbound_detail_query(db, results, col, Value(v1.toStdString()));
         outboundDetailWidget->setData(results);
-        statusLabel->setText(QString("Lọc OUTBOUND_DETAIL theo [%1 = %2]: %3 bản ghi (%4 ms)")
+        statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên OUTBOUND_DETAIL [%1 = %2]: %3 bản ghi (%4 ms)")
             .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(outboundDetailWidget);
@@ -494,11 +494,11 @@ void MainWindow::setupPages()
         Vector<Record> results;
         if (isRange) {
             user_query::shipment_query(db, results, col, Value(v1.toStdString()), Value(v2.toStdString()));
-            statusLabel->setText(QString("Lọc SHIPMENT theo [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
+            statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên SHIPMENT [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
                 .arg(QString::fromStdString(col)).arg(v1).arg(v2).arg(results.size()).arg(timer.elapsed()));
         } else {
             user_query::shipment_query(db, results, col, Value(v1.toStdString()));
-            statusLabel->setText(QString("Lọc SHIPMENT theo [%1 = %2]: %3 bản ghi (%4 ms)")
+            statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên SHIPMENT [%1 = %2]: %3 bản ghi (%4 ms)")
                 .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
         }
         shipmentWidget->setData(results);
@@ -531,11 +531,11 @@ void MainWindow::setupPages()
         Vector<Record> results;
         if (isRange) {
             user_query::shipment_detail_query(db, results, col, Value(v1.toStdString()), Value(v2.toStdString()));
-            statusLabel->setText(QString("Lọc SHIPMENT_DETAIL theo [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
+            statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên SHIPMENT_DETAIL [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
                 .arg(QString::fromStdString(col)).arg(v1).arg(v2).arg(results.size()).arg(timer.elapsed()));
         } else {
             user_query::shipment_detail_query(db, results, col, Value(v1.toStdString()));
-            statusLabel->setText(QString("Lọc SHIPMENT_DETAIL theo [%1 = %2]: %3 bản ghi (%4 ms)")
+            statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên SHIPMENT_DETAIL [%1 = %2]: %3 bản ghi (%4 ms)")
                 .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
         }
         shipmentDetailWidget->setData(results);

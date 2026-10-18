@@ -53,7 +53,7 @@ void QueryTableWidget::setupFilterUI(QVBoxLayout* mainLayout)
     filterLayout->setContentsMargins(12, 10, 12, 10);
     filterLayout->setSpacing(10);
 
-    auto* filterIconLabel = new QLabel("🎯 Lọc theo cột:", filterFrame);
+    auto* filterIconLabel = new QLabel("🎯 Tìm kiếm theo cấu trúc dữ liệu:", filterFrame);
     filterIconLabel->setStyleSheet("font-size: 13px; font-weight: 600; color: #334155; border: none;");
     filterLayout->addWidget(filterIconLabel);
 
@@ -187,7 +187,7 @@ void QueryTableWidget::setupFilterUI(QVBoxLayout* mainLayout)
     filterLayout->addWidget(filterSelectCombo);
 
     // Filter Buttons
-    applyFilterBtn = new QPushButton("🔍 Lọc dữ liệu", filterFrame);
+    applyFilterBtn = new QPushButton("🔍 Tìm kiếm theo cấu trúc dữ liệu", filterFrame);
     applyFilterBtn->setStyleSheet(
         "QPushButton {"
         "  background-color: #2563eb;"
@@ -250,7 +250,7 @@ void QueryTableWidget::setupToolbarUI(QVBoxLayout* mainLayout)
     controlsLayout->setSpacing(10);
 
     searchInput = new QLineEdit(this);
-    searchInput->setPlaceholderText("⚡ Tìm kiếm nhanh nội dung trong bảng...");
+    searchInput->setPlaceholderText("⚡ Tìm nhanh từ khóa trên bảng (Bộ nhớ đệm Vector)...");
     searchInput->setClearButtonEnabled(true);
     searchInput->setMinimumWidth(280);
     searchInput->setStyleSheet(
@@ -400,13 +400,13 @@ void QueryTableWidget::setFilterColumns(const std::vector<FilterColumnDef>& defs
         QString typeTag;
         switch (def.type) {
         case FilterType::EXACT_TEXT:
-            typeTag = " [Chính xác/Hash]";
+            typeTag = " [Bảng băm / Hash]";
             break;
         case FilterType::DATE_RANGE:
-            typeTag = " [Khoảng ngày/AVL]";
+            typeTag = " [Cây AVL / Range]";
             break;
         case FilterType::SELECT_OR_TYPE:
-            typeTag = " [Chọn/Nhập]";
+            typeTag = " [Cây băm / Hash Tree]";
             break;
         }
         filterColumnCombo->addItem(def.displayName + typeTag);
@@ -575,7 +575,7 @@ void QueryTableWidget::renderRows()
     tableWidget->setUpdatesEnabled(true);
 
     if (searchInput->text().trimmed().isEmpty()) {
-        countLabel->setText(QString("Tổng cộng: %1 bản ghi").arg(rowCount));
+        countLabel->setText(QString("Tổng cộng: %1 bản ghi | Đã nạp vào Vector<Record>").arg(rowCount));
     } else {
         filterRows(searchInput->text());
     }
@@ -624,9 +624,9 @@ void QueryTableWidget::filterRows(const QString& query)
     tableWidget->setUpdatesEnabled(true);
 
     if (q.isEmpty()) {
-        countLabel->setText(QString("Tổng cộng: %1 bản ghi").arg(total));
+        countLabel->setText(QString("Tổng cộng: %1 bản ghi | Đã nạp vào Vector<Record>").arg(total));
     } else {
-        countLabel->setText(QString("Tìm thấy: %1 / %2 bản ghi").arg(visibleCount).arg(total));
+        countLabel->setText(QString("Tìm thấy: %1 / %2 bản ghi (Bộ nhớ đệm Vector)").arg(visibleCount).arg(total));
     }
 }
 
