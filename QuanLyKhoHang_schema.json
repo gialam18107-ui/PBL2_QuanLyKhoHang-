@@ -2367,59 +2367,6 @@
       "collapsed": false
     },
     {
-      "id": "zotV1RMgP9x8GXgdFkfSE",
-      "name": "PRODUCT_QUERY",
-      "x": 3432.278200869355,
-      "y": -974.4508641667749,
-      "locked": false,
-      "fields": [
-        {
-          "id": "iYLVxf2RQywOFs9yJzuLZ",
-          "name": "product_code",
-          "type": "VARCHAR",
-          "default": "",
-          "check": "",
-          "primary": false,
-          "unique": true,
-          "notNull": true,
-          "increment": false,
-          "comment": "producer_code + category_code+next_code_no(producer)+next_code_no(category)\n\nINTEL-CPU-0001-0001\nNVI-GPU-0032-0034\nSAM-SSD-0003-0031\nAMD-GPU-0323-2323",
-          "size": 20
-        },
-        {
-          "id": "stLRLLncNdBnraXvn2Vdx",
-          "name": "sku",
-          "type": "VARCHAR",
-          "default": "",
-          "check": "",
-          "primary": false,
-          "unique": true,
-          "notNull": true,
-          "increment": false,
-          "comment": "",
-          "size": 20
-        },
-        {
-          "id": "bfbnqArPWSp1-yhRnSFgt",
-          "name": "barcode",
-          "type": "VARCHAR",
-          "default": "",
-          "check": "",
-          "primary": false,
-          "unique": true,
-          "notNull": true,
-          "increment": false,
-          "comment": "",
-          "size": 13
-        }
-      ],
-      "comment": "",
-      "indices": [],
-      "uniqueConstraints": [],
-      "color": "#7a1717",
-      "collapsed": false
-    },
-    {
       "id": "WbH86_lvF-G0JayX6vBe8",
       "name": "INBOUND_TRANSACTION_QUERY",
       "x": 2833.7029117801717,
@@ -2546,6 +2493,19 @@
           "comment": "",
           "size": 20,
           "values": []
+        },
+        {
+          "id": "w4rDcQmWxETUdL6rM_Km8",
+          "name": "product_name",
+          "type": "VARCHAR",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": 255
         },
         {
           "id": "fTNx4uhaE8zRiiHBc2_6A",
@@ -2769,6 +2729,19 @@
           "values": []
         },
         {
+          "id": "l3HdBxFQ4ujCFO-7T25r1",
+          "name": "product_name",
+          "type": "VARCHAR",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": 255
+        },
+        {
           "id": "dwFwiJSZGNo7fGKpkbzID",
           "name": "ordered_quantity",
           "type": "INTEGER",
@@ -2986,6 +2959,20 @@
           "increment": false,
           "comment": "INBOUND/OUTBOUND",
           "size": 255
+        },
+        {
+          "id": "1fu_O3XgjtNBhErdjSdYO",
+          "name": "date",
+          "type": "DATE",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": "",
+          "values": []
         }
       ],
       "comment": "",
@@ -2997,8 +2984,8 @@
     {
       "id": "8ZDmb-M2UnBOrIMqOrxi_",
       "name": "PRODUCT_QUANTITY_QUERY",
-      "x": 3700.2143585270314,
-      "y": -982.4029266121915,
+      "x": 3701.4554021627023,
+      "y": -955.0994931996336,
       "locked": false,
       "fields": [
         {
@@ -3013,6 +3000,32 @@
           "increment": false,
           "comment": "",
           "id": "_GitqrWHUYshmXwdhXvf1",
+          "size": 255
+        },
+        {
+          "id": "8g4pgl1nPTLsqSgrqxCpZ",
+          "name": "barcode",
+          "type": "VARCHAR",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": 255
+        },
+        {
+          "id": "NVJfElSefUU--d4fFF3Hc",
+          "name": "sku",
+          "type": "VARCHAR",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
           "size": 255
         },
         {
