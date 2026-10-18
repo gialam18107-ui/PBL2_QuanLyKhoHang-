@@ -129,9 +129,14 @@ void product_quantity_query(Database *db, Vector<Record> &results, const string&
 }
 
 // ============================================================
-// 3. UNIT INVENTORY QUERY
+// 3. UNIT INVENTORY QUERY (Index: serial, status)
 // ============================================================
 void unit_inventory_query(Database *db, Vector<Record> &results)
+{
+    unit_inventory_query(db, results, "", Value());
+}
+
+void unit_inventory_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& val)
 {
     results.clear();
     if (!db) return;
@@ -139,6 +144,19 @@ void unit_inventory_query(Database *db, Vector<Record> &results)
     Table* uTable = db->getTable("unit_inventory");
     Table* pTable = db->getTable("product");
     if (!uTable || !pTable) return;
+
+    Vector<Record> uSource;
+    if (!indexedColumn.empty())
+    {
+        uSource = Query::filterRecords(*uTable, indexedColumn, val);
+    }
+    else
+    {
+        for (size_t i = 0; i < uTable->getRows().size(); ++i)
+        {
+            if (!uTable->isRowDeleted(i)) uSource.push_back(uTable->getRows()[i]);
+        }
+    }
 
     HashMap<Value, Record> prodMap;
     const auto& pRows = pTable->getRows();
@@ -151,11 +169,8 @@ void unit_inventory_query(Database *db, Vector<Record> &results)
         }
     }
 
-    const auto& uRows = uTable->getRows();
-    for (size_t i = 0; i < uRows.size(); ++i)
+    for (const auto& u : uSource)
     {
-        if (uTable->isRowDeleted(i)) continue;
-        const auto& u = uRows[i];
         if (!u.has("product_id")) continue;
 
         auto it = prodMap.find(u.get("product_id"));
@@ -396,6 +411,11 @@ void inbound_transaction_query(Database *db, Vector<Record> &results, const stri
 // ============================================================
 void inbound_detail_query(Database *db, Vector<Record> &results)
 {
+    inbound_detail_query(db, results, "", Value());
+}
+
+void inbound_detail_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& val)
+{
     results.clear();
     if (!db) return;
 
@@ -403,6 +423,38 @@ void inbound_detail_query(Database *db, Vector<Record> &results)
     Table* itTable = db->getTable("inbound_transaction");
     Table* pTable = db->getTable("product");
     if (!idTable || !itTable || !pTable) return;
+
+    Vector<Record> idSource;
+    if (!indexedColumn.empty())
+    {
+        if (indexedColumn == "inbound_code")
+        {
+            Vector<Record> txns = Query::filterRecords(*itTable, "inbound_code", val);
+            if (!txns.empty() && txns[0].has("inbound_transaction_id"))
+            {
+                idSource = Query::filterRecords(*idTable, "inbound_transaction_id", txns[0].get("inbound_transaction_id"));
+            }
+        }
+        else if (indexedColumn == "product_code")
+        {
+            Vector<Record> prods = Query::filterRecords(*pTable, "product_code", val);
+            if (!prods.empty() && prods[0].has("product_id"))
+            {
+                idSource = Query::filterRecords(*idTable, "product_id", prods[0].get("product_id"));
+            }
+        }
+        else
+        {
+            idSource = Query::filterRecords(*idTable, indexedColumn, val);
+        }
+    }
+    else
+    {
+        for (size_t i = 0; i < idTable->getRows().size(); ++i)
+        {
+            if (!idTable->isRowDeleted(i)) idSource.push_back(idTable->getRows()[i]);
+        }
+    }
 
     HashMap<Value, Record> itMap;
     const auto& itRows = itTable->getRows();
@@ -426,11 +478,8 @@ void inbound_detail_query(Database *db, Vector<Record> &results)
         }
     }
 
-    const auto& idRows = idTable->getRows();
-    for (size_t i = 0; i < idRows.size(); ++i)
+    for (const auto& id : idSource)
     {
-        if (idTable->isRowDeleted(i)) continue;
-        const auto& id = idRows[i];
         if (!id.has("inbound_transaction_id") || !id.has("product_id")) continue;
 
         auto itit = itMap.find(id.get("inbound_transaction_id"));
@@ -540,9 +589,23 @@ void delivery_detail_query(Database *db, Vector<Record> &results, const string& 
     if (!ddTable || !dTable || !pTable) return;
 
     Vector<Record> dSource;
+    Vector<Record> pSource;
+    bool filterOnProduct = (indexedColumn == "product_code");
+
     if (!indexedColumn.empty())
     {
-        dSource = Query::filterRecords(*dTable, indexedColumn, minVal, maxVal);
+        if (filterOnProduct)
+        {
+            pSource = Query::filterRecords(*pTable, "product_code", minVal);
+            for (size_t i = 0; i < dTable->getRows().size(); ++i)
+            {
+                if (!dTable->isRowDeleted(i)) dSource.push_back(dTable->getRows()[i]);
+            }
+        }
+        else
+        {
+            dSource = Query::filterRecords(*dTable, indexedColumn, minVal, maxVal);
+        }
     }
     else
     {
@@ -562,13 +625,26 @@ void delivery_detail_query(Database *db, Vector<Record> &results, const string& 
     }
 
     HashMap<Value, Record> prodMap;
-    const auto& pRows = pTable->getRows();
-    for (size_t i = 0; i < pRows.size(); ++i)
+    if (filterOnProduct)
     {
-        if (pTable->isRowDeleted(i)) continue;
-        if (pRows[i].has("product_id"))
+        for (const auto& p : pSource)
         {
-            prodMap[pRows[i].get("product_id")] = pRows[i];
+            if (p.has("product_id"))
+            {
+                prodMap[p.get("product_id")] = p;
+            }
+        }
+    }
+    else
+    {
+        const auto& pRows = pTable->getRows();
+        for (size_t i = 0; i < pRows.size(); ++i)
+        {
+            if (pTable->isRowDeleted(i)) continue;
+            if (pRows[i].has("product_id"))
+            {
+                prodMap[pRows[i].get("product_id")] = pRows[i];
+            }
         }
     }
 
@@ -701,6 +777,11 @@ void outbound_transaction_query(Database *db, Vector<Record> &results, const str
 // ============================================================
 void outbound_detail_query(Database *db, Vector<Record> &results)
 {
+    outbound_detail_query(db, results, "", Value());
+}
+
+void outbound_detail_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& val)
+{
     results.clear();
     if (!db) return;
 
@@ -708,6 +789,44 @@ void outbound_detail_query(Database *db, Vector<Record> &results)
     Table* otTable = db->getTable("outbound_transaction");
     Table* pTable = db->getTable("product");
     if (!odTable || !otTable || !pTable) return;
+
+    Vector<Record> odSource;
+    if (!indexedColumn.empty())
+    {
+        if (indexedColumn == "outbound_code")
+        {
+            Vector<Record> txns = Query::filterRecords(*otTable, "outbound_code", val);
+            if (!txns.empty())
+            {
+                Value otId;
+                if (txns[0].has("outbound_trainsaction_id")) otId = txns[0].get("outbound_trainsaction_id");
+                else if (txns[0].has("outbound_transaction_id")) otId = txns[0].get("outbound_transaction_id");
+                if (!holds_alternative<monostate>(otId))
+                {
+                    odSource = Query::filterRecords(*odTable, "outbound_transaction_id", otId);
+                }
+            }
+        }
+        else if (indexedColumn == "product_code")
+        {
+            Vector<Record> prods = Query::filterRecords(*pTable, "product_code", val);
+            if (!prods.empty() && prods[0].has("product_id"))
+            {
+                odSource = Query::filterRecords(*odTable, "product_id", prods[0].get("product_id"));
+            }
+        }
+        else
+        {
+            odSource = Query::filterRecords(*odTable, indexedColumn, val);
+        }
+    }
+    else
+    {
+        for (size_t i = 0; i < odTable->getRows().size(); ++i)
+        {
+            if (!odTable->isRowDeleted(i)) odSource.push_back(odTable->getRows()[i]);
+        }
+    }
 
     HashMap<Value, Record> otMap;
     const auto& otRows = otTable->getRows();
@@ -735,11 +854,8 @@ void outbound_detail_query(Database *db, Vector<Record> &results)
         }
     }
 
-    const auto& odRows = odTable->getRows();
-    for (size_t i = 0; i < odRows.size(); ++i)
+    for (const auto& od : odSource)
     {
-        if (odTable->isRowDeleted(i)) continue;
-        const auto& od = odRows[i];
         if (!od.has("outbound_transaction_id") || !od.has("product_id")) continue;
 
         auto otit = otMap.find(od.get("outbound_transaction_id"));
@@ -858,9 +974,23 @@ void shipment_detail_query(Database *db, Vector<Record> &results, const string& 
     if (!sdTable || !sTable || !pTable) return;
 
     Vector<Record> sSource;
+    Vector<Record> pSource;
+    bool filterOnProduct = (indexedColumn == "product_code");
+
     if (!indexedColumn.empty())
     {
-        sSource = Query::filterRecords(*sTable, indexedColumn, minVal, maxVal);
+        if (filterOnProduct)
+        {
+            pSource = Query::filterRecords(*pTable, "product_code", minVal);
+            for (size_t i = 0; i < sTable->getRows().size(); ++i)
+            {
+                if (!sTable->isRowDeleted(i)) sSource.push_back(sTable->getRows()[i]);
+            }
+        }
+        else
+        {
+            sSource = Query::filterRecords(*sTable, indexedColumn, minVal, maxVal);
+        }
     }
     else
     {
@@ -880,13 +1010,26 @@ void shipment_detail_query(Database *db, Vector<Record> &results, const string& 
     }
 
     HashMap<Value, Record> prodMap;
-    const auto& pRows = pTable->getRows();
-    for (size_t i = 0; i < pRows.size(); ++i)
+    if (filterOnProduct)
     {
-        if (pTable->isRowDeleted(i)) continue;
-        if (pRows[i].has("product_id"))
+        for (const auto& p : pSource)
         {
-            prodMap[pRows[i].get("product_id")] = pRows[i];
+            if (p.has("product_id"))
+            {
+                prodMap[p.get("product_id")] = p;
+            }
+        }
+    }
+    else
+    {
+        const auto& pRows = pTable->getRows();
+        for (size_t i = 0; i < pRows.size(); ++i)
+        {
+            if (pTable->isRowDeleted(i)) continue;
+            if (pRows[i].has("product_id"))
+            {
+                prodMap[pRows[i].get("product_id")] = pRows[i];
+            }
         }
     }
 

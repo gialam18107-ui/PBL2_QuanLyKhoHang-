@@ -406,6 +406,7 @@ namespace Schema
         table->addConstraint(new UniqueConstraint("uq_unit_inventory_serial", "serial"));
         table->addConstraint(new ForeignKeyConstraint("fk_unit_inventory_product", "product_id", "product", "product_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_unit_inventory_status", "status", "unit_status", "status"));
+        table->createIndex("hash_tree_status", "status", IndexType::HASH_TREE);
         return table;
     }
 
@@ -430,6 +431,8 @@ namespace Schema
         table->addConstraint(new ForeignKeyConstraint("fk_inbound_transaction_type", "type", "inbound_type", "type"));
         table->addConstraint(new ForeignKeyConstraint("fk_inbound_transaction_status", "status", "inbound_status", "status"));
         table->createIndex("avl_tree_order_at", "order_at", IndexType::AVL);
+        table->createIndex("hash_tree_type", "type", IndexType::HASH_TREE);
+        table->createIndex("hash_tree_status", "status", IndexType::HASH_TREE);
         return table;
     }
 
@@ -469,6 +472,7 @@ namespace Schema
         table->addConstraint(new ForeignKeyConstraint("fk_delivery_status", "status", "delivery_status", "status"));
         table->createIndex("avl_tree_delivery_at", "delivery_at", IndexType::AVL);
         table->createIndex("avl_tree_expected_at", "expected_at", IndexType::AVL);
+        table->createIndex("hash_tree_status", "status", IndexType::HASH_TREE);
         return table;
     }
 
@@ -527,6 +531,8 @@ namespace Schema
         table->addConstraint(new ForeignKeyConstraint("fk_outbound_transaction_type", "type", "outbound_type", "type"));
         table->addConstraint(new ForeignKeyConstraint("fk_outbound_transaction_status", "status", "outbound_status", "status"));
         table->createIndex("avl_tree_order_at", "order_at", IndexType::AVL);
+        table->createIndex("hash_tree_type", "type", IndexType::HASH_TREE);
+        table->createIndex("hash_tree_status", "status", IndexType::HASH_TREE);
         return table;
     }
 
@@ -566,6 +572,7 @@ namespace Schema
         table->addConstraint(new ForeignKeyConstraint("fk_shipment_status", "status", "shipment_status", "status"));
         table->createIndex("avl_tree_ship_at", "ship_at", IndexType::AVL);
         table->createIndex("avl_tree_expected_at", "expected_at", IndexType::AVL);
+        table->createIndex("hash_tree_status", "status", IndexType::HASH_TREE);
         return table;
     }
 

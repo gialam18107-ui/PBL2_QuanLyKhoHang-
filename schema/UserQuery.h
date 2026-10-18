@@ -31,8 +31,9 @@ namespace user_query {
     void product_quantity_query(Database *db, Vector<Record> &results);
     void product_quantity_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& val);
 
-    // 3. UNIT_INVENTORY_QUERY
+    // 3. UNIT_INVENTORY_QUERY (Index: serial, status)
     void unit_inventory_query(Database *db, Vector<Record> &results);
+    void unit_inventory_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& val);
 
     // 4. STATUS_HISTORY_QUERY (Index: status_history.type; Kèm cột 'date')
     void status_history_query(Database *db, Vector<Record> &results);
@@ -45,6 +46,7 @@ namespace user_query {
 
     // 6. INBOUND_DETAIL_QUERY
     void inbound_detail_query(Database *db, Vector<Record> &results);
+    void inbound_detail_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& val);
 
     // 7. DELIVERY_QUERY (Index: delivery.delivery_at, expected_at)
     void delivery_query(Database *db, Vector<Record> &results);
@@ -63,6 +65,7 @@ namespace user_query {
 
     // 10. OUTBOUND_DETAIL_QUERY
     void outbound_detail_query(Database *db, Vector<Record> &results);
+    void outbound_detail_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& val);
 
     // 11. SHIPMENT_QUERY (Index: shipment.ship_at, expected_at)
     void shipment_query(Database *db, Vector<Record> &results);
