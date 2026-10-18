@@ -7,6 +7,9 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QComboBox>
+#include <QMenuBar>
+#include <QMenu>
+#include <QAction>
 
 #include "database/Database.h"
 #include "QueryTableWidget.h"
@@ -19,20 +22,41 @@ public:
 
 private:
     void setupUI();
+    void setupMenuBar();
     void setupSidebar();
     void setupPages();
     void refreshQuery(int index);
     void reloadDatabase();
     void loadAuxSpecData(const QString& tableName);
+    QStringList loadSpecOptions(const QString& specTableName);
+    void updateCategoryFilterOptions();
+
+    void switchToDomain(int domainIndex); // 0: Warehouse, 1: Category, 2: Aux Specs
+    void selectWarehouseQuery(int row);
+    void selectCategoryQuery(int row);
+    void selectAuxSpecQuery(const QString& tableName);
 
     Database* db;
 
-    QListWidget* sidebarList;
+    // Top Menus (Rule 9.2 & 9.3)
+    QMenu* warehouseMenu;
+    QMenu* categoryMenu;   // "Danh mục sản phẩm"
+    QMenu* auxSpecMenu;    // "Danh mục phụ"
+
+    // Sidebar navigation tabs & separated lists
+    QPushButton* tabWarehouseBtn;
+    QPushButton* tabCategoryBtn;
+    QPushButton* tabAuxSpecBtn;
+    QStackedWidget* sidebarStack;
+    QListWidget* warehouseList;
+    QListWidget* categoryList;
+    QListWidget* auxSpecList;
+
     QStackedWidget* stackedWidget;
     QLabel* statusLabel;
     QPushButton* reloadDbBtn;
 
-    // 11 Core Query Table Widgets (PRODUCT_QUERY removed)
+    // 11 Warehouse Query Table Widgets
     QueryTableWidget* productQuantityWidget;
     QueryTableWidget* unitInventoryWidget;
     QueryTableWidget* statusHistoryWidget;
@@ -45,7 +69,7 @@ private:
     QueryTableWidget* shipmentWidget;
     QueryTableWidget* shipmentDetailWidget;
 
-    // 8 Category Hardware Classification Widgets
+    // 8 Category Hardware Classification Widgets (Rule 9.2)
     QueryTableWidget* cpuWidget;
     QueryTableWidget* gpuWidget;
     QueryTableWidget* mainboardWidget;
@@ -55,7 +79,7 @@ private:
     QueryTableWidget* coolingWidget;
     QueryTableWidget* caseWidget;
 
-    // Auxiliary Specs & Metadata Widget
+    // Auxiliary Specs & Metadata Widget (Rule 9.3)
     QueryTableWidget* auxSpecWidget;
     QComboBox* auxSpecTableCombo;
 };

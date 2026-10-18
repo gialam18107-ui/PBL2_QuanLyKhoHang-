@@ -11,18 +11,153 @@
 #include "schema/UserQuery.h"
 
 MainWindow::MainWindow(Database* database, QWidget* parent)
-    : QMainWindow(parent), db(database), auxSpecTableCombo(nullptr)
+    : QMainWindow(parent), db(database),
+      warehouseMenu(nullptr), categoryMenu(nullptr), auxSpecMenu(nullptr),
+      tabWarehouseBtn(nullptr), tabCategoryBtn(nullptr), tabAuxSpecBtn(nullptr),
+      sidebarStack(nullptr), warehouseList(nullptr), categoryList(nullptr), auxSpecList(nullptr),
+      auxSpecTableCombo(nullptr)
 {
     setWindowTitle("Hệ thống Quản lý Kho Hàng - PBL2 (Query for Interface)");
     resize(1300, 850);
     setMinimumSize(1020, 680);
 
+    setupMenuBar();
     setupUI();
     setupPages();
     setupSidebar();
 
-    // Nạp truy vấn đầu tiên
-    sidebarList->setCurrentRow(0);
+    // Khởi tạo tab Kho hàng và nạp truy vấn đầu tiên
+    switchToDomain(0);
+    selectWarehouseQuery(0);
+}
+
+void MainWindow::setupMenuBar()
+{
+    auto* mBar = menuBar();
+    mBar->setStyleSheet(
+        "QMenuBar {"
+        "  background-color: #ffffff;"
+        "  color: #0f172a;"
+        "  font-size: 13px;"
+        "  border-bottom: 1px solid #e2e8f0;"
+        "  padding: 2px 4px;"
+        "}"
+        "QMenuBar::item {"
+        "  background: transparent;"
+        "  padding: 6px 14px;"
+        "  border-radius: 4px;"
+        "}"
+        "QMenuBar::item:selected { background-color: #f1f5f9; color: #2563eb; font-weight: 600; }"
+        "QMenu {"
+        "  background-color: #ffffff;"
+        "  color: #0f172a;"
+        "  border: 1px solid #cbd5e1;"
+        "  border-radius: 6px;"
+        "  padding: 4px;"
+        "}"
+        "QMenu::item {"
+        "  padding: 6px 20px 6px 12px;"
+        "  border-radius: 4px;"
+        "}"
+        "QMenu::item:selected { background-color: #2563eb; color: #ffffff; }"
+        "QMenu::separator {"
+        "  height: 1px;"
+        "  background-color: #e2e8f0;"
+        "  margin: 4px 8px;"
+        "}"
+    );
+
+    // 1. Menu Kho hàng (Tách biệt khỏi danh mục sản phẩm và bảng phụ)
+    warehouseMenu = mBar->addMenu("📦 Kho hàng");
+    const QStringList whTitles = {
+        "1. Tồn kho Sản phẩm (PRODUCT_QUANTITY)",
+        "2. Danh sách Unit / Serial (UNIT_INVENTORY)",
+        "3. Lịch sử trạng thái Unit (STATUS_HISTORY)",
+        "4. Đơn Nhập kho (INBOUND_TRANSACTION)",
+        "5. Chi tiết Đơn nhập (INBOUND_DETAIL)",
+        "6. Đợt Nhận hàng (DELIVERY)",
+        "7. Chi tiết Nhận hàng (DELIVERY_DETAIL)",
+        "8. Đơn Xuất kho (OUTBOUND_TRANSACTION)",
+        "9. Chi tiết Đơn xuất (OUTBOUND_DETAIL)",
+        "10. Đợt Xuất hàng (SHIPMENT)",
+        "11. Chi tiết Xuất hàng (SHIPMENT_DETAIL)"
+    };
+    for (int i = 0; i < whTitles.size(); ++i) {
+        auto* act = warehouseMenu->addAction(whTitles[i]);
+        connect(act, &QAction::triggered, [this, i]() {
+            selectWarehouseQuery(i);
+        });
+    }
+
+    // 2. Menu Danh mục sản phẩm (Rule 9.2: Tách biệt khỏi bảng kho hàng)
+    categoryMenu = mBar->addMenu("📁 Danh mục sản phẩm");
+    const struct { QString title; int index; } catItems[] = {
+        {"⚡ 1. Bộ vi xử lý (CPU)", 0},
+        {"🎮 2. Card màn hình (GPU)", 1},
+        {"🖲️ 3. Bo mạch chủ (Mainboard)", 2},
+        {"💾 4. Bộ nhớ trong (RAM)", 3},
+        {"💿 5. Ổ cứng thể rắn (SSD)", 4},
+        {"🔌 6. Nguồn máy tính (PSU)", 5},
+        {"❄️ 7. Tản nhiệt làm mát (Cooling)", 6},
+        {"🖥️ 8. Vỏ máy tính (Case)", 7}
+    };
+    for (const auto& item : catItems) {
+        auto* act = categoryMenu->addAction(item.title);
+        connect(act, &QAction::triggered, [this, idx = item.index]() {
+            selectCategoryQuery(idx);
+        });
+    }
+
+    // 3. Menu Danh mục phụ (Rule 9.3: Chứa toàn bộ lựa chọn truy vấn bảng phụ, brand, category)
+    auxSpecMenu = mBar->addMenu("⚙️ Danh mục phụ");
+    auto addAuxAction = [this](QMenu* parentMenu, const QString& title, const QString& tableCode) {
+        auto* act = parentMenu->addAction(title);
+        connect(act, &QAction::triggered, [this, tableCode]() {
+            selectAuxSpecQuery(tableCode);
+        });
+    };
+
+    addAuxAction(auxSpecMenu, "🏷️ Hãng sản xuất (brand)", "brand");
+    addAuxAction(auxSpecMenu, "📁 Danh mục chính (category)", "category");
+    auxSpecMenu->addSeparator();
+
+    auto* cpuSpecSub = auxSpecMenu->addMenu("⚡ Thông số CPU");
+    addAuxAction(cpuSpecSub, "Socket CPU (cpu_socket)", "cpu_socket");
+    addAuxAction(cpuSpecSub, "Phân khúc CPU (cpu_tier)", "cpu_tier");
+    addAuxAction(cpuSpecSub, "Dòng CPU (cpu_series)", "cpu_series");
+
+    auto* gpuSpecSub = auxSpecMenu->addMenu("🎮 Thông số GPU");
+    addAuxAction(gpuSpecSub, "Dòng GPU (gpu_series)", "gpu_series");
+    addAuxAction(gpuSpecSub, "Hãng chip GPU (gpu_producer)", "gpu_producer");
+    addAuxAction(gpuSpecSub, "Dung lượng VRAM (gpu_vram)", "gpu_vram");
+
+    auto* mbSpecSub = auxSpecMenu->addMenu("🖲️ Thông số Mainboard");
+    addAuxAction(mbSpecSub, "Hỗ trợ CPU (mainboard_cpu_support)", "mainboard_cpu_support");
+    addAuxAction(mbSpecSub, "Socket (mainboard_socket)", "mainboard_socket");
+    addAuxAction(mbSpecSub, "Kích cỡ bo mạch (mainboard_size)", "mainboard_size");
+    addAuxAction(mbSpecSub, "Chipset (mainboard_chipset)", "mainboard_chipset");
+    addAuxAction(mbSpecSub, "Chuẩn RAM hỗ trợ (mainboard_ram_support)", "mainboard_ram_support");
+
+    auto* ramSpecSub = auxSpecMenu->addMenu("💾 Thông số RAM");
+    addAuxAction(ramSpecSub, "Thế hệ RAM (ram_generation)", "ram_generation");
+    addAuxAction(ramSpecSub, "Dung lượng RAM (ram_capacity)", "ram_capacity");
+    addAuxAction(ramSpecSub, "Tốc độ Bus (ram_bus)", "ram_bus");
+
+    auto* ssdSpecSub = auxSpecMenu->addMenu("💿 Thông số SSD");
+    addAuxAction(ssdSpecSub, "Loại kết nối SSD (ssd_type)", "ssd_type");
+    addAuxAction(ssdSpecSub, "Thế hệ giao tiếp (ssd_gen)", "ssd_gen");
+    addAuxAction(ssdSpecSub, "Dung lượng SSD (ssd_capacity)", "ssd_capacity");
+
+    auto* psuSpecSub = auxSpecMenu->addMenu("🔌 Thông số PSU");
+    addAuxAction(psuSpecSub, "Chuẩn hiệu suất (psu_quality)", "psu_quality");
+    addAuxAction(psuSpecSub, "Công suất nguồn (psu_capacity)", "psu_capacity");
+    addAuxAction(psuSpecSub, "Kích cỡ nguồn (psu_size)", "psu_size");
+
+    auto* coolSpecSub = auxSpecMenu->addMenu("❄️ Thông số Cooling");
+    addAuxAction(coolSpecSub, "Loại tản nhiệt (cooling_type)", "cooling_type");
+
+    auto* caseSpecSub = auxSpecMenu->addMenu("🖥️ Thông số Case");
+    addAuxAction(caseSpecSub, "Kích cỡ vỏ case (case_size)", "case_size");
 }
 
 void MainWindow::setupUI()
@@ -36,7 +171,7 @@ void MainWindow::setupUI()
 
     // Left Panel (Sidebar)
     auto* sidebarWidget = new QWidget(this);
-    sidebarWidget->setFixedWidth(300);
+    sidebarWidget->setFixedWidth(310);
     sidebarWidget->setStyleSheet(
         "QWidget {"
         "  background-color: #0f172a;"
@@ -45,8 +180,8 @@ void MainWindow::setupUI()
     );
 
     auto* sidebarLayout = new QVBoxLayout(sidebarWidget);
-    sidebarLayout->setContentsMargins(16, 20, 16, 16);
-    sidebarLayout->setSpacing(12);
+    sidebarLayout->setContentsMargins(14, 18, 14, 14);
+    sidebarLayout->setSpacing(10);
 
     // App Branding
     auto* brandLabel = new QLabel("🏢 QUẢN LÝ KHO HÀNG", this);
@@ -75,13 +210,29 @@ void MainWindow::setupUI()
     );
     sidebarLayout->addWidget(reloadDbBtn);
 
-    // Sidebar list
-    auto* menuTitle = new QLabel("DANH MỤC TRUY VẤN", this);
-    menuTitle->setStyleSheet("font-size: 11px; font-weight: bold; color: #64748b; margin-top: 6px;");
-    sidebarLayout->addWidget(menuTitle);
+    // Domain Navigation Tabs (Rule 9.2 & 9.3: Tách biệt rõ ràng 3 phân hệ)
+    auto* tabContainer = new QWidget(sidebarWidget);
+    auto* tabLayout = new QHBoxLayout(tabContainer);
+    tabLayout->setContentsMargins(0, 4, 0, 4);
+    tabLayout->setSpacing(4);
 
-    sidebarList = new QListWidget(this);
-    sidebarList->setStyleSheet(
+    tabWarehouseBtn = new QPushButton("📦 Kho hàng", tabContainer);
+    tabWarehouseBtn->setToolTip("Bảng quản lý kho hàng");
+
+    tabCategoryBtn = new QPushButton("📁 Danh mục SP", tabContainer);
+    tabCategoryBtn->setToolTip("Danh mục sản phẩm (Rule 9.2)");
+
+    tabAuxSpecBtn = new QPushButton("⚙️ Danh mục phụ", tabContainer);
+    tabAuxSpecBtn->setToolTip("Bảng thông số phụ & Master data (Rule 9.3)");
+
+    tabLayout->addWidget(tabWarehouseBtn);
+    tabLayout->addWidget(tabCategoryBtn);
+    tabLayout->addWidget(tabAuxSpecBtn);
+    sidebarLayout->addWidget(tabContainer);
+
+    // Stacked sidebar lists for the 3 separated domains
+    sidebarStack = new QStackedWidget(sidebarWidget);
+    sidebarStack->setStyleSheet(
         "QListWidget {"
         "  background-color: transparent;"
         "  border: none;"
@@ -104,7 +255,16 @@ void MainWindow::setupUI()
         "  font-weight: 600;"
         "}"
     );
-    sidebarLayout->addWidget(sidebarList);
+
+    warehouseList = new QListWidget(sidebarStack);
+    categoryList = new QListWidget(sidebarStack);
+    auxSpecList = new QListWidget(sidebarStack);
+
+    sidebarStack->addWidget(warehouseList);
+    sidebarStack->addWidget(categoryList);
+    sidebarStack->addWidget(auxSpecList);
+
+    sidebarLayout->addWidget(sidebarStack);
 
     rootLayout->addWidget(sidebarWidget);
 
@@ -131,13 +291,107 @@ void MainWindow::setupUI()
     });
 }
 
+QStringList MainWindow::loadSpecOptions(const QString& specTableName)
+{
+    QStringList options;
+    if (!db) return options;
+
+    Table* table = db->getTable(specTableName.toStdString());
+    if (!table) return options;
+
+    const auto& rows = table->getRows();
+    for (size_t i = 0; i < rows.size(); ++i) {
+        if (table->isRowDeleted(i)) continue;
+        const Record& r = rows[i];
+        if (r.has("spec")) {
+            const Value& v = r.get("spec");
+            QString valStr;
+            if (holds_alternative<string>(v)) {
+                valStr = QString::fromStdString(get<string>(v));
+            } else if (holds_alternative<int>(v)) {
+                valStr = QString::number(get<int>(v));
+            }
+            if (!valStr.isEmpty() && !options.contains(valStr)) {
+                options.append(valStr);
+            }
+        }
+    }
+    return options;
+}
+
+void MainWindow::updateCategoryFilterOptions()
+{
+    if (cpuWidget) {
+        cpuWidget->setFilterColumns({
+            {"Trạng thái đang bán (is_sold)", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
+            {"Socket CPU (socket)", "socket", FilterType::SELECT_OR_TYPE, loadSpecOptions("cpu_socket")},
+            {"Phân khúc CPU (tier)", "tier", FilterType::SELECT_OR_TYPE, loadSpecOptions("cpu_tier")},
+            {"Dòng CPU (series)", "series", FilterType::SELECT_OR_TYPE, loadSpecOptions("cpu_series")}
+        });
+    }
+    if (gpuWidget) {
+        gpuWidget->setFilterColumns({
+            {"Trạng thái đang bán (is_sold)", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
+            {"Dòng GPU (series)", "series", FilterType::SELECT_OR_TYPE, loadSpecOptions("gpu_series")},
+            {"Hãng chip (producer)", "producer", FilterType::SELECT_OR_TYPE, loadSpecOptions("gpu_producer")},
+            {"Dung lượng VRAM (vram)", "vram", FilterType::SELECT_OR_TYPE, loadSpecOptions("gpu_vram")}
+        });
+    }
+    if (mainboardWidget) {
+        mainboardWidget->setFilterColumns({
+            {"Trạng thái đang bán (is_sold)", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
+            {"Hỗ trợ CPU (cpu_support)", "cpu_support", FilterType::SELECT_OR_TYPE, loadSpecOptions("mainboard_cpu_support")},
+            {"Socket Mainboard (socket)", "socket", FilterType::SELECT_OR_TYPE, loadSpecOptions("mainboard_socket")},
+            {"Kích cỡ bo mạch (size)", "size", FilterType::SELECT_OR_TYPE, loadSpecOptions("mainboard_size")},
+            {"Chipset (chipset)", "chipset", FilterType::SELECT_OR_TYPE, loadSpecOptions("mainboard_chipset")},
+            {"Chuẩn RAM (ram_support)", "ram_support", FilterType::SELECT_OR_TYPE, loadSpecOptions("mainboard_ram_support")}
+        });
+    }
+    if (ramWidget) {
+        ramWidget->setFilterColumns({
+            {"Trạng thái đang bán (is_sold)", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
+            {"Thế hệ RAM (generation)", "generation", FilterType::SELECT_OR_TYPE, loadSpecOptions("ram_generation")},
+            {"Dung lượng RAM (capacity)", "capacity", FilterType::SELECT_OR_TYPE, loadSpecOptions("ram_capacity")},
+            {"Tốc độ Bus (bus)", "bus", FilterType::SELECT_OR_TYPE, loadSpecOptions("ram_bus")}
+        });
+    }
+    if (ssdWidget) {
+        ssdWidget->setFilterColumns({
+            {"Trạng thái đang bán (is_sold)", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
+            {"Loại SSD (type)", "type", FilterType::SELECT_OR_TYPE, loadSpecOptions("ssd_type")},
+            {"Thế hệ giao tiếp (gen)", "gen", FilterType::SELECT_OR_TYPE, loadSpecOptions("ssd_gen")},
+            {"Dung lượng SSD (capacity)", "capacity", FilterType::SELECT_OR_TYPE, loadSpecOptions("ssd_capacity")}
+        });
+    }
+    if (psuWidget) {
+        psuWidget->setFilterColumns({
+            {"Trạng thái đang bán (is_sold)", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
+            {"Chuẩn hiệu suất (quality)", "quality", FilterType::SELECT_OR_TYPE, loadSpecOptions("psu_quality")},
+            {"Công suất nguồn (capacity)", "capacity", FilterType::SELECT_OR_TYPE, loadSpecOptions("psu_capacity")},
+            {"Kích cỡ nguồn (size)", "size", FilterType::SELECT_OR_TYPE, loadSpecOptions("psu_size")}
+        });
+    }
+    if (coolingWidget) {
+        coolingWidget->setFilterColumns({
+            {"Trạng thái đang bán (is_sold)", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
+            {"Loại tản nhiệt (type)", "type", FilterType::SELECT_OR_TYPE, loadSpecOptions("cooling_type")}
+        });
+    }
+    if (caseWidget) {
+        caseWidget->setFilterColumns({
+            {"Trạng thái đang bán (is_sold)", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
+            {"Kích cỡ vỏ case (size)", "size", FilterType::SELECT_OR_TYPE, loadSpecOptions("case_size")}
+        });
+    }
+}
+
 void MainWindow::setupPages()
 {
     // ========================================================
-    // 1. PRODUCT_QUANTITY_QUERY (Tồn kho sản phẩm - thay thế product_query)
+    // 1. PRODUCT_QUANTITY_QUERY (Tồn kho sản phẩm)
     // ========================================================
     productQuantityWidget = new QueryTableWidget(
-        "1. Tồn kho Sản phẩm (PRODUCT_QUANTITY_QUERY)",
+        "1. Tồn kho Sản phẩm (PRODUCT_QUANTITY)",
         "Thống kê số lượng tồn kho khả dụng, bảo hành và phế phẩm theo từng sản phẩm",
         this
     );
@@ -173,7 +427,7 @@ void MainWindow::setupPages()
     // 2. UNIT_INVENTORY_QUERY
     // ========================================================
     unitInventoryWidget = new QueryTableWidget(
-        "2. Tồn kho theo Serial / Unit (UNIT_INVENTORY_QUERY)",
+        "2. Tồn kho theo Serial / Unit (UNIT_INVENTORY)",
         "Danh sách từng đơn vị linh kiện cụ thể theo số Serial Number và trạng thái hiện tại",
         this
     );
@@ -202,7 +456,7 @@ void MainWindow::setupPages()
     // 3. STATUS_HISTORY_QUERY
     // ========================================================
     statusHistoryWidget = new QueryTableWidget(
-        "3. Lịch sử trạng thái Unit (STATUS_HISTORY_QUERY)",
+        "3. Lịch sử trạng thái Unit (STATUS_HISTORY)",
         "Lịch sử biến động trạng thái vòng đời của từng linh kiện qua các giao dịch nhập/xuất kho",
         this
     );
@@ -239,7 +493,7 @@ void MainWindow::setupPages()
     // 4. INBOUND_TRANSACTION_QUERY
     // ========================================================
     inboundTxnWidget = new QueryTableWidget(
-        "4. Đơn Nhập kho (INBOUND_TRANSACTION_QUERY)",
+        "4. Đơn Nhập kho (INBOUND_TRANSACTION)",
         "Danh sách các đơn đặt hàng nhập kho từ nhà cung cấp / đối tác",
         this
     );
@@ -277,7 +531,7 @@ void MainWindow::setupPages()
     // 5. INBOUND_DETAIL_QUERY
     // ========================================================
     inboundDetailWidget = new QueryTableWidget(
-        "5. Chi tiết Đơn nhập (INBOUND_DETAIL_QUERY)",
+        "5. Chi tiết Đơn nhập (INBOUND_DETAIL)",
         "Chi tiết số lượng từng mã sản phẩm được đặt trong các đơn nhập kho",
         this
     );
@@ -307,7 +561,7 @@ void MainWindow::setupPages()
     // 6. DELIVERY_QUERY
     // ========================================================
     deliveryWidget = new QueryTableWidget(
-        "6. Đợt Nhận hàng (DELIVERY_QUERY)",
+        "6. Đợt Nhận hàng (DELIVERY)",
         "Danh sách các đợt giao nhận hàng thực tế từ đối tác vào kho",
         this
     );
@@ -345,7 +599,7 @@ void MainWindow::setupPages()
     // 7. DELIVERY_DETAIL_QUERY
     // ========================================================
     deliveryDetailWidget = new QueryTableWidget(
-        "7. Chi tiết Nhận hàng (DELIVERY_DETAIL_QUERY)",
+        "7. Chi tiết Nhận hàng (DELIVERY_DETAIL)",
         "Chi tiết các mặt hàng và số lượng thực nhận qua từng đợt giao nhận hàng",
         this
     );
@@ -382,7 +636,7 @@ void MainWindow::setupPages()
     // 8. OUTBOUND_TRANSACTION_QUERY
     // ========================================================
     outboundTxnWidget = new QueryTableWidget(
-        "8. Đơn Xuất kho (OUTBOUND_TRANSACTION_QUERY)",
+        "8. Đơn Xuất kho (OUTBOUND_TRANSACTION)",
         "Danh sách các đơn bán hàng / xuất kho gửi đến khách hàng & đối tác",
         this
     );
@@ -420,7 +674,7 @@ void MainWindow::setupPages()
     // 9. OUTBOUND_DETAIL_QUERY
     // ========================================================
     outboundDetailWidget = new QueryTableWidget(
-        "9. Chi tiết Đơn xuất (OUTBOUND_DETAIL_QUERY)",
+        "9. Chi tiết Đơn xuất (OUTBOUND_DETAIL)",
         "Chi tiết các sản phẩm và số lượng cần xuất theo từng đơn hàng",
         this
     );
@@ -450,7 +704,7 @@ void MainWindow::setupPages()
     // 10. SHIPMENT_QUERY
     // ========================================================
     shipmentWidget = new QueryTableWidget(
-        "10. Đợt Xuất hàng (SHIPMENT_QUERY)",
+        "10. Đợt Xuất hàng (SHIPMENT)",
         "Danh sách các đợt bốc dỡ, giao hàng xuất kho cho khách hàng",
         this
     );
@@ -488,7 +742,7 @@ void MainWindow::setupPages()
     // 11. SHIPMENT_DETAIL_QUERY
     // ========================================================
     shipmentDetailWidget = new QueryTableWidget(
-        "11. Chi tiết Xuất hàng (SHIPMENT_DETAIL_QUERY)",
+        "11. Chi tiết Xuất hàng (SHIPMENT_DETAIL)",
         "Chi tiết các lô xuất kiện hàng (Shipment) thực tế được gửi đi",
         this
     );
@@ -522,23 +776,17 @@ void MainWindow::setupPages()
     stackedWidget->addWidget(shipmentDetailWidget);
 
     // ========================================================
-    // 12. CPU_QUERY
+    // 12. CPU_QUERY (Danh mục sản phẩm - Rule 9.2)
     // ========================================================
     cpuWidget = new QueryTableWidget(
-        "12. Phân loại CPU (CPU_QUERY)",
-        "Danh sách linh kiện Bộ vi xử lý (CPU) kèm socket, tier, series và trạng thái bán",
+        "Bộ vi xử lý CPU (CPU_QUERY)",
+        "Bảng danh mục Bộ vi xử lý (CPU) kèm socket, tier, series và trạng thái bán (Tách biệt khỏi kho hàng)",
         this
     );
     cpuWidget->setColumns(
         {"Mã sản phẩm", "Tên sản phẩm", "Socket CPU", "Phân khúc (Tier)", "Dòng CPU (Series)", "Đang bán (is_sold)"},
         {"product.product_code", "product.product_name", "cpu.socket", "cpu.tier", "cpu.series", "product.is_sold"}
     );
-    cpuWidget->setFilterColumns({
-        {"Trạng thái đang bán (is_sold)", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
-        {"Socket CPU (socket)", "socket", FilterType::SELECT_OR_TYPE, {}},
-        {"Phân khúc CPU (tier)", "tier", FilterType::SELECT_OR_TYPE, {}},
-        {"Dòng CPU (series)", "series", FilterType::SELECT_OR_TYPE, {}}
-    });
     cpuWidget->setRefreshCallback([this]() { refreshQuery(11); });
     cpuWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
         if (!db) return;
@@ -553,30 +801,32 @@ void MainWindow::setupPages()
     stackedWidget->addWidget(cpuWidget);
 
     // ========================================================
-    // 13. GPU_QUERY
+    // 13. GPU_QUERY (Danh mục sản phẩm - Rule 9.2)
     // ========================================================
     gpuWidget = new QueryTableWidget(
-        "13. Phân loại GPU (GPU_QUERY)",
-        "Danh sách linh kiện Card màn hình (GPU) kèm series, hãng chip, vram và trạng thái bán",
+        "Card màn hình GPU (GPU_QUERY)",
+        "Bảng danh mục Card màn hình (GPU) kèm series, hãng chip, vram và trạng thái bán (Tách biệt khỏi kho hàng)",
         this
     );
     gpuWidget->setColumns(
         {"Mã sản phẩm", "Tên sản phẩm", "Dòng GPU (Series)", "Hãng chip (Producer)", "VRAM (GB)", "Đang bán (is_sold)"},
         {"product.product_code", "product.product_name", "gpu.series", "gpu.producer", "gpu.vram", "product.is_sold"}
     );
-    gpuWidget->setFilterColumns({
-        {"Trạng thái đang bán (is_sold)", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
-        {"Dòng GPU (series)", "series", FilterType::SELECT_OR_TYPE, {}},
-        {"Hãng chip (producer)", "producer", FilterType::SELECT_OR_TYPE, {}},
-        {"Dung lượng VRAM (vram)", "vram", FilterType::SELECT_OR_TYPE, {}}
-    });
     gpuWidget->setRefreshCallback([this]() { refreshQuery(12); });
     gpuWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
         if (!db) return;
         QElapsedTimer timer;
         timer.start();
         Vector<Record> results;
-        user_query::gpu_query(db, results, col, Value(v1.toStdString()));
+        Value val;
+        if (col == "vram") {
+            bool ok = false;
+            int iv = v1.toInt(&ok);
+            val = ok ? Value(iv) : Value(v1.toStdString());
+        } else {
+            val = Value(v1.toStdString());
+        }
+        user_query::gpu_query(db, results, col, val);
         gpuWidget->setData(results);
         statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên GPU_QUERY [%1 = %2]: %3 bản ghi (%4 ms)")
             .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
@@ -584,25 +834,17 @@ void MainWindow::setupPages()
     stackedWidget->addWidget(gpuWidget);
 
     // ========================================================
-    // 14. MAINBOARD_QUERY
+    // 14. MAINBOARD_QUERY (Danh mục sản phẩm - Rule 9.2)
     // ========================================================
     mainboardWidget = new QueryTableWidget(
-        "14. Phân loại Mainboard (MAINBOARD_QUERY)",
-        "Danh sách Bo mạch chủ kèm hỗ trợ CPU, socket, form size, chipset, RAM và trạng thái bán",
+        "Bo mạch chủ Mainboard (MAINBOARD_QUERY)",
+        "Bảng danh mục Bo mạch chủ kèm hỗ trợ CPU, socket, kích cỡ, chipset, RAM và trạng thái bán (Tách biệt khỏi kho hàng)",
         this
     );
     mainboardWidget->setColumns(
         {"Mã sản phẩm", "Tên sản phẩm", "Hỗ trợ CPU", "Socket", "Kích cỡ (Size)", "Chipset", "Chuẩn RAM", "Đang bán (is_sold)"},
         {"product.product_code", "product.product_name", "mainboard.cpu_support", "mainboard.socket", "mainboard.size", "mainboard.chipset", "mainboard.ram_support", "product.is_sold"}
     );
-    mainboardWidget->setFilterColumns({
-        {"Trạng thái đang bán (is_sold)", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
-        {"Hỗ trợ CPU (cpu_support)", "cpu_support", FilterType::SELECT_OR_TYPE, {"Intel", "AMD"}},
-        {"Socket Mainboard (socket)", "socket", FilterType::SELECT_OR_TYPE, {}},
-        {"Kích cỡ bo mạch (size)", "size", FilterType::SELECT_OR_TYPE, {}},
-        {"Chipset (chipset)", "chipset", FilterType::SELECT_OR_TYPE, {}},
-        {"Chuẩn RAM (ram_support)", "ram_support", FilterType::SELECT_OR_TYPE, {}}
-    });
     mainboardWidget->setRefreshCallback([this]() { refreshQuery(13); });
     mainboardWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
         if (!db) return;
@@ -617,23 +859,17 @@ void MainWindow::setupPages()
     stackedWidget->addWidget(mainboardWidget);
 
     // ========================================================
-    // 15. RAM_QUERY
+    // 15. RAM_QUERY (Danh mục sản phẩm - Rule 9.2)
     // ========================================================
     ramWidget = new QueryTableWidget(
-        "15. Phân loại RAM (RAM_QUERY)",
-        "Danh sách linh kiện RAM kèm thế hệ, số thanh, dung lượng, bus và trạng thái bán",
+        "Bộ nhớ RAM (RAM_QUERY)",
+        "Bảng danh mục Bộ nhớ RAM kèm thế hệ, số thanh, dung lượng, bus và trạng thái bán (Tách biệt khỏi kho hàng)",
         this
     );
     ramWidget->setColumns(
         {"Mã sản phẩm", "Tên sản phẩm", "Thế hệ RAM", "Số lượng thanh", "Dung lượng", "Tốc độ Bus", "Đang bán (is_sold)"},
         {"product.product_code", "product.product_name", "ram.generation", "ram.quantity", "ram.capacity", "ram.bus", "product.is_sold"}
     );
-    ramWidget->setFilterColumns({
-        {"Trạng thái đang bán (is_sold)", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
-        {"Thế hệ RAM (generation)", "generation", FilterType::SELECT_OR_TYPE, {}},
-        {"Dung lượng RAM (capacity)", "capacity", FilterType::SELECT_OR_TYPE, {}},
-        {"Tốc độ Bus (bus)", "bus", FilterType::SELECT_OR_TYPE, {}}
-    });
     ramWidget->setRefreshCallback([this]() { refreshQuery(14); });
     ramWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
         if (!db) return;
@@ -648,23 +884,17 @@ void MainWindow::setupPages()
     stackedWidget->addWidget(ramWidget);
 
     // ========================================================
-    // 16. SSD_QUERY
+    // 16. SSD_QUERY (Danh mục sản phẩm - Rule 9.2)
     // ========================================================
     ssdWidget = new QueryTableWidget(
-        "16. Phân loại Ổ cứng SSD (SSD_QUERY)",
-        "Danh sách linh kiện Ổ cứng SSD kèm loại kết nối, thế hệ giao tiếp, dung lượng và trạng thái bán",
+        "Ổ cứng thể rắn SSD (SSD_QUERY)",
+        "Bảng danh mục Ổ cứng SSD kèm loại kết nối, thế hệ giao tiếp, dung lượng và trạng thái bán (Tách biệt khỏi kho hàng)",
         this
     );
     ssdWidget->setColumns(
         {"Mã sản phẩm", "Tên sản phẩm", "Loại SSD", "Thế hệ (Gen)", "Dung lượng", "Đang bán (is_sold)"},
         {"product.product_code", "product.product_name", "ssd.type", "ssd.gen", "ssd.capacity", "product.is_sold"}
     );
-    ssdWidget->setFilterColumns({
-        {"Trạng thái đang bán (is_sold)", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
-        {"Loại SSD (type)", "type", FilterType::SELECT_OR_TYPE, {}},
-        {"Thế hệ giao tiếp (gen)", "gen", FilterType::SELECT_OR_TYPE, {}},
-        {"Dung lượng SSD (capacity)", "capacity", FilterType::SELECT_OR_TYPE, {}}
-    });
     ssdWidget->setRefreshCallback([this]() { refreshQuery(15); });
     ssdWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
         if (!db) return;
@@ -679,30 +909,32 @@ void MainWindow::setupPages()
     stackedWidget->addWidget(ssdWidget);
 
     // ========================================================
-    // 17. PSU_QUERY
+    // 17. PSU_QUERY (Danh mục sản phẩm - Rule 9.2)
     // ========================================================
     psuWidget = new QueryTableWidget(
-        "17. Phân loại Nguồn máy tính (PSU_QUERY)",
-        "Danh sách linh kiện Nguồn PSU kèm chuẩn hiệu suất, công suất, kích cỡ và trạng thái bán",
+        "Nguồn máy tính PSU (PSU_QUERY)",
+        "Bảng danh mục Nguồn PSU kèm chuẩn hiệu suất, công suất, kích cỡ và trạng thái bán (Tách biệt khỏi kho hàng)",
         this
     );
     psuWidget->setColumns(
         {"Mã sản phẩm", "Tên sản phẩm", "Chuẩn hiệu suất (Quality)", "Công suất (W)", "Kích thước (Size)", "Đang bán (is_sold)"},
         {"product.product_code", "product.product_name", "psu.quality", "psu.capacity", "psu.size", "product.is_sold"}
     );
-    psuWidget->setFilterColumns({
-        {"Trạng thái đang bán (is_sold)", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
-        {"Chuẩn hiệu suất (quality)", "quality", FilterType::SELECT_OR_TYPE, {}},
-        {"Công suất nguồn (capacity)", "capacity", FilterType::SELECT_OR_TYPE, {}},
-        {"Kích cỡ nguồn (size)", "size", FilterType::SELECT_OR_TYPE, {}}
-    });
     psuWidget->setRefreshCallback([this]() { refreshQuery(16); });
     psuWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
         if (!db) return;
         QElapsedTimer timer;
         timer.start();
         Vector<Record> results;
-        user_query::psu_query(db, results, col, Value(v1.toStdString()));
+        Value val;
+        if (col == "capacity") {
+            bool ok = false;
+            int iv = v1.toInt(&ok);
+            val = ok ? Value(iv) : Value(v1.toStdString());
+        } else {
+            val = Value(v1.toStdString());
+        }
+        user_query::psu_query(db, results, col, val);
         psuWidget->setData(results);
         statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên PSU_QUERY [%1 = %2]: %3 bản ghi (%4 ms)")
             .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
@@ -710,21 +942,17 @@ void MainWindow::setupPages()
     stackedWidget->addWidget(psuWidget);
 
     // ========================================================
-    // 18. COOLING_QUERY
+    // 18. COOLING_QUERY (Danh mục sản phẩm - Rule 9.2)
     // ========================================================
     coolingWidget = new QueryTableWidget(
-        "18. Phân loại Tản nhiệt (COOLING_QUERY)",
-        "Danh sách linh kiện Tản nhiệt làm mát kèm loại tản nhiệt và trạng thái bán",
+        "Tản nhiệt Cooling (COOLING_QUERY)",
+        "Bảng danh mục Tản nhiệt làm mát kèm loại tản nhiệt và trạng thái bán (Tách biệt khỏi kho hàng)",
         this
     );
     coolingWidget->setColumns(
         {"Mã sản phẩm", "Tên sản phẩm", "Loại tản nhiệt (Type)", "Đang bán (is_sold)"},
         {"product.product_code", "product.product_name", "cooling.type", "product.is_sold"}
     );
-    coolingWidget->setFilterColumns({
-        {"Trạng thái đang bán (is_sold)", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
-        {"Loại tản nhiệt (type)", "type", FilterType::SELECT_OR_TYPE, {}}
-    });
     coolingWidget->setRefreshCallback([this]() { refreshQuery(17); });
     coolingWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
         if (!db) return;
@@ -739,21 +967,17 @@ void MainWindow::setupPages()
     stackedWidget->addWidget(coolingWidget);
 
     // ========================================================
-    // 19. CASE_QUERY
+    // 19. CASE_QUERY (Danh mục sản phẩm - Rule 9.2)
     // ========================================================
     caseWidget = new QueryTableWidget(
-        "19. Phân loại Vỏ case máy tính (CASE_QUERY)",
-        "Danh sách linh kiện Vỏ case kèm kích cỡ khung và trạng thái bán",
+        "Vỏ máy tính Case (CASE_QUERY)",
+        "Bảng danh mục Vỏ case kèm kích cỡ khung và trạng thái bán (Tách biệt khỏi kho hàng)",
         this
     );
     caseWidget->setColumns(
         {"Mã sản phẩm", "Tên sản phẩm", "Kích cỡ vỏ (Size)", "Đang bán (is_sold)"},
         {"product.product_code", "product.product_name", "case.size", "product.is_sold"}
     );
-    caseWidget->setFilterColumns({
-        {"Trạng thái đang bán (is_sold)", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
-        {"Kích cỡ vỏ case (size)", "size", FilterType::SELECT_OR_TYPE, {}}
-    });
     caseWidget->setRefreshCallback([this]() { refreshQuery(18); });
     caseWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
         if (!db) return;
@@ -767,12 +991,15 @@ void MainWindow::setupPages()
     });
     stackedWidget->addWidget(caseWidget);
 
+    // Cập nhật danh sách gợi ý cho bộ lọc HashTree của các bảng danh mục sản phẩm (Rule 9.1 & 9.2)
+    updateCategoryFilterOptions();
+
     // ========================================================
-    // 20. AUXILIARY SPECS & METADATA QUERY
+    // 20. AUXILIARY SPECS & METADATA QUERY (Danh mục phụ - Rule 9.3)
     // ========================================================
     auxSpecWidget = new QueryTableWidget(
-        "20. Bảng thông số phụ & Danh mục (CATEGORY SPECS & METADATA)",
-        "Truy vấn thông số chi tiết (socket, dung lượng, gen,...) của từng Category, bảng Category và Brand",
+        "Danh mục phụ & Thông số chi tiết (SPECS & METADATA)",
+        "Truy vấn danh mục phụ bao gồm bảng Brand, bảng Category và toàn bộ các bảng thông số linh kiện (Rule 9.3)",
         this
     );
 
@@ -786,7 +1013,7 @@ void MainWindow::setupPages()
         "  background-color: #ffffff;"
         "  border: 1px solid #cbd5e1;"
         "  border-radius: 6px;"
-        "  min-width: 220px;"
+        "  min-width: 240px;"
         "}"
     );
 
@@ -818,14 +1045,40 @@ void MainWindow::setupPages()
 
     auxSpecWidget->addExtraControl(auxSpecTableCombo);
 
-    connect(auxSpecTableCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), [this](int) {
-        QString tbl = auxSpecTableCombo->currentData().toString();
+    connect(auxSpecTableCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), [this](int idx) {
+        if (idx < 0) return;
+        QString tbl = auxSpecTableCombo->itemData(idx).toString();
+        // Đồng bộ danh sách Danh mục phụ trên Sidebar
+        for (int i = 0; i < auxSpecList->count(); ++i) {
+            if (auxSpecList->item(i)->data(Qt::UserRole).toString() == tbl) {
+                auxSpecList->blockSignals(true);
+                auxSpecList->setCurrentRow(i);
+                auxSpecList->blockSignals(false);
+                break;
+            }
+        }
         loadAuxSpecData(tbl);
     });
 
     auxSpecWidget->setRefreshCallback([this]() {
         QString tbl = auxSpecTableCombo->currentData().toString();
         loadAuxSpecData(tbl);
+    });
+
+    auxSpecWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
+        if (!db || !auxSpecTableCombo) return;
+        QElapsedTimer timer;
+        timer.start();
+        Vector<Record> results;
+        string tbl = auxSpecTableCombo->currentData().toString().toStdString();
+        Value val;
+        bool isInt = false;
+        int iv = v1.toInt(&isInt);
+        val = (col == "id" && isInt) ? Value(iv) : Value(v1.toStdString());
+        user_query::auxiliary_spec_query(db, tbl, results, col, val);
+        auxSpecWidget->setData(results);
+        statusLabel->setText(QString("Tìm kiếm trên %1 [%2 = %3]: %4 bản ghi (%5 ms)")
+            .arg(QString::fromStdString(tbl)).arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
     });
 
     stackedWidget->addWidget(auxSpecWidget);
@@ -844,16 +1097,30 @@ void MainWindow::loadAuxSpecData(const QString& tableName)
             {"Mã Brand (ID)", "Tên Thương hiệu", "Mã viết tắt (Code)"},
             {"brand.brand_id", "brand.brand", "brand.code"}
         );
+        auxSpecWidget->setFilterColumns({
+            {"Mã Brand (ID)", "brand_id", FilterType::EXACT_TEXT, {}},
+            {"Tên Thương hiệu (brand)", "brand", FilterType::EXACT_TEXT, {}},
+            {"Mã viết tắt (code)", "code", FilterType::EXACT_TEXT, {}}
+        });
     } else if (tbl == "category") {
         auxSpecWidget->setColumns(
             {"Mã Danh mục (ID)", "Tên Danh mục", "Mã viết tắt (Code)"},
             {"category.category_id", "category.category_name", "category.code"}
         );
+        auxSpecWidget->setFilterColumns({
+            {"Mã Danh mục (ID)", "category_id", FilterType::EXACT_TEXT, {}},
+            {"Tên Danh mục (category_name)", "category_name", FilterType::EXACT_TEXT, {}},
+            {"Mã viết tắt (code)", "code", FilterType::EXACT_TEXT, {}}
+        });
     } else {
         auxSpecWidget->setColumns(
             {"ID", "Giá trị thông số (" + tableName + ")"},
             {tbl + ".id", tbl + ".spec"}
         );
+        auxSpecWidget->setFilterColumns({
+            {"Mã thông số (ID)", "id", FilterType::EXACT_TEXT, {}},
+            {"Giá trị thông số (spec)", "spec", FilterType::EXACT_TEXT, {}}
+        });
     }
 
     auxSpecWidget->setData(results);
@@ -862,33 +1129,206 @@ void MainWindow::loadAuxSpecData(const QString& tableName)
 
 void MainWindow::setupSidebar()
 {
-    sidebarList->addItem("📊 1. Tồn kho Sản phẩm (PRODUCT_QUANTITY)");
-    sidebarList->addItem("🏷️ 2. Danh sách Unit / Serial (UNIT_INVENTORY)");
-    sidebarList->addItem("📜 3. Lịch sử trạng thái Unit (STATUS_HISTORY)");
-    sidebarList->addItem("📥 4. Đơn Nhập kho (INBOUND_TRANSACTION)");
-    sidebarList->addItem("📋 5. Chi tiết Đơn nhập (INBOUND_DETAIL)");
-    sidebarList->addItem("🚚 6. Đợt Nhận hàng (DELIVERY)");
-    sidebarList->addItem("📦 7. Chi tiết Nhận hàng (DELIVERY_DETAIL)");
-    sidebarList->addItem("📤 8. Đơn Xuất kho (OUTBOUND_TRANSACTION)");
-    sidebarList->addItem("📝 9. Chi tiết Đơn xuất (OUTBOUND_DETAIL)");
-    sidebarList->addItem("🚛 10. Đợt Xuất hàng (SHIPMENT)");
-    sidebarList->addItem("📦 11. Chi tiết Xuất hàng (SHIPMENT_DETAIL)");
-    sidebarList->addItem("⚡ 12. Phân loại CPU (CPU_QUERY)");
-    sidebarList->addItem("🎮 13. Phân loại GPU (GPU_QUERY)");
-    sidebarList->addItem("🖲️ 14. Phân loại Mainboard (MAINBOARD_QUERY)");
-    sidebarList->addItem("💾 15. Phân loại RAM (RAM_QUERY)");
-    sidebarList->addItem("💿 16. Phân loại SSD (SSD_QUERY)");
-    sidebarList->addItem("🔌 17. Phân loại PSU (PSU_QUERY)");
-    sidebarList->addItem("❄️ 18. Phân loại Tản nhiệt (COOLING_QUERY)");
-    sidebarList->addItem("🖥️ 19. Phân loại Case (CASE_QUERY)");
-    sidebarList->addItem("⚙️ 20. Bảng thông số phụ & Danh mục (SPECS)");
+    // 1. Warehouse List (11 bảng kho hàng)
+    warehouseList->addItem("📊 1. Tồn kho Sản phẩm (PRODUCT_QUANTITY)");
+    warehouseList->addItem("🏷️ 2. Danh sách Unit / Serial (UNIT_INVENTORY)");
+    warehouseList->addItem("📜 3. Lịch sử trạng thái Unit (STATUS_HISTORY)");
+    warehouseList->addItem("📥 4. Đơn Nhập kho (INBOUND_TRANSACTION)");
+    warehouseList->addItem("📋 5. Chi tiết Đơn nhập (INBOUND_DETAIL)");
+    warehouseList->addItem("🚚 6. Đợt Nhận hàng (DELIVERY)");
+    warehouseList->addItem("📦 7. Chi tiết Nhận hàng (DELIVERY_DETAIL)");
+    warehouseList->addItem("📤 8. Đơn Xuất kho (OUTBOUND_TRANSACTION)");
+    warehouseList->addItem("📝 9. Chi tiết Đơn xuất (OUTBOUND_DETAIL)");
+    warehouseList->addItem("🚛 10. Đợt Xuất hàng (SHIPMENT)");
+    warehouseList->addItem("📦 11. Chi tiết Xuất hàng (SHIPMENT_DETAIL)");
 
-    connect(sidebarList, &QListWidget::currentRowChanged, [this](int row) {
-        if (row >= 0 && row < stackedWidget->count()) {
-            stackedWidget->setCurrentIndex(row);
-            refreshQuery(row);
+    // 2. Category List (8 bảng danh mục sản phẩm tách biệt - Rule 9.2)
+    categoryList->addItem("⚡ 1. Bộ vi xử lý (CPU)");
+    categoryList->addItem("🎮 2. Card màn hình (GPU)");
+    categoryList->addItem("🖲️ 3. Bo mạch chủ (Mainboard)");
+    categoryList->addItem("💾 4. Bộ nhớ trong (RAM)");
+    categoryList->addItem("💿 5. Ổ cứng thể rắn (SSD)");
+    categoryList->addItem("🔌 6. Nguồn máy tính (PSU)");
+    categoryList->addItem("❄️ 7. Tản nhiệt làm mát (Cooling)");
+    categoryList->addItem("🖥️ 8. Vỏ máy tính (Case)");
+
+    // 3. Auxiliary Specs & Metadata List (Danh mục phụ - Rule 9.3)
+    auto addAuxItem = [this](const QString& label, const QString& tableCode) {
+        auto* item = new QListWidgetItem(label, auxSpecList);
+        item->setData(Qt::UserRole, tableCode);
+    };
+
+    addAuxItem("🏷️ Hãng sản xuất (brand)", "brand");
+    addAuxItem("📁 Danh mục chính (category)", "category");
+    addAuxItem("⚡ CPU - Socket (cpu_socket)", "cpu_socket");
+    addAuxItem("⚡ CPU - Phân khúc (cpu_tier)", "cpu_tier");
+    addAuxItem("⚡ CPU - Dòng (cpu_series)", "cpu_series");
+    addAuxItem("🎮 GPU - Dòng (gpu_series)", "gpu_series");
+    addAuxItem("🎮 GPU - Hãng chip (gpu_producer)", "gpu_producer");
+    addAuxItem("🎮 GPU - VRAM (gpu_vram)", "gpu_vram");
+    addAuxItem("🖲️ Mainboard - Hỗ trợ CPU (mainboard_cpu_support)", "mainboard_cpu_support");
+    addAuxItem("🖲️ Mainboard - Socket (mainboard_socket)", "mainboard_socket");
+    addAuxItem("🖲️ Mainboard - Kích cỡ (mainboard_size)", "mainboard_size");
+    addAuxItem("🖲️ Mainboard - Chipset (mainboard_chipset)", "mainboard_chipset");
+    addAuxItem("🖲️ Mainboard - Chuẩn RAM (mainboard_ram_support)", "mainboard_ram_support");
+    addAuxItem("💾 RAM - Thế hệ (ram_generation)", "ram_generation");
+    addAuxItem("💾 RAM - Dung lượng (ram_capacity)", "ram_capacity");
+    addAuxItem("💾 RAM - Tốc độ Bus (ram_bus)", "ram_bus");
+    addAuxItem("💿 SSD - Loại (ssd_type)", "ssd_type");
+    addAuxItem("💿 SSD - Giao tiếp (ssd_gen)", "ssd_gen");
+    addAuxItem("💿 SSD - Dung lượng (ssd_capacity)", "ssd_capacity");
+    addAuxItem("🔌 PSU - Chuẩn hiệu suất (psu_quality)", "psu_quality");
+    addAuxItem("🔌 PSU - Công suất (psu_capacity)", "psu_capacity");
+    addAuxItem("🔌 PSU - Kích cỡ (psu_size)", "psu_size");
+    addAuxItem("❄️ Cooling - Loại tản nhiệt (cooling_type)", "cooling_type");
+    addAuxItem("🖥️ Case - Kích cỡ vỏ (case_size)", "case_size");
+
+    // Connect domain tabs
+    connect(tabWarehouseBtn, &QPushButton::clicked, [this]() {
+        switchToDomain(0);
+    });
+    connect(tabCategoryBtn, &QPushButton::clicked, [this]() {
+        switchToDomain(1);
+    });
+    connect(tabAuxSpecBtn, &QPushButton::clicked, [this]() {
+        switchToDomain(2);
+    });
+
+    // Connect list selection changes
+    connect(warehouseList, &QListWidget::currentRowChanged, [this](int row) {
+        if (row >= 0 && row < 11) {
+            selectWarehouseQuery(row);
         }
     });
+
+    connect(categoryList, &QListWidget::currentRowChanged, [this](int row) {
+        if (row >= 0 && row < 8) {
+            selectCategoryQuery(row);
+        }
+    });
+
+    connect(auxSpecList, &QListWidget::currentRowChanged, [this](int row) {
+        if (row >= 0 && row < auxSpecList->count()) {
+            QString tbl = auxSpecList->item(row)->data(Qt::UserRole).toString();
+            selectAuxSpecQuery(tbl);
+        }
+    });
+}
+
+void MainWindow::switchToDomain(int domainIndex)
+{
+    sidebarStack->setCurrentIndex(domainIndex);
+
+    auto setTabStyle = [](QPushButton* btn, bool active) {
+        if (active) {
+            btn->setStyleSheet(
+                "QPushButton {"
+                "  background-color: #2563eb;"
+                "  color: #ffffff;"
+                "  font-weight: 600;"
+                "  border: none;"
+                "  border-radius: 6px;"
+                "  padding: 7px 4px;"
+                "  font-size: 11px;"
+                "}"
+            );
+        } else {
+            btn->setStyleSheet(
+                "QPushButton {"
+                "  background-color: #1e293b;"
+                "  color: #94a3b8;"
+                "  font-weight: 500;"
+                "  border: 1px solid #334155;"
+                "  border-radius: 6px;"
+                "  padding: 7px 4px;"
+                "  font-size: 11px;"
+                "}"
+                "QPushButton:hover { background-color: #334155; color: #ffffff; }"
+            );
+        }
+    };
+
+    setTabStyle(tabWarehouseBtn, domainIndex == 0);
+    setTabStyle(tabCategoryBtn, domainIndex == 1);
+    setTabStyle(tabAuxSpecBtn, domainIndex == 2);
+
+    if (domainIndex == 0) {
+        if (warehouseList->currentRow() < 0) {
+            warehouseList->setCurrentRow(0);
+        } else {
+            selectWarehouseQuery(warehouseList->currentRow());
+        }
+    } else if (domainIndex == 1) {
+        if (categoryList->currentRow() < 0) {
+            categoryList->setCurrentRow(0);
+        } else {
+            selectCategoryQuery(categoryList->currentRow());
+        }
+    } else if (domainIndex == 2) {
+        if (auxSpecList->currentRow() < 0) {
+            auxSpecList->setCurrentRow(0);
+        } else {
+            QString tbl = auxSpecList->currentItem()->data(Qt::UserRole).toString();
+            selectAuxSpecQuery(tbl);
+        }
+    }
+}
+
+void MainWindow::selectWarehouseQuery(int row)
+{
+    if (row < 0 || row >= 11) return;
+    if (sidebarStack->currentIndex() != 0) {
+        switchToDomain(0);
+    }
+    warehouseList->blockSignals(true);
+    warehouseList->setCurrentRow(row);
+    warehouseList->blockSignals(false);
+
+    stackedWidget->setCurrentIndex(row);
+    refreshQuery(row);
+}
+
+void MainWindow::selectCategoryQuery(int row)
+{
+    if (row < 0 || row >= 8) return;
+    if (sidebarStack->currentIndex() != 1) {
+        switchToDomain(1);
+    }
+    categoryList->blockSignals(true);
+    categoryList->setCurrentRow(row);
+    categoryList->blockSignals(false);
+
+    stackedWidget->setCurrentIndex(11 + row);
+    refreshQuery(11 + row);
+}
+
+void MainWindow::selectAuxSpecQuery(const QString& tableName)
+{
+    if (sidebarStack->currentIndex() != 2) {
+        switchToDomain(2);
+    }
+    for (int i = 0; i < auxSpecList->count(); ++i) {
+        if (auxSpecList->item(i)->data(Qt::UserRole).toString() == tableName) {
+            auxSpecList->blockSignals(true);
+            auxSpecList->setCurrentRow(i);
+            auxSpecList->blockSignals(false);
+            break;
+        }
+    }
+
+    stackedWidget->setCurrentIndex(19);
+
+    if (auxSpecTableCombo) {
+        for (int i = 0; i < auxSpecTableCombo->count(); ++i) {
+            if (auxSpecTableCombo->itemData(i).toString() == tableName) {
+                auxSpecTableCombo->blockSignals(true);
+                auxSpecTableCombo->setCurrentIndex(i);
+                auxSpecTableCombo->blockSignals(false);
+                break;
+            }
+        }
+    }
+    loadAuxSpecData(tableName);
 }
 
 void MainWindow::refreshQuery(int index)
@@ -986,10 +1426,20 @@ void MainWindow::refreshQuery(int index)
         break;
     }
 
+    QString queryDomain;
+    if (index >= 0 && index < 11) {
+        queryDomain = QString("Kho hàng #%1").arg(index + 1);
+    } else if (index >= 11 && index < 19) {
+        const QString catNames[] = {"CPU", "GPU", "Mainboard", "RAM", "SSD", "PSU", "Cooling", "Case"};
+        queryDomain = QString("Danh mục sản phẩm [%1]").arg(catNames[index - 11]);
+    } else {
+        queryDomain = "Danh mục phụ";
+    }
+
     qint64 elapsedMs = timer.elapsed();
     statusLabel->setText(
-        QString("Truy vấn #%1 hoàn thành: %2 bản ghi (%3 ms) | CSDL: %4 bảng")
-            .arg(index + 1)
+        QString("%1 hoàn thành: %2 bản ghi (%3 ms) | CSDL: %4 bảng")
+            .arg(queryDomain)
             .arg(results.size())
             .arg(elapsedMs)
             .arg(db->getTableCount())
@@ -1005,6 +1455,9 @@ void MainWindow::reloadDatabase()
     bool ok = DataIO::DatabaseIO::readAll(*db, "data");
     DataIO::DatabaseIO::readAllCategorySpecs(*db, "data");
     qint64 elapsedMs = timer.elapsed();
+
+    // Làm mới danh sách lựa chọn lọc của các bảng danh mục sản phẩm
+    updateCategoryFilterOptions();
 
     if (ok) {
         statusLabel->setText(QString("Đã nạp lại CSDL thành công (%1 ms)").arg(elapsedMs));

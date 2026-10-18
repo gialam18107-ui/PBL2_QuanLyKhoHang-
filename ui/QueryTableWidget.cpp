@@ -242,6 +242,10 @@ void QueryTableWidget::setupFilterUI(QVBoxLayout* mainLayout)
     connect(filterSelectCombo->lineEdit(), &QLineEdit::returnPressed, [this]() {
         applyFilter();
     });
+
+    connect(filterSelectCombo, QOverload<int>::of(&QComboBox::activated), [this](int) {
+        applyFilter();
+    });
 }
 
 void QueryTableWidget::setupToolbarUI(QVBoxLayout* mainLayout)
