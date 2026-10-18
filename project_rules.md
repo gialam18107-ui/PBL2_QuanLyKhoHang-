@@ -289,8 +289,10 @@ The `status_type/` folder contains **all status and type master tables**.
 - The functions are placed in namespace <Query>
 - The library is set in `query`
 - Data in the table is read-only. Remember to extract data from table (using index if needing) to Vector<Record> before processing
+- No need to valid the datatype. Only check if the Vector<Record> has the demanding row (if not, return empty Vector)
+- 
 ### 11.1 Pre-built function
-- Pre-build 3 functions: sum, count, sort for both one column and a pair of columns, str_compare.
+- Pre-build 3 functions: sum, count, sort for both one column and a pair of columns.
 - Pre-build functions are implemented on Vetor<Record>.
 - About sort: Sort directly on the pass-by-value Vector. Allow to use c++ built-in sort.
 - Other functions: Using HashTable to count and sum

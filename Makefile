@@ -6,13 +6,13 @@ QT_LIBS = $(shell pkg-config --libs Qt6Widgets)
 
 BUILD_DIR = build
 
-CORE_SRCS = $(wildcard database/*.cpp) $(wildcard schema/*.cpp) $(wildcard data_io/*.cpp)
+CORE_SRCS = $(wildcard database/*.cpp) $(wildcard schema/*.cpp) $(wildcard data_io/*.cpp) $(wildcard query/*.cpp)
 CORE_OBJS = $(patsubst %.cpp, $(BUILD_DIR)/%.o, $(CORE_SRCS))
 
 UI_SRCS = $(wildcard ui/*.cpp)
 UI_OBJS = $(patsubst %.cpp, $(BUILD_DIR)/%.o, $(UI_SRCS))
 
-BUILD_DIRS = $(BUILD_DIR) $(BUILD_DIR)/database $(BUILD_DIR)/schema $(BUILD_DIR)/data_io $(BUILD_DIR)/generator $(BUILD_DIR)/ui $(BUILD_DIR)/test
+BUILD_DIRS = $(BUILD_DIR) $(BUILD_DIR)/database $(BUILD_DIR)/schema $(BUILD_DIR)/data_io $(BUILD_DIR)/query $(BUILD_DIR)/generator $(BUILD_DIR)/ui $(BUILD_DIR)/test
 
 GENERATOR_SRCS = $(wildcard generator/*.cpp)
 GENERATOR_OBJS = $(patsubst %.cpp, $(BUILD_DIR)/%.o, $(GENERATOR_SRCS))

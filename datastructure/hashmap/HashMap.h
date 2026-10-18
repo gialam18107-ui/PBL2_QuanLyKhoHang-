@@ -5,9 +5,34 @@
 #include <string>
 #include <stdexcept>
 #include <utility>
-
+#include <variant>
 #include "datastructure/vector/Vector.h"
 #include "Pair.h"
+
+using Value = std::variant<std::monostate, int, double, std::string, bool>;
+
+inline std::string valueToKey(const Value& v)
+{   //v.index() (variant method) return the index of datatype variant has
+    switch (v.index())
+    {
+        case 0: return "null:";
+        case 1: return "i:" + std::to_string(std::get<int>(v));
+        case 2: return "d:" + std::to_string(std::get<double>(v));
+        case 3: return "s:" + std::get<std::string>(v);
+        case 4: return std::get<bool>(v) ? "b:1" : "b:0";
+        default: return "";
+    }
+}
+
+inline std::string valueToHashKey(const Value& v)
+{
+    return valueToKey(v);
+}
+
+inline std::string valueToExactHashKey(const Value& v)
+{
+    return valueToKey(v);
+}
 
 /**
  * @brief Default hash functors for custom HashMap.
@@ -69,6 +94,26 @@ struct Hash<double>
         } conv;
         conv.d = key;
         return conv.u * 2654435761ULL;
+    }
+};
+
+template <>
+struct Hash<Value>
+{
+    size_t operator()(const Value& key) const
+    {
+        return Hash<std::string>{}(valueToKey(key));
+    }
+};
+
+template <typename T1, typename T2>
+struct Hash<Pair<T1, T2>>
+{
+    size_t operator()(const Pair<T1, T2>& p) const
+    {
+        size_t h1 = Hash<T1>{}(p.first);
+        size_t h2 = Hash<T2>{}(p.second);
+        return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
     }
 };
 
