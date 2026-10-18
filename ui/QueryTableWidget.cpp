@@ -64,11 +64,19 @@ void QueryTableWidget::setupFilterUI(QVBoxLayout* mainLayout)
         "  padding: 6px 10px;"
         "  border: 1px solid #cbd5e1;"
         "  border-radius: 6px;"
-        "  background: #f8fafc;"
+        "  background-color: #f8fafc;"
         "  font-size: 13px;"
-        "  color: #1e293b;"
+        "  color: #0f172a;"
         "}"
-        "QComboBox:focus { border: 1px solid #2563eb; background: #ffffff; }"
+        "QComboBox:focus { border: 1px solid #2563eb; background-color: #ffffff; }"
+        "QComboBox QAbstractItemView {"
+        "  background-color: #ffffff;"
+        "  color: #0f172a;"
+        "  selection-background-color: #2563eb;"
+        "  selection-color: #ffffff;"
+        "  border: 1px solid #cbd5e1;"
+        "  padding: 4px;"
+        "}"
     );
     filterColumnCombo->addItem("-- Không lọc (Toàn bộ) --");
     filterLayout->addWidget(filterColumnCombo);
@@ -83,7 +91,8 @@ void QueryTableWidget::setupFilterUI(QVBoxLayout* mainLayout)
         "  padding: 6px 10px;"
         "  border: 1px solid #cbd5e1;"
         "  border-radius: 6px;"
-        "  background: #ffffff;"
+        "  background-color: #ffffff;"
+        "  color: #0f172a;"
         "  font-size: 13px;"
         "}"
         "QLineEdit:focus { border: 1px solid #2563eb; }"
@@ -98,20 +107,46 @@ void QueryTableWidget::setupFilterUI(QVBoxLayout* mainLayout)
     dateLayout->setSpacing(6);
 
     auto* fromLbl = new QLabel("Từ:", filterDateWidget);
-    fromLbl->setStyleSheet("border: none; font-size: 12px; color: #475569;");
+    fromLbl->setStyleSheet("border: none; font-size: 12px; color: #475569; font-weight: 500;");
     fromDateEdit = new QDateEdit(filterDateWidget);
     fromDateEdit->setCalendarPopup(true);
     fromDateEdit->setDisplayFormat("yyyy-MM-dd");
     fromDateEdit->setDate(QDate(2023, 1, 1));
-    fromDateEdit->setStyleSheet("QDateEdit { padding: 5px 8px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; font-size: 12px; }");
+    fromDateEdit->setStyleSheet(
+        "QDateEdit {"
+        "  padding: 5px 8px;"
+        "  border: 1px solid #cbd5e1;"
+        "  border-radius: 6px;"
+        "  background-color: #ffffff;"
+        "  color: #0f172a;"
+        "  font-size: 12px;"
+        "}"
+        "QCalendarWidget QWidget {"
+        "  background-color: #ffffff;"
+        "  color: #0f172a;"
+        "}"
+    );
 
     auto* toLbl = new QLabel("Đến:", filterDateWidget);
-    toLbl->setStyleSheet("border: none; font-size: 12px; color: #475569;");
+    toLbl->setStyleSheet("border: none; font-size: 12px; color: #475569; font-weight: 500;");
     toDateEdit = new QDateEdit(filterDateWidget);
     toDateEdit->setCalendarPopup(true);
     toDateEdit->setDisplayFormat("yyyy-MM-dd");
     toDateEdit->setDate(QDate(2026, 12, 31));
-    toDateEdit->setStyleSheet("QDateEdit { padding: 5px 8px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; font-size: 12px; }");
+    toDateEdit->setStyleSheet(
+        "QDateEdit {"
+        "  padding: 5px 8px;"
+        "  border: 1px solid #cbd5e1;"
+        "  border-radius: 6px;"
+        "  background-color: #ffffff;"
+        "  color: #0f172a;"
+        "  font-size: 12px;"
+        "}"
+        "QCalendarWidget QWidget {"
+        "  background-color: #ffffff;"
+        "  color: #0f172a;"
+        "}"
+    );
 
     dateLayout->addWidget(fromLbl);
     dateLayout->addWidget(fromDateEdit);
@@ -129,10 +164,24 @@ void QueryTableWidget::setupFilterUI(QVBoxLayout* mainLayout)
         "  padding: 6px 10px;"
         "  border: 1px solid #cbd5e1;"
         "  border-radius: 6px;"
-        "  background: #ffffff;"
+        "  background-color: #ffffff;"
+        "  color: #0f172a;"
         "  font-size: 13px;"
         "}"
         "QComboBox:focus { border: 1px solid #2563eb; }"
+        "QComboBox QLineEdit {"
+        "  background-color: #ffffff;"
+        "  color: #0f172a;"
+        "  border: none;"
+        "}"
+        "QComboBox QAbstractItemView {"
+        "  background-color: #ffffff;"
+        "  color: #0f172a;"
+        "  selection-background-color: #2563eb;"
+        "  selection-color: #ffffff;"
+        "  border: 1px solid #cbd5e1;"
+        "  padding: 4px;"
+        "}"
     );
     filterSelectCombo->hide();
     filterLayout->addWidget(filterSelectCombo);
@@ -210,6 +259,7 @@ void QueryTableWidget::setupToolbarUI(QVBoxLayout* mainLayout)
         "  border: 1px solid #cbd5e1;"
         "  border-radius: 6px;"
         "  background-color: #ffffff;"
+        "  color: #0f172a;"
         "  font-size: 13px;"
         "}"
         "QLineEdit:focus { border: 1px solid #2563eb; }"
