@@ -197,6 +197,12 @@ The generator is responsible for generating **transaction-related test data only
 - Do not move database logic, inventory rules, or core application data management into UI classes.
 - When modifying an existing UI, preserve existing behavior unless the change explicitly requires otherwise.
 - Do not modify generated Qt files such as `ui_*.h` directly when using Qt Designer.
+## 9.1 Column filter
+- Call Query::filterRecords to filter user chosen column.
+- For primarykey and unique, allow user to type the value and hash exactly the record
+- For date, allow user to choose from date to date
+- For foreign key or some column such as categories' specs and product.is_sold, allow user to input the value and get all records has that value
+- Some columns such as categories' specs, product.is_sold, type, status, allow user to select, not only typing
 
 ---
 
