@@ -165,8 +165,8 @@ void MainWindow::setupPages()
         this
     );
     productQuantityWidget->setColumns(
-        {"Mã sản phẩm", "Tên sản phẩm", "Khả dụng (Available)", "Bảo hành (Warranty)", "Phế phẩm (Scrapped)"},
-        {"product.product_code", "product.product_name", "product_quantity.available_quan", "product_quantity.warranty_quan", "product_quantity.scrapped_quan"}
+        {"Mã sản phẩm", "Mã vạch (Barcode)", "Mã SKU", "Tên sản phẩm", "Khả dụng (Available)", "Bảo hành (Warranty)", "Phế phẩm (Scrapped)"},
+        {"product.product_code", "product.barcode", "product.sku", "product.product_name", "product_quantity.available_quan", "product_quantity.warranty_quan", "product_quantity.scrapped_quan"}
     );
     productQuantityWidget->setRefreshCallback([this]() { refreshQuery(1); });
     stackedWidget->addWidget(productQuantityWidget);
@@ -223,9 +223,22 @@ void MainWindow::setupPages()
     inboundDetailWidget->setRefreshCallback([this]() { refreshQuery(5); });
     stackedWidget->addWidget(inboundDetailWidget);
 
-    // Page 6: Chi tiết Giao nhận (Delivery)
+    // Page 6: Đợt Nhận hàng (Delivery)
+    deliveryWidget = new QueryTableWidget(
+        "7. Đợt Nhận hàng (DELIVERY_QUERY)",
+        "Danh sách các đợt/phiếu nhận hàng (Delivery) từ nhà cung cấp theo đơn nhập",
+        this
+    );
+    deliveryWidget->setColumns(
+        {"Mã nhận hàng", "Mã đơn nhập", "Ngày nhận", "Ngày dự kiến", "Trạng thái"},
+        {"delivery.delivery_code", "inbound_transaction.inbound_code", "delivery.delivery_at", "delivery.expected_at", "delivery.status"}
+    );
+    deliveryWidget->setRefreshCallback([this]() { refreshQuery(6); });
+    stackedWidget->addWidget(deliveryWidget);
+
+    // Page 7: Chi tiết Nhận hàng (Delivery Detail)
     deliveryDetailWidget = new QueryTableWidget(
-        "7. Chi tiết Giao nhận hàng (DELIVERY_DETAIL_QUERY)",
+        "8. Chi tiết Nhận hàng (DELIVERY_DETAIL_QUERY)",
         "Chi tiết số lượng thực tế nhận được theo từng lô giao nhận hàng (Delivery)",
         this
     );
@@ -233,12 +246,12 @@ void MainWindow::setupPages()
         {"Mã giao nhận (Delivery)", "Mã sản phẩm", "Tên sản phẩm", "Số lượng nhận"},
         {"delivery.delivery_code", "product.product_code", "product.product_name", "delivery_detail.received_quantity"}
     );
-    deliveryDetailWidget->setRefreshCallback([this]() { refreshQuery(6); });
+    deliveryDetailWidget->setRefreshCallback([this]() { refreshQuery(7); });
     stackedWidget->addWidget(deliveryDetailWidget);
 
-    // Page 7: Đơn Xuất kho
+    // Page 8: Đơn Xuất kho
     outboundTxnWidget = new QueryTableWidget(
-        "8. Đơn Xuất kho (OUTBOUND_TRANSACTION_QUERY)",
+        "9. Đơn Xuất kho (OUTBOUND_TRANSACTION_QUERY)",
         "Danh sách các đơn bán hàng / xuất trả bảo hành cho khách hàng và đối tác",
         this
     );
@@ -246,12 +259,12 @@ void MainWindow::setupPages()
         {"Mã đơn xuất", "Mã Đối tác / KH", "Ngày đặt", "Loại đơn", "Trạng thái", "Ghi chú"},
         {"outbound_transaction.outbound_code", "customer.customer_code", "outbound_transaction.order_at", "outbound_transaction.type", "outbound_transaction.status", "outbound_transaction.note"}
     );
-    outboundTxnWidget->setRefreshCallback([this]() { refreshQuery(7); });
+    outboundTxnWidget->setRefreshCallback([this]() { refreshQuery(8); });
     stackedWidget->addWidget(outboundTxnWidget);
 
-    // Page 8: Chi tiết Đơn xuất
+    // Page 9: Chi tiết Đơn xuất
     outboundDetailWidget = new QueryTableWidget(
-        "9. Chi tiết Đơn xuất (OUTBOUND_DETAIL_QUERY)",
+        "10. Chi tiết Đơn xuất (OUTBOUND_DETAIL_QUERY)",
         "Chi tiết các mặt hàng và số lượng đặt xuất theo từng đơn xuất kho",
         this
     );
@@ -259,12 +272,25 @@ void MainWindow::setupPages()
         {"Mã đơn xuất", "Mã sản phẩm", "Số lượng đặt"},
         {"outbound_transaction.outbound_code", "product.product_code", "outbound_detail.ordered_quantity"}
     );
-    outboundDetailWidget->setRefreshCallback([this]() { refreshQuery(8); });
+    outboundDetailWidget->setRefreshCallback([this]() { refreshQuery(9); });
     stackedWidget->addWidget(outboundDetailWidget);
 
-    // Page 9: Chi tiết Xuất hàng (Shipment)
+    // Page 10: Đợt Xuất hàng (Shipment)
+    shipmentWidget = new QueryTableWidget(
+        "11. Đợt Xuất hàng (SHIPMENT_QUERY)",
+        "Danh sách các đợt/phiếu xuất hàng (Shipment) gửi đi theo từng đơn xuất",
+        this
+    );
+    shipmentWidget->setColumns(
+        {"Mã xuất hàng", "Mã đơn xuất", "Ngày xuất", "Ngày dự kiến", "Trạng thái"},
+        {"shipment.shipment_code", "outbound_transaction.outbound_code", "shipment.ship_at", "shipment.expected_at", "shipment.status"}
+    );
+    shipmentWidget->setRefreshCallback([this]() { refreshQuery(10); });
+    stackedWidget->addWidget(shipmentWidget);
+
+    // Page 11: Chi tiết Xuất hàng (Shipment Detail)
     shipmentDetailWidget = new QueryTableWidget(
-        "10. Chi tiết Xuất hàng (SHIPMENT_DETAIL_QUERY)",
+        "12. Chi tiết Xuất hàng (SHIPMENT_DETAIL_QUERY)",
         "Chi tiết các lô xuất kiện hàng (Shipment) thực tế được gửi đi",
         this
     );
@@ -272,7 +298,7 @@ void MainWindow::setupPages()
         {"Mã kiện (Shipment)", "Mã sản phẩm", "Tên sản phẩm", "Số lượng xuất"},
         {"shipment.shipment_code", "product.product_code", "product.product_name", "shipment_detail.received_quantity"}
     );
-    shipmentDetailWidget->setRefreshCallback([this]() { refreshQuery(9); });
+    shipmentDetailWidget->setRefreshCallback([this]() { refreshQuery(11); });
     stackedWidget->addWidget(shipmentDetailWidget);
 }
 
@@ -284,10 +310,12 @@ void MainWindow::setupSidebar()
     sidebarList->addItem("📜 4. Lịch sử trạng thái Unit");
     sidebarList->addItem("📥 5. Đơn Nhập kho");
     sidebarList->addItem("📋 6. Chi tiết Đơn nhập");
-    sidebarList->addItem("🚚 7. Nhận hàng (Delivery)");
-    sidebarList->addItem("📤 8. Đơn Xuất kho");
-    sidebarList->addItem("📝 9. Chi tiết Đơn xuất");
-    sidebarList->addItem("📦 10. Xuất hàng (Shipment)");
+    sidebarList->addItem("🚚 7. Đợt Nhận hàng (Delivery)");
+    sidebarList->addItem("📦 8. Chi tiết Nhận hàng");
+    sidebarList->addItem("📤 9. Đơn Xuất kho");
+    sidebarList->addItem("📝 10. Chi tiết Đơn xuất");
+    sidebarList->addItem("🚛 11. Đợt Xuất hàng (Shipment)");
+    sidebarList->addItem("📦 12. Chi tiết Xuất hàng");
 
     connect(sidebarList, &QListWidget::currentRowChanged, [this](int row) {
         if (row >= 0 && row < stackedWidget->count()) {
@@ -331,18 +359,26 @@ void MainWindow::refreshQuery(int index)
         inboundDetailWidget->setData(results);
         break;
     case 6:
+        user_query::delivery_query(db, results);
+        deliveryWidget->setData(results);
+        break;
+    case 7:
         user_query::delivery_detail_query(db, results);
         deliveryDetailWidget->setData(results);
         break;
-    case 7:
+    case 8:
         user_query::outbound_transaction_query(db, results);
         outboundTxnWidget->setData(results);
         break;
-    case 8:
+    case 9:
         user_query::outbound_detail_query(db, results);
         outboundDetailWidget->setData(results);
         break;
-    case 9:
+    case 10:
+        user_query::shipment_query(db, results);
+        shipmentWidget->setData(results);
+        break;
+    case 11:
         user_query::shipment_detail_query(db, results);
         shipmentDetailWidget->setData(results);
         break;

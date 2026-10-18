@@ -2834,8 +2834,8 @@
     {
       "id": "u4Q3oZ_G1LbSZV5oiv9Dq",
       "name": "UNIT_INVENTORY_QUERY",
-      "x": 3428.7996069775973,
-      "y": -702.6997652071882,
+      "x": 3719.2081732603274,
+      "y": -579.8345515645777,
       "locked": false,
       "fields": [
         {
@@ -2889,8 +2889,8 @@
     {
       "id": "jKfevJwP3rixp_HEODiHv",
       "name": "STATUS_HISTORY_QUERY",
-      "x": 3426.8734708463135,
-      "y": -518.0112172077123,
+      "x": 3706.1125497224466,
+      "y": -374.047977702018,
       "locked": false,
       "fields": [
         {
@@ -3080,6 +3080,170 @@
           "notNull": true,
           "increment": false,
           "comment": ""
+        }
+      ],
+      "comment": "",
+      "indices": [],
+      "uniqueConstraints": [],
+      "color": "#7a1717",
+      "collapsed": false
+    },
+    {
+      "id": "6Xq7ABZJMva4rau9wiAG3",
+      "name": "DELIVERY_QUERY",
+      "x": 3414.218769774963,
+      "y": -684.1175731463481,
+      "locked": false,
+      "fields": [
+        {
+          "id": "DCYAe_gtx4FKulC4UV26T",
+          "name": "delivery_code",
+          "type": "CHAR",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": true,
+          "notNull": true,
+          "increment": false,
+          "comment": "mã inbound + D(XX)\nIN-WCK-002313-D02",
+          "size": 16
+        },
+        {
+          "id": "BsNmtwJ6NF_Vb_NYkXlSP",
+          "name": "inbound_code",
+          "type": "VARCHAR",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": 255,
+          "values": []
+        },
+        {
+          "id": "ayhpFEk1amnZvJTDP6Ega",
+          "name": "delivery_at",
+          "type": "DATE",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": "",
+          "values": []
+        },
+        {
+          "id": "15iF-ytrxnES256H4_hY2",
+          "name": "expected_at",
+          "type": "DATE",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": "",
+          "values": []
+        },
+        {
+          "id": "DwSNz_uqMLbSio_U9fSl1",
+          "name": "status",
+          "type": "VARCHAR",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": 10
+        }
+      ],
+      "comment": "",
+      "indices": [],
+      "uniqueConstraints": [],
+      "color": "#7a1717",
+      "collapsed": false
+    },
+    {
+      "id": "aF0BdQm7MxAZdbb11htp0",
+      "name": "SHIPMENT_QUERY",
+      "x": 3403.057473177141,
+      "y": -946.973464312108,
+      "locked": false,
+      "fields": [
+        {
+          "id": "E2PvhTzfjudoi5EEywl4Z",
+          "name": "shipment_code",
+          "type": "CHAR",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": true,
+          "notNull": true,
+          "increment": false,
+          "comment": "Mã outbound + S(XX)\nOUT-SEL-000999-",
+          "size": 17
+        },
+        {
+          "id": "ERUPJh8mDLi_ltG6vej0I",
+          "name": "outbound_code",
+          "type": "VARCHAR",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": 255,
+          "values": []
+        },
+        {
+          "id": "OFychzFaNEq8aSdGqKDGA",
+          "name": "ship_at",
+          "type": "DATE",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": "",
+          "values": []
+        },
+        {
+          "id": "pdUhfVN1-YmL-I3gnomNA",
+          "name": "expected_at",
+          "type": "DATE",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": "",
+          "values": []
+        },
+        {
+          "id": "LQb8fZ86pUTHUVr6jsgbQ",
+          "name": "status",
+          "type": "VARCHAR",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": 255
         }
       ],
       "comment": "",

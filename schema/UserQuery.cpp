@@ -117,6 +117,8 @@ void product_quantity_query(Database *db, Vector<Record> &results, const string&
             const auto& p = it->second;
             Record out;
             if (p.has("product_code")) out.set("product.product_code", p.get("product_code"));
+            if (p.has("barcode")) out.set("product.barcode", p.get("barcode"));
+            if (p.has("sku")) out.set("product.sku", p.get("sku"));
             if (p.has("product_name")) out.set("product.product_name", p.get("product_name"));
             if (pq.has("available_quan")) out.set("product_quantity.available_quan", pq.get("available_quan"));
             if (pq.has("warranty_quan")) out.set("product_quantity.warranty_quan", pq.get("warranty_quan"));
@@ -447,7 +449,75 @@ void inbound_detail_query(Database *db, Vector<Record> &results)
 }
 
 // ============================================================
-// 7. DELIVERY DETAIL QUERY (Index: delivery.delivery_at, expected_at)
+// 7. DELIVERY QUERY (Index: delivery.delivery_at, expected_at)
+// ============================================================
+void delivery_query(Database *db, Vector<Record> &results)
+{
+    delivery_query(db, results, "", Value());
+}
+
+void delivery_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& val)
+{
+    delivery_query(db, results, indexedColumn, val, val);
+}
+
+void delivery_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& minVal, const Value& maxVal)
+{
+    results.clear();
+    if (!db) return;
+
+    Table* dTable = db->getTable("delivery");
+    Table* itTable = db->getTable("inbound_transaction");
+    if (!dTable || !itTable) return;
+
+    Vector<Record> dSource;
+    if (!indexedColumn.empty())
+    {
+        dSource = Query::filterRecords(*dTable, indexedColumn, minVal, maxVal);
+    }
+    else
+    {
+        for (size_t i = 0; i < dTable->getRows().size(); ++i)
+        {
+            if (!dTable->isRowDeleted(i)) dSource.push_back(dTable->getRows()[i]);
+        }
+    }
+
+    HashMap<Value, Record> inTxnMap;
+    const auto& itRows = itTable->getRows();
+    for (size_t i = 0; i < itRows.size(); ++i)
+    {
+        if (itTable->isRowDeleted(i)) continue;
+        if (itRows[i].has("inbound_transaction_id"))
+        {
+            inTxnMap[itRows[i].get("inbound_transaction_id")] = itRows[i];
+        }
+    }
+
+    for (const auto& d : dSource)
+    {
+        Record out;
+        if (d.has("delivery_code")) out.set("delivery.delivery_code", d.get("delivery_code"));
+
+        if (d.has("inbound_transaction_id"))
+        {
+            auto it = inTxnMap.find(d.get("inbound_transaction_id"));
+            if (it != inTxnMap.end() && it->second.has("inbound_code"))
+            {
+                out.set("inbound_transaction.inbound_code", it->second.get("inbound_code"));
+            }
+        }
+
+        if (d.has("delivery_at")) out.set("delivery.delivery_at", d.get("delivery_at"));
+        if (d.has("expected_at")) out.set("delivery.expected_at", d.get("expected_at"));
+        if (d.has("status")) out.set("delivery.status", d.get("status"));
+
+        results.push_back(std::move(out));
+    }
+}
+
+// ============================================================
+// 8. DELIVERY DETAIL QUERY (Index: delivery.delivery_at, expected_at)
 // ============================================================
 void delivery_detail_query(Database *db, Vector<Record> &results)
 {
@@ -526,7 +596,7 @@ void delivery_detail_query(Database *db, Vector<Record> &results, const string& 
 }
 
 // ============================================================
-// 8. OUTBOUND TRANSACTION QUERY (Index: outbound_transaction.order_at)
+// 9. OUTBOUND TRANSACTION QUERY (Index: outbound_transaction.order_at)
 // ============================================================
 void outbound_transaction_query(Database *db, Vector<Record> &results)
 {
@@ -627,7 +697,7 @@ void outbound_transaction_query(Database *db, Vector<Record> &results, const str
 }
 
 // ============================================================
-// 9. OUTBOUND DETAIL QUERY
+// 10. OUTBOUND DETAIL QUERY
 // ============================================================
 void outbound_detail_query(Database *db, Vector<Record> &results)
 {
@@ -688,7 +758,84 @@ void outbound_detail_query(Database *db, Vector<Record> &results)
 }
 
 // ============================================================
-// 10. SHIPMENT DETAIL QUERY (Index: shipment.ship_at, expected_at)
+// 11. SHIPMENT QUERY (Index: shipment.ship_at, expected_at)
+// ============================================================
+void shipment_query(Database *db, Vector<Record> &results)
+{
+    shipment_query(db, results, "", Value());
+}
+
+void shipment_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& val)
+{
+    shipment_query(db, results, indexedColumn, val, val);
+}
+
+void shipment_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& minVal, const Value& maxVal)
+{
+    results.clear();
+    if (!db) return;
+
+    Table* sTable = db->getTable("shipment");
+    Table* otTable = db->getTable("outbound_transaction");
+    if (!sTable || !otTable) return;
+
+    Vector<Record> sSource;
+    if (!indexedColumn.empty())
+    {
+        sSource = Query::filterRecords(*sTable, indexedColumn, minVal, maxVal);
+    }
+    else
+    {
+        for (size_t i = 0; i < sTable->getRows().size(); ++i)
+        {
+            if (!sTable->isRowDeleted(i)) sSource.push_back(sTable->getRows()[i]);
+        }
+    }
+
+    HashMap<Value, Record> outTxnMap;
+    const auto& otRows = otTable->getRows();
+    for (size_t i = 0; i < otRows.size(); ++i)
+    {
+        if (otTable->isRowDeleted(i)) continue;
+        const auto& ot = otRows[i];
+        if (ot.has("outbound_trainsaction_id"))
+        {
+            outTxnMap[ot.get("outbound_trainsaction_id")] = ot;
+        }
+        else if (ot.has("outbound_transaction_id"))
+        {
+            outTxnMap[ot.get("outbound_transaction_id")] = ot;
+        }
+    }
+
+    for (const auto& s : sSource)
+    {
+        Record out;
+        if (s.has("shipment_code")) out.set("shipment.shipment_code", s.get("shipment_code"));
+
+        Value otId;
+        if (s.has("sell_id")) otId = s.get("sell_id");
+        else if (s.has("outbound_transaction_id")) otId = s.get("outbound_transaction_id");
+
+        if (!holds_alternative<monostate>(otId))
+        {
+            auto it = outTxnMap.find(otId);
+            if (it != outTxnMap.end() && it->second.has("outbound_code"))
+            {
+                out.set("outbound_transaction.outbound_code", it->second.get("outbound_code"));
+            }
+        }
+
+        if (s.has("ship_at")) out.set("shipment.ship_at", s.get("ship_at"));
+        if (s.has("expected_at")) out.set("shipment.expected_at", s.get("expected_at"));
+        if (s.has("status")) out.set("shipment.status", s.get("status"));
+
+        results.push_back(std::move(out));
+    }
+}
+
+// ============================================================
+// 12. SHIPMENT DETAIL QUERY (Index: shipment.ship_at, expected_at)
 // ============================================================
 void shipment_detail_query(Database *db, Vector<Record> &results)
 {

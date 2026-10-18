@@ -30,16 +30,18 @@ private:
     QLabel* statusLabel;
     QPushButton* reloadDbBtn;
 
-    // 10 Query Table Widgets
+    // 12 Query Table Widgets
     QueryTableWidget* productWidget;
     QueryTableWidget* productQuantityWidget;
     QueryTableWidget* unitInventoryWidget;
     QueryTableWidget* statusHistoryWidget;
     QueryTableWidget* inboundTxnWidget;
     QueryTableWidget* inboundDetailWidget;
+    QueryTableWidget* deliveryWidget;
     QueryTableWidget* deliveryDetailWidget;
     QueryTableWidget* outboundTxnWidget;
     QueryTableWidget* outboundDetailWidget;
+    QueryTableWidget* shipmentWidget;
     QueryTableWidget* shipmentDetailWidget;
 
     // Extra filters
