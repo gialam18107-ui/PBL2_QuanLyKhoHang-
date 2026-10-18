@@ -203,7 +203,13 @@ The generator is responsible for generating **transaction-related test data only
 - For date, allow user to choose from date to date
 - For foreign key or some column such as categories' specs and product.is_sold, allow user to input the value and get all records has that value
 - Some columns such as categories' specs, product.is_sold, type, status, allow user to select, not only typing
-
+## 9.2 Category
+- All category tables (cpu, gpu, main,...) must be separated from the warehouse table
+- Add a memu `Danh mục sản phẩm` with all categories
+- When serching for a spec column by using HashTree, the user can select the spec from the list
+## 9.3 Specs, category, brand table
+- All these tables must be separated from the warehouse table
+- Add a memu `Danh mục phụ` containing the choice to query all these tables
 ---
 
 ## 10. File Organization Rules
