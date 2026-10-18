@@ -6,6 +6,7 @@
 #include <QListWidget>
 #include <QLabel>
 #include <QPushButton>
+#include <QComboBox>
 
 #include "database/Database.h"
 #include "QueryTableWidget.h"
@@ -22,6 +23,7 @@ private:
     void setupPages();
     void refreshQuery(int index);
     void reloadDatabase();
+    void loadAuxSpecData(const QString& tableName);
 
     Database* db;
 
@@ -30,8 +32,7 @@ private:
     QLabel* statusLabel;
     QPushButton* reloadDbBtn;
 
-    // 12 Query Table Widgets
-    QueryTableWidget* productWidget;
+    // 11 Core Query Table Widgets (PRODUCT_QUERY removed)
     QueryTableWidget* productQuantityWidget;
     QueryTableWidget* unitInventoryWidget;
     QueryTableWidget* statusHistoryWidget;
@@ -44,8 +45,19 @@ private:
     QueryTableWidget* shipmentWidget;
     QueryTableWidget* shipmentDetailWidget;
 
-    // Extra filters
-    bool currentProductIsSold;
+    // 8 Category Hardware Classification Widgets
+    QueryTableWidget* cpuWidget;
+    QueryTableWidget* gpuWidget;
+    QueryTableWidget* mainboardWidget;
+    QueryTableWidget* ramWidget;
+    QueryTableWidget* ssdWidget;
+    QueryTableWidget* psuWidget;
+    QueryTableWidget* coolingWidget;
+    QueryTableWidget* caseWidget;
+
+    // Auxiliary Specs & Metadata Widget
+    QueryTableWidget* auxSpecWidget;
+    QComboBox* auxSpecTableCombo;
 };
 
 #endif // MAIN_WINDOW_H

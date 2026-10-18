@@ -36,6 +36,7 @@ int main(int argc, char* argv[])
     Database db("warehouse_db");
     std::cout << "[Init] Loading database from data/..." << std::endl;
     bool loaded = DataIO::DatabaseIO::readAll(db, "data");
+    DataIO::DatabaseIO::readAllCategorySpecs(db, "data");
     std::cout << "[Init] Database loaded: " << (loaded ? "SUCCESS" : "PARTIAL") 
               << " (" << db.getTableCount() << " tables)" << std::endl;
 

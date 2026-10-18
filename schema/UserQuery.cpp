@@ -14,53 +14,8 @@ void sort_query_results(Vector<Record>& records, const string& chosenColumn, boo
     Query::querySort(records, chosenColumn, ascending);
 }
 
-// ============================================================
-// 1. PRODUCT QUERY (Index: product.is_sold)
-// ============================================================
-void product_query(Database *db, Vector<Record> &results)
-{
-    product_query(db, results, "", Value());
-}
+// 1. PRODUCT QUERY: Đã loại bỏ do PRODUCT_QUANTITY_QUERY đã hiển thị đầy đủ thông tin sản phẩm và số lượng tồn kho.
 
-void product_query(Database *db, Vector<Record> &results, bool is_sold)
-{
-    product_query(db, results, "is_sold", Value(is_sold));
-}
-
-void product_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& val)
-{
-    results.clear();
-    if (!db) return;
-
-    Table* pTable = db->getTable("product");
-    if (!pTable) return;
-
-    Vector<Record> sourceRecords;
-    if (!indexedColumn.empty())
-    {
-        sourceRecords = Query::filterRecords(*pTable, indexedColumn, val);
-    }
-    else
-    {
-        for (size_t i = 0; i < pTable->getRows().size(); ++i)
-        {
-            if (!pTable->isRowDeleted(i))
-            {
-                sourceRecords.push_back(pTable->getRows()[i]);
-            }
-        }
-    }
-
-    for (const auto& r : sourceRecords)
-    {
-        Record out;
-        if (r.has("product_code")) out.set("product.product_code", r.get("product_code"));
-        if (r.has("product_name")) out.set("product.product_name", r.get("product_name"));
-        if (r.has("sku")) out.set("product.sku", r.get("sku"));
-        if (r.has("barcode")) out.set("product.barcode", r.get("barcode"));
-        results.push_back(std::move(out));
-    }
-}
 
 // ============================================================
 // 2. PRODUCT QUANTITY QUERY (Index: product.is_sold)
@@ -187,7 +142,13 @@ void unit_inventory_query(Database *db, Vector<Record> &results, const string& i
 }
 
 // ============================================================
-// 4. STATUS HISTORY QUERY (Index: status_history.type; có cột 'date')
+// ============================================================
+// 4. STATUS HISTORY QUERY
+// - Cột transaction: hiển thị delivery_code (INBOUND) hoặc shipment_code (OUTBOUND)
+// - Cột date: delivery_at hoặc ship_at
+// - Tìm kiếm transaction: tìm kiếm trên delivery.delivery_code và shipment.shipment_code (Hash) trước
+// - Tìm kiếm date: tìm kiếm trên delivery.delivery_at và shipment.ship_at (AVL tree range) trước
+// - Tìm kiếm type: tìm kiếm trên status_history.type (HashTree)
 // ============================================================
 void status_history_query(Database *db, Vector<Record> &results)
 {
@@ -196,8 +157,15 @@ void status_history_query(Database *db, Vector<Record> &results)
 
 void status_history_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& val)
 {
+    status_history_query(db, results, indexedColumn, val, Value());
+}
+
+void status_history_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& minVal, const Value& maxVal)
+{
     results.clear();
     if (!db) return;
+
+    const Value& val = minVal;
 
     Table* shTable = db->getTable("status_history");
     Table* uTable = db->getTable("unit_inventory");
@@ -205,7 +173,7 @@ void status_history_query(Database *db, Vector<Record> &results, const string& i
     Table* sTable = db->getTable("shipment");
     if (!shTable || !uTable) return;
 
-    // Map unit_id -> unit_inventory
+    // 1. Map unit_id -> unit_inventory (để lấy serial)
     HashMap<Value, Record> unitMap;
     const auto& uRows = uTable->getRows();
     for (size_t i = 0; i < uRows.size(); ++i)
@@ -217,7 +185,8 @@ void status_history_query(Database *db, Vector<Record> &results, const string& i
         }
     }
 
-    // Map delivery_id -> delivery_at (cho INBOUND)
+    // 2. Maps cho delivery: delivery_id -> delivery_code, delivery_id -> delivery_at
+    HashMap<Value, Value> delivCodeMap;
     HashMap<Value, Value> delivDateMap;
     if (dTable)
     {
@@ -225,14 +194,16 @@ void status_history_query(Database *db, Vector<Record> &results, const string& i
         {
             if (dTable->isRowDeleted(i)) continue;
             const auto& d = dTable->getRows()[i];
-            if (d.has("delivery_id") && d.has("delivery_at"))
+            if (d.has("delivery_id"))
             {
-                delivDateMap[d.get("delivery_id")] = d.get("delivery_at");
+                if (d.has("delivery_code")) delivCodeMap[d.get("delivery_id")] = d.get("delivery_code");
+                if (d.has("delivery_at")) delivDateMap[d.get("delivery_id")] = d.get("delivery_at");
             }
         }
     }
 
-    // Map shipment_id -> ship_at (cho OUTBOUND)
+    // 3. Maps cho shipment: shipment_id -> shipment_code, shipment_id -> ship_at
+    HashMap<Value, Value> shipCodeMap;
     HashMap<Value, Value> shipDateMap;
     if (sTable)
     {
@@ -240,17 +211,128 @@ void status_history_query(Database *db, Vector<Record> &results, const string& i
         {
             if (sTable->isRowDeleted(i)) continue;
             const auto& s = sTable->getRows()[i];
-            if (s.has("shipment_id") && s.has("ship_at"))
+            if (s.has("shipment_id"))
             {
-                shipDateMap[s.get("shipment_id")] = s.get("ship_at");
+                if (s.has("shipment_code")) shipCodeMap[s.get("shipment_id")] = s.get("shipment_code");
+                if (s.has("ship_at")) shipDateMap[s.get("shipment_id")] = s.get("ship_at");
+            }
+        }
+    }
+
+    // Chuẩn hóa tên cột lọc
+    string col = indexedColumn;
+    if (col.rfind("status_history.", 0) == 0) col = col.substr(15);
+    else if (col.rfind("unit_inventory.", 0) == 0) col = col.substr(15);
+
+    bool filterByTxCode = (col == "transaction");
+    bool filterByDate = (col == "date");
+    bool filterBySerial = (col == "serial");
+    bool hasRange = (minVal.index() != 0 && maxVal.index() != 0);
+
+    HashMap<Value, bool> matchedDelivIds;
+    HashMap<Value, bool> matchedShipIds;
+
+    // Khi tìm kiếm theo transaction: tìm kiếm bên delivery và shipment trước qua Hash index!
+    if (filterByTxCode)
+    {
+        if (dTable)
+        {
+            Vector<Record> matchedD = Query::filterRecords(*dTable, "delivery_code", val);
+            for (size_t i = 0; i < matchedD.size(); ++i)
+            {
+                if (matchedD[i].has("delivery_id")) matchedDelivIds[matchedD[i].get("delivery_id")] = true;
+            }
+        }
+        if (sTable)
+        {
+            Vector<Record> matchedS = Query::filterRecords(*sTable, "shipment_code", val);
+            for (size_t i = 0; i < matchedS.size(); ++i)
+            {
+                if (matchedS[i].has("shipment_id")) matchedShipIds[matchedS[i].get("shipment_id")] = true;
+            }
+        }
+    }
+    // Khi tìm kiếm theo date: tìm kiếm bên delivery và shipment trước qua AVL Tree index!
+    else if (filterByDate)
+    {
+        if (dTable)
+        {
+            Vector<Record> matchedD;
+            if (hasRange)
+                matchedD = Query::filterRecords(*dTable, "delivery_at", minVal, maxVal);
+            else
+                matchedD = Query::filterRecords(*dTable, "delivery_at", val);
+
+            for (size_t i = 0; i < matchedD.size(); ++i)
+            {
+                if (matchedD[i].has("delivery_id")) matchedDelivIds[matchedD[i].get("delivery_id")] = true;
+            }
+        }
+        if (sTable)
+        {
+            Vector<Record> matchedS;
+            if (hasRange)
+                matchedS = Query::filterRecords(*sTable, "ship_at", minVal, maxVal);
+            else
+                matchedS = Query::filterRecords(*sTable, "ship_at", val);
+
+            for (size_t i = 0; i < matchedS.size(); ++i)
+            {
+                if (matchedS[i].has("shipment_id")) matchedShipIds[matchedS[i].get("shipment_id")] = true;
             }
         }
     }
 
     Vector<Record> shSource;
-    if (!indexedColumn.empty())
+    if (filterByTxCode || filterByDate)
     {
-        shSource = Query::filterRecords(*shTable, indexedColumn, val);
+        const auto& shRows = shTable->getRows();
+        for (size_t i = 0; i < shRows.size(); ++i)
+        {
+            if (shTable->isRowDeleted(i)) continue;
+            const auto& sh = shRows[i];
+            string t = "";
+            if (sh.has("type") && holds_alternative<string>(sh.get("type")))
+            {
+                t = get<string>(sh.get("type"));
+            }
+            if (t == "INBOUND")
+            {
+                if (sh.has("transaction") && matchedDelivIds.find(sh.get("transaction")) != matchedDelivIds.end())
+                {
+                    shSource.push_back(sh);
+                }
+            }
+            else if (t == "OUTBOUND")
+            {
+                if (sh.has("transaction") && matchedShipIds.find(sh.get("transaction")) != matchedShipIds.end())
+                {
+                    shSource.push_back(sh);
+                }
+            }
+        }
+    }
+    else if (filterBySerial)
+    {
+        Vector<Record> matchedU = Query::filterRecords(*uTable, "serial", val);
+        HashMap<Value, bool> matchedUnitIds;
+        for (size_t i = 0; i < matchedU.size(); ++i)
+        {
+            if (matchedU[i].has("unit_id")) matchedUnitIds[matchedU[i].get("unit_id")] = true;
+        }
+        const auto& shRows = shTable->getRows();
+        for (size_t i = 0; i < shRows.size(); ++i)
+        {
+            if (shTable->isRowDeleted(i)) continue;
+            if (shRows[i].has("unit_id") && matchedUnitIds.find(shRows[i].get("unit_id")) != matchedUnitIds.end())
+            {
+                shSource.push_back(shRows[i]);
+            }
+        }
+    }
+    else if (!col.empty())
+    {
+        shSource = Query::filterRecords(*shTable, col, val);
     }
     else
     {
@@ -275,29 +357,38 @@ void status_history_query(Database *db, Vector<Record> &results, const string& i
             if (u.has("serial")) out.set("unit_inventory.serial", u.get("serial"));
             if (sh.has("old_status")) out.set("status_history.old_status", sh.get("old_status"));
             if (sh.has("curr_status")) out.set("status_history.curr_status", sh.get("curr_status"));
-            if (sh.has("transaction")) out.set("status_history.transaction", sh.get("transaction"));
-            if (sh.has("type")) out.set("status_history.type", sh.get("type"));
 
-            // Lấy cột date theo QuanLyKhoHang_schema.json
+            // Hiển thị code của delivery và shipment
+            Value txCodeVal = "";
             Value dateVal;
-            if (sh.has("type") && sh.has("transaction"))
+            string t = "";
+            if (sh.has("type") && holds_alternative<string>(sh.get("type")))
             {
-                string t = "";
-                if (holds_alternative<string>(sh.get("type")))
+                t = get<string>(sh.get("type"));
+            }
+            if (t == "INBOUND")
+            {
+                if (sh.has("transaction"))
                 {
-                    t = get<string>(sh.get("type"));
-                }
-                if (t == "INBOUND")
-                {
+                    auto cit = delivCodeMap.find(sh.get("transaction"));
+                    if (cit != delivCodeMap.end()) txCodeVal = cit->second;
                     auto dit = delivDateMap.find(sh.get("transaction"));
                     if (dit != delivDateMap.end()) dateVal = dit->second;
                 }
-                else if (t == "OUTBOUND")
+            }
+            else if (t == "OUTBOUND")
+            {
+                if (sh.has("transaction"))
                 {
+                    auto cit = shipCodeMap.find(sh.get("transaction"));
+                    if (cit != shipCodeMap.end()) txCodeVal = cit->second;
                     auto sit = shipDateMap.find(sh.get("transaction"));
                     if (sit != shipDateMap.end()) dateVal = sit->second;
                 }
             }
+
+            out.set("status_history.transaction", txCodeVal);
+            if (sh.has("type")) out.set("status_history.type", sh.get("type"));
             out.set("status_history.date", dateVal);
 
             results.push_back(std::move(out));
@@ -1053,6 +1144,193 @@ void shipment_detail_query(Database *db, Vector<Record> &results, const string& 
             if (sd.has("received_quantity")) out.set("shipment_detail.received_quantity", sd.get("received_quantity"));
             results.push_back(std::move(out));
         }
+    }
+}
+
+
+// ============================================================
+// 12. CÁC BẢNG PHÂN LOẠI SẢN PHẨM (CATEGORY HARDWARE QUERIES)
+// - Trả về: product_code, product_name, các thuộc tính của danh mục, và is_sold (đang bán)
+// - Hỗ trợ lọc theo is_sold và các thuộc tính category có index (HashTree)
+// ============================================================
+void category_hardware_query(Database *db, const string& categoryName, Vector<Record> &results)
+{
+    category_hardware_query(db, categoryName, results, "", Value());
+}
+
+void category_hardware_query(Database *db, const string& categoryName, Vector<Record> &results, const string& indexedColumn, const Value& val)
+{
+    results.clear();
+    if (!db) return;
+
+    string cat = categoryName;
+    for (char& c : cat) c = tolower(c);
+
+    Table* catTable = db->getTable(cat);
+    Table* prodTable = db->getTable("product");
+    if (!catTable || !prodTable) return;
+
+    // Chuẩn hóa tên cột lọc
+    string col = indexedColumn;
+    if (col.rfind(cat + ".", 0) == 0) col = col.substr(cat.length() + 1);
+    else if (col.rfind("product.", 0) == 0) col = col.substr(8);
+
+    bool filterOnSold = (col == "is_sold");
+
+    // Chuẩn bị map sản phẩm (product_id -> product record)
+    HashMap<Value, Record> prodMap;
+    if (filterOnSold)
+    {
+        Value soldVal = val;
+        if (holds_alternative<string>(val))
+        {
+            string s = get<string>(val);
+            for (char& c : s) c = tolower(c);
+            if (s == "true" || s == "1" || s == "đang bán") soldVal = true;
+            else if (s == "false" || s == "0" || s == "ngừng bán") soldVal = false;
+        }
+
+        Vector<Record> pFiltered = Query::filterRecords(*prodTable, "is_sold", soldVal);
+        for (size_t i = 0; i < pFiltered.size(); ++i)
+        {
+            if (pFiltered[i].has("product_id"))
+            {
+                prodMap[pFiltered[i].get("product_id")] = pFiltered[i];
+            }
+        }
+    }
+    else
+    {
+        const auto& pRows = prodTable->getRows();
+        for (size_t i = 0; i < pRows.size(); ++i)
+        {
+            if (prodTable->isRowDeleted(i)) continue;
+            if (pRows[i].has("product_id"))
+            {
+                prodMap[pRows[i].get("product_id")] = pRows[i];
+            }
+        }
+    }
+
+    // Lấy danh sách bản ghi category
+    Vector<Record> catSource;
+    if (!col.empty() && !filterOnSold)
+    {
+        catSource = Query::filterRecords(*catTable, col, val);
+    }
+    else
+    {
+        const auto& cRows = catTable->getRows();
+        for (size_t i = 0; i < cRows.size(); ++i)
+        {
+            if (!catTable->isRowDeleted(i))
+            {
+                catSource.push_back(cRows[i]);
+            }
+        }
+    }
+
+    // Ghép dữ liệu
+    for (size_t i = 0; i < catSource.size(); ++i)
+    {
+        const auto& crow = catSource[i];
+        if (!crow.has("product_id")) continue;
+
+        auto pit = prodMap.find(crow.get("product_id"));
+        if (pit == prodMap.end()) continue;
+        const auto& prow = pit->second;
+
+        Record out;
+        if (prow.has("product_code")) out.set("product.product_code", prow.get("product_code"));
+        if (prow.has("product_name")) out.set("product.product_name", prow.get("product_name"));
+
+        const auto& catCols = catTable->getColumns();
+        for (size_t c = 0; c < catCols.size(); ++c)
+        {
+            string colName = catCols[c].getName();
+            if (colName == cat + "_id" || colName == "id" || colName == "product_id") continue;
+            if (cat == "case" && colName == "product_name") continue;
+
+            if (crow.has(colName))
+            {
+                out.set(cat + "." + colName, crow.get(colName));
+            }
+        }
+
+        if (prow.has("is_sold")) out.set("product.is_sold", prow.get("is_sold"));
+
+        results.push_back(std::move(out));
+    }
+}
+
+void cpu_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& val) {
+    category_hardware_query(db, "cpu", results, indexedColumn, val);
+}
+void gpu_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& val) {
+    category_hardware_query(db, "gpu", results, indexedColumn, val);
+}
+void mainboard_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& val) {
+    category_hardware_query(db, "mainboard", results, indexedColumn, val);
+}
+void ram_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& val) {
+    category_hardware_query(db, "ram", results, indexedColumn, val);
+}
+void ssd_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& val) {
+    category_hardware_query(db, "ssd", results, indexedColumn, val);
+}
+void psu_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& val) {
+    category_hardware_query(db, "psu", results, indexedColumn, val);
+}
+void cooling_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& val) {
+    category_hardware_query(db, "cooling", results, indexedColumn, val);
+}
+void case_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& val) {
+    category_hardware_query(db, "case", results, indexedColumn, val);
+}
+
+// ============================================================
+// 13. TRUY VẤN PHỤ CHO HIỂN THỊ SPECS, CATEGORY, BRAND
+// - Hiển thị danh sách specs của các category (vd: cpu_socket, ssd_capacity,...)
+// - Hiển thị bảng category, bảng brand
+// - Không cần index vì dữ liệu ít
+// ============================================================
+void auxiliary_spec_query(Database *db, const string& tableName, Vector<Record> &results, const string& filterColumn, const Value& val)
+{
+    results.clear();
+    if (!db) return;
+
+    string tblName = tableName;
+    for (char& c : tblName) c = tolower(c);
+
+    Table* table = db->getTable(tblName);
+    if (!table) return;
+
+    string col = filterColumn;
+    if (col.rfind(tblName + ".", 0) == 0) col = col.substr(tblName.length() + 1);
+
+    bool hasFilter = !col.empty() && val.index() != 0;
+
+    const auto& rows = table->getRows();
+    for (size_t i = 0; i < rows.size(); ++i)
+    {
+        if (table->isRowDeleted(i)) continue;
+        const auto& r = rows[i];
+        if (hasFilter)
+        {
+            if (!r.has(col) || !(r.get(col) == val)) continue;
+        }
+
+        Record out;
+        const auto& tblCols = table->getColumns();
+        for (size_t c = 0; c < tblCols.size(); ++c)
+        {
+            string cname = tblCols[c].getName();
+            if (r.has(cname))
+            {
+                out.set(tblName + "." + cname, r.get(cname));
+            }
+        }
+        results.push_back(std::move(out));
     }
 }
 
