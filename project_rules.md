@@ -289,7 +289,7 @@ The `status_type/` folder contains **all status and type master tables**.
 - The functions are placed in namespace <Query>
 - The library is set in `query`
 - Data in the table is read-only. Remember to extract data from table (using index if needing) to Vector<Record> before processing
-- No need to valid the datatype. Only check if the Vector<Record> has the demanding row (if not, return empty Vector)
+- No need to valid the datatype in UserQuery. Only check if the Vector<Record> has the demanding row (if not, return empty Vector)
 - The user can only choose one column to filter records
 - After query, storing the data in a Vector<Record> for sorting chosen column and 
 reducing the times calling query

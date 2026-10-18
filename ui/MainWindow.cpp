@@ -191,8 +191,8 @@ void MainWindow::setupPages()
         this
     );
     statusHistoryWidget->setColumns(
-        {"Số Serial", "Trạng thái trước", "Trạng thái hiện tại", "Mã Giao dịch", "Loại giao dịch"},
-        {"unit_inventory.serial", "status_history.old_status", "status_history.curr_status", "status_history.transaction", "status_history.type"}
+        {"Số Serial", "Trạng thái trước", "Trạng thái hiện tại", "Mã Giao dịch", "Loại giao dịch", "Ngày thực hiện"},
+        {"unit_inventory.serial", "status_history.old_status", "status_history.curr_status", "status_history.transaction", "status_history.type", "status_history.date"}
     );
     statusHistoryWidget->setRefreshCallback([this]() { refreshQuery(3); });
     stackedWidget->addWidget(statusHistoryWidget);
