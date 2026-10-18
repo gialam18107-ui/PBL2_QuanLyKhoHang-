@@ -290,7 +290,10 @@ The `status_type/` folder contains **all status and type master tables**.
 - The library is set in `query`
 - Data in the table is read-only. Remember to extract data from table (using index if needing) to Vector<Record> before processing
 - No need to valid the datatype. Only check if the Vector<Record> has the demanding row (if not, return empty Vector)
-- 
+- The user can only choose one column to filter records
+- After query, storing the data in a Vector<Record> for sorting chosen column and 
+reducing the times calling query
+- If a change appear (delete or update), a flag is active and all queries have to build again
 ### 11.1 Pre-built function
 - Pre-build 3 functions: sum, count, sort for both one column and a pair of columns.
 - Pre-build functions are implemented on Vetor<Record>.

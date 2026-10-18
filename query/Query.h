@@ -2,6 +2,7 @@
 #define QUERY_H
 
 #include "database/Record.h"
+#include "database/Table.h"
 #include "datastructure/hashmap/Pair.h"
 #include "datastructure/vector/Vector.h"
 #include <algorithm>
@@ -21,6 +22,9 @@ namespace Query {
 
     void querySort(Vector<Record> &data, string groupedColumn, bool ascending);
     void querySort(Vector<Record> &data, Pair<string, string> groupedColumns, bool ascending);
+
+    Vector<Record> filterRecords(const Table &table, string selectedColumn, const Value &value);
+    Vector<Record> filterRecords(const Table &table, string selectedColumn, const Value &minVal, const Value &maxVal);
 }
 
 #endif // QUERY_H
