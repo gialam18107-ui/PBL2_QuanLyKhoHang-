@@ -62,9 +62,9 @@ Users may add new records directly to:
 
 ### 4.2 Coupled Creation Only (Transactions, Delivery, Shipment, Unit Transitions)
 Users are allowed to manually input transactions and logistics records, but **strictly under atomic pairwise constraints**:
-- **Inbound Pair**: Creating an Inbound Transaction requires simultaneously creating its fixed initial set of `Delivery` records.
-- **Outbound Pair**: Creating an Outbound Transaction requires simultaneously creating its fixed initial set of `Shipment` records.
-- **Unit Transition Mapping**: Within each `Delivery` or `Shipment` being created, the user may attach specific `Unit`s and select the target status for each unit to transition into.
+- **Inbound Pair**: Creating an Inbound Transaction requires simultaneously creating its fixed initial set of `Delivery` records. Both `Inbound Transaction` and `Delivery` have to init their containing products and fixed products' quantity. Remember to check the products' quantity of `Delivery` not allowing to be larger than `Inbound Transaction`
+- **Outbound Pair**: Creating an Outbound Transaction requires simultaneously creating its fixed initial set of `Shipment` records. Both `Outbound Transaction` and `Shipment` have to init their containing products and fixed products' quantity. Remember to check the products' quantity of `Shipment` not allowing to be larger than `Outbound Transaction`
+- **Unit Transition Mapping**: Within each `Delivery` or `Shipment` being created, the user may attach specific `Unit`s and select the target status for each unit to transition into. The number of new `Status History` records also do not allow to larger than `Delivery/Shipment`.`received_quantity`.
 - Standalone creation of an Inbound/Outbound order without its paired `Delivery`/`Shipment` (or vice versa), or standalone creation of `Unit` records via normal CRUD, is strictly prohibited.
 
 ### 4.3 Strict Immutability After Confirmation (Update & Delete Restrictions)
@@ -95,7 +95,7 @@ Users must **never** directly edit:
 
 ---
 
-## 6. Indexing and Query Architecture
+## 6. Indexing and Query, Create, Update, Delete Architecture
 
 ### 6.1 Index Naming and Selection
 - Index naming convention: `index_type + index_column` (where `index_type` is `hash`, `hash_tree`, or `avl_tree`).
@@ -110,10 +110,19 @@ Users must **never** directly edit:
 - Users filter by one column at a time. Store the resulting `Vector<Record>` to support subsequent column sorting and avoid redundant query execution.
 - **Cache Invalidation**: Any `update` or `delete` operation must trigger a dirty flag, requiring active queries to rebuild.
 
-### 6.3 Pre-built Aggregate & Sort Functions
+#### 6.2.1 Pre-built Aggregate & Sort Functions
 - Provide 3 pre-built operations on `Vector<Record>` for both single columns and column pairs: `sum`, `count`, and `sort`.
 - **`sort`**: Sort directly on a pass-by-value `Vector<Record>`. Permitted to use C++ built-in `std::sort`.
 - **`sum` & `count`**: Must be implemented using custom `HashTable`.
+### 6.3 Create, Update and Delete (Modify)
+- To make simpler, the records of tables is modified through its id in the table, no need to use Condition as real SQL
+- A paraments of database update functions include: table name, record id (eg: product_id, delivery_id, id,...), Vector<string> &modifiedColumn, Vector<Value> &modifyingValue
+- A paraments of database insert functions include: table name, Record &r
+- A paraments of database delete functions include: table name, record id
+- Remember to check column name, datatype before modifying table
+- The table modify functions is also based on aforementioned rules
+- Write all operators that user is allowed in `4.` and `5.`. Based on UserQuery to write the function to the suitable *.h and *.cpp file already defined
+- When adding a new `status history` record, if the `unit` is not existed before (only available for `Inbound`), remember to add it to `Unit Inventory` with `Status History`.`new_status`, and set `Status History`.`old_status` == `NULL`
 
 ---
 
