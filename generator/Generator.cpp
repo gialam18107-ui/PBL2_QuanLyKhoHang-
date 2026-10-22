@@ -14,11 +14,9 @@ namespace Generator
           nextInboundTxnId(1),
           nextInboundDetailId(1),
           nextDeliveryId(1),
-          nextDeliveryUnitDetailId(1),
           nextOutboundTxnId(1),
           nextOutboundDetailId(1),
           nextShipmentId(1),
-          nextShipmentUnitDetailId(1),
           nextStatusHistoryId(1),
           rngSeed(seed == 0 ? static_cast<unsigned int>(time(nullptr)) : seed)
     {
@@ -144,19 +142,7 @@ namespace Generator
             }
         }
 
-        // 5. Scan Delivery Unit Detail
-        Table* delUnitTbl = db.getTable("delivery_unit_detail");
-        if (delUnitTbl != nullptr)
-        {
-            const auto& rows = delUnitTbl->getRows();
-            for (size_t i = 0; i < rows.size(); i++)
-            {
-                int id = get<int>(rows[i].get("delivery_unit_detail_id"));
-                if (id >= nextDeliveryUnitDetailId) nextDeliveryUnitDetailId = id + 1;
-            }
-        }
-
-        // 6. Scan Outbound Transaction
+        // 5. Scan Outbound Transaction
         Table* outTxnTbl = db.getTable("outbound_transaction");
         if (outTxnTbl != nullptr)
         {
@@ -202,19 +188,7 @@ namespace Generator
             }
         }
 
-        // 9. Scan Shipment Unit Detail
-        Table* shipUnitTbl = db.getTable("shipment_unit_detail");
-        if (shipUnitTbl != nullptr)
-        {
-            const auto& rows = shipUnitTbl->getRows();
-            for (size_t i = 0; i < rows.size(); i++)
-            {
-                int id = get<int>(rows[i].get("shipment_unit_detail_id"));
-                if (id >= nextShipmentUnitDetailId) nextShipmentUnitDetailId = id + 1;
-            }
-        }
-
-        // 10. Scan Status History
+        // 8. Scan Status History
         Table* histTbl = db.getTable("status_history");
         if (histTbl != nullptr)
         {
@@ -256,13 +230,27 @@ namespace Generator
         if (prodTbl == nullptr || unitTbl == nullptr) return;
 
         HashMap<int, int> availableCounts;
+        HashMap<int, int> warrantyCounts;
+        HashMap<int, int> scrappedCounts;
+
         for (const auto& u : unitTbl->getRows())
         {
-            if (get<string>(u.get("status")) == "AVAILABLE")
+            int pid = get<int>(u.get("product_id"));
+            string st = get<string>(u.get("status"));
+            if (st == "AVAILABLE")
             {
-                int pid = get<int>(u.get("product_id"));
-                int current = availableCounts.contains(pid) ? availableCounts[pid] : 0;
-                availableCounts[pid] = current + 1;
+                int cur = availableCounts.contains(pid) ? availableCounts[pid] : 0;
+                availableCounts[pid] = cur + 1;
+            }
+            else if (st == "WARRANTY")
+            {
+                int cur = warrantyCounts.contains(pid) ? warrantyCounts[pid] : 0;
+                warrantyCounts[pid] = cur + 1;
+            }
+            else if (st == "SCRAPPED")
+            {
+                int cur = scrappedCounts.contains(pid) ? scrappedCounts[pid] : 0;
+                scrappedCounts[pid] = cur + 1;
             }
         }
 
@@ -281,8 +269,9 @@ namespace Generator
             for (size_t i = 0; i < pqRows.size(); i++)
             {
                 int pid = get<int>(pqRows[i].get("product_id"));
-                int actual = availableCounts.contains(pid) ? availableCounts[pid] : 0;
-                pqRows[i].set("available_quan", actual);
+                pqRows[i].set("available_quan", availableCounts.contains(pid) ? availableCounts[pid] : 0);
+                pqRows[i].set("warranty_quan", warrantyCounts.contains(pid) ? warrantyCounts[pid] : 0);
+                pqRows[i].set("scrapped_quan", scrappedCounts.contains(pid) ? scrappedCounts[pid] : 0);
             }
         }
     }
@@ -302,13 +291,12 @@ namespace Generator
         Table* inTxnTbl = db.getTable("inbound_transaction");
         Table* inDetTbl = db.getTable("inbound_detail");
         Table* delTbl = db.getTable("delivery");
-        Table* delUnitTbl = db.getTable("delivery_unit_detail");
         Table* delDetTbl = db.getTable("delivery_detail");
         Table* unitTbl = db.getTable("unit_inventory");
         Table* histTbl = db.getTable("status_history");
         Table* prodTbl = db.getTable("product");
 
-        if (!inTxnTbl || !inDetTbl || !delTbl || (!delUnitTbl && !delDetTbl) || !unitTbl)
+        if (!inTxnTbl || !inDetTbl || !delTbl || !delDetTbl || !unitTbl)
         {
             cerr << "[Generator Error] Missing required database tables for inbound generation.\n";
             return -1;
@@ -328,12 +316,15 @@ namespace Generator
         if (numDeliveries < 1) numDeliveries = 1;
         string date = orderDate.empty() ? getCurrentDate() : orderDate;
 
+        // Choose appropriate customer: Business (4) for supplier purchasing/warranty replacement, Individual (1) for customer returns
+        int customerId = (inboundType == "WARRANTY_CHECKING" || inboundType == "CUSTOMER_RETURN") ? 1 : 4;
+
         // 1. Create InboundTransaction record
         int txnId = nextInboundTxnId++;
         Record inTxn;
         inTxn.set("inbound_transaction_id", txnId);
         inTxn.set("inbound_code", inboundCode);
-        inTxn.set("customer_id", 4);
+        inTxn.set("customer_id", customerId);
         inTxn.set("order_at", date);
         inTxn.set("type", inboundType);
         inTxn.set("status", string("CONFIRMED"));
@@ -354,6 +345,7 @@ namespace Generator
             inDet.set("inbound_transaction_id", txnId);
             inDet.set("product_id", pid);
             inDet.set("ordered_quantity", qty);
+            inDet.set("actual_quantity", 0);
             inDetTbl->insert(inDet);
         }
 
@@ -390,46 +382,165 @@ namespace Generator
                     delDet.set("delivery_id", delId);
                     delDet.set("product_id", pid);
                     delDet.set("received_quantity", deliveryQty);
+                    delDet.set("actual_quantity", 0);
                     delDetTbl->insert(delDet);
                 }
 
-                string initialUnitStatus = (inboundType == "WARRANTY_CHECKING") ? "WARRANTY" : "AVAILABLE";
-
                 for (int u = 0; u < deliveryQty; u++)
                 {
-                    int uId = nextUnitId++;
-                    string serial = generateUniqueSerial();
+                    int uId = 0;
+                    string serial;
+                    string oldStatus = "";
+                    string targetStatus = "AVAILABLE";
 
-                    // Insert Unit Inventory
-                    Record unitRecord;
-                    unitRecord.set("unit_id", uId);
-                    unitRecord.set("product_id", pid);
-                    unitRecord.set("serial", serial);
-                    unitRecord.set("status", initialUnitStatus);
-                    unitTbl->insert(unitRecord);
-
-                    // Insert Delivery Unit Detail
-                    Record delUnitRecord;
-                    delUnitRecord.set("delivery_unit_detail_id", nextDeliveryUnitDetailId++);
-                    delUnitRecord.set("delivery_id", delId);
-                    delUnitRecord.set("product_id", pid);
-                    delUnitRecord.set("serial", serial);
-                    if (delUnitTbl != nullptr)
+                    if (inboundType == "PURCHASING")
                     {
-                        delUnitTbl->insert(delUnitRecord);
+                        // PUR: NULL -> AVAILABLE (or small chance of SCRAPPED upon inspection)
+                        oldStatus = "";
+                        targetStatus = (nextRandom() % 25 == 0) ? "SCRAPPED" : "AVAILABLE";
+                        uId = nextUnitId++;
+                        serial = generateUniqueSerial();
+
+                        Record unitRecord;
+                        unitRecord.set("unit_id", uId);
+                        unitRecord.set("product_id", pid);
+                        unitRecord.set("serial", serial);
+                        unitRecord.set("status", targetStatus);
+                        unitTbl->insert(unitRecord);
+                    }
+                    else if (inboundType == "WARRANTY_REPLACEMENT")
+                    {
+                        // WRP: NULL -> WARRANTY (new replacement unit from vendor)
+                        oldStatus = "";
+                        targetStatus = "WARRANTY";
+                        uId = nextUnitId++;
+                        serial = generateUniqueSerial();
+
+                        Record unitRecord;
+                        unitRecord.set("unit_id", uId);
+                        unitRecord.set("product_id", pid);
+                        unitRecord.set("serial", serial);
+                        unitRecord.set("status", targetStatus);
+                        unitTbl->insert(unitRecord);
+                    }
+                    else if (inboundType == "WARRANTY_CHECKING")
+                    {
+                        // WCK: OUT -> WARRANTY (previously sold unit returned for checking)
+                        oldStatus = "OUT";
+                        targetStatus = "WARRANTY";
+                        bool foundOut = false;
+                        auto& uRows = unitTbl->getRows();
+                        for (size_t r = 0; r < uRows.size(); r++)
+                        {
+                            if (get<int>(uRows[r].get("product_id")) == pid &&
+                                get<string>(uRows[r].get("status")) == "OUT")
+                            {
+                                uId = get<int>(uRows[r].get("unit_id"));
+                                serial = get<string>(uRows[r].get("serial"));
+                                uRows[r].set("status", string("WARRANTY"));
+                                foundOut = true;
+                                break;
+                            }
+                        }
+                        if (!foundOut)
+                        {
+                            uId = nextUnitId++;
+                            serial = generateUniqueSerial();
+                            Record unitRecord;
+                            unitRecord.set("unit_id", uId);
+                            unitRecord.set("product_id", pid);
+                            unitRecord.set("serial", serial);
+                            unitRecord.set("status", string("WARRANTY"));
+                            unitTbl->insert(unitRecord);
+                        }
+                    }
+                    else if (inboundType == "CUSTOMER_RETURN")
+                    {
+                        // CRT: OUT -> AVAILABLE (or WARRANTY/SCRAPPED)
+                        oldStatus = "OUT";
+                        targetStatus = "AVAILABLE";
+                        bool foundOut = false;
+                        auto& uRows = unitTbl->getRows();
+                        for (size_t r = 0; r < uRows.size(); r++)
+                        {
+                            if (get<int>(uRows[r].get("product_id")) == pid &&
+                                get<string>(uRows[r].get("status")) == "OUT")
+                            {
+                                uId = get<int>(uRows[r].get("unit_id"));
+                                serial = get<string>(uRows[r].get("serial"));
+                                uRows[r].set("status", string("AVAILABLE"));
+                                foundOut = true;
+                                break;
+                            }
+                        }
+                        if (!foundOut)
+                        {
+                            uId = nextUnitId++;
+                            serial = generateUniqueSerial();
+                            Record unitRecord;
+                            unitRecord.set("unit_id", uId);
+                            unitRecord.set("product_id", pid);
+                            unitRecord.set("serial", serial);
+                            unitRecord.set("status", string("AVAILABLE"));
+                            unitTbl->insert(unitRecord);
+                        }
+                    }
+                    else
+                    {
+                        // ADJUSTMENT_IN: NULL -> AVAILABLE
+                        oldStatus = "";
+                        targetStatus = "AVAILABLE";
+                        uId = nextUnitId++;
+                        serial = generateUniqueSerial();
+
+                        Record unitRecord;
+                        unitRecord.set("unit_id", uId);
+                        unitRecord.set("product_id", pid);
+                        unitRecord.set("serial", serial);
+                        unitRecord.set("status", targetStatus);
+                        unitTbl->insert(unitRecord);
                     }
 
-                    // Insert Status History if table exists
+                    // Insert Status History
                     if (histTbl != nullptr)
                     {
                         Record histRecord;
                         histRecord.set("history_id", nextStatusHistoryId++);
                         histRecord.set("unit_id", uId);
-                        histRecord.set("old_status", inboundType == "CUSTOMER_RETURN" ? string("OUT") : string(""));
-                        histRecord.set("curr_status", initialUnitStatus);
+                        histRecord.set("old_status", oldStatus);
+                        histRecord.set("curr_status", targetStatus);
                         histRecord.set("transaction", delId);
                         histRecord.set("type", string("INBOUND"));
                         histTbl->insert(histRecord);
+                    }
+
+                    // Auto-increment actual_quantity on delivery_detail
+                    if (delDetTbl != nullptr)
+                    {
+                        auto& ddRows = delDetTbl->getRows();
+                        for (size_t r = 0; r < ddRows.size(); r++)
+                        {
+                            if (get<int>(ddRows[r].get("delivery_id")) == delId &&
+                                get<int>(ddRows[r].get("product_id")) == pid)
+                            {
+                                int curActual = get<int>(ddRows[r].get("actual_quantity"));
+                                ddRows[r].set("actual_quantity", curActual + 1);
+                                break;
+                            }
+                        }
+                    }
+
+                    // Auto-increment actual_quantity on inbound_detail
+                    auto& idRows = inDetTbl->getRows();
+                    for (size_t r = 0; r < idRows.size(); r++)
+                    {
+                        if (get<int>(idRows[r].get("inbound_transaction_id")) == txnId &&
+                            get<int>(idRows[r].get("product_id")) == pid)
+                        {
+                            int curActual = get<int>(idRows[r].get("actual_quantity"));
+                            idRows[r].set("actual_quantity", curActual + 1);
+                            break;
+                        }
                     }
                 }
             }
@@ -461,21 +572,24 @@ namespace Generator
         Table* outTxnTbl = db.getTable("outbound_transaction");
         Table* outDetTbl = db.getTable("outbound_detail");
         Table* shipTbl = db.getTable("shipment");
-        Table* shipUnitTbl = db.getTable("shipment_unit_detail");
         Table* shipDetTbl = db.getTable("shipment_detail");
         Table* unitTbl = db.getTable("unit_inventory");
         Table* histTbl = db.getTable("status_history");
         Table* prodTbl = db.getTable("product");
 
-        if (!outTxnTbl || !outDetTbl || !shipTbl || (!shipUnitTbl && !shipDetTbl) || !unitTbl)
+        if (!outTxnTbl || !outDetTbl || !shipTbl || !shipDetTbl || !unitTbl)
         {
             cerr << "[Generator Error] Missing required database tables for outbound generation.\n";
             return -1;
         }
 
         // Required unit status depends on outbound type
+        // SEL: AVAILABLE -> OUT
+        // WRT: SCRAPPED / WARRANTY -> OUT
+        // WRC: AVAILABLE / WARRANTY -> OUT
+        // RTS: AVAILABLE / WARRANTY / SCRAPPED -> OUT
         string requiredStatus = "AVAILABLE";
-        if (outboundType == "WARRANTY_RETURN" || outboundType == "RETURN_TO_SUPPLIER")
+        if (outboundType == "WARRANTY_RETURN")
         {
             requiredStatus = "WARRANTY";
         }
@@ -492,16 +606,28 @@ namespace Generator
                 if (get<int>(u.get("product_id")) == pid)
                 {
                     string st = get<string>(u.get("status"));
-                    if (st == requiredStatus || (requiredStatus == "WARRANTY" && st == "AVAILABLE"))
+                    if (outboundType == "WARRANTY_RETURN")
                     {
-                        eligibleCount++;
+                        if (st == "WARRANTY" || st == "SCRAPPED") eligibleCount++;
+                    }
+                    else if (outboundType == "WARRANTY_REPLACEMENT_TO_CUSTOMER")
+                    {
+                        if (st == "AVAILABLE" || st == "WARRANTY") eligibleCount++;
+                    }
+                    else if (outboundType == "RETURN_TO_SUPPLIER")
+                    {
+                        if (st == "AVAILABLE" || st == "WARRANTY" || st == "SCRAPPED") eligibleCount++;
+                    }
+                    else
+                    {
+                        if (st == "AVAILABLE") eligibleCount++;
                     }
                 }
             }
 
             if (eligibleCount < requested)
             {
-                cerr << "[Generator Error] Insufficient stock for product ID " << pid
+                cerr << "[Generator Error] Insufficient eligible stock for product ID " << pid
                      << ". Requested: " << requested << ", Eligible in stock: " << eligibleCount << ".\n";
                 return -1;
             }
@@ -521,12 +647,15 @@ namespace Generator
         if (numShipments < 1) numShipments = 1;
         string date = orderDate.empty() ? getCurrentDate() : orderDate;
 
+        // Choose appropriate customer: Individual (1) for retail sales/replacements, Business (4) for supplier returns
+        int customerId = (outboundType == "WARRANTY_RETURN" || outboundType == "RETURN_TO_SUPPLIER") ? 4 : 1;
+
         // 1. Create OutboundTransaction record
         int txnId = nextOutboundTxnId++;
         Record outTxn;
         outTxn.set("outbound_trainsaction_id", txnId);
         outTxn.set("outbound_code", outboundCode);
-        outTxn.set("customer_id", 1);
+        outTxn.set("customer_id", customerId);
         outTxn.set("order_at", date);
         outTxn.set("type", outboundType);
         outTxn.set("status", string("CONFIRMED"));
@@ -547,6 +676,7 @@ namespace Generator
             outDet.set("outbound_transaction_id", txnId);
             outDet.set("product_id", pid);
             outDet.set("ordered_quantity", qty);
+            outDet.set("actual_quantity", 0);
             outDetTbl->insert(outDet);
         }
 
@@ -583,6 +713,7 @@ namespace Generator
                     shipDet.set("shipment_id", shipId);
                     shipDet.set("product_id", pid);
                     shipDet.set("received_quantity", shipmentQty);
+                    shipDet.set("actual_quantity", 0);
                     shipDetTbl->insert(shipDet);
                 }
 
@@ -592,24 +723,31 @@ namespace Generator
                     if (get<int>(unitRows[u].get("product_id")) == pid)
                     {
                         string currentStatus = get<string>(unitRows[u].get("status"));
-                        if (currentStatus == requiredStatus || (requiredStatus == "WARRANTY" && currentStatus == "AVAILABLE"))
+                        bool isEligible = false;
+                        if (outboundType == "WARRANTY_RETURN")
+                        {
+                            isEligible = (currentStatus == "WARRANTY" || currentStatus == "SCRAPPED");
+                        }
+                        else if (outboundType == "WARRANTY_REPLACEMENT_TO_CUSTOMER")
+                        {
+                            isEligible = (currentStatus == "AVAILABLE" || currentStatus == "WARRANTY");
+                        }
+                        else if (outboundType == "RETURN_TO_SUPPLIER")
+                        {
+                            isEligible = (currentStatus == "AVAILABLE" || currentStatus == "WARRANTY" || currentStatus == "SCRAPPED");
+                        }
+                        else
+                        {
+                            isEligible = (currentStatus == "AVAILABLE");
+                        }
+
+                        if (isEligible)
                         {
                             int uId = get<int>(unitRows[u].get("unit_id"));
                             string serial = get<string>(unitRows[u].get("serial"));
 
                             // Transition unit status to OUT
                             unitRows[u].set("status", string("OUT"));
-
-                            // Create ShipmentUnitDetail record
-                            Record shipUnitRecord;
-                            shipUnitRecord.set("shipment_unit_detail_id", nextShipmentUnitDetailId++);
-                            shipUnitRecord.set("shipment_id", shipId);
-                            shipUnitRecord.set("product_id", pid);
-                            shipUnitRecord.set("serial", serial);
-                            if (shipUnitTbl != nullptr)
-                            {
-                                shipUnitTbl->insert(shipUnitRecord);
-                            }
 
                             // Create StatusHistory record
                             if (histTbl != nullptr)
@@ -622,6 +760,35 @@ namespace Generator
                                 histRecord.set("transaction", shipId);
                                 histRecord.set("type", string("OUTBOUND"));
                                 histTbl->insert(histRecord);
+                            }
+
+                            // Auto-increment actual_quantity on shipment_detail
+                            if (shipDetTbl != nullptr)
+                            {
+                                auto& sdRows = shipDetTbl->getRows();
+                                for (size_t r = 0; r < sdRows.size(); r++)
+                                {
+                                    if (get<int>(sdRows[r].get("shipment_id")) == shipId &&
+                                        get<int>(sdRows[r].get("product_id")) == pid)
+                                    {
+                                        int curActual = get<int>(sdRows[r].get("actual_quantity"));
+                                        sdRows[r].set("actual_quantity", curActual + 1);
+                                        break;
+                                    }
+                                }
+                            }
+
+                            // Auto-increment actual_quantity on outbound_detail
+                            auto& odRows = outDetTbl->getRows();
+                            for (size_t r = 0; r < odRows.size(); r++)
+                            {
+                                if (get<int>(odRows[r].get("outbound_transaction_id")) == txnId &&
+                                    get<int>(odRows[r].get("product_id")) == pid)
+                                {
+                                    int curActual = get<int>(odRows[r].get("actual_quantity"));
+                                    odRows[r].set("actual_quantity", curActual + 1);
+                                    break;
+                                }
                             }
 
                             dispatched++;
@@ -669,9 +836,12 @@ namespace Generator
             int numDeliveries = 1 + (nextRandom() % 2);
 
             Vector<Pair<int, int>> items;
+            HashMap<int, bool> usedPids;
             for (int j = 0; j < numItems; j++)
             {
                 int pid = productIds[nextRandom() % productIds.size()];
+                if (usedPids.contains(pid)) continue;
+                usedPids[pid] = true;
                 int qty = 5 + (nextRandom() % 15);
                 items.push_back(Pair<int, int>(pid, qty));
                 summary.unitsCreated += qty;
@@ -687,7 +857,7 @@ namespace Generator
         }
 
         // Generate Outbound Transactions
-        const string outboundTypes[] = {"SELLING", "ADJUSTMENT_OUT", "WARRANTY_RETURN"};
+        const string outboundTypes[] = {"SELLING", "ADJUSTMENT_OUT", "SELLING"};
         for (int i = 0; i < numOutbound; i++)
         {
             string outType = outboundTypes[nextRandom() % 3];
@@ -695,14 +865,19 @@ namespace Generator
             int numShipments = 1;
 
             Vector<Pair<int, int>> items;
+            HashMap<int, bool> usedPids;
             for (int j = 0; j < numItems; j++)
             {
                 int pid = productIds[nextRandom() % productIds.size()];
+                if (usedPids.contains(pid)) continue;
                 int avail = getAvailableStock(pid);
                 if (avail > 2)
                 {
-                    int qty = 1 + (nextRandom() % min(avail / 2, 4));
+                    int maxQty = min(avail / 2, 4);
+                    if (maxQty < 1) maxQty = 1;
+                    int qty = 1 + (nextRandom() % maxQty);
                     items.push_back(Pair<int, int>(pid, qty));
+                    usedPids[pid] = true;
                     summary.unitsShipped += qty;
                 }
             }
@@ -792,6 +967,67 @@ namespace Generator
             {
                 cerr << "[-] Shipment references invalid sell_id (outbound_trainsaction_id): " << txnId << "\n";
                 return false;
+            }
+        }
+
+        // 4. Verify actual_quantity constraints on detail tables
+        Table* inDetTbl = db.getTable("inbound_detail");
+        if (inDetTbl != nullptr)
+        {
+            for (const auto& row : inDetTbl->getRows())
+            {
+                int ord = get<int>(row.get("ordered_quantity"));
+                int act = get<int>(row.get("actual_quantity"));
+                if (act > ord)
+                {
+                    cerr << "[-] InboundDetail actual_quantity (" << act << ") exceeds ordered_quantity (" << ord << ")\n";
+                    return false;
+                }
+            }
+        }
+
+        Table* delDetTbl = db.getTable("delivery_detail");
+        if (delDetTbl != nullptr)
+        {
+            for (const auto& row : delDetTbl->getRows())
+            {
+                int rec = get<int>(row.get("received_quantity"));
+                int act = get<int>(row.get("actual_quantity"));
+                if (act > rec)
+                {
+                    cerr << "[-] DeliveryDetail actual_quantity (" << act << ") exceeds received_quantity (" << rec << ")\n";
+                    return false;
+                }
+            }
+        }
+
+        Table* outDetTbl = db.getTable("outbound_detail");
+        if (outDetTbl != nullptr)
+        {
+            for (const auto& row : outDetTbl->getRows())
+            {
+                int ord = get<int>(row.get("ordered_quantity"));
+                int act = get<int>(row.get("actual_quantity"));
+                if (act > ord)
+                {
+                    cerr << "[-] OutboundDetail actual_quantity (" << act << ") exceeds ordered_quantity (" << ord << ")\n";
+                    return false;
+                }
+            }
+        }
+
+        Table* shipDetTbl = db.getTable("shipment_detail");
+        if (shipDetTbl != nullptr)
+        {
+            for (const auto& row : shipDetTbl->getRows())
+            {
+                int rec = get<int>(row.get("received_quantity"));
+                int act = get<int>(row.get("actual_quantity"));
+                if (act > rec)
+                {
+                    cerr << "[-] ShipmentDetail actual_quantity (" << act << ") exceeds received_quantity (" << rec << ")\n";
+                    return false;
+                }
             }
         }
 

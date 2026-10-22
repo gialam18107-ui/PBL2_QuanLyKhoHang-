@@ -18,11 +18,10 @@ namespace DataIO
         string name = tableName;
         for (char& c : name) c = tolower(c);
 
-        // Section 10.1: Transactions
         if (name == "inbound_transaction" || name == "inbound_detail" ||
-            name == "delivery" || name == "delivery_detail" || name == "delivery_unit_detail" ||
+            name == "delivery" || name == "delivery_detail" ||
             name == "outbound_transaction" || name == "outbound_detail" ||
-            name == "shipment" || name == "shipment_detail" || name == "shipment_unit_detail")
+            name == "shipment" || name == "shipment_detail")
         {
             return "transactions";
         }
@@ -116,20 +115,6 @@ namespace DataIO
             {
                 result.push_back(tableName);
             }
-        }
-
-        // Include compatibility tables if domain matches
-        if (dom == "transactions")
-        {
-            bool hasDeliv = false;
-            bool hasShip = false;
-            for (const auto& t : result)
-            {
-                if (t == "delivery_unit_detail") hasDeliv = true;
-                if (t == "shipment_unit_detail") hasShip = true;
-            }
-            if (!hasDeliv) result.push_back("delivery_unit_detail");
-            if (!hasShip) result.push_back("shipment_unit_detail");
         }
         return result;
     }
@@ -226,13 +211,6 @@ namespace DataIO
 
         // Delegate write to TableIO
         bool ok = TableIO::write(*table, targetFolder);
-
-        // Also keep base file updated if written to domain subfolder
-        if (targetFolder != folderPath)
-        {
-            TableIO::write(*table, folderPath);
-        }
-
         return ok;
     }
 

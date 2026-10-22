@@ -139,7 +139,7 @@ CATALOG_PRODUCTS: List[Dict[str, Any]] = [
         "brand": "ASUS",
         "product_name": "ASUS ROG MAXIMUS Z790 HERO",
         "specs": {
-            "cpu_support": "Intel 12th/13th/14th Gen",
+            "cpu_support": "INTEL",
             "socket": "LGA1700",
             "size": "ATX",
             "chipset": "Z790",
@@ -151,7 +151,7 @@ CATALOG_PRODUCTS: List[Dict[str, Any]] = [
         "brand": "ASUS",
         "product_name": "ASUS TUF GAMING B760-PLUS WIFI",
         "specs": {
-            "cpu_support": "Intel 12th/13th/14th Gen",
+            "cpu_support": "INTEL",
             "socket": "LGA1700",
             "size": "ATX",
             "chipset": "B760",
@@ -163,7 +163,7 @@ CATALOG_PRODUCTS: List[Dict[str, Any]] = [
         "brand": "MSI",
         "product_name": "MSI MAG B760 TOMAHAWK WIFI",
         "specs": {
-            "cpu_support": "Intel 12th/13th/14th Gen",
+            "cpu_support": "INTEL",
             "socket": "LGA1700",
             "size": "ATX",
             "chipset": "B760",
@@ -175,7 +175,7 @@ CATALOG_PRODUCTS: List[Dict[str, Any]] = [
         "brand": "MSI",
         "product_name": "MSI PRO B760M-A WIFI DDR4",
         "specs": {
-            "cpu_support": "Intel 12th/13th/14th Gen",
+            "cpu_support": "INTEL",
             "socket": "LGA1700",
             "size": "Micro-ATX",
             "chipset": "B760",
@@ -187,7 +187,7 @@ CATALOG_PRODUCTS: List[Dict[str, Any]] = [
         "brand": "GIGABYTE",
         "product_name": "GIGABYTE Z790 AORUS MASTER",
         "specs": {
-            "cpu_support": "Intel 12th/13th/14th Gen",
+            "cpu_support": "INTEL",
             "socket": "LGA1700",
             "size": "E-ATX",
             "chipset": "Z790",
@@ -199,7 +199,7 @@ CATALOG_PRODUCTS: List[Dict[str, Any]] = [
         "brand": "GIGABYTE",
         "product_name": "GIGABYTE B650 AORUS ELITE AX",
         "specs": {
-            "cpu_support": "AMD Ryzen 7000/8000/9000",
+            "cpu_support": "AMD",
             "socket": "AM5",
             "size": "ATX",
             "chipset": "B650",
@@ -211,7 +211,7 @@ CATALOG_PRODUCTS: List[Dict[str, Any]] = [
         "brand": "MSI",
         "product_name": "MSI MAG B650 TOMAHAWK WIFI",
         "specs": {
-            "cpu_support": "AMD Ryzen 7000/8000/9000",
+            "cpu_support": "AMD",
             "socket": "AM5",
             "size": "ATX",
             "chipset": "B650",
@@ -223,7 +223,7 @@ CATALOG_PRODUCTS: List[Dict[str, Any]] = [
         "brand": "ASUS",
         "product_name": "ASUS ROG STRIX B650E-I GAMING WIFI",
         "specs": {
-            "cpu_support": "AMD Ryzen 7000/8000/9000",
+            "cpu_support": "AMD",
             "socket": "AM5",
             "size": "Mini-ITX",
             "chipset": "B650",

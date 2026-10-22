@@ -31,12 +31,10 @@ TABLE_DOMAINS: Dict[str, str] = {
     "inbound_detail": "transactions",
     "delivery": "transactions",
     "delivery_detail": "transactions",
-    "delivery_unit_detail": "transactions",
     "outbound_transaction": "transactions",
     "outbound_detail": "transactions",
     "shipment": "transactions",
     "shipment_detail": "transactions",
-    "shipment_unit_detail": "transactions",
 
     # 10.2 Units
     "status_history": "unit",
@@ -110,10 +108,9 @@ class SchemaExporter:
         if domain:
             domain_path = os.path.join(self.output_dir, domain, filename)
             self._write_csv_file(domain_path, headers, rows)
-
-        # Write to base folder to ensure full backward compatibility
-        base_path = os.path.join(self.output_dir, filename)
-        self._write_csv_file(base_path, headers, rows)
+        else:
+            base_path = os.path.join(self.output_dir, filename)
+            self._write_csv_file(base_path, headers, rows)
 
     def _write_spec_csv(self, category_dir: str, spec_field: str, unique_values: List[str]) -> int:
         """
@@ -240,7 +237,6 @@ class SchemaExporter:
             "brand",
             "category",
             "is_sold",
-            "quantity",
         ]
         self._write_csv("product.csv", prod_headers, crawler.products)
         summary["product"] = len(crawler.products)
@@ -329,6 +325,7 @@ class SchemaExporter:
                 "inbound_transaction_id": 1,
                 "product_id": 1,
                 "ordered_quantity": 25,
+                "actual_quantity": 25,
             }
         ]
         inbound_detail_headers = [
@@ -336,6 +333,7 @@ class SchemaExporter:
             "inbound_transaction_id",
             "product_id",
             "ordered_quantity",
+            "actual_quantity",
         ]
         self._write_csv("inbound_detail.csv", inbound_detail_headers, inbound_details)
         summary["inbound_detail"] = len(inbound_details)
@@ -369,32 +367,14 @@ class SchemaExporter:
                 "delivery_id": 1,
                 "product_id": 1,
                 "received_quantity": 25,
+                "actual_quantity": 25,
             }
         ]
-        delivery_detail_headers = ["id", "delivery_id", "product_id", "received_quantity"]
+        delivery_detail_headers = ["id", "delivery_id", "product_id", "received_quantity", "actual_quantity"]
         self._write_csv("delivery_detail.csv", delivery_detail_headers, delivery_details)
         summary["delivery_detail"] = len(delivery_details)
 
-        # 28. DELIVERY_UNIT_DETAIL (transactions/)
-        first_unit_serial = crawler.units[0]["serial"] if crawler.units else "SN-TEST001"
-        delivery_units = [
-            {
-                "delivery_unit_detail_id": 1,
-                "delivery_id": 1,
-                "product_id": 1,
-                "serial": first_unit_serial,
-            }
-        ]
-        delivery_unit_headers = [
-            "delivery_unit_detail_id",
-            "delivery_id",
-            "product_id",
-            "serial",
-        ]
-        self._write_csv("delivery_unit_detail.csv", delivery_unit_headers, delivery_units)
-        summary["delivery_unit_detail"] = len(delivery_units)
-
-        # 29. OUTBOUND_TRANSACTION (transactions/)
+        # 28. OUTBOUND_TRANSACTION (transactions/)
         outbound_txns = [
             {
                 "outbound_trainsaction_id": 1,
@@ -427,6 +407,7 @@ class SchemaExporter:
                 "outbound_transaction_id": 1,
                 "product_id": 1,
                 "ordered_quantity": 1,
+                "actual_quantity": 1,
             }
         ]
         outbound_detail_headers = [
@@ -434,6 +415,7 @@ class SchemaExporter:
             "outbound_transaction_id",
             "product_id",
             "ordered_quantity",
+            "actual_quantity",
         ]
         self._write_csv("outbound_detail.csv", outbound_detail_headers, outbound_details)
         summary["outbound_detail"] = len(outbound_details)
@@ -467,33 +449,14 @@ class SchemaExporter:
                 "shipment_id": 1,
                 "product_id": 1,
                 "received_quantity": 1,
+                "actual_quantity": 1,
             }
         ]
-        shipment_detail_headers = ["id", "shipment_id", "product_id", "received_quantity"]
+        shipment_detail_headers = ["id", "shipment_id", "product_id", "received_quantity", "actual_quantity"]
         self._write_csv("shipment_detail.csv", shipment_detail_headers, shipment_details)
         summary["shipment_detail"] = len(shipment_details)
 
-        # 33. SHIPMENT_UNIT_DETAIL (transactions/)
-        shipped_unit = crawler.units[-1] if crawler.units else {"product_id": 1, "serial": "SN-TEST002"}
-        shipped_unit["status"] = "OUT"
-        shipment_units = [
-            {
-                "shipment_unit_detail_id": 1,
-                "shipment_id": 1,
-                "product_id": shipped_unit["product_id"],
-                "serial": shipped_unit["serial"],
-            }
-        ]
-        shipment_unit_headers = [
-            "shipment_unit_detail_id",
-            "shipment_id",
-            "product_id",
-            "serial",
-        ]
-        self._write_csv("shipment_unit_detail.csv", shipment_unit_headers, shipment_units)
-        summary["shipment_unit_detail"] = len(shipment_units)
-
-        # 34. STATUS_HISTORY (unit/)
+        # 32. STATUS_HISTORY (unit/)
         hist_headers = ["history_id", "unit_id", "old_status", "curr_status", "transaction", "type"]
         self._write_csv("status_history.csv", hist_headers, crawler.status_history)
         summary["status_history"] = len(crawler.status_history)

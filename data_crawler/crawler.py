@@ -55,7 +55,7 @@ class DataCrawler:
         """Generate unique serial matching schema comment: SN-7K3PE33 (SN- + 7 uppercase alphanumeric)."""
         chars = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
         suffix = "".join(self.rng.choice(chars) for _ in range(7))
-        return f"SN-{suffix[:4]}{unit_id:03d}"
+        return f"SN-{suffix[:3]}{(unit_id % 10000):04d}"
 
     def crawl_online_samples(self) -> List[Dict[str, Any]]:
         """
@@ -213,8 +213,7 @@ class DataCrawler:
                 "sku": sku,
                 "brand": brand_name,
                 "category": cat_name,
-                "is_sold": 0,
-                "quantity": initial_qty,
+                "is_sold": "TRUE",
             }
             self.products.append(product_record)
 
