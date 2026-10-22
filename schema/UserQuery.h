@@ -40,7 +40,7 @@ namespace user_query {
     void status_history_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& val);
     void status_history_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& minVal, const Value& maxVal);
 
-    // 4. INBOUND_TRANSACTION_QUERY (Index: inbound_transaction.order_at)
+    // 4. INBOUND_TRANSACTION_QUERY (Index: inbound_transaction.order_at, type, status, inbound_code)
     void inbound_transaction_query(Database *db, Vector<Record> &results);
     void inbound_transaction_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& val);
     void inbound_transaction_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& minVal, const Value& maxVal);
@@ -49,17 +49,17 @@ namespace user_query {
     void inbound_detail_query(Database *db, Vector<Record> &results);
     void inbound_detail_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& val);
 
-    // 6. DELIVERY_QUERY (Index: delivery.delivery_at, expected_at)
+    // 6. DELIVERY_QUERY (Index: delivery.delivery_at, expected_at, status, delivery_code)
     void delivery_query(Database *db, Vector<Record> &results);
     void delivery_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& val);
     void delivery_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& minVal, const Value& maxVal);
 
-    // 7. DELIVERY_DETAIL_QUERY (Index: delivery.delivery_at, expected_at)
+    // 7. DELIVERY_DETAIL_QUERY (Index: delivery.delivery_at, expected_at, delivery_code, product.product_code)
     void delivery_detail_query(Database *db, Vector<Record> &results);
     void delivery_detail_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& val);
     void delivery_detail_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& minVal, const Value& maxVal);
 
-    // 8. OUTBOUND_TRANSACTION_QUERY (Index: outbound_transaction.order_at)
+    // 8. OUTBOUND_TRANSACTION_QUERY (Index: outbound_transaction.order_at, type, status, outbound_code)
     void outbound_transaction_query(Database *db, Vector<Record> &results);
     void outbound_transaction_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& val);
     void outbound_transaction_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& minVal, const Value& maxVal);
@@ -68,12 +68,12 @@ namespace user_query {
     void outbound_detail_query(Database *db, Vector<Record> &results);
     void outbound_detail_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& val);
 
-    // 10. SHIPMENT_QUERY (Index: shipment.ship_at, expected_at)
+    // 10. SHIPMENT_QUERY (Index: shipment.ship_at, expected_at, status, shipment_code)
     void shipment_query(Database *db, Vector<Record> &results);
     void shipment_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& val);
     void shipment_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& minVal, const Value& maxVal);
 
-    // 11. SHIPMENT_DETAIL_QUERY (Index: shipment.ship_at, expected_at)
+    // 11. SHIPMENT_DETAIL_QUERY (Index: shipment.ship_at, expected_at, shipment_code, product.product_code)
     void shipment_detail_query(Database *db, Vector<Record> &results);
     void shipment_detail_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& val);
     void shipment_detail_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& minVal, const Value& maxVal);
