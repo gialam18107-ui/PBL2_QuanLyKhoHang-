@@ -264,14 +264,52 @@ All auto-generated codes and user inputs must strictly conform to the specificat
 ## 8. Auxiliary Tools
 
 ### 8.1 Transaction Data Generator
-- **Scope**: Generates transaction-flow test data only (Transactions, `Delivery`, `Shipment`, `Unit`, and `status_history`). Must not generate master data or alter schema/table implementations.
+- **Scope**: Generates transaction-flow test data only (Transactions, `Delivery`, `Shipment`, `Unit`, and `status_history`). Must not generate master data (`Brand`, `Category`, `Product`, or specification tables) or alter schema/table implementations.
 - **Independence**: Generator logic must remain decoupled from internal database/table/query classes.
-- **Console Workflow**: Provides a simple console UI allowing the user to select:
-  - Transaction type (Inbound / Outbound)
-  - Product(s) and quantities
-  - Number of `Delivery` or `Shipment` records
-- **Consistency**: Automatically generates valid unit transitions (selecting existing `AVAILABLE` units randomly for `SEL`, and initializing `NULL -> AVAILABLE/SCRAPPED` for `PUR`) and chronological `status_history` entries that strictly satisfy `QuanLyKhoHang_schema.json` from creation without post-hoc repair.
+- **Strict Business Logic Compliance (Tuân thủ nghiệp vụ hệ thống)**:
+  - **Pairwise Logistics Association (Quy tắc cặp giao dịch - Section 4.3)**:
+    - Every Inbound Transaction must be paired with one or more `Delivery` records (`inbound_transaction` + `inbound_detail` with `delivery` + `delivery_detail`). Total received quantity across deliveries must not exceed the inbound order quantity.
+    - Every Outbound Transaction must be paired with one or more `Shipment` records (`outbound_transaction` + `outbound_detail` with `shipment` + `shipment_detail`). Total shipped quantity across shipments must not exceed the outbound order quantity.
+  - **Unit Status Lifecycle & Precondition Enforcement (Vòng đời và điều kiện chuyển trạng thái - Section 4.4)**:
+    - **Outbound Types** (Target status of all units **must be `OUT`**):
+      - `SEL` (Selling - Bán hàng): Precondition requires selected units to currently have status `AVAILABLE` (`AVAILABLE -> OUT`).
+      - `WRT` (Warranty Return - Xuất trả bảo hành/lỗi): Precondition requires units with status `SCRAPPED` or `WARRANTY` (`SCRAPPED / WARRANTY -> OUT`).
+      - `WRC` (Warranty Replacement to Customer - Xuất trả đổi bảo hành): Precondition requires units with status `AVAILABLE` or `WARRANTY` (`AVAILABLE / WARRANTY -> OUT`).
+      - **Stock Precondition**: The generator must verify available stock before creating outbound transactions. If stock lacks eligible units in the required status, the export operation must be rejected.
+    - **Inbound Types** (Target status **must never be `OUT`**; must transition into `AVAILABLE`, `WARRANTY`, or `SCRAPPED`):
+      - `PUR` (Purchasing - Mua hàng/nhập mới): Precondition is uncreated/new units (`NULL -> AVAILABLE` for normal stock, or `NULL -> SCRAPPED` for items defective upon receiving). Automatically generates unique serial `SN-` + 7 alphanumeric characters and registers new units into `unit_inventory`.
+      - `WRP` (Warranty Replacement - Nhập hàng đổi bảo hành từ NCC): Precondition is new replacement units (`NULL -> WARRANTY`). Generates unique serial into `unit_inventory`.
+      - `WCK` (Warranty Checking - Nhận hàng bảo hành từ khách): Precondition requires previously dispatched units (`OUT -> WARRANTY`).
+      - `CRT` (Customer Return - Khách trả lại hàng): Precondition requires previously dispatched units (`OUT -> AVAILABLE`, `WARRANTY`, or `SCRAPPED`).
+  - **Quantity Synchronization & Inventory Consistency (Đồng bộ số lượng tồn kho - Section 4.2 & 4.4.3)**:
+    - The number of unit status transitions must strictly match and not exceed `Delivery.received_quantity` or `Shipment.shipped_quantity`.
+    - Every unit status transition must atomically update `product_quantity` (`available_quan`, `warranty_quan`, `scrapped_quan`, `total_quantity`).
+  - **Immutable Chronological History Logging (Ghi nhận lịch sử trạng thái - Section 4.4.3)**:
+    - Every unit transition automatically creates an immutable record in `status_history` logging `serial`, `old_status`, `curr_status`, `transaction` (delivery/shipment code), `type` (`INBOUND` / `OUTBOUND`), and `date` in strict chronological order.
+  - **Code Formatting & Customer Linkage (Định dạng mã và liên kết đối tác - Section 4.1 & Section 5)**:
+    - Generates valid transaction and logistics codes conforming strictly to schema format: `inbound_code` (`IN-<type_code>-<next_code_no>`, 6 digits), `outbound_code` (`OUT-<type_code>-<next_code_no>`, 6 digits), `delivery_code` (`<inbound_code>-D<XX>`, 2 digits), `shipment_code` (`<outbound_code>-S<XX>`, 2 digits), and `serial` (`SN-` + 7 alphanumeric characters).
+    - Every transaction must reference an existing valid customer (`customer_id`) conforming to customer code rules (`IN-xxxxxxx` for individuals, `BS-xxxxxxx` for businesses).
+- **Console Workflow**: Provides an interactive console UI allowing the user to select transaction types (Inbound / Outbound), products, quantities, and delivery/shipment batch splits, as well as an automated batch mode for test data generation.
 
 ### 8.2 Data Crawler
-- May be implemented in **Python** to scrape product data into category-organized CSV files.
-- Must collect category-specific specifications (not a generic spec set) and strictly adhere to all constraints and relationships in `QuanLyKhoHang_schema.json` so outputs can be cleanly imported without modifying existing schema or records.
+- **Implementation**: May be implemented in **Python** to scrape authentic product data into category-organized CSV files.
+- **Strict Product & Category Classification**:
+  - Must categorize products strictly into the 8 defined hardware categories: `CPU`, `GPU`, `MAINBOARD`, `RAM`, `SSD`, `PSU`, `COOLING`, `CASE`.
+  - Must map each product to a valid manufacturer/brand in `brand` (e.g., `INTEL`, `AMD`, `NVIDIA`, `ASUS`, `MSI`, `GIGABYTE`, `SAMSUNG`, `CORSAIR`, `KINGSTON`, `WESTERN DIGITAL`).
+  - Must automatically generate `product_code` conforming to `<producer_code>-<category_code>-<next_code_no(producer)>-<next_code_no(category)>` (e.g., `INTEL-CPU-0001-0001`).
+- **Accurate Category-Specific Specifications Classification (Phân loại đúng specs của sản phẩm)**:
+  - Must strictly classify and isolate specifications specific to each category, conforming precisely to `QuanLyKhoHang_schema.json`. Never merge, confuse, or apply generic specifications across categories:
+    - **`CPU`**: `socket` (e.g., `LGA1700`, `AM5`), `tier` (e.g., `I3`, `I5`, `I7`, `I9`, `R5`, `R7`, `R9`), `series` (e.g., `intel 13th`, `intel 14th`, `amd 7000`, `amd 9000`).
+    - **`GPU`**: `series` (e.g., `RTX 4070`, `RX 7800`), `producer` (`NVIDIA`, `AMD`), `vram` (integer in GB, e.g., 8, 12, 16, 24).
+    - **`MAINBOARD`**: `cpu_support` (`INTEL`, `AMD`), `socket` (e.g., `LGA1700`, `AM5`), `size` (`ATX`, `Micro-ATX`, `Mini-ITX`), `chipset` (e.g., `B760`, `Z790`, `B650`, `X670`), `ram_support` (`DDR4`, `DDR5`).
+    - **`RAM`**: `generation` (`DDR4`, `DDR5`), `quantity` (kit count, e.g., 1, 2), `capacity` (e.g., `16GB`, `32GB`), `bus` (e.g., `3200MHz`, `6000MHz`).
+    - **`SSD`**: `type` (`NVMe M.2`, `SATA III`), `gen` (`PCIe 3.0`, `PCIe 4.0`, `PCIe 5.0`), `capacity` (e.g., `500GB`, `1TB`, `2TB`).
+    - **`PSU`**: `quality` (`80 Plus Bronze`, `80 Plus Gold`, `80 Plus Platinum`), `capacity` (wattage integer, e.g., 650, 750, 850, 1000), `size` (`ATX`, `SFX`).
+    - **`COOLING`**: `type` (e.g., `Air Cooling`, `AIO Liquid 240mm`, `AIO Liquid 360mm`).
+    - **`CASE`**: `size` (`Mid Tower`, `Full Tower`, `Mini Tower`), `product_name`.
+  - **Specification Sub-tables Organization**:
+    - Specification values must be properly extracted, deduplicated, and stored into category specification sub-tables under `data/<category>_specs/` (each sub-table containing exactly two columns: `id` and `spec`).
+    - Category hardware tables (`cpu`, `gpu`, `mainboard`, `ram`, `ssd`, `psu`, `cooling`, `case`) must strictly maintain valid foreign key references to `product.product_id` and the corresponding specification IDs/values.
+    - Prohibit mixing or interchanging specifications between different product categories.
+  - **Schema & Relational Integrity**:
+    - All crawled and exported data must strictly satisfy all data types, column names, constraints, and relationships in `QuanLyKhoHang_schema.json` so outputs can be cleanly loaded without modifying schema or existing records.
