@@ -29,6 +29,7 @@ private:
     void reloadDatabase();
     void loadAuxSpecData(const QString& tableName);
     QStringList loadSpecOptions(const QString& specTableName);
+    QStringList loadColumnOptions(const QString& tableName, const QString& colName);
     void updateCategoryFilterOptions();
 
     void switchToDomain(int domainIndex); // 0: Warehouse, 1: Category, 2: Aux Specs, 3: Customers

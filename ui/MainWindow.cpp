@@ -176,6 +176,17 @@ void MainWindow::setupMenuBar()
 
     auto* caseSpecSub = auxSpecMenu->addMenu("🖥️ Thông số Case");
     addAuxAction(caseSpecSub, "Kích cỡ vỏ case (case_size)", "case_size");
+
+    auxSpecMenu->addSeparator();
+
+    auto* statusSpecSub = auxSpecMenu->addMenu("📑 Trạng thái & Phân loại kho");
+    addAuxAction(statusSpecSub, "Loại đơn nhập (inbound_type)", "inbound_type");
+    addAuxAction(statusSpecSub, "Trạng thái đơn nhập (inbound_status)", "inbound_status");
+    addAuxAction(statusSpecSub, "Trạng thái đợt nhận (delivery_status)", "delivery_status");
+    addAuxAction(statusSpecSub, "Loại đơn xuất (outbound_type)", "outbound_type");
+    addAuxAction(statusSpecSub, "Trạng thái đơn xuất (outbound_status)", "outbound_status");
+    addAuxAction(statusSpecSub, "Trạng thái xuất kiện (shipment_status)", "shipment_status");
+    addAuxAction(statusSpecSub, "Trạng thái linh kiện (unit_status)", "unit_status");
 }
 
 void MainWindow::setupUI()
@@ -315,20 +326,21 @@ void MainWindow::setupUI()
     });
 }
 
-QStringList MainWindow::loadSpecOptions(const QString& specTableName)
+QStringList MainWindow::loadColumnOptions(const QString& tableName, const QString& colName)
 {
     QStringList options;
     if (!db) return options;
 
-    Table* table = db->getTable(specTableName.toStdString());
+    Table* table = db->getTable(tableName.toStdString());
     if (!table) return options;
 
+    string col = colName.toStdString();
     const auto& rows = table->getRows();
     for (size_t i = 0; i < rows.size(); ++i) {
         if (table->isRowDeleted(i)) continue;
         const Record& r = rows[i];
-        if (r.has("spec")) {
-            const Value& v = r.get("spec");
+        if (r.has(col)) {
+            const Value& v = r.get(col);
             QString valStr;
             if (holds_alternative<string>(v)) {
                 valStr = QString::fromStdString(get<string>(v));
@@ -343,8 +355,72 @@ QStringList MainWindow::loadSpecOptions(const QString& specTableName)
     return options;
 }
 
+QStringList MainWindow::loadSpecOptions(const QString& specTableName)
+{
+    return loadColumnOptions(specTableName, "spec");
+}
+
 void MainWindow::updateCategoryFilterOptions()
 {
+    // Cập nhật danh sách lựa chọn cho các bảng kho hàng
+    if (inboundTxnWidget) {
+        QStringList inTypes = loadColumnOptions("inbound_type", "type");
+        if (inTypes.isEmpty()) inTypes = {"PURCHASING", "ADJUSTMENT_IN", "WARRANTY_CHECKING", "WARRANTY_REPLACEMENT", "CUSTOMER_RETURN"};
+        QStringList inStatuses = loadColumnOptions("inbound_status", "status");
+        if (inStatuses.isEmpty()) inStatuses = {"PENDING", "PROCESSING", "PARTIALLY_CONFIRMED", "CONFIRMED", "CANCELLED"};
+        inboundTxnWidget->setFilterColumns({
+            {"Mã đơn nhập (inbound_code)", "inbound_code", FilterType::EXACT_TEXT, {}},
+            {"Mã đối tác (customer_code)", "customer_code", FilterType::EXACT_TEXT, {}},
+            {"Ngày đặt hàng (order_at)", "order_at", FilterType::DATE_RANGE, {}},
+            {"Loại đơn nhập (type)", "type", FilterType::SELECT_OR_TYPE, inTypes},
+            {"Trạng thái đơn (status)", "status", FilterType::SELECT_OR_TYPE, inStatuses}
+        });
+    }
+    if (deliveryWidget) {
+        QStringList delivStatuses = loadColumnOptions("delivery_status", "status");
+        if (delivStatuses.isEmpty()) delivStatuses = {"EXPECTED", "RECEIVING", "INSPECTING", "COMPLETED"};
+        deliveryWidget->setFilterColumns({
+            {"Mã giao nhận (delivery_code)", "delivery_code", FilterType::EXACT_TEXT, {}},
+            {"Mã đơn nhập (inbound_code)", "inbound_code", FilterType::EXACT_TEXT, {}},
+            {"Ngày nhận hàng (delivery_at)", "delivery_at", FilterType::DATE_RANGE, {}},
+            {"Ngày dự kiến (expected_at)", "expected_at", FilterType::DATE_RANGE, {}},
+            {"Trạng thái nhận (status)", "status", FilterType::SELECT_OR_TYPE, delivStatuses}
+        });
+    }
+    if (outboundTxnWidget) {
+        QStringList outTypes = loadColumnOptions("outbound_type", "type");
+        if (outTypes.isEmpty()) outTypes = {"SELLING", "ADJUSTMENT_OUT", "RETURN_TO_SUPPLIER", "WARRANTY_RETURN", "WARRANTY_REPLACEMENT_TO_CUSTOMER"};
+        QStringList outStatuses = loadColumnOptions("outbound_status", "status");
+        if (outStatuses.isEmpty()) outStatuses = {"PENDING", "PROCESSING", "CONFIRMED", "PARTIALLY_CONFIRMED", "CANCELLED"};
+        outboundTxnWidget->setFilterColumns({
+            {"Mã đơn xuất (outbound_code)", "outbound_code", FilterType::EXACT_TEXT, {}},
+            {"Mã khách hàng (customer_code)", "customer_code", FilterType::EXACT_TEXT, {}},
+            {"Ngày đặt hàng (order_at)", "order_at", FilterType::DATE_RANGE, {}},
+            {"Loại đơn xuất (type)", "type", FilterType::SELECT_OR_TYPE, outTypes},
+            {"Trạng thái đơn (status)", "status", FilterType::SELECT_OR_TYPE, outStatuses}
+        });
+    }
+    if (shipmentWidget) {
+        QStringList shipStatuses = loadColumnOptions("shipment_status", "status");
+        if (shipStatuses.isEmpty()) shipStatuses = {"PENDING", "PICKING", "COMPLETED", "CANCELLED"};
+        shipmentWidget->setFilterColumns({
+            {"Mã xuất hàng (shipment_code)", "shipment_code", FilterType::EXACT_TEXT, {}},
+            {"Mã đơn xuất (outbound_code)", "outbound_code", FilterType::EXACT_TEXT, {}},
+            {"Ngày xuất hàng (ship_at)", "ship_at", FilterType::DATE_RANGE, {}},
+            {"Ngày dự kiến (expected_at)", "expected_at", FilterType::DATE_RANGE, {}},
+            {"Trạng thái xuất (status)", "status", FilterType::SELECT_OR_TYPE, shipStatuses}
+        });
+    }
+    if (unitInventoryWidget) {
+        QStringList unitStatuses = loadColumnOptions("unit_status", "status");
+        if (unitStatuses.isEmpty()) unitStatuses = {"AVAILABLE", "WARRANTY", "OUT", "SCRAPPED"};
+        unitInventoryWidget->setFilterColumns({
+            {"Số Serial (SN)", "serial", FilterType::EXACT_TEXT, {}},
+            {"Trạng thái (status)", "status", FilterType::SELECT_OR_TYPE, unitStatuses}
+        });
+    }
+
+    // Cập nhật danh mục sản phẩm (8 danh mục)
     if (cpuWidget) {
         cpuWidget->setFilterColumns({
             {"Trạng thái đang bán (is_sold)", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
@@ -420,8 +496,8 @@ void MainWindow::setupPages()
         this
     );
     productQuantityWidget->setColumns(
-        {"Mã sản phẩm", "Mã vạch (Barcode)", "Mã SKU", "Tên sản phẩm", "Khả dụng (Available)", "Bảo hành (Warranty)", "Phế phẩm (Scrapped)"},
-        {"product.product_code", "product.barcode", "product.sku", "product.product_name", "product_quantity.available_quan", "product_quantity.warranty_quan", "product_quantity.scrapped_quan"}
+        {"Mã sản phẩm", "Mã vạch (Barcode)", "Mã SKU", "Tên sản phẩm", "Khả dụng (Available)", "Bảo hành (Warranty)", "Phế phẩm (Scrapped)", "Đang bán (is_sold)"},
+        {"product.product_code", "product.barcode", "product.sku", "product.product_name", "product_quantity.available_quan", "product_quantity.warranty_quan", "product_quantity.scrapped_quan", "product.is_sold"}
     );
     productQuantityWidget->setFilterColumns({
         {"Mã sản phẩm (PK)", "product_code", FilterType::EXACT_TEXT, {}},
@@ -529,8 +605,8 @@ void MainWindow::setupPages()
         {"Mã đơn nhập (inbound_code)", "inbound_code", FilterType::EXACT_TEXT, {}},
         {"Mã đối tác (customer_code)", "customer_code", FilterType::EXACT_TEXT, {}},
         {"Ngày đặt hàng (order_at)", "order_at", FilterType::DATE_RANGE, {}},
-        {"Loại đơn nhập (type)", "type", FilterType::SELECT_OR_TYPE, {"PURCHASE", "RETURN", "WARRANTY"}},
-        {"Trạng thái đơn (status)", "status", FilterType::SELECT_OR_TYPE, {"PENDING", "PARTIAL", "COMPLETED", "CANCELLED"}}
+        {"Loại đơn nhập (type)", "type", FilterType::SELECT_OR_TYPE, {"PURCHASING", "ADJUSTMENT_IN", "WARRANTY_CHECKING", "WARRANTY_REPLACEMENT", "CUSTOMER_RETURN"}},
+        {"Trạng thái đơn (status)", "status", FilterType::SELECT_OR_TYPE, {"PENDING", "PROCESSING", "PARTIALLY_CONFIRMED", "CONFIRMED", "CANCELLED"}}
     });
     inboundTxnWidget->setRefreshCallback([this]() { refreshQuery(3); });
     inboundTxnWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& v2, bool isRange) {
@@ -560,8 +636,8 @@ void MainWindow::setupPages()
         this
     );
     inboundDetailWidget->setColumns(
-        {"Mã đơn nhập", "Mã sản phẩm", "Tên sản phẩm", "Số lượng đặt"},
-        {"inbound_transaction.inbound_code", "product.product_code", "product.product_name", "inbound_detail.ordered_quantity"}
+        {"Mã đơn nhập", "Mã sản phẩm", "Tên sản phẩm", "Số lượng đặt", "Số lượng thực tế (actual_quantity)"},
+        {"inbound_transaction.inbound_code", "product.product_code", "product.product_name", "inbound_detail.ordered_quantity", "inbound_detail.actual_quantity"}
     );
     inboundDetailWidget->setFilterColumns({
         {"Mã đơn nhập (inbound_code)", "inbound_code", FilterType::EXACT_TEXT, {}},
@@ -598,7 +674,7 @@ void MainWindow::setupPages()
         {"Mã đơn nhập (inbound_code)", "inbound_code", FilterType::EXACT_TEXT, {}},
         {"Ngày nhận hàng (delivery_at)", "delivery_at", FilterType::DATE_RANGE, {}},
         {"Ngày dự kiến (expected_at)", "expected_at", FilterType::DATE_RANGE, {}},
-        {"Trạng thái nhận (status)", "status", FilterType::SELECT_OR_TYPE, {"PENDING", "COMPLETED", "FAILED"}}
+        {"Trạng thái nhận (status)", "status", FilterType::SELECT_OR_TYPE, {"EXPECTED", "RECEIVING", "INSPECTING", "COMPLETED"}}
     });
     deliveryWidget->setRefreshCallback([this]() { refreshQuery(5); });
     deliveryWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& v2, bool isRange) {
@@ -628,8 +704,8 @@ void MainWindow::setupPages()
         this
     );
     deliveryDetailWidget->setColumns(
-        {"Mã đợt nhận", "Mã sản phẩm", "Tên sản phẩm", "Số lượng thực nhận"},
-        {"delivery.delivery_code", "product.product_code", "product.product_name", "delivery_detail.received_quantity"}
+        {"Mã đợt nhận", "Mã sản phẩm", "Tên sản phẩm", "Số lượng theo chứng từ", "Số lượng thực tế (actual_quantity)"},
+        {"delivery.delivery_code", "product.product_code", "product.product_name", "delivery_detail.received_quantity", "delivery_detail.actual_quantity"}
     );
     deliveryDetailWidget->setFilterColumns({
         {"Mã giao nhận (delivery_code)", "delivery_code", FilterType::EXACT_TEXT, {}},
@@ -672,8 +748,8 @@ void MainWindow::setupPages()
         {"Mã đơn xuất (outbound_code)", "outbound_code", FilterType::EXACT_TEXT, {}},
         {"Mã khách hàng (customer_code)", "customer_code", FilterType::EXACT_TEXT, {}},
         {"Ngày đặt hàng (order_at)", "order_at", FilterType::DATE_RANGE, {}},
-        {"Loại đơn xuất (type)", "type", FilterType::SELECT_OR_TYPE, {"SELL", "RETURN_SUPPLIER", "WARRANTY_SEND"}},
-        {"Trạng thái đơn (status)", "status", FilterType::SELECT_OR_TYPE, {"PENDING", "PROCESSING", "COMPLETED", "CANCELLED"}}
+        {"Loại đơn xuất (type)", "type", FilterType::SELECT_OR_TYPE, {"SELLING", "ADJUSTMENT_OUT", "RETURN_TO_SUPPLIER", "WARRANTY_RETURN", "WARRANTY_REPLACEMENT_TO_CUSTOMER"}},
+        {"Trạng thái đơn (status)", "status", FilterType::SELECT_OR_TYPE, {"PENDING", "PROCESSING", "CONFIRMED", "PARTIALLY_CONFIRMED", "CANCELLED"}}
     });
     outboundTxnWidget->setRefreshCallback([this]() { refreshQuery(7); });
     outboundTxnWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& v2, bool isRange) {
@@ -703,8 +779,8 @@ void MainWindow::setupPages()
         this
     );
     outboundDetailWidget->setColumns(
-        {"Mã đơn xuất", "Mã sản phẩm", "Tên sản phẩm", "Số lượng yêu cầu"},
-        {"outbound_transaction.outbound_code", "product.product_code", "product.product_name", "outbound_detail.ordered_quantity"}
+        {"Mã đơn xuất", "Mã sản phẩm", "Tên sản phẩm", "Số lượng yêu cầu", "Số lượng thực xuất (actual_quantity)"},
+        {"outbound_transaction.outbound_code", "product.product_code", "product.product_name", "outbound_detail.ordered_quantity", "outbound_detail.actual_quantity"}
     );
     outboundDetailWidget->setFilterColumns({
         {"Mã đơn xuất (outbound_code)", "outbound_code", FilterType::EXACT_TEXT, {}},
@@ -741,7 +817,7 @@ void MainWindow::setupPages()
         {"Mã đơn xuất (outbound_code)", "outbound_code", FilterType::EXACT_TEXT, {}},
         {"Ngày xuất hàng (ship_at)", "ship_at", FilterType::DATE_RANGE, {}},
         {"Ngày dự kiến (expected_at)", "expected_at", FilterType::DATE_RANGE, {}},
-        {"Trạng thái xuất (status)", "status", FilterType::SELECT_OR_TYPE, {"PENDING", "COMPLETED", "FAILED"}}
+        {"Trạng thái xuất (status)", "status", FilterType::SELECT_OR_TYPE, {"PENDING", "PICKING", "COMPLETED", "CANCELLED"}}
     });
     shipmentWidget->setRefreshCallback([this]() { refreshQuery(9); });
     shipmentWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& v2, bool isRange) {
@@ -771,8 +847,8 @@ void MainWindow::setupPages()
         this
     );
     shipmentDetailWidget->setColumns(
-        {"Mã kiện (Shipment)", "Mã sản phẩm", "Tên sản phẩm", "Số lượng xuất"},
-        {"shipment.shipment_code", "product.product_code", "product.product_name", "shipment_detail.received_quantity"}
+        {"Mã kiện (Shipment)", "Mã sản phẩm", "Tên sản phẩm", "Số lượng kế hoạch", "Số lượng thực tế (actual_quantity)"},
+        {"shipment.shipment_code", "product.product_code", "product.product_name", "shipment_detail.received_quantity", "shipment_detail.actual_quantity"}
     );
     shipmentDetailWidget->setFilterColumns({
         {"Mã xuất hàng (shipment_code)", "shipment_code", FilterType::EXACT_TEXT, {}},
@@ -1066,6 +1142,13 @@ void MainWindow::setupPages()
     auxSpecTableCombo->addItem("🔌 PSU - Kích cỡ (psu_size)", "psu_size");
     auxSpecTableCombo->addItem("❄️ Cooling - Loại tản nhiệt (cooling_type)", "cooling_type");
     auxSpecTableCombo->addItem("🖥️ Case - Kích cỡ vỏ (case_size)", "case_size");
+    auxSpecTableCombo->addItem("📑 Đơn nhập - Loại (inbound_type)", "inbound_type");
+    auxSpecTableCombo->addItem("📑 Đơn nhập - Trạng thái (inbound_status)", "inbound_status");
+    auxSpecTableCombo->addItem("📑 Đợt nhận - Trạng thái (delivery_status)", "delivery_status");
+    auxSpecTableCombo->addItem("📑 Đơn xuất - Loại (outbound_type)", "outbound_type");
+    auxSpecTableCombo->addItem("📑 Đơn xuất - Trạng thái (outbound_status)", "outbound_status");
+    auxSpecTableCombo->addItem("📑 Xuất kiện - Trạng thái (shipment_status)", "shipment_status");
+    auxSpecTableCombo->addItem("📑 Linh kiện - Trạng thái (unit_status)", "unit_status");
 
     auxSpecWidget->addExtraControl(auxSpecTableCombo);
 
@@ -1197,6 +1280,22 @@ void MainWindow::loadAuxSpecData(const QString& tableName)
             {"Tên Danh mục (category_name)", "category_name", FilterType::EXACT_TEXT, {}},
             {"Mã viết tắt (code)", "code", FilterType::EXACT_TEXT, {}}
         });
+    } else if (tbl == "inbound_type" || tbl == "outbound_type") {
+        auxSpecWidget->setColumns(
+            {"Loại giao dịch (" + tableName + ")"},
+            {tbl + ".type"}
+        );
+        auxSpecWidget->setFilterColumns({
+            {"Loại giao dịch (type)", "type", FilterType::EXACT_TEXT, {}}
+        });
+    } else if (tbl == "inbound_status" || tbl == "delivery_status" || tbl == "outbound_status" || tbl == "shipment_status" || tbl == "unit_status") {
+        auxSpecWidget->setColumns(
+            {"Trạng thái (" + tableName + ")"},
+            {tbl + ".status"}
+        );
+        auxSpecWidget->setFilterColumns({
+            {"Trạng thái (status)", "status", FilterType::EXACT_TEXT, {}}
+        });
     } else {
         auxSpecWidget->setColumns(
             {"Giá trị thông số (" + tableName + ")"},
@@ -1270,6 +1369,13 @@ void MainWindow::setupSidebar()
     addAuxItem("🔌 PSU - Kích cỡ (psu_size)", "psu_size");
     addAuxItem("❄️ Cooling - Loại tản nhiệt (cooling_type)", "cooling_type");
     addAuxItem("🖥️ Case - Kích cỡ vỏ (case_size)", "case_size");
+    addAuxItem("📑 Đơn nhập - Loại (inbound_type)", "inbound_type");
+    addAuxItem("📑 Đơn nhập - Trạng thái (inbound_status)", "inbound_status");
+    addAuxItem("📑 Đợt nhận - Trạng thái (delivery_status)", "delivery_status");
+    addAuxItem("📑 Đơn xuất - Loại (outbound_type)", "outbound_type");
+    addAuxItem("📑 Đơn xuất - Trạng thái (outbound_status)", "outbound_status");
+    addAuxItem("📑 Xuất kiện - Trạng thái (shipment_status)", "shipment_status");
+    addAuxItem("📑 Linh kiện - Trạng thái (unit_status)", "unit_status");
 
     // Connect domain tabs
     connect(tabWarehouseBtn, &QPushButton::clicked, [this]() {
