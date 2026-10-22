@@ -146,6 +146,7 @@ All auto-generated codes and user inputs must strictly conform to the specificat
 - Query logic resides in the `query/` library and is implemented in `schema/UserQuery.*`.
 - Table data is treated as read-only during queries: extract required data from the table (using indexes where applicable) into a `Vector<Record>`.
 - The extracted `Vector<Record>` must contain the table's `*_id` primary key column (hidden from UI view, reserved strictly for CRUD identification).
+- Implements queries across all domains: Warehouse, Category Hardware, Auxiliary Specs, and Customers (`individual_customer_query`, `business_customer_query`).
 - **UI Caching Flag Mechanism**:
   - The UI maintains a cache validity flag for query results.
   - When the user changes search criteria (selects a new filter column or enters a new filter value), the flag is raised (invalidated/reset), triggering a fresh database query via `user_query`.
@@ -199,12 +200,22 @@ All auto-generated codes and user inputs must strictly conform to the specificat
 - **Warehouse vs. Reference Separation**: All category tables (`CPU`, `GPU`, `Mainboard`, etc.), specification sub-tables, `Category`, and `Brand` must be separated from the main warehouse inventory view.
 - Add a menu **`Danh mục sản phẩm`** containing all product category tables.
 - Add a menu **`Danh mục phụ`** providing access to query specification tables, `Category`, and `Brand`.
+- **Customer Domain Separation**:
+  - All customer tables (`customer`, `individual_info`, `business_info`) must be separated from the warehouse table into their own domain and sidebar list.
+  - Add a dedicated menu **`Khách hàng`** containing separate choices for:
+    - **Khách hàng cá nhân (Individual)**
+    - **Khách hàng doanh nghiệp (Business)**
+  - Customer queries:
+    - `customer_id` must be retained in the query `Record` internally for CRUD/identification, but must remain hidden from UI table columns.
+    - **Individual Customer** (`individual_customer_query`): Mã khách hàng (`customer.customer_code`), Tên khách hàng (`customer.name`), Số điện thoại (`individual_info.phone_number`), Email (`individual_info.email`).
+    - **Business Customer** (`business_customer_query`): Mã đối tác / DN (`customer.customer_code`), Tên doanh nghiệp (`customer.name`), Mã số thuế (`business_info.tax_code`), Số điện thoại (`business_info.phone_number`), Email (`business_info.email`).
 
 ### 7.4 Column Filtering & Input Controls
 - Call `user_query` functions to filter by the user-selected column:
   - **Primary Key / Unique / Code**: Text input for exact hash lookup.
   - **Date**: Date-range picker (`from date` -> `to date`) using AVL tree range lookup.
   - **Foreign Keys / Multi-duplicate Attributes** (e.g., category specs, `product.is_sold`, `type`, `status`): Allow selection from a dropdown/list (backed by `HashTree`) in addition to or instead of raw typing.
+  - **Customer Views**: Allow filtering by customer code (`customer_code`, Hash lookup), customer/business name (`name`), phone number (`phone_number`), email (`email`), and tax code (`tax_code`).
 - Enforce valid predefined specification values at the UI level when adding products.
 
 ---
