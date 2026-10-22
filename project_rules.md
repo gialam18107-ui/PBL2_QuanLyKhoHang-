@@ -75,28 +75,57 @@ The main program uses a **single normal user role** (no `ADMIN` role or account 
 - **Product Code Auto-Generation**: `product_code` must be automatically generated following the exact schema rule from `QuanLyKhoHang_schema.json`:
   - Format: `<producer_code>-<category_code>-<next_code_no(producer)>-<next_code_no(category)>`
   - Examples: `INTEL-CPU-0001-0001`, `NVI-GPU-0032-0034`, `SAM-SSD-0003-0031`, `AMD-GPU-0323-2323`.
+- **Product Selling Status (`product.is_sold`)**:
+  - `TRUE`: Sản phẩm đang được kinh doanh / đang được bán (actively on sale).
+  - `FALSE`: Sản phẩm ngừng kinh doanh / không còn được bán (discontinued / not on sale).
 
 ### 4.3 Coupled Creation Only (Transactions, Delivery, Shipment)
 Users may manually input transactions and logistics records, strictly under atomic pairwise constraints:
 - **Inbound Pair**: Creating an Inbound Transaction requires simultaneously creating its paired `Delivery` records. Both must initialize their containing products and quantities. Total product quantity across all deliveries must not exceed the quantity in the `Inbound Transaction`.
 - **Outbound Pair (Stock Availability Required)**:
   - Creating an Outbound Transaction requires simultaneously creating its paired `Shipment` records.
-  - **Stock Precondition**: A product must exist in the warehouse with units currently in `AVAILABLE` status. If a product does not have available units in stock, units cannot be selected for export!
+  - **Stock Precondition**: A product must exist in the warehouse with units currently in the required status for the outbound transaction type (e.g., `AVAILABLE` for `SEL`, `SCRAPPED` or `WARRANTY` for `WRT`, `AVAILABLE` or `WARRANTY` for `WRC`). If eligible units are not present in stock, units cannot be selected for export!
   - Total product quantity across all shipments must not exceed the quantity in the `Outbound Transaction`.
 - Standalone creation of an Inbound/Outbound order without its paired `Delivery`/`Shipment` (or vice versa), or standalone creation of `Unit` records via normal CRUD, is strictly prohibited.
 
 ### 4.4 Unit Status Lifecycle and Transition Rules
-Unit status changes must adhere strictly to the business transaction type:
-- **PUR (Purchasing / Inbound)**:
-  - Unit status transitions from `NULL` (`std::monostate`) to `AVAILABLE` (normal stock) or `SCRAPPED` (defective upon receiving/inspection).
-  - Automatically inserts new unit records into `unit_inventory` with the target status.
-  - Automatically records an entry in `status_history` with `old_status = NULL` and `new_status = AVAILABLE / SCRAPPED`.
-  - Serial auto-generation format: `SN-` + 7 random alphanumeric characters (e.g., `SN-7K3PE33`), unique across the database.
-- **SEL (Selling / Outbound)**:
-  - Unit status transitions from `AVAILABLE` to `OUT`.
-  - Units must be chosen exclusively from existing units in `unit_inventory` that currently have status `AVAILABLE`.
-  - Automatically records an entry in `status_history` with `old_status = AVAILABLE` and `new_status = OUT`.
+
+Unit status transitions must adhere strictly to the business rules of each transaction type:
+
+#### 4.4.1 Outbound Transactions (Đơn xuất)
+- **General Rule**: The new/target status of **all units** in an outbound transaction **must be `OUT`**.
+- **Specific Outbound Type Rules**:
+  - **`SEL` (Selling - Bán hàng)**:
+    - Precondition: Selected units must have current status `AVAILABLE`.
+    - Transition: `AVAILABLE` -> `OUT`.
+  - **`WRT` (Warranty Return - Xuất trả hàng bảo hành/lỗi cho hãng hoặc nhà cung cấp)**:
+    - Precondition: Selected units must have current status `SCRAPPED` or `WARRANTY`.
+    - Transition: `SCRAPPED / WARRANTY` -> `OUT`.
+  - **`WRC` (Warranty Replacement to Customer - Xuất trả hàng đổi bảo hành cho khách hàng)**:
+    - Precondition: Selected units must have current status `AVAILABLE` or `WARRANTY`.
+    - Transition: `AVAILABLE / WARRANTY` -> `OUT`.
+
+#### 4.4.2 Inbound Transactions (Đơn nhập)
+- **General Rule**: The new/target status of **all units** in an inbound transaction **must never be `OUT`** (must transition into an internal warehouse status: `AVAILABLE`, `WARRANTY`, or `SCRAPPED`).
+- **Specific Inbound Type Rules**:
+  - **`PUR` (Purchasing - Mua hàng / Nhập kho mới)**:
+    - Precondition: Unit is newly acquired and does not exist in the database (old status is `NULL` / `std::monostate`).
+    - Transition: `NULL` -> `AVAILABLE` (normal inventory) or `SCRAPPED` (defective upon receiving/inspection).
+    - Automatically generates a unique Serial (`SN-` + 7 alphanumeric characters) and inserts the unit record into `unit_inventory`.
+  - **`WRP` (Warranty Replacement - Nhập hàng đổi bảo hành từ hãng/nhà cung cấp)**:
+    - Precondition: Unit is a replacement item from the supplier (old status is `NULL` / `std::monostate`).
+    - Transition: `NULL` -> `WARRANTY`.
+    - Automatically generates a unique Serial and inserts the unit record into `unit_inventory` with status `WARRANTY`.
+  - **`WCK` (Warranty Checking - Nhận hàng bảo hành từ khách hàng để kiểm tra)**:
+    - Precondition: Unit was previously sold/dispatched and currently has status `OUT`.
+    - Transition: `OUT` -> `WARRANTY`.
+  - **`CRT` (Customer Return - Khách hàng trả lại hàng)**:
+    - Precondition: Unit was previously sold/dispatched and currently has status `OUT`.
+    - Transition: `OUT` -> `AVAILABLE`, `WARRANTY`, or `SCRAPPED` (depending on returned unit condition; new status must never remain `OUT`).
+
+#### 4.4.3 Quantity Constraints and History Logging
 - **Quantity Constraint**: The number of unit status transitions must not exceed `Delivery.received_quantity` (for Inbound) or `Shipment.shipped_quantity` (for Outbound).
+- **History Logging**: Every unit transition automatically creates an immutable record in `status_history` logging `serial`, `old_status`, `curr_status` (new status), `transaction` (delivery/shipment code), `type` (`INBOUND` / `OUTBOUND`), and `date`.
 
 ### 4.5 Strict Immutability After Confirmation (Update & Delete Restrictions)
 Once a Transaction + `Delivery`/`Shipment` pair (along with its attached `Unit` transitions) is recorded/confirmed:
@@ -214,7 +243,7 @@ All auto-generated codes and user inputs must strictly conform to the specificat
 - Call `user_query` functions to filter by the user-selected column:
   - **Primary Key / Unique / Code**: Text input for exact hash lookup.
   - **Date**: Date-range picker (`from date` -> `to date`) using AVL tree range lookup.
-  - **Foreign Keys / Multi-duplicate Attributes** (e.g., category specs, `product.is_sold`, `type`, `status`): Allow selection from a dropdown/list (backed by `HashTree`) in addition to or instead of raw typing.
+  - **Foreign Keys / Multi-duplicate Attributes** (e.g., category specs, `product.is_sold` (`TRUE`: đang bán, `FALSE`: ngừng bán), `type`, `status`): Allow selection from a dropdown/list (backed by `HashTree`) in addition to or instead of raw typing.
   - **Customer Views**: Allow filtering by customer code (`customer_code`, Hash lookup), customer/business name (`name`), phone number (`phone_number`), email (`email`), and tax code (`tax_code`).
 - Enforce valid predefined specification values at the UI level when adding products.
 
