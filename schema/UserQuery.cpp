@@ -71,6 +71,11 @@ void product_quantity_query(Database *db, Vector<Record> &results, const string&
         {
             const auto& p = it->second;
             Record out;
+            if (p.has("product_id"))
+            {
+                out.set("product.product_id", p.get("product_id"));
+                out.set("product_id", p.get("product_id"));
+            }
             if (p.has("product_code")) out.set("product.product_code", p.get("product_code"));
             if (p.has("barcode")) out.set("product.barcode", p.get("barcode"));
             if (p.has("sku")) out.set("product.sku", p.get("sku"));
@@ -133,6 +138,11 @@ void unit_inventory_query(Database *db, Vector<Record> &results, const string& i
         {
             const auto& p = it->second;
             Record out;
+            if (u.has("unit_id"))
+            {
+                out.set("unit_inventory.unit_id", u.get("unit_id"));
+                out.set("unit_id", u.get("unit_id"));
+            }
             if (p.has("product_name")) out.set("product.product_name", p.get("product_name"));
             if (u.has("serial")) out.set("unit_inventory.serial", u.get("serial"));
             if (u.has("status")) out.set("unit_inventory.status", u.get("status"));
@@ -354,6 +364,11 @@ void status_history_query(Database *db, Vector<Record> &results, const string& i
         {
             const auto& u = it->second;
             Record out;
+            if (sh.has("history_id"))
+            {
+                out.set("status_history.history_id", sh.get("history_id"));
+                out.set("history_id", sh.get("history_id"));
+            }
             if (u.has("serial")) out.set("unit_inventory.serial", u.get("serial"));
             if (sh.has("old_status")) out.set("status_history.old_status", sh.get("old_status"));
             if (sh.has("curr_status")) out.set("status_history.curr_status", sh.get("curr_status"));
@@ -445,6 +460,12 @@ void inbound_transaction_query(Database *db, Vector<Record> &results, const stri
         {
             const auto& c = cit->second;
             Record out;
+            if (it.has("inbound_transaction_id"))
+            {
+                out.set("inbound_transaction.inbound_transaction_id", it.get("inbound_transaction_id"));
+                out.set("inbound_transaction_id", it.get("inbound_transaction_id"));
+                out.set("inbound_id", it.get("inbound_transaction_id"));
+            }
             if (it.has("inbound_code")) out.set("inbound_transaction.inbound_code", it.get("inbound_code"));
             if (c.has("customer_code")) out.set("customer.customer_code", c.get("customer_code"));
             if (it.has("order_at")) out.set("inbound_transaction.order_at", it.get("order_at"));
@@ -486,6 +507,12 @@ void inbound_transaction_query(Database *db, Vector<Record> &results, const stri
         {
             const auto& c = cit->second;
             Record out;
+            if (it.has("inbound_transaction_id"))
+            {
+                out.set("inbound_transaction.inbound_transaction_id", it.get("inbound_transaction_id"));
+                out.set("inbound_transaction_id", it.get("inbound_transaction_id"));
+                out.set("inbound_id", it.get("inbound_transaction_id"));
+            }
             if (it.has("inbound_code")) out.set("inbound_transaction.inbound_code", it.get("inbound_code"));
             if (c.has("customer_code")) out.set("customer.customer_code", c.get("customer_code"));
             if (it.has("order_at")) out.set("inbound_transaction.order_at", it.get("order_at"));
@@ -580,8 +607,14 @@ void inbound_detail_query(Database *db, Vector<Record> &results, const string& i
             const auto& it = itit->second;
             const auto& p = pit->second;
             Record out;
+            if (id.has("inbound_detail_id"))
+            {
+                out.set("inbound_detail.inbound_detail_id", id.get("inbound_detail_id"));
+                out.set("inbound_detail_id", id.get("inbound_detail_id"));
+            }
             if (it.has("inbound_code")) out.set("inbound_transaction.inbound_code", it.get("inbound_code"));
             if (p.has("product_code")) out.set("product.product_code", p.get("product_code"));
+            if (p.has("product_name")) out.set("product.product_name", p.get("product_name"));
             if (id.has("ordered_quantity")) out.set("inbound_detail.ordered_quantity", id.get("ordered_quantity"));
             results.push_back(std::move(out));
         }
@@ -637,6 +670,11 @@ void delivery_query(Database *db, Vector<Record> &results, const string& indexed
     for (const auto& d : dSource)
     {
         Record out;
+        if (d.has("delivery_id"))
+        {
+            out.set("delivery.delivery_id", d.get("delivery_id"));
+            out.set("delivery_id", d.get("delivery_id"));
+        }
         if (d.has("delivery_code")) out.set("delivery.delivery_code", d.get("delivery_code"));
 
         if (d.has("inbound_transaction_id"))
@@ -753,6 +791,12 @@ void delivery_detail_query(Database *db, Vector<Record> &results, const string& 
             const auto& d = dit->second;
             const auto& p = pit->second;
             Record out;
+            if (dd.has("id"))
+            {
+                out.set("delivery_detail.id", dd.get("id"));
+                out.set("delivery_detail_id", dd.get("id"));
+                out.set("id", dd.get("id"));
+            }
             if (d.has("delivery_code")) out.set("delivery.delivery_code", d.get("delivery_code"));
             if (p.has("product_code")) out.set("product.product_code", p.get("product_code"));
             if (p.has("product_name")) out.set("product.product_name", p.get("product_name"));
@@ -811,6 +855,15 @@ void outbound_transaction_query(Database *db, Vector<Record> &results, const str
         {
             const auto& c = cit->second;
             Record out;
+            Value otId;
+            if (ot.has("outbound_trainsaction_id")) otId = ot.get("outbound_trainsaction_id");
+            else if (ot.has("outbound_transaction_id")) otId = ot.get("outbound_transaction_id");
+            if (!holds_alternative<monostate>(otId))
+            {
+                out.set("outbound_transaction.outbound_transaction_id", otId);
+                out.set("outbound_transaction_id", otId);
+                out.set("outbound_id", otId);
+            }
             if (ot.has("outbound_code")) out.set("outbound_transaction.outbound_code", ot.get("outbound_code"));
             if (c.has("customer_code")) out.set("customer.customer_code", c.get("customer_code"));
             if (ot.has("order_at")) out.set("outbound_transaction.order_at", ot.get("order_at"));
@@ -852,6 +905,15 @@ void outbound_transaction_query(Database *db, Vector<Record> &results, const str
         {
             const auto& c = cit->second;
             Record out;
+            Value otId;
+            if (ot.has("outbound_trainsaction_id")) otId = ot.get("outbound_trainsaction_id");
+            else if (ot.has("outbound_transaction_id")) otId = ot.get("outbound_transaction_id");
+            if (!holds_alternative<monostate>(otId))
+            {
+                out.set("outbound_transaction.outbound_transaction_id", otId);
+                out.set("outbound_transaction_id", otId);
+                out.set("outbound_id", otId);
+            }
             if (ot.has("outbound_code")) out.set("outbound_transaction.outbound_code", ot.get("outbound_code"));
             if (c.has("customer_code")) out.set("customer.customer_code", c.get("customer_code"));
             if (ot.has("order_at")) out.set("outbound_transaction.order_at", ot.get("order_at"));
@@ -956,8 +1018,14 @@ void outbound_detail_query(Database *db, Vector<Record> &results, const string& 
             const auto& ot = otit->second;
             const auto& p = pit->second;
             Record out;
+            if (od.has("outbound_detail_id"))
+            {
+                out.set("outbound_detail.outbound_detail_id", od.get("outbound_detail_id"));
+                out.set("outbound_detail_id", od.get("outbound_detail_id"));
+            }
             if (ot.has("outbound_code")) out.set("outbound_transaction.outbound_code", ot.get("outbound_code"));
             if (p.has("product_code")) out.set("product.product_code", p.get("product_code"));
+            if (p.has("product_name")) out.set("product.product_name", p.get("product_name"));
             if (od.has("ordered_quantity")) out.set("outbound_detail.ordered_quantity", od.get("ordered_quantity"));
             results.push_back(std::move(out));
         }
@@ -1018,6 +1086,11 @@ void shipment_query(Database *db, Vector<Record> &results, const string& indexed
     for (const auto& s : sSource)
     {
         Record out;
+        if (s.has("shipment_id"))
+        {
+            out.set("shipment.shipment_id", s.get("shipment_id"));
+            out.set("shipment_id", s.get("shipment_id"));
+        }
         if (s.has("shipment_code")) out.set("shipment.shipment_code", s.get("shipment_code"));
 
         Value otId;
@@ -1138,6 +1211,12 @@ void shipment_detail_query(Database *db, Vector<Record> &results, const string& 
             const auto& s = sit->second;
             const auto& p = pit->second;
             Record out;
+            if (sd.has("id"))
+            {
+                out.set("shipment_detail.id", sd.get("id"));
+                out.set("shipment_detail_id", sd.get("id"));
+                out.set("id", sd.get("id"));
+            }
             if (s.has("shipment_code")) out.set("shipment.shipment_code", s.get("shipment_code"));
             if (p.has("product_code")) out.set("product.product_code", p.get("product_code"));
             if (p.has("product_name")) out.set("product.product_name", p.get("product_name"));
@@ -1241,6 +1320,11 @@ void category_hardware_query(Database *db, const string& categoryName, Vector<Re
         const auto& prow = pit->second;
 
         Record out;
+        if (crow.has(cat + "_id"))
+        {
+            out.set(cat + "." + cat + "_id", crow.get(cat + "_id"));
+            out.set(cat + "_id", crow.get(cat + "_id"));
+        }
         if (prow.has("product_code")) out.set("product.product_code", prow.get("product_code"));
         if (prow.has("product_name")) out.set("product.product_name", prow.get("product_name"));
 
@@ -1328,6 +1412,7 @@ void auxiliary_spec_query(Database *db, const string& tableName, Vector<Record> 
             if (r.has(cname))
             {
                 out.set(tblName + "." + cname, r.get(cname));
+                out.set(cname, r.get(cname));
             }
         }
         results.push_back(std::move(out));
