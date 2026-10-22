@@ -54,9 +54,6 @@ namespace Schema
     Table* createShipmentDetailTable();
     Table* createStatusHistoryTable();
 
-    // Backward-compatibility aliases
-    Table* createDeliveryUnitDetailTable();
-    Table* createShipmentUnitDetailTable();
 
     // Specification sub-tables (Rule 6 & Rule 10.4)
     Table* createSpecTable(const string& specName);

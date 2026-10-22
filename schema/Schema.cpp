@@ -197,15 +197,13 @@ namespace Schema
     {
         auto table = new Table("product");
         table->addColumn(Column("product_id", DataType::INTEGER, 0, true, true, true));
-        table->addColumn(Column("product_name", DataType::VARCHAR, 150, false, false, true));
-        table->addColumn(Column("product_code", DataType::VARCHAR, 50, false, true, true));
-        table->addColumn(Column("barcode", DataType::VARCHAR, 50, false, true, true));
-        table->addColumn(Column("sku", DataType::VARCHAR, 50, false, true, true));
-        table->addColumn(Column("brand", DataType::VARCHAR, 50, false, false, true));
-        table->addColumn(Column("category", DataType::VARCHAR, 50, false, false, true));
+        table->addColumn(Column("product_name", DataType::VARCHAR, 255, false, false, true));
+        table->addColumn(Column("product_code", DataType::VARCHAR, 20, false, true, true));
+        table->addColumn(Column("barcode", DataType::VARCHAR, 13, false, true, true));
+        table->addColumn(Column("sku", DataType::VARCHAR, 20, false, true, true));
+        table->addColumn(Column("brand", DataType::VARCHAR, 255, false, false, true));
+        table->addColumn(Column("category", DataType::VARCHAR, 255, false, false, true));
         table->addColumn(Column("is_sold", DataType::BOOLEAN, 0, false, false, true, false, "0"));
-        // Backward compatibility for existing queries
-        table->addColumn(Column("quantity", DataType::INTEGER, 0, false, false, false, false, "0"));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_product", "product_id"));
         table->addConstraint(new UniqueConstraint("uq_product_code", "product_code"));
@@ -417,13 +415,13 @@ namespace Schema
     {
         auto table = new Table("inbound_transaction");
         table->addColumn(Column("inbound_transaction_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("inbound_code", DataType::VARCHAR, 50, false, true, true));
+        table->addColumn(Column("inbound_code", DataType::CHAR, 12, false, true, true));
         table->addColumn(Column("customer_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("order_at", DataType::DATE, 0, false, false, true));
-        table->addColumn(Column("type", DataType::VARCHAR, 50, false, false, true));
-        table->addColumn(Column("status", DataType::VARCHAR, 50, false, false, true));
-        table->addColumn(Column("next_delivery_no", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("note", DataType::TEXT, 0, false, false, false));
+        table->addColumn(Column("type", DataType::VARCHAR, 255, false, false, true));
+        table->addColumn(Column("status", DataType::VARCHAR, 255, false, false, true));
+        table->addColumn(Column("next_delivery_no", DataType::INTEGER, 0, false, false, true, false, "0"));
+        table->addColumn(Column("note", DataType::TEXT, 65535, false, false, false));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_inbound_transaction", "inbound_transaction_id"));
         table->addConstraint(new UniqueConstraint("uq_inbound_transaction_code", "inbound_code"));
@@ -446,6 +444,7 @@ namespace Schema
         table->addColumn(Column("inbound_transaction_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("ordered_quantity", DataType::INTEGER, 0, false, false, true));
+        table->addColumn(Column("actual_quantity", DataType::INTEGER, 0, false, false, true, false, "0"));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_inbound_detail", "inbound_detail_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_inbound_detail_txn", "inbound_transaction_id", "inbound_transaction", "inbound_transaction_id"));
@@ -460,11 +459,11 @@ namespace Schema
     {
         auto table = new Table("delivery");
         table->addColumn(Column("delivery_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("delivery_code", DataType::VARCHAR, 50, false, true, true));
+        table->addColumn(Column("delivery_code", DataType::CHAR, 16, false, true, true));
         table->addColumn(Column("inbound_transaction_id", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("delivery_at", DataType::DATE, 0, false, false, true));
         table->addColumn(Column("expected_at", DataType::DATE, 0, false, false, true));
-        table->addColumn(Column("status", DataType::VARCHAR, 50, false, false, true));
+        table->addColumn(Column("delivery_at", DataType::DATE, 0, false, false, false));
+        table->addColumn(Column("status", DataType::VARCHAR, 10, false, false, true));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_delivery", "delivery_id"));
         table->addConstraint(new UniqueConstraint("uq_delivery_code", "delivery_code"));
@@ -482,30 +481,15 @@ namespace Schema
     Table* createDeliveryDetailTable()
     {
         auto table = new Table("delivery_detail");
-        table->addColumn(Column("id", DataType::VARCHAR, 50, true, true, true));
+        table->addColumn(Column("id", DataType::VARCHAR, 255, true, true, true));
         table->addColumn(Column("delivery_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("received_quantity", DataType::INTEGER, 0, false, false, true));
+        table->addColumn(Column("actual_quantity", DataType::INTEGER, 0, false, false, true, false, "0"));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_delivery_detail", "id"));
         table->addConstraint(new ForeignKeyConstraint("fk_delivery_detail_delivery", "delivery_id", "delivery", "delivery_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_delivery_detail_product", "product_id", "product", "product_id"));
-        return table;
-    }
-
-    // Backward compatibility alias for serial tracking
-    Table* createDeliveryUnitDetailTable()
-    {
-        auto table = new Table("delivery_unit_detail");
-        table->addColumn(Column("delivery_unit_detail_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("delivery_id", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("serial", DataType::VARCHAR, 100, false, false, true));
-
-        table->addConstraint(new PrimaryKeyConstraint("pk_delivery_unit_detail", "delivery_unit_detail_id"));
-        table->addConstraint(new ForeignKeyConstraint("fk_delivery_unit_delivery", "delivery_id", "delivery", "delivery_id"));
-        table->addConstraint(new ForeignKeyConstraint("fk_delivery_unit_product", "product_id", "product", "product_id"));
-        table->addConstraint(new ForeignKeyConstraint("fk_delivery_unit_serial", "serial", "unit_inventory", "serial"));
         return table;
     }
 
@@ -517,13 +501,13 @@ namespace Schema
         auto table = new Table("outbound_transaction");
         // Column header in CSV/JSON is outbound_trainsaction_id
         table->addColumn(Column("outbound_trainsaction_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("outbound_code", DataType::VARCHAR, 50, false, true, true));
+        table->addColumn(Column("outbound_code", DataType::CHAR, 13, false, true, true));
         table->addColumn(Column("customer_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("order_at", DataType::DATE, 0, false, false, true));
-        table->addColumn(Column("type", DataType::VARCHAR, 50, false, false, true));
-        table->addColumn(Column("status", DataType::VARCHAR, 50, false, false, true));
-        table->addColumn(Column("next_ship_no", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("note", DataType::TEXT, 0, false, false, false));
+        table->addColumn(Column("type", DataType::VARCHAR, 255, false, false, true));
+        table->addColumn(Column("status", DataType::VARCHAR, 255, false, false, true));
+        table->addColumn(Column("next_ship_no", DataType::INTEGER, 0, false, false, true, false, "0"));
+        table->addColumn(Column("note", DataType::TEXT, 65535, false, false, false));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_outbound_transaction", "outbound_trainsaction_id"));
         table->addConstraint(new UniqueConstraint("uq_outbound_transaction_code", "outbound_code"));
@@ -546,6 +530,7 @@ namespace Schema
         table->addColumn(Column("outbound_transaction_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("ordered_quantity", DataType::INTEGER, 0, false, false, true));
+        table->addColumn(Column("actual_quantity", DataType::INTEGER, 0, false, false, true, false, "0"));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_outbound_detail", "outbound_detail_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_outbound_detail_txn", "outbound_transaction_id", "outbound_transaction", "outbound_trainsaction_id"));
@@ -560,11 +545,11 @@ namespace Schema
     {
         auto table = new Table("shipment");
         table->addColumn(Column("shipment_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("shipment_code", DataType::VARCHAR, 50, false, true, true));
+        table->addColumn(Column("shipment_code", DataType::CHAR, 17, false, true, true));
         table->addColumn(Column("sell_id", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("ship_at", DataType::DATE, 0, false, false, true));
         table->addColumn(Column("expected_at", DataType::DATE, 0, false, false, true));
-        table->addColumn(Column("status", DataType::VARCHAR, 50, false, false, true));
+        table->addColumn(Column("ship_at", DataType::DATE, 0, false, false, false));
+        table->addColumn(Column("status", DataType::VARCHAR, 255, false, false, true));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_shipment", "shipment_id"));
         table->addConstraint(new UniqueConstraint("uq_shipment_code", "shipment_code"));
@@ -582,30 +567,15 @@ namespace Schema
     Table* createShipmentDetailTable()
     {
         auto table = new Table("shipment_detail");
-        table->addColumn(Column("id", DataType::VARCHAR, 50, true, true, true));
+        table->addColumn(Column("id", DataType::VARCHAR, 17, true, true, true));
         table->addColumn(Column("shipment_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("received_quantity", DataType::INTEGER, 0, false, false, true));
+        table->addColumn(Column("actual_quantity", DataType::INTEGER, 0, false, false, true, false, "0"));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_shipment_detail", "id"));
         table->addConstraint(new ForeignKeyConstraint("fk_shipment_detail_shipment", "shipment_id", "shipment", "shipment_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_shipment_detail_product", "product_id", "product", "product_id"));
-        return table;
-    }
-
-    // Backward compatibility alias for serial tracking
-    Table* createShipmentUnitDetailTable()
-    {
-        auto table = new Table("shipment_unit_detail");
-        table->addColumn(Column("shipment_unit_detail_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("shipment_id", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("serial", DataType::VARCHAR, 100, false, false, true));
-
-        table->addConstraint(new PrimaryKeyConstraint("pk_shipment_unit_detail", "shipment_unit_detail_id"));
-        table->addConstraint(new ForeignKeyConstraint("fk_shipment_unit_shipment", "shipment_id", "shipment", "shipment_id"));
-        table->addConstraint(new ForeignKeyConstraint("fk_shipment_unit_product", "product_id", "product", "product_id"));
-        table->addConstraint(new ForeignKeyConstraint("fk_shipment_unit_serial", "serial", "unit_inventory", "serial"));
         return table;
     }
 
@@ -617,10 +587,10 @@ namespace Schema
         auto table = new Table("status_history");
         table->addColumn(Column("history_id", DataType::INTEGER, 0, true, true, true, true));
         table->addColumn(Column("unit_id", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("old_status", DataType::VARCHAR, 50, false, false, false)); // Nullable on first appearance
-        table->addColumn(Column("curr_status", DataType::VARCHAR, 50, false, false, true));
+        table->addColumn(Column("old_status", DataType::VARCHAR, 255, false, false, false)); // Nullable on first appearance
+        table->addColumn(Column("curr_status", DataType::VARCHAR, 255, false, false, true));
         table->addColumn(Column("transaction", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("type", DataType::VARCHAR, 50, false, false, true)); // INBOUND / OUTBOUND
+        table->addColumn(Column("type", DataType::VARCHAR, 255, false, false, true)); // INBOUND / OUTBOUND
 
         table->addConstraint(new PrimaryKeyConstraint("pk_status_history", "history_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_status_history_unit", "unit_id", "unit_inventory", "unit_id"));
@@ -686,10 +656,6 @@ namespace Schema
         if (tableName == "delivery_detail") return createDeliveryDetailTable();
         if (tableName == "shipment_detail") return createShipmentDetailTable();
         if (tableName == "status_history") return createStatusHistoryTable();
-
-        // Compatibility aliases
-        if (tableName == "delivery_unit_detail") return createDeliveryUnitDetailTable();
-        if (tableName == "shipment_unit_detail") return createShipmentUnitDetailTable();
 
         return nullptr;
     }

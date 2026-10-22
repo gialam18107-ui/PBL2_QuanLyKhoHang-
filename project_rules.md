@@ -123,15 +123,26 @@ Unit status transitions must adhere strictly to the business rules of each trans
     - Precondition: Unit was previously sold/dispatched and currently has status `OUT`.
     - Transition: `OUT` -> `AVAILABLE`, `WARRANTY`, or `SCRAPPED` (depending on returned unit condition; new status must never remain `OUT`).
 
-#### 4.4.3 Quantity Constraints and History Logging
-- **Quantity Constraint**: The number of unit status transitions must not exceed `Delivery.received_quantity` (for Inbound) or `Shipment.shipped_quantity` (for Outbound).
+#### 4.4.3 Quantity Constraints, Auto-Update Actual Quantity, and History Logging
+- **Auto-Update `actual_quantity`**:
+  - When adding/attaching a `Unit` to a `Delivery` (Inbound):
+    - `delivery_detail.actual_quantity` for the corresponding product in that delivery must automatically increment (+1 for each unit recorded in this delivery).
+    - `inbound_detail.actual_quantity` for the corresponding product in that inbound transaction must also automatically increment accordingly (reflecting the cumulative total units actually received for that transaction).
+  - When dispatching/attaching a `Unit` to a `Shipment` (Outbound):
+    - `shipment_detail.actual_quantity` for the corresponding product in that shipment must automatically increment (+1 for each unit dispatched in this shipment).
+    - `outbound_detail.actual_quantity` for the corresponding product in that outbound transaction must also automatically increment accordingly (reflecting the cumulative total units actually dispatched for that transaction).
+- **Quantity Constraints**:
+  - The number of unit status transitions (`actual_quantity`) in each delivery/shipment batch must not exceed the batch expected quantity (`delivery_detail.received_quantity` for Inbound or `shipment_detail.received_quantity` for Outbound).
+  - Total `actual_quantity` across all deliveries/shipments must not exceed the original order quantity of the transaction (`inbound_detail.ordered_quantity` or `outbound_detail.ordered_quantity`).
 - **History Logging**: Every unit transition automatically creates an immutable record in `status_history` logging `serial`, `old_status`, `curr_status` (new status), `transaction` (delivery/shipment code), `type` (`INBOUND` / `OUTBOUND`), and `date`.
 
-### 4.5 Strict Immutability After Confirmation (Update & Delete Restrictions)
+### 4.5 Update and Delete Restrictions (Immutability & Permitted Updates)
 Once a Transaction + `Delivery`/`Shipment` pair (along with its attached `Unit` transitions) is recorded/confirmed:
 - **No Deletion**: Confirmed transactions, deliveries, shipments, and unit mappings must **never be deleted**.
-- **Status-Only Updates**: Users may modify **only the `status` field** of Transactions, `Delivery`, and `Shipment` during lifecycle processing.
-- **Frozen Business Data**: Quantities, product references, transaction types, customer/partner details, and attached unit lists are permanently locked and cannot be edited.
+- **Permitted Updates (`UserUpdate`)**:
+  - **`status`**: Users may modify the `status` field of Transactions (`inbound_transaction`, `outbound_transaction`), `Delivery`, and `Shipment` during order lifecycle processing.
+  - **`delivery_at` & `ship_at`**: Users are permitted to edit/update the actual delivery date (`delivery.delivery_at`) and actual shipment date (`shipment.ship_at`) when goods are actually delivered/dispatched or when adjustments to actual logistics dates are required.
+- **Frozen Business Data**: Planned order quantities (`ordered_quantity`, `received_quantity`), product references, transaction types, customer/partner details, and attached serial numbers are locked and cannot be edited arbitrarily.
 
 ### 4.6 Read-Only Master Data & Direct Unit Restrictions
 Users must **never** directly edit:
@@ -219,8 +230,9 @@ All auto-generated codes and user inputs must strictly conform to the specificat
     - Pairs `Inbound Transaction` with `Delivery`, or `Outbound Transaction` with `Shipment`.
     - Includes a sub-form to add containing products and their quantities.
     - Outbound check: prevents selecting products or quantities exceeding available stock.
-  - **Unit Entry Window for Delivery**:
-    - Clicking the designated action button on a Delivery record opens a dedicated dialog to input/attach units (serial numbers and target statuses: `AVAILABLE` or `SCRAPPED`) for each product in that delivery.
+  - **Unit Entry Window for Delivery & Shipment**:
+    - Clicking the designated action button on a Delivery or Shipment record opens a dedicated dialog to input/attach units (serial numbers and target statuses) for each product in that delivery or shipment.
+    - Adding units automatically increments `actual_quantity` in `delivery_detail`/`shipment_detail` and in `inbound_detail`/`outbound_detail`.
   - **Order Detail Inspection Window**:
     - Both Transaction and Delivery/Shipment interfaces must have an action button to open a sub-window displaying the list of products in that specific order.
     - This window executes the detail query logic (`inbound_detail_query`, `delivery_detail_query`, `outbound_detail_query`, or `shipment_detail_query`) filtered specifically by that order's code (showing products, quantities, prices, etc., without listing individual units).
