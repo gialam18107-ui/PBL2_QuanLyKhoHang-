@@ -4,7 +4,9 @@
 
 - Use **C++17** only (Python is permitted exclusively for the data crawler).
 - Do **not** use any external database engine.
-- Do **not** use C++ built-in data structures for core database/storage implementation (exception: `std::sort` is allowed on pass-by-value `Vector<Record>` in query processing).
+- Do **not** use C++ built-in container data structures (`std::vector`, `std::map`, `std::unordered_map`, `std::list`, etc.) or smart pointers (`std::shared_ptr`, `std::unique_ptr`) for core database/storage implementation (`std::string`, `std::variant`, and basic I/O streams are permitted).
+- UI classes in `ui/` may freely use Qt containers and presentation classes, strictly isolated from database core logic.
+- Exception for algorithms: `std::sort` is permitted to perform in-place sorting on the cached query result `Vector<Record>&` during presentation.
 
 ---
 
@@ -14,37 +16,40 @@
 - The database schema is defined by `QuanLyKhoHang_schema.json` and must strictly follow all notes, constraints, and relationships specified in that file.
 - CSV data is stored in the `data/` folder.
 - Queries used for reporting are stored in the `report/` folder.
-- Query tables are currently out of scope, but they must remain available for testing.
+- Virtual query views/schemas (such as `INBOUND_TRANSACTION_QUERY`, `CPU_QUERY`, `STATUS_HISTORY_QUERY`, etc., defined in `QuanLyKhoHang_schema.json`) are currently not stored as physical CSV tables, but their schema definitions must remain available as testing contracts for `UserQuery`.
 - File organization must not alter table names, column names, keys, relationships, or schema definitions.
 
-### 2.2 Domain-Based Folder Structure
-Project files must be organized by the business domain of the corresponding tables:
+### 2.2 Domain-Based Folder Structure for CSV Data
+CSV files inside `data/` must be organized by the business domain of the corresponding tables:
 
-- **`transactions/`**: Contains all inbound and outbound transaction-related tables:
-  - All inbound transactions
-  - All outbound transactions
-  - `Delivery`
-  - `Shipment`
-- **`unit/`**: Contains unit-level inventory data:
+- **`data/transactions/`**: Contains all inbound and outbound transaction-related tables:
+  - `inbound_transaction`, `outbound_transaction`
+  - `inbound_detail`, `outbound_detail`
+  - `delivery`, `shipment`
+  - `delivery_detail`, `shipment_detail`
+- **`data/unit/`**: Contains unit-level inventory data:
   - `status_history`
   - `unit_inventory`
-- **`products/`**: Contains product and product-reference tables:
-  - `product_quantity`, `product`, `Brand`, `Category`
-  - Category tables: `CPU`, `Mainboard`, `GPU`, `RAM`, `SSD`, `PSU`, `Cooling`, `Case`
-- **`<category>_specs/`**: Each category must have its own specification folder (e.g., `ssd_specs/`):
+- **`data/products/`**: Contains product and product-reference tables:
+  - `product_quantity`, `product`, `brand`, `category`
+  - Category tables: `cpu`, `mainboard`, `gpu`, `ram`, `ssd`, `psu`, `cooling`, `case`
+- **`data/<category>_specs/`**: Each category must have its own specification folder (e.g., `data/ssd_specs/`):
   - Contains specification sub-tables belonging exclusively to that category (e.g., `type`, `gen`, `capacity`).
   - Each sub-table contains exactly two columns: `id` (key) and `spec` (value).
-- **`customers/`**: Contains customer-related tables:
+- **`data/customers/`**: Contains customer-related tables:
   - `customer`, `individual_infor`, `business_info`
-- **`status_type/`**: Contains all master status and type tables:
-  - Status tables, Type tables, and `UnitStatus` master data (if represented as a separate table).
+- **`data/status_type/`**: Contains all master status and type tables:
+  - Status tables (`inbound_status`, `outbound_status`, `delivery_status`, `shipment_status`, `unit_status`).
+  - Type tables (`inbound_type`, `outbound_type`).
 
 ---
 
-## 3. Database Protection and Referential Integrity
+## 3. Database Protection, Referential Integrity, and Deletion Scope
 
 - Tables, columns, CSV files, and report files must **never be deleted**.
-- A record must **never be deleted** if it is referenced by, or has an active relationship/dependency with, another table.
+- **Referential Integrity**: A record must **never be deleted** if it is referenced by, or has an active relationship/dependency with, another table.
+- **Strict Permanent Retention**: Confirmed transactions, deliveries, shipments, units, and status histories must **never be deleted**.
+- **Permitted Deletions (`UserDelete`)**: Users are only permitted to delete standalone records (such as an unreferenced `Product`, `Brand`, or `Customer`) that have **never** been associated with any transaction, delivery, shipment, or unit inventory records.
 - Every transaction and inventory record must satisfy all schema constraints and form a logically valid business chain from the moment it is created or imported.
 
 ---
@@ -53,76 +58,116 @@ Project files must be organized by the business domain of the corresponding tabl
 
 The main program uses a **single normal user role** (no `ADMIN` role or account management required).
 
-### 4.1 Direct Creation Allowed (Products & Brands)
-Users may add new records directly to:
-- `Products` (must select an existing `Category`, `Brand`, and valid predefined specification values)
-- `CPU`, `GPU`, `Mainboard`, `RAM`, `SSD`, `PSU`, `Cooling`, `Case`
-- `Brand`
-- Allowed values for specification fields (where permitted by the schema and business rules).
+### 4.1 Customer Precondition & Master Reference
+- **Customer Precondition**: A customer record must exist before creating an Outbound Transaction (or any transaction requiring a partner). If the customer does not exist in the database, the user must add the customer first.
+- **Customer Code Auto-Generation**: Customer code is automatically generated based on customer type and sequential number (`next_code_no`, 7 digits) as specified in `QuanLyKhoHang_schema.json`:
+  - Individual: `IN-xxxxxxx` (e.g., `IN-0002340`)
+  - Business: `BS-xxxxxxx` (e.g., `BS-0002314`)
+- **Direct Creation Allowed**:
+  - `Customer` (along with `individual_infor` or `business_info`).
+  - `Brand`.
+  - Allowed specification values in `<category>_specs/` sub-tables.
 
-### 4.2 Coupled Creation Only (Transactions, Delivery, Shipment, Unit Transitions)
-Users are allowed to manually input transactions and logistics records, but **strictly under atomic pairwise constraints**:
-- **Inbound Pair**: Creating an Inbound Transaction requires simultaneously creating its fixed initial set of `Delivery` records. Both `Inbound Transaction` and `Delivery` have to init their containing products and fixed products' quantity. Remember to check the products' quantity of `Delivery` not allowing to be larger than `Inbound Transaction`
-- **Outbound Pair**: Creating an Outbound Transaction requires simultaneously creating its fixed initial set of `Shipment` records. Both `Outbound Transaction` and `Shipment` have to init their containing products and fixed products' quantity. Remember to check the products' quantity of `Shipment` not allowing to be larger than `Outbound Transaction`
-- **Unit Transition Mapping**: Within each `Delivery` or `Shipment` being created, the user may attach specific `Unit`s and select the target status for each unit to transition into. The number of new `Status History` records also do not allow to larger than `Delivery/Shipment`.`received_quantity`.
+### 4.2 Product Creation and Category Binding
+- Adding a new product is an integrated operation: it creates a record in `product` AND a corresponding record in the appropriate category table (`CPU`, `GPU`, `Mainboard`, `RAM`, `SSD`, `PSU`, `Cooling`, `Case`) with specifications selected from the valid master spec tables.
+- All quantity fields in `product_quantity` are initialized to `0`.
+- When any unit belonging to a product changes its status, `product_quantity` must be immediately updated.
+- **Product Code Auto-Generation**: `product_code` must be automatically generated following the exact schema rule from `QuanLyKhoHang_schema.json`:
+  - Format: `<producer_code>-<category_code>-<next_code_no(producer)>-<next_code_no(category)>`
+  - Examples: `INTEL-CPU-0001-0001`, `NVI-GPU-0032-0034`, `SAM-SSD-0003-0031`, `AMD-GPU-0323-2323`.
+
+### 4.3 Coupled Creation Only (Transactions, Delivery, Shipment)
+Users may manually input transactions and logistics records, strictly under atomic pairwise constraints:
+- **Inbound Pair**: Creating an Inbound Transaction requires simultaneously creating its paired `Delivery` records. Both must initialize their containing products and quantities. Total product quantity across all deliveries must not exceed the quantity in the `Inbound Transaction`.
+- **Outbound Pair (Stock Availability Required)**:
+  - Creating an Outbound Transaction requires simultaneously creating its paired `Shipment` records.
+  - **Stock Precondition**: A product must exist in the warehouse with units currently in `AVAILABLE` status. If a product does not have available units in stock, units cannot be selected for export!
+  - Total product quantity across all shipments must not exceed the quantity in the `Outbound Transaction`.
 - Standalone creation of an Inbound/Outbound order without its paired `Delivery`/`Shipment` (or vice versa), or standalone creation of `Unit` records via normal CRUD, is strictly prohibited.
 
-### 4.3 Strict Immutability After Confirmation (Update & Delete Restrictions)
-Once a Transaction + `Delivery`/`Shipment` pair (along with its attached `Unit` transitions) is confirmed:
+### 4.4 Unit Status Lifecycle and Transition Rules
+Unit status changes must adhere strictly to the business transaction type:
+- **PUR (Purchasing / Inbound)**:
+  - Unit status transitions from `NULL` (`std::monostate`) to `AVAILABLE` (normal stock) or `SCRAPPED` (defective upon receiving/inspection).
+  - Automatically inserts new unit records into `unit_inventory` with the target status.
+  - Automatically records an entry in `status_history` with `old_status = NULL` and `new_status = AVAILABLE / SCRAPPED`.
+  - Serial auto-generation format: `SN-` + 7 random alphanumeric characters (e.g., `SN-7K3PE33`), unique across the database.
+- **SEL (Selling / Outbound)**:
+  - Unit status transitions from `AVAILABLE` to `OUT`.
+  - Units must be chosen exclusively from existing units in `unit_inventory` that currently have status `AVAILABLE`.
+  - Automatically records an entry in `status_history` with `old_status = AVAILABLE` and `new_status = OUT`.
+- **Quantity Constraint**: The number of unit status transitions must not exceed `Delivery.received_quantity` (for Inbound) or `Shipment.shipped_quantity` (for Outbound).
+
+### 4.5 Strict Immutability After Confirmation (Update & Delete Restrictions)
+Once a Transaction + `Delivery`/`Shipment` pair (along with its attached `Unit` transitions) is recorded/confirmed:
 - **No Deletion**: Confirmed transactions, deliveries, shipments, and unit mappings must **never be deleted**.
 - **Status-Only Updates**: Users may modify **only the `status` field** of Transactions, `Delivery`, and `Shipment` during lifecycle processing.
-- **Frozen Business Data**: All other fields (quantities, product references, transaction types, partner details, delivery/shipment contents, and attached unit transition lists) are permanently locked and cannot be edited.
+- **Frozen Business Data**: Quantities, product references, transaction types, customer/partner details, and attached unit lists are permanently locked and cannot be edited.
 
-### 4.4 Read-Only Master Data & Direct Unit Restrictions
+### 4.6 Read-Only Master Data & Direct Unit Restrictions
 Users must **never** directly edit:
-- Any `Status` or `Type` master table.
-- `UnitStatus` master values.
-- `Unit.status` directly through the `Unit` table (a unit's status may only change as a controlled side effect of processing/confirming a `Delivery` or `Shipment`).
+- Any `Status` or `Type` master table (`INBOUND_TYPE`, `INBOUND_STATUS`, `OUTBOUND_TYPE`, `OUTBOUND_STATUS`, `DELIVERY_STATUS`, `SHIPMENT_STATUS`, `UNIT_STATUS`).
+- `Unit.status` directly through raw editing (a unit's status may only change via `Delivery` or `Shipment` workflows).
 
 ---
 
-## 5. Transaction, Delivery, Shipment, and Unit Lifecycle
+## 5. Code Formats and System Conventions
 
-### 5.1 Sources of Transactions
-- Transactions, `Delivery`, and `Shipment` records may originate either from:
-  1. Manual pairwise user input via the main program (following Section 4.2).
-  2. External sources or the auxiliary generator program.
-- Regardless of origin, once recorded/confirmed, all non-status business data is immutable. If an external or confirmed record contains an error, corrections must be handled via new compensating/replacement transactions according to business flow, never by mutating historical fields.
+All auto-generated codes and user inputs must strictly conform to the specifications and notes documented in `QuanLyKhoHang_schema.json`:
 
-### 5.2 Unit Creation and Status History
-- Units may only be created or transitioned as a consequence of valid transaction, `Delivery`, or `Shipment` workflows.
-- Every unit status change triggered by a `Delivery` or `Shipment` must have a valid previous state and target state, and must automatically record a chronologically consistent entry in `status_history`.
+1. **Transaction Codes (User Input with Format Validation)**:
+   - `inbound_code`: Typed manually by user. Must follow format `IN-<type_code>-<next_code_no>` (6 digits, e.g., `IN-PUR-000032`, `IN-ADJ-003223`, `IN-WCK-002313`), must match the selected inbound type, and must be verified unique in the database.
+   - `outbound_code`: Typed manually by user. Must follow format `OUT-<type_code>-<next_code_no>` (6 digits, e.g., `OUT-SEL-000999`, `OUT-RTS-999999`, `OUT-WRC-000001`), must match the selected outbound type, and must be verified unique in the database.
+2. **Logistics Codes (Auto-Generated)**:
+   - `delivery_code`: Automatically generated from `inbound_code`: `<inbound_code>-D<XX>` (2 digits, e.g., `IN-PUR-000032-D01`, `IN-WCK-002313-D02`).
+   - `shipment_code`: Automatically generated from `outbound_code`: `<outbound_code>-S<XX>` (2 digits, e.g., `OUT-SEL-000999-S01`).
+3. **Customer Codes (Auto-Generated)**:
+   - Individual: `IN-xxxxxxx` (7 digits, e.g., `IN-0002340`).
+   - Business: `BS-xxxxxxx` (7 digits, e.g., `BS-0002314`).
+4. **Product Code (Auto-Generated)**:
+   - `<producer_code>-<category_code>-<next_code_no(producer)>-<next_code_no(category)>` (e.g., `INTEL-CPU-0001-0001`).
+5. **Unit Serial (Auto-Generated / Scanned)**:
+   - `SN-` + 7 random characters (e.g., `SN-7K3PE33`), unique in warehouse inventory.
+6. **NULL Representation in Database**:
+   - `NULL` is represented by `std::monostate` in the `Value` variant (`variant<monostate, int, double, string, bool>`).
+   - In code, check for `NULL` using `isNull(val)` and assign `NULL` using `Value{}` or `monostate{}`. The string representation of a null value is `"NULL"`.
 
 ---
 
-## 6. Indexing and Query, Create, Update, Delete Architecture
+## 6. Indexing, Query, and CRUD Architecture
 
 ### 6.1 Index Naming and Selection
 - Index naming convention: `index_type + index_column` (where `index_type` is `hash`, `hash_tree`, or `avl_tree`).
-  - `hash`: For columns with unique values (often handled implicitly by primary/unique constraints).
-  - `hash_tree`: For columns with a fixed set of values and many duplicates (e.g., category specs like CPU socket, `product.is_sold`, status, type).
-  - `avl_tree`: For date columns.
+  - `hash`: For columns with unique values (primary keys, unique codes).
+  - `hash_tree`: For columns with a fixed set of values and many duplicates (e.g., category specs, `product.is_sold`, status, type).
+  - `avl_tree`: For date columns (supports range lookup).
 
-### 6.2 Query Execution (`namespace Query`)
+### 6.2 Query Execution & Caching Flag (`user_query`)
 - Query logic resides in the `query/` library and is implemented in `schema/UserQuery.*`.
-- Table data is treated as read-only during queries: extract required data from the table (using indexes where applicable) into a `Vector<Record>` before processing.
-- Datatype validation is not required inside `UserQuery`; simply check if the `Vector<Record>` contains the requested rows (return an empty `Vector` if not).
-- Users filter by one column at a time. Store the resulting `Vector<Record>` to support subsequent column sorting and avoid redundant query execution.
-- **Cache Invalidation**: Any `update` or `delete` operation must trigger a dirty flag, requiring active queries to rebuild.
+- Table data is treated as read-only during queries: extract required data from the table (using indexes where applicable) into a `Vector<Record>`.
+- The extracted `Vector<Record>` must contain the table's `*_id` primary key column (hidden from UI view, reserved strictly for CRUD identification).
+- **UI Caching Flag Mechanism**:
+  - The UI maintains a cache validity flag for query results.
+  - When the user changes search criteria (selects a new filter column or enters a new filter value), the flag is raised (invalidated/reset), triggering a fresh database query via `user_query`.
+  - The resulting `Vector<Record>` is cached in the UI.
+  - Subsequent column sorting operates directly in-place on the cached `Vector<Record>&` (using `std::sort` via `sort_query_results`) without re-querying the database.
+  - When an insert, update, or delete operation succeeds, the cache flag is set to dirty/invalidated so that subsequent displays re-fetch fresh data from the database.
 
 #### 6.2.1 Pre-built Aggregate & Sort Functions
 - Provide 3 pre-built operations on `Vector<Record>` for both single columns and column pairs: `sum`, `count`, and `sort`.
-- **`sort`**: Sort directly on a pass-by-value `Vector<Record>`. Permitted to use C++ built-in `std::sort`.
+- **`sort`**: Sort directly in-place on the cached `Vector<Record>&`. Permitted to use C++ built-in `std::sort`.
 - **`sum` & `count`**: Must be implemented using custom `HashTable`.
-### 6.3 Create, Update and Delete (Modify)
-- To make simpler, the records of tables is modified through its id in the table, no need to use Condition as real SQL
-- A paraments of database update functions include: table name, record id (eg: product_id, delivery_id, id,...), Vector<string> &modifiedColumn, Vector<Value> &modifyingValue
-- A paraments of database insert functions include: table name, Record &r
-- A paraments of database delete functions include: table name, record id
-- Remember to check column name, datatype before modifying table
-- The table modify functions is also based on aforementioned rules
-- Write all operators that user is allowed in `4.` and `5.`. Based on UserQuery to write the function to the suitable *.h and *.cpp file already defined
-- When adding a new `status history` record, if the `unit` is not existed before (only available for `Inbound`), remember to add it to `Unit Inventory` with `Status History`.`new_status`, and set `Status History`.`old_status` == `NULL`
+
+### 6.3 Create, Update, and Delete Architecture
+- To simplify record modification without SQL parsing overhead:
+  - Records in tables are modified directly through their `id` in the table (e.g., `product_id`, `delivery_id`, `customer_id`), without needing SQL `Condition` clauses at the user interface level.
+  - When a user interacts with the UI to update or delete a row, the UI retrieves the hidden `*_id` from the selected row in `Vector<Record>`.
+  - The UI calls the database/schema methods passing the target table name and record `id`.
+  - The parameters of update functions include: `tableName`, `record_id`, `Vector<string>& modifiedColumns`, `Vector<Value>& modifyingValues`.
+  - The parameters of insert functions include: `tableName`, `Record& r`.
+  - The parameters of delete functions include: `tableName`, `record_id`.
+  - Column names, constraints, datatypes, and referential integrity must be validated before modifying tables.
+  - Implementation functions must be written in the designated files: `schema/UserCreate.*`, `schema/UserUpdate.*`, `schema/UserDelete.*`.
 
 ---
 
@@ -130,20 +175,36 @@ Users must **never** directly edit:
 
 ### 7.1 Architecture & Separation of Concerns
 - Use **Qt Widgets** with C++17; store all UI code in `ui/`.
-- UI classes may freely use Qt containers/classes for presentation purposes, but must remain strictly separated from database storage, custom data structures, and core inventory business logic.
+- UI classes may freely use Qt containers and presentation widgets, but must remain strictly separated from database storage, custom data structures, and core inventory business logic.
 - Do not modify auto-generated Qt files (e.g., `ui_*.h`) directly.
 - Preserve existing UI behavior when modifying interfaces unless explicitly instructed otherwise.
+- The `Vector<Record> results` contain `*_id` (e.g., `product_id`, `cpu_id`, `inbound_id`), but **do not display this ID on the screen**. It is used exclusively as internal metadata for CRUD operations.
+- The UI must manage the cache validity flag for query results as defined in Section 6.2.
 
-### 7.2 Navigation & Menus
+### 7.2 Dedicated Windows and Dialogs for CRUD
+- **Insert Windows (Dedicated Dialogs)**:
+  - **Product Insertion**: A dedicated dialog providing dropdowns to select `Category` and `Brand`, and dynamic specification selectors populated from the respective `<category>_specs` sub-tables. `product_code` is automatically generated.
+  - **Transaction & Logistics Insertion (Inbound / Outbound)**:
+    - Precondition check: prompts or allows quick creation of `Customer` if not present (with auto-generated customer code).
+    - Pairs `Inbound Transaction` with `Delivery`, or `Outbound Transaction` with `Shipment`.
+    - Includes a sub-form to add containing products and their quantities.
+    - Outbound check: prevents selecting products or quantities exceeding available stock.
+  - **Unit Entry Window for Delivery**:
+    - Clicking the designated action button on a Delivery record opens a dedicated dialog to input/attach units (serial numbers and target statuses: `AVAILABLE` or `SCRAPPED`) for each product in that delivery.
+  - **Order Detail Inspection Window**:
+    - Both Transaction and Delivery/Shipment interfaces must have an action button to open a sub-window displaying the list of products in that specific order.
+    - This window executes the detail query logic (`inbound_detail_query`, `delivery_detail_query`, `outbound_detail_query`, or `shipment_detail_query`) filtered specifically by that order's code (showing products, quantities, prices, etc., without listing individual units).
+
+### 7.3 Navigation & Menus
 - **Warehouse vs. Reference Separation**: All category tables (`CPU`, `GPU`, `Mainboard`, etc.), specification sub-tables, `Category`, and `Brand` must be separated from the main warehouse inventory view.
 - Add a menu **`Danh mục sản phẩm`** containing all product category tables.
 - Add a menu **`Danh mục phụ`** providing access to query specification tables, `Category`, and `Brand`.
 
-### 7.3 Column Filtering & Input Controls
-- Call `Query::filterRecords` to filter by the user-selected column:
-  - **Primary Key / Unique**: Text input for exact hash lookup.
-  - **Date**: Date-range picker (`from date` -> `to date`).
-  - **Foreign Keys / Multi-duplicate Attributes** (e.g., category specs, `product.is_sold`, `type`, `status`): Allow selection from a dropdown/list (backed by `HashTree` where applicable) in addition to or instead of raw typing.
+### 7.4 Column Filtering & Input Controls
+- Call `user_query` functions to filter by the user-selected column:
+  - **Primary Key / Unique / Code**: Text input for exact hash lookup.
+  - **Date**: Date-range picker (`from date` -> `to date`) using AVL tree range lookup.
+  - **Foreign Keys / Multi-duplicate Attributes** (e.g., category specs, `product.is_sold`, `type`, `status`): Allow selection from a dropdown/list (backed by `HashTree`) in addition to or instead of raw typing.
 - Enforce valid predefined specification values at the UI level when adding products.
 
 ---
@@ -157,7 +218,7 @@ Users must **never** directly edit:
   - Transaction type (Inbound / Outbound)
   - Product(s) and quantities
   - Number of `Delivery` or `Shipment` records
-- **Consistency**: Automatically generates valid unit transitions (selecting existing units randomly when needed) and chronological `status_history` entries that strictly satisfy `QuanLyKhoHang_schema.json` from creation without post-hoc repair.
+- **Consistency**: Automatically generates valid unit transitions (selecting existing `AVAILABLE` units randomly for `SEL`, and initializing `NULL -> AVAILABLE/SCRAPPED` for `PUR`) and chronological `status_history` entries that strictly satisfy `QuanLyKhoHang_schema.json` from creation without post-hoc repair.
 
 ### 8.2 Data Crawler
 - May be implemented in **Python** to scrape product data into category-organized CSV files.
