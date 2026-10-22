@@ -1419,4 +1419,221 @@ void auxiliary_spec_query(Database *db, const string& tableName, Vector<Record> 
     }
 }
 
+// ============================================================
+// 14. TRUY VẤN KHÁCH HÀNG (CUSTOMER QUERIES - Rule 9.4)
+// ============================================================
+void individual_customer_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& val)
+{
+    results.clear();
+    if (!db) return;
+
+    Table* cTable = db->getTable("customer");
+    Table* iTable = db->getTable("individual_info");
+    if (!cTable || !iTable) return;
+
+    string col = indexedColumn;
+    if (col.rfind("customer.", 0) == 0) col = col.substr(9);
+    else if (col.rfind("individual_info.", 0) == 0) col = col.substr(16);
+
+    bool hasFilter = !col.empty() && !holds_alternative<monostate>(val);
+
+    HashMap<Value, Record> infoMap;
+    const auto& iRows = iTable->getRows();
+    for (size_t i = 0; i < iRows.size(); ++i)
+    {
+        if (iTable->isRowDeleted(i)) continue;
+        if (iRows[i].has("customer_id"))
+        {
+            infoMap[iRows[i].get("customer_id")] = iRows[i];
+        }
+    }
+
+    Vector<Record> cSource;
+    if (hasFilter && col == "customer_code")
+    {
+        cSource = Query::filterRecords(*cTable, "customer_code", val);
+    }
+    else if (hasFilter && col == "customer_id")
+    {
+        cSource = Query::filterRecords(*cTable, "customer_id", val);
+    }
+    else
+    {
+        const auto& cRows = cTable->getRows();
+        for (size_t i = 0; i < cRows.size(); ++i)
+        {
+            if (!cTable->isRowDeleted(i))
+            {
+                cSource.push_back(cRows[i]);
+            }
+        }
+    }
+
+    for (size_t i = 0; i < cSource.size(); ++i)
+    {
+        const auto& c = cSource[i];
+        if (!c.has("customer_id")) continue;
+
+        if (c.has("type"))
+        {
+            string t = valueToString(c.get("type"));
+            for (char& ch : t) ch = tolower(ch);
+            if (t != "individual") continue;
+        }
+
+        auto it = infoMap.find(c.get("customer_id"));
+        if (it == infoMap.end()) continue;
+        const auto& info = it->second;
+
+        if (hasFilter && col != "customer_code" && col != "customer_id")
+        {
+            Value checkVal;
+            if (col == "name" && c.has("name")) checkVal = c.get("name");
+            else if (col == "phone_number" && info.has("phone_number")) checkVal = info.get("phone_number");
+            else if (col == "email" && info.has("email")) checkVal = info.get("email");
+            else if (c.has(col)) checkVal = c.get(col);
+            else if (info.has(col)) checkVal = info.get(col);
+
+            if (checkVal != val && valueToString(checkVal) != valueToString(val)) continue;
+        }
+
+        Record out;
+        out.set("customer.customer_id", c.get("customer_id"));
+        out.set("customer_id", c.get("customer_id"));
+
+        if (c.has("customer_code"))
+        {
+            out.set("customer.customer_code", c.get("customer_code"));
+            out.set("customer_code", c.get("customer_code"));
+        }
+        if (c.has("name"))
+        {
+            out.set("customer.name", c.get("name"));
+            out.set("name", c.get("name"));
+        }
+        if (info.has("phone_number"))
+        {
+            out.set("individual_info.phone_number", info.get("phone_number"));
+            out.set("phone_number", info.get("phone_number"));
+        }
+        if (info.has("email"))
+        {
+            out.set("individual_info.email", info.get("email"));
+            out.set("email", info.get("email"));
+        }
+
+        results.push_back(std::move(out));
+    }
+}
+
+void business_customer_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& val)
+{
+    results.clear();
+    if (!db) return;
+
+    Table* cTable = db->getTable("customer");
+    Table* bTable = db->getTable("business_info");
+    if (!cTable || !bTable) return;
+
+    string col = indexedColumn;
+    if (col.rfind("customer.", 0) == 0) col = col.substr(9);
+    else if (col.rfind("business_info.", 0) == 0) col = col.substr(14);
+
+    bool hasFilter = !col.empty() && !holds_alternative<monostate>(val);
+
+    HashMap<Value, Record> bMap;
+    const auto& bRows = bTable->getRows();
+    for (size_t i = 0; i < bRows.size(); ++i)
+    {
+        if (bTable->isRowDeleted(i)) continue;
+        if (bRows[i].has("customer_id"))
+        {
+            bMap[bRows[i].get("customer_id")] = bRows[i];
+        }
+    }
+
+    Vector<Record> cSource;
+    if (hasFilter && col == "customer_code")
+    {
+        cSource = Query::filterRecords(*cTable, "customer_code", val);
+    }
+    else if (hasFilter && col == "customer_id")
+    {
+        cSource = Query::filterRecords(*cTable, "customer_id", val);
+    }
+    else
+    {
+        const auto& cRows = cTable->getRows();
+        for (size_t i = 0; i < cRows.size(); ++i)
+        {
+            if (!cTable->isRowDeleted(i))
+            {
+                cSource.push_back(cRows[i]);
+            }
+        }
+    }
+
+    for (size_t i = 0; i < cSource.size(); ++i)
+    {
+        const auto& c = cSource[i];
+        if (!c.has("customer_id")) continue;
+
+        if (c.has("type"))
+        {
+            string t = valueToString(c.get("type"));
+            for (char& ch : t) ch = tolower(ch);
+            if (t != "business") continue;
+        }
+
+        auto it = bMap.find(c.get("customer_id"));
+        if (it == bMap.end()) continue;
+        const auto& bInfo = it->second;
+
+        if (hasFilter && col != "customer_code" && col != "customer_id")
+        {
+            Value checkVal;
+            if (col == "name" && c.has("name")) checkVal = c.get("name");
+            else if (col == "tax_code" && bInfo.has("tax_code")) checkVal = bInfo.get("tax_code");
+            else if (col == "phone_number" && bInfo.has("phone_number")) checkVal = bInfo.get("phone_number");
+            else if (col == "email" && bInfo.has("email")) checkVal = bInfo.get("email");
+            else if (c.has(col)) checkVal = c.get(col);
+            else if (bInfo.has(col)) checkVal = bInfo.get(col);
+
+            if (checkVal != val && valueToString(checkVal) != valueToString(val)) continue;
+        }
+
+        Record out;
+        out.set("customer.customer_id", c.get("customer_id"));
+        out.set("customer_id", c.get("customer_id"));
+
+        if (c.has("customer_code"))
+        {
+            out.set("customer.customer_code", c.get("customer_code"));
+            out.set("customer_code", c.get("customer_code"));
+        }
+        if (c.has("name"))
+        {
+            out.set("customer.name", c.get("name"));
+            out.set("name", c.get("name"));
+        }
+        if (bInfo.has("tax_code"))
+        {
+            out.set("business_info.tax_code", bInfo.get("tax_code"));
+            out.set("tax_code", bInfo.get("tax_code"));
+        }
+        if (bInfo.has("phone_number"))
+        {
+            out.set("business_info.phone_number", bInfo.get("phone_number"));
+            out.set("phone_number", bInfo.get("phone_number"));
+        }
+        if (bInfo.has("email"))
+        {
+            out.set("business_info.email", bInfo.get("email"));
+            out.set("email", bInfo.get("email"));
+        }
+
+        results.push_back(std::move(out));
+    }
+}
+
 } // namespace user_query

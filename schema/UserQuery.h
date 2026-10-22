@@ -102,6 +102,15 @@ namespace user_query {
     // - Không cần index vì dữ liệu ít
     // ========================================================
     void auxiliary_spec_query(Database *db, const string& tableName, Vector<Record> &results, const string& filterColumn = "", const Value& val = Value());
+
+    // ========================================================
+    // 14. TRUY VẤN KHÁCH HÀNG (CUSTOMER QUERIES - Rule 9.4)
+    // - Tách riêng Khách hàng cá nhân (individual) và Khách hàng doanh nghiệp (business)
+    // - Giữ customer_id trong Record để phục vụ CRUD nhưng ẩn trên giao diện UI
+    // - Hỗ trợ lọc theo mã khách hàng (Index), tên, số điện thoại, email, mã số thuế
+    // ========================================================
+    void individual_customer_query(Database *db, Vector<Record> &results, const string& indexedColumn = "", const Value& val = Value());
+    void business_customer_query(Database *db, Vector<Record> &results, const string& indexedColumn = "", const Value& val = Value());
 }
 
 #endif // USERQUERY_H

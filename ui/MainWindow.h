@@ -31,25 +31,29 @@ private:
     QStringList loadSpecOptions(const QString& specTableName);
     void updateCategoryFilterOptions();
 
-    void switchToDomain(int domainIndex); // 0: Warehouse, 1: Category, 2: Aux Specs
+    void switchToDomain(int domainIndex); // 0: Warehouse, 1: Category, 2: Aux Specs, 3: Customers
     void selectWarehouseQuery(int row);
     void selectCategoryQuery(int row);
     void selectAuxSpecQuery(const QString& tableName);
+    void selectCustomerQuery(int row);
 
     Database* db;
 
-    // Top Menus (Rule 9.2 & 9.3)
+    // Top Menus (Rule 9.2, 9.3 & 9.4)
     QMenu* warehouseMenu;
     QMenu* categoryMenu;   // "Danh mục sản phẩm"
+    QMenu* customerMenu;   // "Khách hàng" (Rule 9.4)
     QMenu* auxSpecMenu;    // "Danh mục phụ"
 
     // Sidebar navigation tabs & separated lists
     QPushButton* tabWarehouseBtn;
     QPushButton* tabCategoryBtn;
+    QPushButton* tabCustomerBtn;
     QPushButton* tabAuxSpecBtn;
     QStackedWidget* sidebarStack;
     QListWidget* warehouseList;
     QListWidget* categoryList;
+    QListWidget* customerList;
     QListWidget* auxSpecList;
 
     QStackedWidget* stackedWidget;
@@ -82,6 +86,10 @@ private:
     // Auxiliary Specs & Metadata Widget (Rule 9.3)
     QueryTableWidget* auxSpecWidget;
     QComboBox* auxSpecTableCombo;
+
+    // 2 Customer Query Table Widgets (Rule 9.4)
+    QueryTableWidget* individualCustomerWidget;
+    QueryTableWidget* businessCustomerWidget;
 };
 
 #endif // MAIN_WINDOW_H

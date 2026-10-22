@@ -2,6 +2,7 @@
 
 #include <QHBoxLayout>
 #include <QVBoxLayout>
+#include <QGridLayout>
 #include <QSplitter>
 #include <QStatusBar>
 #include <QMessageBox>
@@ -12,10 +13,16 @@
 
 MainWindow::MainWindow(Database* database, QWidget* parent)
     : QMainWindow(parent), db(database),
-      warehouseMenu(nullptr), categoryMenu(nullptr), auxSpecMenu(nullptr),
-      tabWarehouseBtn(nullptr), tabCategoryBtn(nullptr), tabAuxSpecBtn(nullptr),
-      sidebarStack(nullptr), warehouseList(nullptr), categoryList(nullptr), auxSpecList(nullptr),
-      auxSpecTableCombo(nullptr)
+      warehouseMenu(nullptr), categoryMenu(nullptr), customerMenu(nullptr), auxSpecMenu(nullptr),
+      tabWarehouseBtn(nullptr), tabCategoryBtn(nullptr), tabCustomerBtn(nullptr), tabAuxSpecBtn(nullptr),
+      sidebarStack(nullptr), warehouseList(nullptr), categoryList(nullptr), customerList(nullptr), auxSpecList(nullptr),
+      productQuantityWidget(nullptr), unitInventoryWidget(nullptr), statusHistoryWidget(nullptr),
+      inboundTxnWidget(nullptr), inboundDetailWidget(nullptr), deliveryWidget(nullptr),
+      deliveryDetailWidget(nullptr), outboundTxnWidget(nullptr), outboundDetailWidget(nullptr),
+      shipmentWidget(nullptr), shipmentDetailWidget(nullptr), cpuWidget(nullptr), gpuWidget(nullptr),
+      mainboardWidget(nullptr), ramWidget(nullptr), ssdWidget(nullptr), psuWidget(nullptr),
+      coolingWidget(nullptr), caseWidget(nullptr), auxSpecWidget(nullptr), auxSpecTableCombo(nullptr),
+      individualCustomerWidget(nullptr), businessCustomerWidget(nullptr)
 {
     setWindowTitle("Hệ thống Quản lý Kho Hàng - PBL2 (Query for Interface)");
     resize(1300, 850);
@@ -108,7 +115,18 @@ void MainWindow::setupMenuBar()
         });
     }
 
-    // 3. Menu Danh mục phụ (Rule 9.3: Chứa toàn bộ lựa chọn truy vấn bảng phụ, brand, category)
+    // 3. Menu Khách hàng (Rule 9.4: Tách riêng khách hàng cá nhân và doanh nghiệp)
+    customerMenu = mBar->addMenu("👥 Khách hàng");
+    auto* actInd = customerMenu->addAction("👤 1. Khách hàng Cá nhân (Individual)");
+    connect(actInd, &QAction::triggered, [this]() {
+        selectCustomerQuery(0);
+    });
+    auto* actBus = customerMenu->addAction("🏢 2. Khách hàng Doanh nghiệp (Business)");
+    connect(actBus, &QAction::triggered, [this]() {
+        selectCustomerQuery(1);
+    });
+
+    // 4. Menu Danh mục phụ (Rule 9.3: Chứa toàn bộ lựa chọn truy vấn bảng phụ, brand, category)
     auxSpecMenu = mBar->addMenu("⚙️ Danh mục phụ");
     auto addAuxAction = [this](QMenu* parentMenu, const QString& title, const QString& tableCode) {
         auto* act = parentMenu->addAction(title);
@@ -210,11 +228,11 @@ void MainWindow::setupUI()
     );
     sidebarLayout->addWidget(reloadDbBtn);
 
-    // Domain Navigation Tabs (Rule 9.2 & 9.3: Tách biệt rõ ràng 3 phân hệ)
+    // Domain Navigation Tabs (Rule 9.2, 9.3 & 9.4: Tách biệt rõ ràng 4 phân hệ)
     auto* tabContainer = new QWidget(sidebarWidget);
-    auto* tabLayout = new QHBoxLayout(tabContainer);
-    tabLayout->setContentsMargins(0, 4, 0, 4);
-    tabLayout->setSpacing(4);
+    auto* tabGrid = new QGridLayout(tabContainer);
+    tabGrid->setContentsMargins(0, 4, 0, 4);
+    tabGrid->setSpacing(4);
 
     tabWarehouseBtn = new QPushButton("📦 Kho hàng", tabContainer);
     tabWarehouseBtn->setToolTip("Bảng quản lý kho hàng");
@@ -222,15 +240,19 @@ void MainWindow::setupUI()
     tabCategoryBtn = new QPushButton("📁 Danh mục SP", tabContainer);
     tabCategoryBtn->setToolTip("Danh mục sản phẩm (Rule 9.2)");
 
+    tabCustomerBtn = new QPushButton("👥 Khách hàng", tabContainer);
+    tabCustomerBtn->setToolTip("Quản lý khách hàng (Rule 9.4)");
+
     tabAuxSpecBtn = new QPushButton("⚙️ Danh mục phụ", tabContainer);
     tabAuxSpecBtn->setToolTip("Bảng thông số phụ & Master data (Rule 9.3)");
 
-    tabLayout->addWidget(tabWarehouseBtn);
-    tabLayout->addWidget(tabCategoryBtn);
-    tabLayout->addWidget(tabAuxSpecBtn);
+    tabGrid->addWidget(tabWarehouseBtn, 0, 0);
+    tabGrid->addWidget(tabCategoryBtn, 0, 1);
+    tabGrid->addWidget(tabCustomerBtn, 1, 0);
+    tabGrid->addWidget(tabAuxSpecBtn, 1, 1);
     sidebarLayout->addWidget(tabContainer);
 
-    // Stacked sidebar lists for the 3 separated domains
+    // Stacked sidebar lists for the 4 separated domains
     sidebarStack = new QStackedWidget(sidebarWidget);
     sidebarStack->setStyleSheet(
         "QListWidget {"
@@ -258,11 +280,13 @@ void MainWindow::setupUI()
 
     warehouseList = new QListWidget(sidebarStack);
     categoryList = new QListWidget(sidebarStack);
+    customerList = new QListWidget(sidebarStack);
     auxSpecList = new QListWidget(sidebarStack);
 
-    sidebarStack->addWidget(warehouseList);
-    sidebarStack->addWidget(categoryList);
-    sidebarStack->addWidget(auxSpecList);
+    sidebarStack->addWidget(warehouseList); // Index 0: Warehouse
+    sidebarStack->addWidget(categoryList);  // Index 1: Category
+    sidebarStack->addWidget(customerList);  // Index 2: Customer
+    sidebarStack->addWidget(auxSpecList);   // Index 3: Aux Specs
 
     sidebarLayout->addWidget(sidebarStack);
 
@@ -1082,6 +1106,69 @@ void MainWindow::setupPages()
     });
 
     stackedWidget->addWidget(auxSpecWidget);
+
+    // ========================================================
+    // 21. INDIVIDUAL_CUSTOMER_QUERY (Khách hàng cá nhân - Rule 9.4)
+    // ========================================================
+    individualCustomerWidget = new QueryTableWidget(
+        "Khách hàng Cá nhân (INDIVIDUAL_CUSTOMER)",
+        "Danh sách khách hàng cá nhân kèm thông tin liên hệ (số điện thoại, email) - Rule 9.4",
+        this
+    );
+    individualCustomerWidget->setColumns(
+        {"Mã khách hàng", "Tên khách hàng", "Số điện thoại", "Email"},
+        {"customer.customer_code", "customer.name", "individual_info.phone_number", "individual_info.email"}
+    );
+    individualCustomerWidget->setFilterColumns({
+        {"Mã khách hàng (customer_code)", "customer_code", FilterType::EXACT_TEXT, {}},
+        {"Tên khách hàng (name)", "name", FilterType::EXACT_TEXT, {}},
+        {"Số điện thoại (phone_number)", "phone_number", FilterType::EXACT_TEXT, {}},
+        {"Email (email)", "email", FilterType::EXACT_TEXT, {}}
+    });
+    individualCustomerWidget->setRefreshCallback([this]() { refreshQuery(20); });
+    individualCustomerWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
+        if (!db) return;
+        QElapsedTimer timer;
+        timer.start();
+        Vector<Record> results;
+        user_query::individual_customer_query(db, results, col, Value(v1.toStdString()));
+        individualCustomerWidget->setData(results);
+        statusLabel->setText(QString("Tìm kiếm trên KHÁCH HÀNG CÁ NHÂN [%1 = %2]: %3 bản ghi (%4 ms)")
+            .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
+    });
+    stackedWidget->addWidget(individualCustomerWidget);
+
+    // ========================================================
+    // 22. BUSINESS_CUSTOMER_QUERY (Khách hàng doanh nghiệp - Rule 9.4)
+    // ========================================================
+    businessCustomerWidget = new QueryTableWidget(
+        "Khách hàng Doanh nghiệp / Đối tác (BUSINESS_CUSTOMER)",
+        "Danh sách khách hàng doanh nghiệp kèm mã số thuế và thông tin liên hệ - Rule 9.4",
+        this
+    );
+    businessCustomerWidget->setColumns(
+        {"Mã đối tác / DN", "Tên doanh nghiệp", "Mã số thuế", "Số điện thoại", "Email"},
+        {"customer.customer_code", "customer.name", "business_info.tax_code", "business_info.phone_number", "business_info.email"}
+    );
+    businessCustomerWidget->setFilterColumns({
+        {"Mã đối tác / DN (customer_code)", "customer_code", FilterType::EXACT_TEXT, {}},
+        {"Tên doanh nghiệp (name)", "name", FilterType::EXACT_TEXT, {}},
+        {"Mã số thuế (tax_code)", "tax_code", FilterType::EXACT_TEXT, {}},
+        {"Số điện thoại (phone_number)", "phone_number", FilterType::EXACT_TEXT, {}},
+        {"Email (email)", "email", FilterType::EXACT_TEXT, {}}
+    });
+    businessCustomerWidget->setRefreshCallback([this]() { refreshQuery(21); });
+    businessCustomerWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
+        if (!db) return;
+        QElapsedTimer timer;
+        timer.start();
+        Vector<Record> results;
+        user_query::business_customer_query(db, results, col, Value(v1.toStdString()));
+        businessCustomerWidget->setData(results);
+        statusLabel->setText(QString("Tìm kiếm trên KHÁCH HÀNG DOANH NGHIỆP [%1 = %2]: %3 bản ghi (%4 ms)")
+            .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
+    });
+    stackedWidget->addWidget(businessCustomerWidget);
 }
 
 void MainWindow::loadAuxSpecData(const QString& tableName)
@@ -1149,7 +1236,11 @@ void MainWindow::setupSidebar()
     categoryList->addItem("❄️ 7. Tản nhiệt làm mát (Cooling)");
     categoryList->addItem("🖥️ 8. Vỏ máy tính (Case)");
 
-    // 3. Auxiliary Specs & Metadata List (Danh mục phụ - Rule 9.3)
+    // 3. Customer List (Khách hàng tách riêng cá nhân & doanh nghiệp - Rule 9.4)
+    customerList->addItem("👤 1. Khách hàng Cá nhân (Individual)");
+    customerList->addItem("🏢 2. Khách hàng Doanh nghiệp (Business)");
+
+    // 4. Auxiliary Specs & Metadata List (Danh mục phụ - Rule 9.3)
     auto addAuxItem = [this](const QString& label, const QString& tableCode) {
         auto* item = new QListWidgetItem(label, auxSpecList);
         item->setData(Qt::UserRole, tableCode);
@@ -1187,8 +1278,11 @@ void MainWindow::setupSidebar()
     connect(tabCategoryBtn, &QPushButton::clicked, [this]() {
         switchToDomain(1);
     });
-    connect(tabAuxSpecBtn, &QPushButton::clicked, [this]() {
+    connect(tabCustomerBtn, &QPushButton::clicked, [this]() {
         switchToDomain(2);
+    });
+    connect(tabAuxSpecBtn, &QPushButton::clicked, [this]() {
+        switchToDomain(3);
     });
 
     // Connect list selection changes
@@ -1201,6 +1295,12 @@ void MainWindow::setupSidebar()
     connect(categoryList, &QListWidget::currentRowChanged, [this](int row) {
         if (row >= 0 && row < 8) {
             selectCategoryQuery(row);
+        }
+    });
+
+    connect(customerList, &QListWidget::currentRowChanged, [this](int row) {
+        if (row >= 0 && row < 2) {
+            selectCustomerQuery(row);
         }
     });
 
@@ -1247,7 +1347,8 @@ void MainWindow::switchToDomain(int domainIndex)
 
     setTabStyle(tabWarehouseBtn, domainIndex == 0);
     setTabStyle(tabCategoryBtn, domainIndex == 1);
-    setTabStyle(tabAuxSpecBtn, domainIndex == 2);
+    setTabStyle(tabCustomerBtn, domainIndex == 2);
+    setTabStyle(tabAuxSpecBtn, domainIndex == 3);
 
     if (domainIndex == 0) {
         if (warehouseList->currentRow() < 0) {
@@ -1262,6 +1363,12 @@ void MainWindow::switchToDomain(int domainIndex)
             selectCategoryQuery(categoryList->currentRow());
         }
     } else if (domainIndex == 2) {
+        if (customerList->currentRow() < 0) {
+            customerList->setCurrentRow(0);
+        } else {
+            selectCustomerQuery(customerList->currentRow());
+        }
+    } else if (domainIndex == 3) {
         if (auxSpecList->currentRow() < 0) {
             auxSpecList->setCurrentRow(0);
         } else {
@@ -1299,10 +1406,24 @@ void MainWindow::selectCategoryQuery(int row)
     refreshQuery(11 + row);
 }
 
-void MainWindow::selectAuxSpecQuery(const QString& tableName)
+void MainWindow::selectCustomerQuery(int row)
 {
+    if (row < 0 || row >= 2) return;
     if (sidebarStack->currentIndex() != 2) {
         switchToDomain(2);
+    }
+    customerList->blockSignals(true);
+    customerList->setCurrentRow(row);
+    customerList->blockSignals(false);
+
+    stackedWidget->setCurrentIndex(20 + row);
+    refreshQuery(20 + row);
+}
+
+void MainWindow::selectAuxSpecQuery(const QString& tableName)
+{
+    if (sidebarStack->currentIndex() != 3) {
+        switchToDomain(3);
     }
     for (int i = 0; i < auxSpecList->count(); ++i) {
         if (auxSpecList->item(i)->data(Qt::UserRole).toString() == tableName) {
@@ -1419,6 +1540,14 @@ void MainWindow::refreshQuery(int index)
             return;
         }
         break;
+    case 20:
+        user_query::individual_customer_query(db, results);
+        individualCustomerWidget->setData(results);
+        break;
+    case 21:
+        user_query::business_customer_query(db, results);
+        businessCustomerWidget->setData(results);
+        break;
     default:
         break;
     }
@@ -1429,8 +1558,12 @@ void MainWindow::refreshQuery(int index)
     } else if (index >= 11 && index < 19) {
         const QString catNames[] = {"CPU", "GPU", "Mainboard", "RAM", "SSD", "PSU", "Cooling", "Case"};
         queryDomain = QString("Danh mục sản phẩm [%1]").arg(catNames[index - 11]);
-    } else {
+    } else if (index == 19) {
         queryDomain = "Danh mục phụ";
+    } else if (index == 20) {
+        queryDomain = "Khách hàng cá nhân";
+    } else if (index == 21) {
+        queryDomain = "Khách hàng doanh nghiệp";
     }
 
     qint64 elapsedMs = timer.elapsed();
