@@ -1094,31 +1094,28 @@ void MainWindow::loadAuxSpecData(const QString& tableName)
 
     if (tbl == "brand") {
         auxSpecWidget->setColumns(
-            {"Mã Brand (ID)", "Tên Thương hiệu", "Mã viết tắt (Code)"},
-            {"brand.brand_id", "brand.brand", "brand.code"}
+            {"Tên Thương hiệu", "Mã viết tắt (Code)"},
+            {"brand.brand", "brand.code"}
         );
         auxSpecWidget->setFilterColumns({
-            {"Mã Brand (ID)", "brand_id", FilterType::EXACT_TEXT, {}},
             {"Tên Thương hiệu (brand)", "brand", FilterType::EXACT_TEXT, {}},
             {"Mã viết tắt (code)", "code", FilterType::EXACT_TEXT, {}}
         });
     } else if (tbl == "category") {
         auxSpecWidget->setColumns(
-            {"Mã Danh mục (ID)", "Tên Danh mục", "Mã viết tắt (Code)"},
-            {"category.category_id", "category.category_name", "category.code"}
+            {"Tên Danh mục", "Mã viết tắt (Code)"},
+            {"category.category_name", "category.code"}
         );
         auxSpecWidget->setFilterColumns({
-            {"Mã Danh mục (ID)", "category_id", FilterType::EXACT_TEXT, {}},
             {"Tên Danh mục (category_name)", "category_name", FilterType::EXACT_TEXT, {}},
             {"Mã viết tắt (code)", "code", FilterType::EXACT_TEXT, {}}
         });
     } else {
         auxSpecWidget->setColumns(
-            {"ID", "Giá trị thông số (" + tableName + ")"},
-            {tbl + ".id", tbl + ".spec"}
+            {"Giá trị thông số (" + tableName + ")"},
+            {tbl + ".spec"}
         );
         auxSpecWidget->setFilterColumns({
-            {"Mã thông số (ID)", "id", FilterType::EXACT_TEXT, {}},
             {"Giá trị thông số (spec)", "spec", FilterType::EXACT_TEXT, {}}
         });
     }
