@@ -76,8 +76,9 @@ The main program uses a **single normal user role** (no `ADMIN` role or account 
   - Format: `<producer_code>-<category_code>-<next_code_no(producer)>-<next_code_no(category)>`
   - Examples: `INTEL-CPU-0001-0001`, `NVI-GPU-0032-0034`, `SAM-SSD-0003-0031`, `AMD-GPU-0323-2323`.
 - **Product Selling Status (`product.is_sold`)**:
-  - `TRUE`: Sản phẩm đang được kinh doanh / đang được bán (actively on sale).
-  - `FALSE`: Sản phẩm ngừng kinh doanh / không còn được bán (discontinued / not on sale).
+  - `TRUE`: Product is actively on sale.
+  - `FALSE`: Product is discontinued / not on sale.
+  - **Transaction Ineligibility Rule**: If `product.is_sold` is `FALSE` (discontinued product), it must **never be selected** for any transaction (neither Inbound Transaction nor Outbound Transaction). Only products with `is_sold == TRUE` are eligible for transaction selection.
 
 ### 4.3 Coupled Creation Only (Transactions, Delivery, Shipment)
 Users may manually input transactions and logistics records, strictly under atomic pairwise constraints:
@@ -86,6 +87,15 @@ Users may manually input transactions and logistics records, strictly under atom
   - Creating an Outbound Transaction requires simultaneously creating its paired `Shipment` records.
   - **Stock Precondition**: A product must exist in the warehouse with units currently in the required status for the outbound transaction type (e.g., `AVAILABLE` for `SEL`, `SCRAPPED` or `WARRANTY` for `WRT`, `AVAILABLE` or `WARRANTY` for `WRC`). If eligible units are not present in stock, units cannot be selected for export!
   - Total product quantity across all shipments must not exceed the quantity in the `Outbound Transaction`.
+- **Active Product Eligibility Constraint**:
+  - Both Inbound and Outbound transactions are strictly restricted to products with `product.is_sold == TRUE`. If a product has `is_sold == FALSE`, the system and UI must reject or disable adding that product to transaction order details (`inbound_detail`, `outbound_detail`).
+- **Product Scope Constraint for Logistics**:
+  - `Delivery` records may only contain products that are declared in the corresponding parent inbound transaction (`inbound_transaction` -> `inbound_detail`).
+  - `Shipment` records may only contain products that are declared in the corresponding parent outbound transaction (`outbound_transaction` -> `outbound_detail`).
+  - Including external or unlisted products in `delivery_detail` or `shipment_detail` is strictly prohibited.
+- **Logistics Date Constraints**:
+  - **Delivery Dates**: The actual delivery date (`delivery.delivery_at`) is permitted to be earlier than, equal to, or later than the expected delivery date (`delivery.expected_at`), but **must never be earlier than the order date** (`inbound_transaction.order_at`) (`delivery.delivery_at >= inbound_transaction.order_at`). In addition, the expected delivery date must also be on or after the order date (`delivery.expected_at >= inbound_transaction.order_at`).
+  - **Shipment Dates**: The actual shipment date (`shipment.ship_at`) is permitted to be earlier than, equal to, or later than the expected shipment date (`shipment.expected_at`), but **must never be earlier than the order date** (`outbound_transaction.order_at`) (`shipment.ship_at >= outbound_transaction.order_at`). In addition, the expected shipment date must also be on or after the order date (`shipment.expected_at >= outbound_transaction.order_at`).
 - Standalone creation of an Inbound/Outbound order without its paired `Delivery`/`Shipment` (or vice versa), or standalone creation of `Unit` records via normal CRUD, is strictly prohibited.
 
 ### 4.4 Unit Status Lifecycle and Transition Rules
@@ -141,7 +151,7 @@ Once a Transaction + `Delivery`/`Shipment` pair (along with its attached `Unit` 
 - **No Deletion**: Confirmed transactions, deliveries, shipments, and unit mappings must **never be deleted**.
 - **Permitted Updates (`UserUpdate`)**:
   - **`status`**: Users may modify the `status` field of Transactions (`inbound_transaction`, `outbound_transaction`), `Delivery`, and `Shipment` during order lifecycle processing.
-  - **`delivery_at` & `ship_at`**: Users are permitted to edit/update the actual delivery date (`delivery.delivery_at`) and actual shipment date (`shipment.ship_at`) when goods are actually delivered/dispatched or when adjustments to actual logistics dates are required.
+  - **`delivery_at` & `ship_at`**: Users are permitted to edit/update the actual delivery date (`delivery.delivery_at`) and actual shipment date (`shipment.ship_at`) when goods are actually delivered/dispatched or when adjustments to actual logistics dates are required. The updated dates must strictly obey the chronological constraint: `delivery.delivery_at >= inbound_transaction.order_at` and `shipment.ship_at >= outbound_transaction.order_at` (actual date can be earlier than expected date, but never earlier than order date).
 - **Frozen Business Data**: Planned order quantities (`ordered_quantity`, `received_quantity`), product references, transaction types, customer/partner details, and attached serial numbers are locked and cannot be edited arbitrarily.
 
 ### 4.6 Read-Only Master Data & Direct Unit Restrictions
@@ -210,6 +220,29 @@ All auto-generated codes and user inputs must strictly conform to the specificat
   - Column names, constraints, datatypes, and referential integrity must be validated before modifying tables.
   - Implementation functions must be written in the designated files: `schema/UserCreate.*`, `schema/UserUpdate.*`, `schema/UserDelete.*`.
 
+#### 6.3.1 Error Handling & UI Return Contract for User CRUD
+- To ensure robust UI interaction without unhandled exceptions or application crashes, all functions in `UserCreate`, `UserUpdate`, and `UserDelete` must return an explicit status/result object (e.g., `struct OperationResult { bool success; std::string message; }` or equivalent error-reporting contract).
+- **Validation Layers**:
+  1. **Schema & Existence Validation**:
+     - Verify that the target table exists in the database.
+     - For `UserUpdate` and `UserDelete`, verify that the record with the given `record_id` actually exists. If not found, return an error (e.g., `"Record not found with the specified ID"`).
+     - Verify that all columns in `modifiedColumns` exist in the schema and that types in `modifyingValues` are compatible with `Column::type` (preventing type mismatch or corrupt entries).
+  2. **Integrity & Constraint Validation**:
+     - **NOT NULL**: Reject any operation setting a non-nullable column to `NULL` / `monostate`.
+     - **UNIQUE**: Validate that unique codes (`product_code`, `customer_code`, `inbound_code`, `outbound_code`, `serial`, etc.) are not duplicated across existing records.
+     - **Foreign Key Lookup**: Verify that foreign keys point to valid, existing parent records (e.g., `brand_id`, `category_id`, `customer_id`, `product_id`).
+     - **Referential Protection (`UserDelete`)**: Verify that the record is not referenced by any child table (e.g., cannot delete a `Product` referenced in `product_quantity`, `inbound_detail`, `outbound_detail`, or category hardware tables; cannot delete a `Customer` associated with transactions). If referenced, return a descriptive error (e.g., `"Cannot delete record: Active references exist in other tables"`).
+  3. **Domain Business Logic Validation**:
+     - **Discontinued Product Restriction**: Block adding any product with `product.is_sold == FALSE` to inbound or outbound transactions.
+     - **Logistics Product Scope**: Reject any delivery or shipment detail that contains products not present in the parent transaction's details.
+     - **Chronological Date Validation**: Reject dates where `delivery_at < order_at` or `ship_at < order_at`.
+     - **Stock Availability**: For outbound transactions, verify that sufficient eligible stock exists.
+     - **Immutable Fields Protection (`UserUpdate`)**: Reject modification of frozen fields (e.g., quantities, order items, transaction codes, customer IDs). Only `status`, `delivery_at`, and `ship_at` are updatable on orders/logistics.
+- **UI Integration & Error Consumption**:
+  - The UI calls `UserCreate` / `UserUpdate` / `UserDelete` and evaluates `result.success`:
+    - **On Failure (`result.success == false`)**: The UI displays a clear modal warning or error dialog (`QMessageBox::warning` or `QMessageBox::critical`) showing `result.message`, keeping the dialog open so the user can correct their input. The query cache flag remains untouched.
+    - **On Success (`result.success == true`)**: The UI closes the dialog, shows a confirmation message/toast if needed, and invalidates/resets the query cache flag (`cache_valid = false`) to automatically refresh table views with updated data.
+
 ---
 
 ## 7. UI Rules (Qt Widgets)
@@ -229,7 +262,11 @@ All auto-generated codes and user inputs must strictly conform to the specificat
     - Precondition check: prompts or allows quick creation of `Customer` if not present (with auto-generated customer code).
     - Pairs `Inbound Transaction` with `Delivery`, or `Outbound Transaction` with `Shipment`.
     - Includes a sub-form to add containing products and their quantities.
+    - **Active Product Enforcement**: Dropdowns and selectors for product items must strictly filter out discontinued products (`product.is_sold == FALSE`), ensuring users can only select products currently active on sale.
+    - **Logistics Product Scope**: Delivery and shipment records must only allow products defined in the parent transaction's product list.
+    - **Date Pickers Validation**: Ensure `delivery_at >= order_at` and `ship_at >= order_at` (actual date can be before expected date, but not before order date).
     - Outbound check: prevents selecting products or quantities exceeding available stock.
+    - **CRUD Error Handling**: Consume `OperationResult` from `UserCreate` to display explicit error alerts (`QMessageBox::critical`) if validation fails, preventing form submission.
   - **Unit Entry Window for Delivery & Shipment**:
     - Clicking the designated action button on a Delivery or Shipment record opens a dedicated dialog to input/attach units (serial numbers and target statuses) for each product in that delivery or shipment.
     - Adding units automatically increments `actual_quantity` in `delivery_detail`/`shipment_detail` and in `inbound_detail`/`outbound_detail`.
@@ -270,6 +307,8 @@ All auto-generated codes and user inputs must strictly conform to the specificat
   - **Pairwise Logistics Association (Quy tắc cặp giao dịch - Section 4.3)**:
     - Every Inbound Transaction must be paired with one or more `Delivery` records (`inbound_transaction` + `inbound_detail` with `delivery` + `delivery_detail`). Total received quantity across deliveries must not exceed the inbound order quantity.
     - Every Outbound Transaction must be paired with one or more `Shipment` records (`outbound_transaction` + `outbound_detail` with `shipment` + `shipment_detail`). Total shipped quantity across shipments must not exceed the outbound order quantity.
+    - **Product Eligibility & Scope**: The generator must only choose products where `product.is_sold == TRUE` for generating transactions. Furthermore, `delivery_detail` and `shipment_detail` must strictly contain only products that are part of the parent transaction's details (`inbound_detail` / `outbound_detail`).
+    - **Chronological Date Generation**: `delivery_at` and `ship_at` may be generated earlier than, equal to, or later than `expected_at`, but must strictly satisfy `delivery_at >= order_at` and `ship_at >= order_at`.
   - **Unit Status Lifecycle & Precondition Enforcement (Vòng đời và điều kiện chuyển trạng thái - Section 4.4)**:
     - **Outbound Types** (Target status of all units **must be `OUT`**):
       - `SEL` (Selling - Bán hàng): Precondition requires selected units to currently have status `AVAILABLE` (`AVAILABLE -> OUT`).
