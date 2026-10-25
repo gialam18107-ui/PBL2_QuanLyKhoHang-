@@ -1,6 +1,8 @@
 #include "UserQuery.h"
 #include "datastructure/hashmap/HashMap.h"
 #include "query/Query.h"
+#include <fstream>
+#include <cstdio>
 
 using namespace std;
 
@@ -2180,4 +2182,359 @@ void business_customer_query(Database *db, Vector<Record> &results,
   }
 }
 
+// ============================================================
+// 15. BÁO CÁO XUẤT - NHẬP - TỒN ĐỊNH KỲ (PERIODIC INVENTORY REPORT)
+// ============================================================
+void periodic_inventory_report(Database *db, int month, int year,
+                              Vector<Record> &results, Record &grandTotal) {
+  results.clear();
+  grandTotal = Record();
+  if (!db || month < 1 || month > 12 || year < 1900)
+    return;
+
+  Table *pTable = db->getTable("product");
+  Table *pqTable = db->getTable("product_quantity");
+  Table *delTable = db->getTable("delivery");
+  Table *delDetailTable = db->getTable("delivery_detail");
+  Table *shipTable = db->getTable("shipment");
+  Table *shipDetailTable = db->getTable("shipment_detail");
+
+  if (!pTable || !delTable || !delDetailTable || !shipTable || !shipDetailTable)
+    return;
+
+  // Xác định khoảng thời gian báo cáo
+  char startBuf[32];
+  snprintf(startBuf, sizeof(startBuf), "%04d-%02d-01", year, month);
+  string startDate(startBuf);
+
+  int daysInMonth = 31;
+  if (month == 4 || month == 6 || month == 9 || month == 11) {
+    daysInMonth = 30;
+  } else if (month == 2) {
+    bool isLeap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+    daysInMonth = isLeap ? 29 : 28;
+  }
+  char endBuf[32];
+  snprintf(endBuf, sizeof(endBuf), "%04d-%02d-%02d", year, month, daysInMonth);
+  string endDate(endBuf);
+
+  // 1. Phân loại các đợt giao hàng (delivery) trước tháng và trong tháng
+  HashMap<Value, bool> validDelBefore;
+  HashMap<Value, bool> validDelMonth;
+  const auto &delRows = delTable->getRows();
+  for (size_t i = 0; i < delRows.size(); ++i) {
+    if (delTable->isRowDeleted(i))
+      continue;
+    const auto &r = delRows[i];
+    if (!r.has("delivery_id") || !r.has("delivery_at") || isNull(r.get("delivery_at")))
+      continue;
+    string dAt = holds_alternative<string>(r.get("delivery_at")) ? get<string>(r.get("delivery_at")) : "";
+    if (dAt.empty())
+      continue;
+    Value dId = r.get("delivery_id");
+    if (dAt < startDate) {
+      validDelBefore[dId] = true;
+    } else if (dAt <= endDate) {
+      validDelMonth[dId] = true;
+    }
+  }
+
+  // 2. Thu thập bản ghi chi tiết nhập hàng để gọi Query::sum gom theo product_id
+  Vector<Record> delRecsBefore;
+  Vector<Record> delRecsMonth;
+  const auto &delDetailRows = delDetailTable->getRows();
+  for (size_t i = 0; i < delDetailRows.size(); ++i) {
+    if (delDetailTable->isRowDeleted(i))
+      continue;
+    const auto &r = delDetailRows[i];
+    if (!r.has("delivery_id") || !r.has("product_id") || !r.has("actual_quantity"))
+      continue;
+    Value dId = r.get("delivery_id");
+    Record rec;
+    rec.set("product_id", r.get("product_id"));
+    rec.set("actual_quantity", r.get("actual_quantity"));
+
+    if (validDelBefore.find(dId) != validDelBefore.end()) {
+      delRecsBefore.push_back(rec);
+    }
+    if (validDelMonth.find(dId) != validDelMonth.end()) {
+      delRecsMonth.push_back(rec);
+    }
+  }
+
+  // Gọi hàm sum của Query
+  Vector<Record> summedInBefore = Query::sum(delRecsBefore, "product_id", "actual_quantity");
+  Vector<Record> summedInMonth = Query::sum(delRecsMonth, "product_id", "actual_quantity");
+
+  HashMap<Value, int> inBeforeMap;
+  for (const auto &r : summedInBefore) {
+    int val = holds_alternative<int>(r.get("sum_actual_quantity"))
+                  ? get<int>(r.get("sum_actual_quantity"))
+                  : static_cast<int>(get<double>(r.get("sum_actual_quantity")));
+    inBeforeMap[r.get("product_id")] = val;
+  }
+  HashMap<Value, int> inMonthMap;
+  for (const auto &r : summedInMonth) {
+    int val = holds_alternative<int>(r.get("sum_actual_quantity"))
+                  ? get<int>(r.get("sum_actual_quantity"))
+                  : static_cast<int>(get<double>(r.get("sum_actual_quantity")));
+    inMonthMap[r.get("product_id")] = val;
+  }
+
+  // 3. Phân loại các đợt xuất hàng (shipment) trước tháng và trong tháng
+  HashMap<Value, bool> validShipBefore;
+  HashMap<Value, bool> validShipMonth;
+  const auto &shipRows = shipTable->getRows();
+  for (size_t i = 0; i < shipRows.size(); ++i) {
+    if (shipTable->isRowDeleted(i))
+      continue;
+    const auto &r = shipRows[i];
+    if (!r.has("shipment_id") || !r.has("ship_at") || isNull(r.get("ship_at")))
+      continue;
+    string sAt = holds_alternative<string>(r.get("ship_at")) ? get<string>(r.get("ship_at")) : "";
+    if (sAt.empty())
+      continue;
+    Value sId = r.get("shipment_id");
+    if (sAt < startDate) {
+      validShipBefore[sId] = true;
+    } else if (sAt <= endDate) {
+      validShipMonth[sId] = true;
+    }
+  }
+
+  // 4. Thu thập chi tiết xuất hàng để gọi Query::sum gom theo product_id
+  Vector<Record> shipRecsBefore;
+  Vector<Record> shipRecsMonth;
+  const auto &shipDetailRows = shipDetailTable->getRows();
+  for (size_t i = 0; i < shipDetailRows.size(); ++i) {
+    if (shipDetailTable->isRowDeleted(i))
+      continue;
+    const auto &r = shipDetailRows[i];
+    if (!r.has("shipment_id") || !r.has("product_id") || !r.has("actual_quantity"))
+      continue;
+    Value sId = r.get("shipment_id");
+    Record rec;
+    rec.set("product_id", r.get("product_id"));
+    rec.set("actual_quantity", r.get("actual_quantity"));
+
+    if (validShipBefore.find(sId) != validShipBefore.end()) {
+      shipRecsBefore.push_back(rec);
+    }
+    if (validShipMonth.find(sId) != validShipMonth.end()) {
+      shipRecsMonth.push_back(rec);
+    }
+  }
+
+  // Gọi hàm sum của Query
+  Vector<Record> summedOutBefore = Query::sum(shipRecsBefore, "product_id", "actual_quantity");
+  Vector<Record> summedOutMonth = Query::sum(shipRecsMonth, "product_id", "actual_quantity");
+
+  HashMap<Value, int> outBeforeMap;
+  for (const auto &r : summedOutBefore) {
+    int val = holds_alternative<int>(r.get("sum_actual_quantity"))
+                  ? get<int>(r.get("sum_actual_quantity"))
+                  : static_cast<int>(get<double>(r.get("sum_actual_quantity")));
+    outBeforeMap[r.get("product_id")] = val;
+  }
+  HashMap<Value, int> outMonthMap;
+  for (const auto &r : summedOutMonth) {
+    int val = holds_alternative<int>(r.get("sum_actual_quantity"))
+                  ? get<int>(r.get("sum_actual_quantity"))
+                  : static_cast<int>(get<double>(r.get("sum_actual_quantity")));
+    outMonthMap[r.get("product_id")] = val;
+  }
+
+  // 5. Lập bản đồ product_quantity để lấy thông tin phân loại tồn kho (available, warranty, scrapped)
+  HashMap<Value, Record> pqMap;
+  if (pqTable) {
+    const auto &pqRows = pqTable->getRows();
+    for (size_t i = 0; i < pqRows.size(); ++i) {
+      if (pqTable->isRowDeleted(i))
+        continue;
+      if (pqRows[i].has("product_id")) {
+        pqMap[pqRows[i].get("product_id")] = pqRows[i];
+      }
+    }
+  }
+
+  // 6. Tính toán cho từng sản phẩm đang kinh doanh (is_sold == TRUE)
+  int sumOpening = 0;
+  int sumInbound = 0;
+  int sumOutbound = 0;
+  int sumClosing = 0;
+  int sumAvail = 0;
+  int sumWarr = 0;
+  int sumScrap = 0;
+
+  const auto &pRows = pTable->getRows();
+  for (size_t i = 0; i < pRows.size(); ++i) {
+    if (pTable->isRowDeleted(i))
+      continue;
+    const auto &p = pRows[i];
+
+    // Chỉ tính sản phẩm đang kinh doanh (is_sold == TRUE)
+    bool isSold = false;
+    if (p.has("is_sold")) {
+      const Value &v = p.get("is_sold");
+      if (holds_alternative<bool>(v))
+        isSold = get<bool>(v);
+      else if (holds_alternative<int>(v))
+        isSold = (get<int>(v) != 0);
+      else if (holds_alternative<string>(v)) {
+        string s = get<string>(v);
+        isSold = (s == "TRUE" || s == "true" || s == "1");
+      }
+    }
+    if (!isSold)
+      continue;
+
+    Value pId = p.get("product_id");
+    int inBefore = inBeforeMap.find(pId) != inBeforeMap.end() ? inBeforeMap[pId] : 0;
+    int outBefore = outBeforeMap.find(pId) != outBeforeMap.end() ? outBeforeMap[pId] : 0;
+    int openingStock = inBefore - outBefore;
+
+    int inMonth = inMonthMap.find(pId) != inMonthMap.end() ? inMonthMap[pId] : 0;
+    int outMonth = outMonthMap.find(pId) != outMonthMap.end() ? outMonthMap[pId] : 0;
+
+    int avail = 0;
+    int warr = 0;
+    int scrap = 0;
+    auto pqIt = pqMap.find(pId);
+    if (pqIt != pqMap.end()) {
+      const auto &pq = pqIt->second;
+      if (pq.has("available_quan") && holds_alternative<int>(pq.get("available_quan")))
+        avail = get<int>(pq.get("available_quan"));
+      if (pq.has("warranty_quan") && holds_alternative<int>(pq.get("warranty_quan")))
+        warr = get<int>(pq.get("warranty_quan"));
+      if (pq.has("scrapped_quan") && holds_alternative<int>(pq.get("scrapped_quan")))
+        scrap = get<int>(pq.get("scrapped_quan"));
+    }
+    int totalCurrent = avail + warr + scrap;
+
+    // Nếu tồn tích lũy trước đó <= 0 hoặc không đủ xuất trong kỳ do kho đã có sẵn tồn ban đầu từ master data
+    if (openingStock <= 0 || (openingStock + inMonth - outMonth < 0)) {
+      openingStock = totalCurrent - inMonth + outMonth;
+      if (openingStock < 0)
+        openingStock = 0;
+    }
+
+    int closingStock = openingStock + inMonth - outMonth;
+    if (closingStock < 0)
+      closingStock = 0;
+
+    if (avail + warr + scrap != closingStock) {
+      if (closingStock == 0) {
+        avail = warr = scrap = 0;
+      } else if (closingStock >= (warr + scrap)) {
+        avail = closingStock - (warr + scrap);
+      } else {
+        avail = closingStock;
+        warr = 0;
+        scrap = 0;
+      }
+    }
+
+    Record out;
+    out.set("product_id", pId);
+    if (p.has("product_code"))
+      out.set("product_code", p.get("product_code"));
+    if (p.has("product_name"))
+      out.set("product_name", p.get("product_name"));
+    out.set("opening_stock", Value(openingStock));
+    out.set("inbound_quantity", Value(inMonth));
+    out.set("outbound_quantity", Value(outMonth));
+    out.set("closing_stock", Value(closingStock));
+    out.set("available_quan", Value(avail));
+    out.set("warranty_quan", Value(warr));
+    out.set("scrapped_quan", Value(scrap));
+
+    sumOpening += openingStock;
+    sumInbound += inMonth;
+    sumOutbound += outMonth;
+    sumClosing += closingStock;
+    sumAvail += avail;
+    sumWarr += warr;
+    sumScrap += scrap;
+
+    results.push_back(std::move(out));
+  }
+
+  // 7. Dòng tổng cộng (Grand Total)
+  grandTotal.set("product_id", Value(0));
+  grandTotal.set("product_code", Value(string("TỔNG CỘNG")));
+  grandTotal.set("product_name", Value(string("")));
+  grandTotal.set("opening_stock", Value(sumOpening));
+  grandTotal.set("inbound_quantity", Value(sumInbound));
+  grandTotal.set("outbound_quantity", Value(sumOutbound));
+  grandTotal.set("closing_stock", Value(sumClosing));
+  grandTotal.set("available_quan", Value(sumAvail));
+  grandTotal.set("warranty_quan", Value(sumWarr));
+  grandTotal.set("scrapped_quan", Value(sumScrap));
+}
+
+bool export_periodic_inventory_report_csv(int month, int year,
+                                         const Vector<Record> &results,
+                                         const Record &grandTotal,
+                                         const string &outPath) {
+  string path = outPath;
+  if (path.empty()) {
+    char fname[128];
+    snprintf(fname, sizeof(fname), "report/BaoCao_Thang_%02d_Nam_%04d.csv", month, year);
+    path = fname;
+  }
+
+  ofstream outFile(path);
+  if (!outFile.is_open())
+    return false;
+
+  outFile << "Mã sản phẩm,Tên sản phẩm,Tồn đầu kỳ,Nhập trong tháng,Xuất trong tháng,Tồn cuối tháng,Tồn khả dụng,Hàng bảo hành,Hàng lỗi hỏng\n";
+
+  auto escapeCsv = [](const string &s) -> string {
+    if (s.find(',') != string::npos || s.find('"') != string::npos || s.find('\n') != string::npos) {
+      string esc = "\"";
+      for (char c : s) {
+        if (c == '"')
+          esc += "\"\"";
+        else
+          esc += c;
+      }
+      esc += "\"";
+      return esc;
+    }
+    return s;
+  };
+
+  for (size_t i = 0; i < results.size(); ++i) {
+    const auto &r = results[i];
+    string pCode = r.has("product_code") ? get<string>(r.get("product_code")) : "";
+    string pName = r.has("product_name") ? get<string>(r.get("product_name")) : "";
+    int openStock = r.has("opening_stock") ? get<int>(r.get("opening_stock")) : 0;
+    int inQty = r.has("inbound_quantity") ? get<int>(r.get("inbound_quantity")) : 0;
+    int outQty = r.has("outbound_quantity") ? get<int>(r.get("outbound_quantity")) : 0;
+    int closeStock = r.has("closing_stock") ? get<int>(r.get("closing_stock")) : 0;
+    int avail = r.has("available_quan") ? get<int>(r.get("available_quan")) : 0;
+    int warr = r.has("warranty_quan") ? get<int>(r.get("warranty_quan")) : 0;
+    int scrap = r.has("scrapped_quan") ? get<int>(r.get("scrapped_quan")) : 0;
+
+    outFile << escapeCsv(pCode) << "," << escapeCsv(pName) << "," << openStock << ","
+            << inQty << "," << outQty << "," << closeStock << ","
+            << avail << "," << warr << "," << scrap << "\n";
+  }
+
+  int gOpen = grandTotal.has("opening_stock") ? get<int>(grandTotal.get("opening_stock")) : 0;
+  int gIn = grandTotal.has("inbound_quantity") ? get<int>(grandTotal.get("inbound_quantity")) : 0;
+  int gOut = grandTotal.has("outbound_quantity") ? get<int>(grandTotal.get("outbound_quantity")) : 0;
+  int gClose = grandTotal.has("closing_stock") ? get<int>(grandTotal.get("closing_stock")) : 0;
+  int gAvail = grandTotal.has("available_quan") ? get<int>(grandTotal.get("available_quan")) : 0;
+  int gWarr = grandTotal.has("warranty_quan") ? get<int>(grandTotal.get("warranty_quan")) : 0;
+  int gScrap = grandTotal.has("scrapped_quan") ? get<int>(grandTotal.get("scrapped_quan")) : 0;
+
+  outFile << "TỔNG CỘNG,," << gOpen << "," << gIn << "," << gOut << ","
+          << gClose << "," << gAvail << "," << gWarr << "," << gScrap << "\n";
+
+  outFile.close();
+  return true;
+}
+
 } // namespace user_query
+
