@@ -7,6 +7,7 @@
 #include <QFile>
 #include <QTextStream>
 #include <QDate>
+#include "ui/TableClipboardHelper.h"
 
 QueryTableWidget::QueryTableWidget(const QString& title, const QString& description, QWidget* parent)
     : QWidget(parent), titleText(title), descText(description)
@@ -326,14 +327,13 @@ void QueryTableWidget::setupTableUI(QVBoxLayout* mainLayout)
 {
     tableWidget = new QTableWidget(this);
     tableWidget->setAlternatingRowColors(true);
-    tableWidget->setSelectionBehavior(QAbstractItemView::SelectRows);
-    tableWidget->setSelectionMode(QAbstractItemView::SingleSelection);
     tableWidget->setEditTriggers(QAbstractItemView::NoEditTriggers);
     tableWidget->verticalHeader()->setVisible(false);
     tableWidget->horizontalHeader()->setHighlightSections(false);
     tableWidget->horizontalHeader()->setStretchLastSection(true);
     tableWidget->horizontalHeader()->setSortIndicatorShown(true);
     tableWidget->horizontalHeader()->setSectionsClickable(true);
+    TableClipboardHelper::setupClipboardForTable(tableWidget);
 
     tableWidget->setStyleSheet(
         "QTableWidget {"

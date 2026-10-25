@@ -10,6 +10,7 @@
 
 #include "data_io/DatabaseIO.h"
 #include "schema/UserQuery.h"
+#include "ui/TableClipboardHelper.h"
 
 MainWindow::MainWindow(Database* database, QWidget* parent)
     : QMainWindow(parent), db(database),
@@ -1923,15 +1924,27 @@ void MainWindow::setupReportPage()
         "}"
     );
     reportTable->setAlternatingRowColors(true);
-    reportTable->setSelectionBehavior(QAbstractItemView::SelectRows);
     reportTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+
+    // Cho phép người dùng tự do kéo thả chỉnh sửa độ rộng từng cột (Interactive Resize Mode)
+    reportTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
+    reportTable->horizontalHeader()->setSectionsClickable(true);
     reportTable->horizontalHeader()->setStretchLastSection(false);
-    reportTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
-    reportTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
-    for (int col = 2; col < 9; ++col) {
-        reportTable->horizontalHeader()->setSectionResizeMode(col, QHeaderView::ResizeToContents);
-    }
     reportTable->horizontalHeader()->setSortIndicatorShown(true);
+
+    // Thiết lập độ rộng mặc định ban đầu thoáng đẹp cho từng cột
+    reportTable->setColumnWidth(0, 185); // Mã sản phẩm
+    reportTable->setColumnWidth(1, 340); // Tên sản phẩm
+    reportTable->setColumnWidth(2, 110); // Tồn đầu kỳ
+    reportTable->setColumnWidth(3, 130); // Nhập trong tháng
+    reportTable->setColumnWidth(4, 130); // Xuất trong tháng
+    reportTable->setColumnWidth(5, 120); // Tồn cuối tháng
+    reportTable->setColumnWidth(6, 110); // Tồn khả dụng
+    reportTable->setColumnWidth(7, 120); // Hàng bảo hành
+    reportTable->setColumnWidth(8, 120); // Hàng lỗi / hỏng
+
+    // Kích hoạt tính năng chọn ("bôi đen") ô/vùng ô và sao chép (Ctrl+C / Chuột phải / Double-click)
+    TableClipboardHelper::setupClipboardForTable(reportTable, statusLabel);
 
     // Initially blank (Rule 9.6: Ban đầu sẽ không hiển thị thông tin gì cả)
     reportTable->setRowCount(0);
