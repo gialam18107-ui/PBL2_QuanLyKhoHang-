@@ -123,7 +123,6 @@ namespace user_query {
     // - Trả về danh sách kết quả sản phẩm và Record grandTotal chứa dòng tổng cộng
     // ========================================================
     void periodic_inventory_report(Database *db, int month, int year, Vector<Record> &results, Record &grandTotal);
-    bool export_periodic_inventory_report_csv(int month, int year, const Vector<Record> &results, const Record &grandTotal, const string &outPath = "");
 }
 
 #endif // USERQUERY_H

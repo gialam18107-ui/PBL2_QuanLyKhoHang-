@@ -9,6 +9,7 @@
 #include <QElapsedTimer>
 
 #include "data_io/DatabaseIO.h"
+#include "data_io/ExportReport.h"
 #include "schema/UserQuery.h"
 #include "ui/TableClipboardHelper.h"
 #include "ui/TransactionHubWidget.h"
@@ -2028,7 +2029,7 @@ void MainWindow::setupReportPage()
             QMessageBox::warning(this, "Thông báo", "Chưa có dữ liệu báo cáo. Vui lòng bấm 'Xem báo cáo' trước khi xuất file CSV!");
             return;
         }
-        bool ok = user_query::export_periodic_inventory_report_csv(cachedMonth, cachedYear, cachedReportRecords, cachedGrandTotal);
+        bool ok = DataIO::export_periodic_inventory_report_csv(cachedMonth, cachedYear, cachedReportRecords, cachedGrandTotal);
         if (ok) {
             QString filename = QString("report/BaoCao_Thang_%1_Nam_%2.csv")
                                     .arg(cachedMonth, 2, 10, QChar('0'))
