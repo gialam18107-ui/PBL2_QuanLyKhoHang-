@@ -4,6 +4,7 @@
 #include "database/Database.h"
 #include "database/Record.h"
 #include "datastructure/vector/Vector.h"
+#include "query/Query.h"
 #include <string>
 
 using namespace std;
@@ -12,7 +13,9 @@ namespace user_query {
     // ========================================================
     // SORT TRÊN KẾT QUẢ VECTOR<RECORD>
     // ========================================================
-    void sort_query_results(Vector<Record>& records, const string& chosenColumn, bool ascending = true);
+    inline void sort_query_results(Vector<Record>& records, const string& chosenColumn, bool ascending = true) {
+        Query::querySort(records, chosenColumn, ascending);
+    }
 
     // ========================================================
     // GIAO DIỆN TRUY VẤN (USER QUERY)

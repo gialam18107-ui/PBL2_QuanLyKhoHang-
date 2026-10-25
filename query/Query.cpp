@@ -297,7 +297,7 @@ Vector<Record> count(Vector<Record> &data, Pair<string, string> groupedColumns, 
 // SORT FUNCTIONS
 // ============================================================
 
-void querySort(Vector<Record> &data, string groupedColumn, bool ascending)
+void querySort(Vector<Record> &data, const string &groupedColumn, bool ascending)
 {
     std::sort(data.begin(), data.end(), [&](const Record& a, const Record& b) {
         if (!a.has(groupedColumn) || !b.has(groupedColumn)) return false;
@@ -309,7 +309,7 @@ void querySort(Vector<Record> &data, string groupedColumn, bool ascending)
     });
 }
 
-void querySort(Vector<Record> &data, Pair<string, string> groupedColumns, bool ascending)
+void querySort(Vector<Record> &data, const Pair<string, string> &groupedColumns, bool ascending)
 {
     std::sort(data.begin(), data.end(), [&](const Record& a, const Record& b) {
         if (!a.has(groupedColumns.first) || !b.has(groupedColumns.first)) return false;

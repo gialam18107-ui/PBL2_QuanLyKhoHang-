@@ -20,8 +20,8 @@ namespace Query {
     Vector<Record> count(Vector<Record> &data, Pair<string, string> groupedColumns, string calculatedColumn);
     Vector<Record> count(Vector<Record> &data, Pair<string, string> groupedColumns, Pair<string, string> calculatedColumn);
 
-    void querySort(Vector<Record> &data, string groupedColumn, bool ascending);
-    void querySort(Vector<Record> &data, Pair<string, string> groupedColumns, bool ascending);
+    void querySort(Vector<Record> &data, const string &groupedColumn, bool ascending = true);
+    void querySort(Vector<Record> &data, const Pair<string, string> &groupedColumns, bool ascending = true);
 
     Vector<Record> filterRecords(const Table &table, string selectedColumn, const Value &value);
     Vector<Record> filterRecords(const Table &table, string selectedColumn, const Value &minVal, const Value &maxVal);
