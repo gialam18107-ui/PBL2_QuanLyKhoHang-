@@ -88,16 +88,19 @@ void MainWindow::setupMenuBar()
         "1. Tồn kho Sản phẩm (PRODUCT_QUANTITY)",
         "2. Danh sách Unit / Serial (UNIT_INVENTORY)",
         "3. Lịch sử trạng thái Unit (STATUS_HISTORY)",
-        "4. Đơn Nhập kho (INBOUND_TRANSACTION)",
-        "5. Chi tiết Đơn nhập (INBOUND_DETAIL)",
-        "6. Đợt Nhận hàng (DELIVERY)",
-        "7. Chi tiết Nhận hàng (DELIVERY_DETAIL)",
-        "8. Đơn Xuất kho (OUTBOUND_TRANSACTION)",
-        "9. Chi tiết Đơn xuất (OUTBOUND_DETAIL)",
-        "10. Đợt Xuất hàng (SHIPMENT)",
-        "11. Chi tiết Xuất hàng (SHIPMENT_DETAIL)"
+        "4. Quản lý Đơn Nhập kho (INBOUND HUB)",
+        "   ↳ 5. Chi tiết Đơn nhập (Toàn màn hình)",
+        "   ↳ 6. Đợt Nhận hàng (Toàn màn hình)",
+        "   ↳ 7. Chi tiết Nhận hàng (Toàn màn hình)",
+        "8. Quản lý Đơn Xuất kho (OUTBOUND HUB)",
+        "   ↳ 9. Chi tiết Đơn xuất (Toàn màn hình)",
+        "   ↳ 10. Đợt Xuất hàng (Toàn màn hình)",
+        "   ↳ 11. Chi tiết Xuất hàng (Toàn màn hình)"
     };
     for (int i = 0; i < whTitles.size(); ++i) {
+        if (i == 3 || i == 7) {
+            warehouseMenu->addSeparator();
+        }
         auto* act = warehouseMenu->addAction(whTitles[i]);
         connect(act, &QAction::triggered, [this, i]() {
             selectWarehouseQuery(i);
@@ -1342,14 +1345,34 @@ void MainWindow::setupSidebar()
     warehouseList->addItem("📊 1. Tồn kho Sản phẩm (PRODUCT_QUANTITY)");
     warehouseList->addItem("🏷️ 2. Danh sách Unit / Serial (UNIT_INVENTORY)");
     warehouseList->addItem("📜 3. Lịch sử trạng thái Unit (STATUS_HISTORY)");
-    warehouseList->addItem("📥 4. Quản lý Đơn Nhập kho (INBOUND HUB)");
-    warehouseList->addItem("📋 5. Chi tiết Đơn nhập (INBOUND_DETAIL)");
-    warehouseList->addItem("🚚 6. Đợt Nhận hàng (DELIVERY)");
-    warehouseList->addItem("📦 7. Chi tiết Nhận hàng (DELIVERY_DETAIL)");
-    warehouseList->addItem("📤 8. Quản lý Đơn Xuất kho (OUTBOUND HUB)");
-    warehouseList->addItem("📝 9. Chi tiết Đơn xuất (OUTBOUND_DETAIL)");
-    warehouseList->addItem("🚛 10. Đợt Xuất hàng (SHIPMENT)");
-    warehouseList->addItem("📦 11. Chi tiết Xuất hàng (SHIPMENT_DETAIL)");
+
+    // Phân hệ Nhập kho: Hub & Chi tiết toàn màn hình
+    auto* inHubItem = new QListWidgetItem("📥 4. Quản lý Đơn Nhập kho (INBOUND HUB)", warehouseList);
+    QFont inHubFont = inHubItem->font();
+    inHubFont.setBold(true);
+    inHubItem->setFont(inHubFont);
+
+    auto* inDetailItem = new QListWidgetItem("      ↳ 5. Chi tiết Đơn nhập (Toàn màn hình)", warehouseList);
+    inDetailItem->setForeground(QColor("#94a3b8"));
+
+    auto* dlvItem = new QListWidgetItem("      ↳ 6. Đợt Nhận hàng (Toàn màn hình)", warehouseList);
+    dlvItem->setForeground(QColor("#94a3b8"));
+
+    auto* dlvDetailItem = new QListWidgetItem("      ↳ 7. Chi tiết Nhận hàng (Toàn màn hình)", warehouseList);
+    dlvDetailItem->setForeground(QColor("#94a3b8"));
+
+    // Phân hệ Xuất kho: Hub & Chi tiết toàn màn hình
+    auto* outHubItem = new QListWidgetItem("📤 8. Quản lý Đơn Xuất kho (OUTBOUND HUB)", warehouseList);
+    outHubItem->setFont(inHubFont);
+
+    auto* outDetailItem = new QListWidgetItem("      ↳ 9. Chi tiết Đơn xuất (Toàn màn hình)", warehouseList);
+    outDetailItem->setForeground(QColor("#94a3b8"));
+
+    auto* shipItem = new QListWidgetItem("      ↳ 10. Đợt Xuất hàng (Toàn màn hình)", warehouseList);
+    shipItem->setForeground(QColor("#94a3b8"));
+
+    auto* shipDetailItem = new QListWidgetItem("      ↳ 11. Chi tiết Xuất hàng (Toàn màn hình)", warehouseList);
+    shipDetailItem->setForeground(QColor("#94a3b8"));
 
     // 2. Category List (8 bảng danh mục sản phẩm tách biệt - Rule 9.2)
     categoryList->addItem("⚡ 1. Bộ vi xử lý (CPU)");

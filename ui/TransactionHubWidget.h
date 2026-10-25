@@ -130,6 +130,27 @@ private:
     QTableWidget* logisticsDetailTable;
     QLabel* logisticsDetailCountLabel;
 
+    // Maximize/Restore support
+    void toggleMaximizePanel(int panelIndex);
+
+    QSplitter* mainSplitter;
+    QWidget* masterContainer;
+    QWidget* bottomContainer;
+
+    QSplitter* horizontalSplitter;
+    QWidget* leftContainer;
+    QWidget* rightContainer;
+
+    QSplitter* rightVerticalSplitter;
+    QWidget* rightUpperContainer;
+    QWidget* rightLowerContainer;
+
+    QPushButton* btnMaxMaster;
+    QPushButton* btnMaxLeft;
+    QPushButton* btnMaxRightUpper;
+    QPushButton* btnMaxRightLower;
+    int currentMaximizedPanel;
+
     QStringList masterHeaders;
     std::vector<std::string> masterKeys;
     std::vector<FilterColumnDef> filterDefs;

@@ -15,7 +15,12 @@ TransactionHubWidget::TransactionHubWidget(HubType type, Database* database, con
       masterTable(nullptr), detailBanner(nullptr),
       orderDetailTable(nullptr), orderDetailCountLabel(nullptr),
       logisticsTable(nullptr), logisticsCountLabel(nullptr),
-      logisticsDetailTable(nullptr), logisticsDetailCountLabel(nullptr)
+      logisticsDetailTable(nullptr), logisticsDetailCountLabel(nullptr),
+      mainSplitter(nullptr), masterContainer(nullptr), bottomContainer(nullptr),
+      horizontalSplitter(nullptr), leftContainer(nullptr), rightContainer(nullptr),
+      rightVerticalSplitter(nullptr), rightUpperContainer(nullptr), rightLowerContainer(nullptr),
+      btnMaxMaster(nullptr), btnMaxLeft(nullptr), btnMaxRightUpper(nullptr), btnMaxRightLower(nullptr),
+      currentMaximizedPanel(-1)
 {
     setupUI();
 }
@@ -282,11 +287,31 @@ void TransactionHubWidget::setupToolbarUI(QVBoxLayout* mainLayout)
         "QPushButton:pressed { background-color: #047857; }"
     );
 
+    btnMaxMaster = new QPushButton("⛶ Phóng to", this);
+    btnMaxMaster->setCursor(Qt::PointingHandCursor);
+    btnMaxMaster->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #f1f5f9;"
+        "  border: 1px solid #cbd5e1;"
+        "  border-radius: 6px;"
+        "  padding: 5px 12px;"
+        "  font-size: 13px;"
+        "  font-weight: 500;"
+        "  color: #475569;"
+        "}"
+        "QPushButton:hover { background-color: #e2e8f0; color: #0f172a; }"
+        "QPushButton:pressed { background-color: #cbd5e1; }"
+    );
+    connect(btnMaxMaster, &QPushButton::clicked, [this]() {
+        toggleMaximizePanel(0);
+    });
+
     controlsLayout->addWidget(searchInput);
     controlsLayout->addWidget(countLabel);
     controlsLayout->addStretch();
     controlsLayout->addWidget(refreshBtn);
     controlsLayout->addWidget(exportBtn);
+    controlsLayout->addWidget(btnMaxMaster);
 
     mainLayout->addLayout(controlsLayout);
 
@@ -304,7 +329,7 @@ void TransactionHubWidget::setupToolbarUI(QVBoxLayout* mainLayout)
 void TransactionHubWidget::setupSplitterUI(QVBoxLayout* mainLayout)
 {
     // Vertical splitter dividing Master Table (Top) and Dual-Panel Detail (Bottom)
-    auto* mainSplitter = new QSplitter(Qt::Vertical, this);
+    mainSplitter = new QSplitter(Qt::Vertical, this);
     mainSplitter->setStyleSheet(
         "QSplitter::handle {"
         "  background-color: #cbd5e1;"
@@ -318,7 +343,7 @@ void TransactionHubWidget::setupSplitterUI(QVBoxLayout* mainLayout)
     // -------------------------------------------------------------
     // TOP PANE: Master Transaction Table
     // -------------------------------------------------------------
-    auto* masterContainer = new QWidget(mainSplitter);
+    masterContainer = new QWidget(mainSplitter);
     auto* masterLayout = new QVBoxLayout(masterContainer);
     masterLayout->setContentsMargins(0, 0, 0, 0);
     masterLayout->setSpacing(4);
@@ -363,7 +388,7 @@ void TransactionHubWidget::setupSplitterUI(QVBoxLayout* mainLayout)
     // -------------------------------------------------------------
     // BOTTOM PANE: Dual-Panel Detail (Left: Order Items | Right: Logistics Batches & Items)
     // -------------------------------------------------------------
-    auto* bottomContainer = new QWidget(mainSplitter);
+    bottomContainer = new QWidget(mainSplitter);
     auto* bottomLayout = new QVBoxLayout(bottomContainer);
     bottomLayout->setContentsMargins(0, 6, 0, 0);
     bottomLayout->setSpacing(6);
@@ -385,7 +410,7 @@ void TransactionHubWidget::setupSplitterUI(QVBoxLayout* mainLayout)
     bottomLayout->addWidget(detailBanner);
 
     // Horizontal splitter dividing Left (Order items) and Right (Logistics)
-    auto* horizontalSplitter = new QSplitter(Qt::Horizontal, bottomContainer);
+    horizontalSplitter = new QSplitter(Qt::Horizontal, bottomContainer);
     horizontalSplitter->setStyleSheet(
         "QSplitter::handle {"
         "  background-color: #cbd5e1;"
@@ -399,7 +424,7 @@ void TransactionHubWidget::setupSplitterUI(QVBoxLayout* mainLayout)
     // -------------------------------------------------------------
     // SUB-PANEL 1 (LEFT): Kế hoạch đơn hàng (inbound_detail / outbound_detail)
     // -------------------------------------------------------------
-    auto* leftContainer = new QWidget(horizontalSplitter);
+    leftContainer = new QWidget(horizontalSplitter);
     auto* leftLayout = new QVBoxLayout(leftContainer);
     leftLayout->setContentsMargins(0, 0, 0, 0);
     leftLayout->setSpacing(4);
@@ -412,9 +437,30 @@ void TransactionHubWidget::setupSplitterUI(QVBoxLayout* mainLayout)
     leftTitleLabel->setStyleSheet("font-size: 13px; font-weight: bold; color: #1e293b;");
     orderDetailCountLabel = new QLabel("(0 mặt hàng)", leftContainer);
     orderDetailCountLabel->setStyleSheet("font-size: 12px; color: #64748b;");
+
+    btnMaxLeft = new QPushButton("⛶ Phóng to", leftContainer);
+    btnMaxLeft->setCursor(Qt::PointingHandCursor);
+    btnMaxLeft->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #f1f5f9;"
+        "  border: 1px solid #cbd5e1;"
+        "  border-radius: 4px;"
+        "  padding: 3px 8px;"
+        "  font-size: 11px;"
+        "  font-weight: 500;"
+        "  color: #475569;"
+        "}"
+        "QPushButton:hover { background-color: #e2e8f0; color: #0f172a; }"
+        "QPushButton:pressed { background-color: #cbd5e1; }"
+    );
+    connect(btnMaxLeft, &QPushButton::clicked, [this]() {
+        toggleMaximizePanel(1);
+    });
+
     leftHeaderLayout->addWidget(leftTitleLabel);
     leftHeaderLayout->addWidget(orderDetailCountLabel);
     leftHeaderLayout->addStretch();
+    leftHeaderLayout->addWidget(btnMaxLeft);
     leftLayout->addLayout(leftHeaderLayout);
 
     orderDetailTable = new QTableWidget(leftContainer);
@@ -439,13 +485,13 @@ void TransactionHubWidget::setupSplitterUI(QVBoxLayout* mainLayout)
     // -------------------------------------------------------------
     // SUB-PANEL 2 (RIGHT): Thực tế giao vận (delivery + delivery_detail / shipment + shipment_detail)
     // -------------------------------------------------------------
-    auto* rightContainer = new QWidget(horizontalSplitter);
+    rightContainer = new QWidget(horizontalSplitter);
     auto* rightLayout = new QVBoxLayout(rightContainer);
     rightLayout->setContentsMargins(0, 0, 0, 0);
     rightLayout->setSpacing(4);
 
     // Vertical splitter dividing Upper Right (Logistics Batches) and Lower Right (Batch Items)
-    auto* rightVerticalSplitter = new QSplitter(Qt::Vertical, rightContainer);
+    rightVerticalSplitter = new QSplitter(Qt::Vertical, rightContainer);
     rightVerticalSplitter->setStyleSheet(
         "QSplitter::handle {"
         "  background-color: #cbd5e1;"
@@ -457,7 +503,7 @@ void TransactionHubWidget::setupSplitterUI(QVBoxLayout* mainLayout)
     );
 
     // Right Upper: Logistics Batches (delivery / shipment)
-    auto* rightUpperContainer = new QWidget(rightVerticalSplitter);
+    rightUpperContainer = new QWidget(rightVerticalSplitter);
     auto* rightUpperLayout = new QVBoxLayout(rightUpperContainer);
     rightUpperLayout->setContentsMargins(0, 0, 0, 0);
     rightUpperLayout->setSpacing(4);
@@ -470,9 +516,18 @@ void TransactionHubWidget::setupSplitterUI(QVBoxLayout* mainLayout)
     rightUpperTitleLabel->setStyleSheet("font-size: 13px; font-weight: bold; color: #1e293b;");
     logisticsCountLabel = new QLabel("(0 đợt)", rightUpperContainer);
     logisticsCountLabel->setStyleSheet("font-size: 12px; color: #64748b;");
+
+    btnMaxRightUpper = new QPushButton("⛶ Phóng to", rightUpperContainer);
+    btnMaxRightUpper->setCursor(Qt::PointingHandCursor);
+    btnMaxRightUpper->setStyleSheet(btnMaxLeft->styleSheet());
+    connect(btnMaxRightUpper, &QPushButton::clicked, [this]() {
+        toggleMaximizePanel(2);
+    });
+
     rightUpperHeaderLayout->addWidget(rightUpperTitleLabel);
     rightUpperHeaderLayout->addWidget(logisticsCountLabel);
     rightUpperHeaderLayout->addStretch();
+    rightUpperHeaderLayout->addWidget(btnMaxRightUpper);
     rightUpperLayout->addLayout(rightUpperHeaderLayout);
 
     logisticsTable = new QTableWidget(rightUpperContainer);
@@ -498,7 +553,7 @@ void TransactionHubWidget::setupSplitterUI(QVBoxLayout* mainLayout)
     rightVerticalSplitter->addWidget(rightUpperContainer);
 
     // Right Lower: Batch Line Items (delivery_detail / shipment_detail)
-    auto* rightLowerContainer = new QWidget(rightVerticalSplitter);
+    rightLowerContainer = new QWidget(rightVerticalSplitter);
     auto* rightLowerLayout = new QVBoxLayout(rightLowerContainer);
     rightLowerLayout->setContentsMargins(0, 0, 0, 0);
     rightLowerLayout->setSpacing(4);
@@ -511,9 +566,18 @@ void TransactionHubWidget::setupSplitterUI(QVBoxLayout* mainLayout)
     rightLowerTitleLabel->setStyleSheet("font-size: 13px; font-weight: bold; color: #1e293b;");
     logisticsDetailCountLabel = new QLabel("(0 mục)", rightLowerContainer);
     logisticsDetailCountLabel->setStyleSheet("font-size: 12px; color: #64748b;");
+
+    btnMaxRightLower = new QPushButton("⛶ Phóng to", rightLowerContainer);
+    btnMaxRightLower->setCursor(Qt::PointingHandCursor);
+    btnMaxRightLower->setStyleSheet(btnMaxLeft->styleSheet());
+    connect(btnMaxRightLower, &QPushButton::clicked, [this]() {
+        toggleMaximizePanel(3);
+    });
+
     rightLowerHeaderLayout->addWidget(rightLowerTitleLabel);
     rightLowerHeaderLayout->addWidget(logisticsDetailCountLabel);
     rightLowerHeaderLayout->addStretch();
+    rightLowerHeaderLayout->addWidget(btnMaxRightLower);
     rightLowerLayout->addLayout(rightLowerHeaderLayout);
 
     logisticsDetailTable = new QTableWidget(rightLowerContainer);
@@ -606,6 +670,145 @@ void TransactionHubWidget::setupSplitterUI(QVBoxLayout* mainLayout)
         renderLogisticsDetails();
         logisticsDetailTable->horizontalHeader()->setSortIndicator(currentLogisticsDetailSortCol, currentLogisticsDetailSortAsc ? Qt::AscendingOrder : Qt::DescendingOrder);
     });
+}
+
+void TransactionHubWidget::toggleMaximizePanel(int panelIndex)
+{
+    QString normalStyle =
+        "QPushButton {"
+        "  background-color: #f1f5f9;"
+        "  border: 1px solid #cbd5e1;"
+        "  border-radius: 4px;"
+        "  padding: 3px 8px;"
+        "  font-size: 11px;"
+        "  font-weight: 500;"
+        "  color: #475569;"
+        "}"
+        "QPushButton:hover { background-color: #e2e8f0; color: #0f172a; }"
+        "QPushButton:pressed { background-color: #cbd5e1; }";
+
+    QString activeStyle =
+        "QPushButton {"
+        "  background-color: #dbeafe;"
+        "  border: 1px solid #93c5fd;"
+        "  border-radius: 4px;"
+        "  padding: 3px 8px;"
+        "  font-size: 11px;"
+        "  font-weight: 600;"
+        "  color: #1d4ed8;"
+        "}"
+        "QPushButton:hover { background-color: #bfdbfe; }"
+        "QPushButton:pressed { background-color: #93c5fd; }";
+
+    if (currentMaximizedPanel == panelIndex) {
+        // Restore all panels
+        currentMaximizedPanel = -1;
+        masterContainer->show();
+        bottomContainer->show();
+        leftContainer->show();
+        rightContainer->show();
+        rightUpperContainer->show();
+        rightLowerContainer->show();
+
+        mainSplitter->setSizes({320, 480});
+        horizontalSplitter->setSizes({500, 600});
+
+        btnMaxMaster->setText("⛶ Phóng to");
+        btnMaxMaster->setStyleSheet(
+            "QPushButton {"
+            "  background-color: #f1f5f9;"
+            "  border: 1px solid #cbd5e1;"
+            "  border-radius: 6px;"
+            "  padding: 5px 12px;"
+            "  font-size: 13px;"
+            "  font-weight: 500;"
+            "  color: #475569;"
+            "}"
+            "QPushButton:hover { background-color: #e2e8f0; color: #0f172a; }"
+            "QPushButton:pressed { background-color: #cbd5e1; }"
+        );
+
+        btnMaxLeft->setText("⛶ Phóng to");
+        btnMaxLeft->setStyleSheet(normalStyle);
+
+        btnMaxRightUpper->setText("⛶ Phóng to");
+        btnMaxRightUpper->setStyleSheet(normalStyle);
+
+        btnMaxRightLower->setText("⛶ Phóng to");
+        btnMaxRightLower->setStyleSheet(normalStyle);
+        return;
+    }
+
+    currentMaximizedPanel = panelIndex;
+
+    // Reset all buttons to normal
+    btnMaxMaster->setText("⛶ Phóng to");
+    btnMaxMaster->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #f1f5f9;"
+        "  border: 1px solid #cbd5e1;"
+        "  border-radius: 6px;"
+        "  padding: 5px 12px;"
+        "  font-size: 13px;"
+        "  font-weight: 500;"
+        "  color: #475569;"
+        "}"
+        "QPushButton:hover { background-color: #e2e8f0; color: #0f172a; }"
+        "QPushButton:pressed { background-color: #cbd5e1; }"
+    );
+    btnMaxLeft->setText("⛶ Phóng to");
+    btnMaxLeft->setStyleSheet(normalStyle);
+    btnMaxRightUpper->setText("⛶ Phóng to");
+    btnMaxRightUpper->setStyleSheet(normalStyle);
+    btnMaxRightLower->setText("⛶ Phóng to");
+    btnMaxRightLower->setStyleSheet(normalStyle);
+
+    // Baseline show all
+    masterContainer->show();
+    bottomContainer->show();
+    leftContainer->show();
+    rightContainer->show();
+    rightUpperContainer->show();
+    rightLowerContainer->show();
+
+    if (panelIndex == 0) {
+        // Maximize Master Table
+        bottomContainer->hide();
+        btnMaxMaster->setText("🗗 Thu nhỏ");
+        btnMaxMaster->setStyleSheet(
+            "QPushButton {"
+            "  background-color: #dbeafe;"
+            "  border: 1px solid #93c5fd;"
+            "  border-radius: 6px;"
+            "  padding: 5px 12px;"
+            "  font-size: 13px;"
+            "  font-weight: 600;"
+            "  color: #1d4ed8;"
+            "}"
+            "QPushButton:hover { background-color: #bfdbfe; }"
+            "QPushButton:pressed { background-color: #93c5fd; }"
+        );
+    } else if (panelIndex == 1) {
+        // Maximize Order Details (Left)
+        masterContainer->hide();
+        rightContainer->hide();
+        btnMaxLeft->setText("🗗 Thu nhỏ");
+        btnMaxLeft->setStyleSheet(activeStyle);
+    } else if (panelIndex == 2) {
+        // Maximize Logistics Batches (Right Upper)
+        masterContainer->hide();
+        leftContainer->hide();
+        rightLowerContainer->hide();
+        btnMaxRightUpper->setText("🗗 Thu nhỏ");
+        btnMaxRightUpper->setStyleSheet(activeStyle);
+    } else if (panelIndex == 3) {
+        // Maximize Logistics Details (Right Lower)
+        masterContainer->hide();
+        leftContainer->hide();
+        rightUpperContainer->hide();
+        btnMaxRightLower->setText("🗗 Thu nhỏ");
+        btnMaxRightLower->setStyleSheet(activeStyle);
+    }
 }
 
 void TransactionHubWidget::setMasterColumns(const QStringList& displayHeaders, const std::vector<std::string>& columnKeys)
