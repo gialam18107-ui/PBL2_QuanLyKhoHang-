@@ -11,6 +11,7 @@
 #include "data_io/DatabaseIO.h"
 #include "schema/UserQuery.h"
 #include "ui/TableClipboardHelper.h"
+#include "ui/TransactionHubWidget.h"
 
 MainWindow::MainWindow(Database* database, QWidget* parent)
     : QMainWindow(parent), db(database),
@@ -612,12 +613,13 @@ void MainWindow::setupPages()
     // ========================================================
     // 4. INBOUND_TRANSACTION_QUERY
     // ========================================================
-    inboundTxnWidget = new QueryTableWidget(
-        "4. Đơn Nhập kho (INBOUND_TRANSACTION)",
-        "Danh sách các đơn đặt hàng nhập kho từ nhà cung cấp / đối tác",
+    inboundTxnWidget = new TransactionHubWidget(
+        HubType::INBOUND, db,
+        "4. Quản lý Đơn Nhập kho & Giao nhận (INBOUND HUB)",
+        "Khung hiển thị đối chiếu Kế hoạch đặt hàng và Tiến độ thực tế các đợt giao nhận (Format A)",
         this
     );
-    inboundTxnWidget->setColumns(
+    inboundTxnWidget->setMasterColumns(
         {"Mã đơn nhập", "Mã Đối tác / KH", "Ngày đặt", "Loại đơn", "Trạng thái", "Ghi chú"},
         {"inbound_transaction.inbound_code", "customer.customer_code", "inbound_transaction.order_at", "inbound_transaction.type", "inbound_transaction.status", "inbound_transaction.note"}
     );
@@ -755,12 +757,13 @@ void MainWindow::setupPages()
     // ========================================================
     // 8. OUTBOUND_TRANSACTION_QUERY
     // ========================================================
-    outboundTxnWidget = new QueryTableWidget(
-        "8. Đơn Xuất kho (OUTBOUND_TRANSACTION)",
-        "Danh sách các đơn bán hàng / xuất kho gửi đến khách hàng & đối tác",
+    outboundTxnWidget = new TransactionHubWidget(
+        HubType::OUTBOUND, db,
+        "8. Quản lý Đơn Xuất kho & Xuất hàng (OUTBOUND HUB)",
+        "Khung hiển thị đối chiếu Kế hoạch đặt hàng và Tiến độ thực tế các đợt xuất hàng (Format A)",
         this
     );
-    outboundTxnWidget->setColumns(
+    outboundTxnWidget->setMasterColumns(
         {"Mã đơn xuất", "Mã Khách hàng", "Ngày tạo", "Loại đơn xuất", "Trạng thái", "Ghi chú"},
         {"outbound_transaction.outbound_code", "customer.customer_code", "outbound_transaction.order_at", "outbound_transaction.type", "outbound_transaction.status", "outbound_transaction.note"}
     );
@@ -1339,11 +1342,11 @@ void MainWindow::setupSidebar()
     warehouseList->addItem("📊 1. Tồn kho Sản phẩm (PRODUCT_QUANTITY)");
     warehouseList->addItem("🏷️ 2. Danh sách Unit / Serial (UNIT_INVENTORY)");
     warehouseList->addItem("📜 3. Lịch sử trạng thái Unit (STATUS_HISTORY)");
-    warehouseList->addItem("📥 4. Đơn Nhập kho (INBOUND_TRANSACTION)");
+    warehouseList->addItem("📥 4. Quản lý Đơn Nhập kho (INBOUND HUB)");
     warehouseList->addItem("📋 5. Chi tiết Đơn nhập (INBOUND_DETAIL)");
     warehouseList->addItem("🚚 6. Đợt Nhận hàng (DELIVERY)");
     warehouseList->addItem("📦 7. Chi tiết Nhận hàng (DELIVERY_DETAIL)");
-    warehouseList->addItem("📤 8. Đơn Xuất kho (OUTBOUND_TRANSACTION)");
+    warehouseList->addItem("📤 8. Quản lý Đơn Xuất kho (OUTBOUND HUB)");
     warehouseList->addItem("📝 9. Chi tiết Đơn xuất (OUTBOUND_DETAIL)");
     warehouseList->addItem("🚛 10. Đợt Xuất hàng (SHIPMENT)");
     warehouseList->addItem("📦 11. Chi tiết Xuất hàng (SHIPMENT_DETAIL)");

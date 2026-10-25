@@ -17,6 +17,8 @@
 #include "database/Database.h"
 #include "QueryTableWidget.h"
 
+class TransactionHubWidget;
+
 class MainWindow : public QMainWindow
 {
 public:
@@ -74,11 +76,11 @@ private:
     QueryTableWidget* productQuantityWidget;
     QueryTableWidget* unitInventoryWidget;
     QueryTableWidget* statusHistoryWidget;
-    QueryTableWidget* inboundTxnWidget;
+    TransactionHubWidget* inboundTxnWidget;
     QueryTableWidget* inboundDetailWidget;
     QueryTableWidget* deliveryWidget;
     QueryTableWidget* deliveryDetailWidget;
-    QueryTableWidget* outboundTxnWidget;
+    TransactionHubWidget* outboundTxnWidget;
     QueryTableWidget* outboundDetailWidget;
     QueryTableWidget* shipmentWidget;
     QueryTableWidget* shipmentDetailWidget;

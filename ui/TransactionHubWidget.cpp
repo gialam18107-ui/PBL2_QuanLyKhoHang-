@@ -1,0 +1,1170 @@
+#include "TransactionHubWidget.h"
+#include "schema/UserQuery.h"
+#include "ui/TableClipboardHelper.h"
+
+#include <QHeaderView>
+#include <QFileDialog>
+#include <QMessageBox>
+#include <QFile>
+#include <QTextStream>
+#include <QDate>
+#include <algorithm>
+
+TransactionHubWidget::TransactionHubWidget(HubType type, Database* database, const QString& title, const QString& description, QWidget* parent)
+    : QWidget(parent), hubType(type), db(database), titleText(title), descText(description),
+      masterTable(nullptr), detailBanner(nullptr),
+      orderDetailTable(nullptr), orderDetailCountLabel(nullptr),
+      logisticsTable(nullptr), logisticsCountLabel(nullptr),
+      logisticsDetailTable(nullptr), logisticsDetailCountLabel(nullptr)
+{
+    setupUI();
+}
+
+void TransactionHubWidget::setupUI()
+{
+    auto* mainLayout = new QVBoxLayout(this);
+    mainLayout->setContentsMargins(16, 16, 16, 16);
+    mainLayout->setSpacing(10);
+
+    // 1. Header info
+    titleLabel = new QLabel(titleText, this);
+    titleLabel->setStyleSheet("font-size: 18px; font-weight: bold; color: #0f172a;");
+
+    descLabel = new QLabel(descText, this);
+    descLabel->setStyleSheet("font-size: 13px; color: #64748b; margin-bottom: 2px;");
+
+    mainLayout->addWidget(titleLabel);
+    mainLayout->addWidget(descLabel);
+
+    // 2. Filter bar (Rule 9.1)
+    setupFilterUI(mainLayout);
+
+    // 3. Toolbar controls (Search, count, refresh, export)
+    setupToolbarUI(mainLayout);
+
+    // 4. Splitter UI (Master table on top, Dual-panel detail on bottom)
+    setupSplitterUI(mainLayout);
+}
+
+void TransactionHubWidget::setupFilterUI(QVBoxLayout* mainLayout)
+{
+    filterFrame = new QFrame(this);
+    filterFrame->setStyleSheet(
+        "QFrame {"
+        "  background-color: #ffffff;"
+        "  border: 1px solid #e2e8f0;"
+        "  border-radius: 8px;"
+        "  padding: 4px;"
+        "}"
+    );
+
+    auto* filterLayout = new QHBoxLayout(filterFrame);
+    filterLayout->setContentsMargins(12, 8, 12, 8);
+    filterLayout->setSpacing(10);
+
+    auto* filterIconLabel = new QLabel("🎯 Tìm kiếm theo cấu trúc dữ liệu:", filterFrame);
+    filterIconLabel->setStyleSheet("font-size: 13px; font-weight: 600; color: #334155; border: none;");
+    filterLayout->addWidget(filterIconLabel);
+
+    filterColumnCombo = new QComboBox(filterFrame);
+    filterColumnCombo->setMinimumWidth(210);
+    filterColumnCombo->setStyleSheet(
+        "QComboBox {"
+        "  padding: 5px 10px;"
+        "  border: 1px solid #cbd5e1;"
+        "  border-radius: 6px;"
+        "  background-color: #f8fafc;"
+        "  font-size: 13px;"
+        "  color: #0f172a;"
+        "}"
+        "QComboBox:focus { border: 1px solid #2563eb; background-color: #ffffff; }"
+        "QComboBox QAbstractItemView {"
+        "  background-color: #ffffff;"
+        "  color: #0f172a;"
+        "  selection-background-color: #2563eb;"
+        "  selection-color: #ffffff;"
+        "  border: 1px solid #cbd5e1;"
+        "  padding: 4px;"
+        "}"
+    );
+    filterColumnCombo->addItem("-- Không lọc (Toàn bộ) --");
+    filterLayout->addWidget(filterColumnCombo);
+
+    // Input 1: EXACT_TEXT
+    filterExactInput = new QLineEdit(filterFrame);
+    filterExactInput->setPlaceholderText("Nhập giá trị chính xác để tìm...");
+    filterExactInput->setClearButtonEnabled(true);
+    filterExactInput->setMinimumWidth(220);
+    filterExactInput->setStyleSheet(
+        "QLineEdit {"
+        "  padding: 5px 10px;"
+        "  border: 1px solid #cbd5e1;"
+        "  border-radius: 6px;"
+        "  background-color: #ffffff;"
+        "  color: #0f172a;"
+        "  font-size: 13px;"
+        "}"
+        "QLineEdit:focus { border: 1px solid #2563eb; }"
+    );
+    filterExactInput->hide();
+    filterLayout->addWidget(filterExactInput);
+
+    // Input 2: DATE_RANGE
+    filterDateWidget = new QWidget(filterFrame);
+    auto* dateLayout = new QHBoxLayout(filterDateWidget);
+    dateLayout->setContentsMargins(0, 0, 0, 0);
+    dateLayout->setSpacing(6);
+
+    auto* fromLabel = new QLabel("Từ:", filterDateWidget);
+    fromLabel->setStyleSheet("font-size: 13px; color: #475569; border: none;");
+    fromDateEdit = new QDateEdit(QDate::currentDate().addMonths(-6), filterDateWidget);
+    fromDateEdit->setCalendarPopup(true);
+    fromDateEdit->setDisplayFormat("yyyy-MM-dd");
+    fromDateEdit->setStyleSheet(
+        "QDateEdit {"
+        "  padding: 5px 8px;"
+        "  border: 1px solid #cbd5e1;"
+        "  border-radius: 6px;"
+        "  background-color: #ffffff;"
+        "  color: #0f172a;"
+        "  font-size: 13px;"
+        "}"
+    );
+
+    auto* toLabel = new QLabel("Đến:", filterDateWidget);
+    toLabel->setStyleSheet("font-size: 13px; color: #475569; border: none;");
+    toDateEdit = new QDateEdit(QDate::currentDate().addMonths(3), filterDateWidget);
+    toDateEdit->setCalendarPopup(true);
+    toDateEdit->setDisplayFormat("yyyy-MM-dd");
+    toDateEdit->setStyleSheet(
+        "QDateEdit {"
+        "  padding: 5px 8px;"
+        "  border: 1px solid #cbd5e1;"
+        "  border-radius: 6px;"
+        "  background-color: #ffffff;"
+        "  color: #0f172a;"
+        "  font-size: 13px;"
+        "}"
+    );
+
+    dateLayout->addWidget(fromLabel);
+    dateLayout->addWidget(fromDateEdit);
+    dateLayout->addWidget(toLabel);
+    dateLayout->addWidget(toDateEdit);
+    filterDateWidget->hide();
+    filterLayout->addWidget(filterDateWidget);
+
+    // Input 3: SELECT_OR_TYPE
+    filterSelectCombo = new QComboBox(filterFrame);
+    filterSelectCombo->setEditable(true);
+    filterSelectCombo->setMinimumWidth(220);
+    filterSelectCombo->setStyleSheet(
+        "QComboBox {"
+        "  padding: 5px 10px;"
+        "  border: 1px solid #cbd5e1;"
+        "  border-radius: 6px;"
+        "  background-color: #ffffff;"
+        "  font-size: 13px;"
+        "  color: #0f172a;"
+        "}"
+        "QComboBox:focus { border: 1px solid #2563eb; }"
+        "QComboBox QAbstractItemView {"
+        "  background-color: #ffffff;"
+        "  color: #0f172a;"
+        "  selection-background-color: #2563eb;"
+        "  selection-color: #ffffff;"
+        "  border: 1px solid #cbd5e1;"
+        "  padding: 4px;"
+        "}"
+    );
+    filterSelectCombo->hide();
+    filterLayout->addWidget(filterSelectCombo);
+
+    // Buttons
+    applyFilterBtn = new QPushButton("🔍 Tìm kiếm", filterFrame);
+    applyFilterBtn->setCursor(Qt::PointingHandCursor);
+    applyFilterBtn->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #2563eb;"
+        "  border: none;"
+        "  border-radius: 6px;"
+        "  padding: 5px 14px;"
+        "  font-size: 13px;"
+        "  font-weight: 500;"
+        "  color: #ffffff;"
+        "}"
+        "QPushButton:hover { background-color: #1d4ed8; }"
+        "QPushButton:pressed { background-color: #1e40af; }"
+    );
+    applyFilterBtn->hide();
+    filterLayout->addWidget(applyFilterBtn);
+
+    resetFilterBtn = new QPushButton("✖ Bỏ lọc", filterFrame);
+    resetFilterBtn->setCursor(Qt::PointingHandCursor);
+    resetFilterBtn->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #f1f5f9;"
+        "  border: 1px solid #cbd5e1;"
+        "  border-radius: 6px;"
+        "  padding: 5px 14px;"
+        "  font-size: 13px;"
+        "  color: #475569;"
+        "}"
+        "QPushButton:hover { background-color: #e2e8f0; color: #0f172a; }"
+        "QPushButton:pressed { background-color: #cbd5e1; }"
+    );
+    filterLayout->addWidget(resetFilterBtn);
+    filterLayout->addStretch();
+
+    mainLayout->addWidget(filterFrame);
+
+    connect(filterColumnCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), [this](int idx) {
+        onFilterColumnChanged(idx);
+    });
+    connect(applyFilterBtn, &QPushButton::clicked, [this]() { applyFilter(); });
+    connect(resetFilterBtn, &QPushButton::clicked, [this]() { resetFilter(); });
+    connect(filterExactInput, &QLineEdit::returnPressed, [this]() { applyFilter(); });
+    connect(filterSelectCombo->lineEdit(), &QLineEdit::returnPressed, [this]() { applyFilter(); });
+}
+
+void TransactionHubWidget::setupToolbarUI(QVBoxLayout* mainLayout)
+{
+    auto* controlsLayout = new QHBoxLayout();
+    controlsLayout->setSpacing(10);
+
+    searchInput = new QLineEdit(this);
+    searchInput->setPlaceholderText("🔍 Tìm nhanh trong bảng kết quả...");
+    searchInput->setClearButtonEnabled(true);
+    searchInput->setMaximumWidth(320);
+    searchInput->setStyleSheet(
+        "QLineEdit {"
+        "  padding: 5px 10px;"
+        "  border: 1px solid #cbd5e1;"
+        "  border-radius: 6px;"
+        "  background-color: #ffffff;"
+        "  font-size: 13px;"
+        "  color: #0f172a;"
+        "}"
+        "QLineEdit:focus { border: 1px solid #2563eb; }"
+    );
+
+    countLabel = new QLabel(this);
+    countLabel->setStyleSheet("font-size: 12px; color: #64748b; font-weight: 500;");
+
+    refreshBtn = new QPushButton("🔄 Làm mới", this);
+    refreshBtn->setCursor(Qt::PointingHandCursor);
+    refreshBtn->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #f8fafc;"
+        "  border: 1px solid #cbd5e1;"
+        "  border-radius: 6px;"
+        "  padding: 5px 14px;"
+        "  font-size: 13px;"
+        "  color: #334155;"
+        "}"
+        "QPushButton:hover { background-color: #e2e8f0; }"
+        "QPushButton:pressed { background-color: #cbd5e1; }"
+    );
+
+    exportBtn = new QPushButton("📥 Xuất CSV", this);
+    exportBtn->setCursor(Qt::PointingHandCursor);
+    exportBtn->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #10b981;"
+        "  border: none;"
+        "  border-radius: 6px;"
+        "  padding: 5px 14px;"
+        "  font-size: 13px;"
+        "  color: #ffffff;"
+        "  font-weight: 500;"
+        "}"
+        "QPushButton:hover { background-color: #059669; }"
+        "QPushButton:pressed { background-color: #047857; }"
+    );
+
+    controlsLayout->addWidget(searchInput);
+    controlsLayout->addWidget(countLabel);
+    controlsLayout->addStretch();
+    controlsLayout->addWidget(refreshBtn);
+    controlsLayout->addWidget(exportBtn);
+
+    mainLayout->addLayout(controlsLayout);
+
+    connect(searchInput, &QLineEdit::textChanged, [this](const QString& q) {
+        filterMasterRows(q);
+    });
+    connect(refreshBtn, &QPushButton::clicked, [this]() {
+        if (onRefresh) onRefresh();
+    });
+    connect(exportBtn, &QPushButton::clicked, [this]() {
+        exportMasterCsv();
+    });
+}
+
+void TransactionHubWidget::setupSplitterUI(QVBoxLayout* mainLayout)
+{
+    // Vertical splitter dividing Master Table (Top) and Dual-Panel Detail (Bottom)
+    auto* mainSplitter = new QSplitter(Qt::Vertical, this);
+    mainSplitter->setStyleSheet(
+        "QSplitter::handle {"
+        "  background-color: #cbd5e1;"
+        "  height: 4px;"
+        "}"
+        "QSplitter::handle:hover {"
+        "  background-color: #2563eb;"
+        "}"
+    );
+
+    // -------------------------------------------------------------
+    // TOP PANE: Master Transaction Table
+    // -------------------------------------------------------------
+    auto* masterContainer = new QWidget(mainSplitter);
+    auto* masterLayout = new QVBoxLayout(masterContainer);
+    masterLayout->setContentsMargins(0, 0, 0, 0);
+    masterLayout->setSpacing(4);
+
+    masterTable = new QTableWidget(masterContainer);
+    masterTable->setAlternatingRowColors(true);
+    masterTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    masterTable->verticalHeader()->setVisible(false);
+    masterTable->horizontalHeader()->setHighlightSections(false);
+    masterTable->horizontalHeader()->setSectionsClickable(true);
+    masterTable->horizontalHeader()->setSortIndicatorShown(true);
+    masterTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
+    masterTable->horizontalHeader()->setStretchLastSection(true);
+
+    masterTable->setStyleSheet(
+        "QTableWidget {"
+        "  background-color: #ffffff;"
+        "  alternate-background-color: #f8fafc;"
+        "  border: 1px solid #e2e8f0;"
+        "  border-radius: 8px;"
+        "  gridline-color: #f1f5f9;"
+        "  font-size: 13px;"
+        "  color: #1e293b;"
+        "}"
+        "QTableWidget::item { padding: 6px 10px; }"
+        "QTableWidget::item:selected { background-color: #dbeafe; color: #1e40af; }"
+        "QHeaderView::section {"
+        "  background-color: #f1f5f9;"
+        "  color: #334155;"
+        "  font-weight: 600;"
+        "  font-size: 13px;"
+        "  padding: 7px 10px;"
+        "  border: none;"
+        "  border-bottom: 2px solid #cbd5e1;"
+        "  border-right: 1px solid #e2e8f0;"
+        "}"
+    );
+    TableClipboardHelper::setupClipboardForTable(masterTable);
+    masterLayout->addWidget(masterTable);
+    mainSplitter->addWidget(masterContainer);
+
+    // -------------------------------------------------------------
+    // BOTTOM PANE: Dual-Panel Detail (Left: Order Items | Right: Logistics Batches & Items)
+    // -------------------------------------------------------------
+    auto* bottomContainer = new QWidget(mainSplitter);
+    auto* bottomLayout = new QVBoxLayout(bottomContainer);
+    bottomLayout->setContentsMargins(0, 6, 0, 0);
+    bottomLayout->setSpacing(6);
+
+    // Detail banner showing currently selected transaction info
+    detailBanner = new QLabel("📌 Vui lòng chọn một đơn hàng ở bảng trên để xem chi tiết đối chiếu", bottomContainer);
+    detailBanner->setStyleSheet(
+        "QLabel {"
+        "  background-color: #f8fafc;"
+        "  border: 1px solid #cbd5e1;"
+        "  border-left: 4px solid #2563eb;"
+        "  border-radius: 6px;"
+        "  padding: 6px 12px;"
+        "  font-size: 13px;"
+        "  font-weight: 600;"
+        "  color: #1e293b;"
+        "}"
+    );
+    bottomLayout->addWidget(detailBanner);
+
+    // Horizontal splitter dividing Left (Order items) and Right (Logistics)
+    auto* horizontalSplitter = new QSplitter(Qt::Horizontal, bottomContainer);
+    horizontalSplitter->setStyleSheet(
+        "QSplitter::handle {"
+        "  background-color: #cbd5e1;"
+        "  width: 4px;"
+        "}"
+        "QSplitter::handle:hover {"
+        "  background-color: #2563eb;"
+        "}"
+    );
+
+    // -------------------------------------------------------------
+    // SUB-PANEL 1 (LEFT): Kế hoạch đơn hàng (inbound_detail / outbound_detail)
+    // -------------------------------------------------------------
+    auto* leftContainer = new QWidget(horizontalSplitter);
+    auto* leftLayout = new QVBoxLayout(leftContainer);
+    leftLayout->setContentsMargins(0, 0, 0, 0);
+    leftLayout->setSpacing(4);
+
+    auto* leftHeaderLayout = new QHBoxLayout();
+    QString leftTitle = (hubType == HubType::INBOUND)
+        ? "📋 Mặt hàng cam kết trong đơn (inbound_detail)"
+        : "📋 Mặt hàng cam kết trong đơn (outbound_detail)";
+    auto* leftTitleLabel = new QLabel(leftTitle, leftContainer);
+    leftTitleLabel->setStyleSheet("font-size: 13px; font-weight: bold; color: #1e293b;");
+    orderDetailCountLabel = new QLabel("(0 mặt hàng)", leftContainer);
+    orderDetailCountLabel->setStyleSheet("font-size: 12px; color: #64748b;");
+    leftHeaderLayout->addWidget(leftTitleLabel);
+    leftHeaderLayout->addWidget(orderDetailCountLabel);
+    leftHeaderLayout->addStretch();
+    leftLayout->addLayout(leftHeaderLayout);
+
+    orderDetailTable = new QTableWidget(leftContainer);
+    orderDetailTable->setColumnCount(5);
+    orderDetailTable->setHorizontalHeaderLabels({
+        "Mã sản phẩm", "Tên sản phẩm", "SL Đặt", "Thực nhận/xuất", "Tiến độ"
+    });
+    orderDetailTable->setAlternatingRowColors(true);
+    orderDetailTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    orderDetailTable->verticalHeader()->setVisible(false);
+    orderDetailTable->horizontalHeader()->setHighlightSections(false);
+    orderDetailTable->horizontalHeader()->setSectionsClickable(true);
+    orderDetailTable->horizontalHeader()->setSortIndicatorShown(true);
+    orderDetailTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
+    orderDetailTable->horizontalHeader()->setStretchLastSection(true);
+    orderDetailTable->setStyleSheet(masterTable->styleSheet());
+    TableClipboardHelper::setupClipboardForTable(orderDetailTable);
+
+    leftLayout->addWidget(orderDetailTable);
+    horizontalSplitter->addWidget(leftContainer);
+
+    // -------------------------------------------------------------
+    // SUB-PANEL 2 (RIGHT): Thực tế giao vận (delivery + delivery_detail / shipment + shipment_detail)
+    // -------------------------------------------------------------
+    auto* rightContainer = new QWidget(horizontalSplitter);
+    auto* rightLayout = new QVBoxLayout(rightContainer);
+    rightLayout->setContentsMargins(0, 0, 0, 0);
+    rightLayout->setSpacing(4);
+
+    // Vertical splitter dividing Upper Right (Logistics Batches) and Lower Right (Batch Items)
+    auto* rightVerticalSplitter = new QSplitter(Qt::Vertical, rightContainer);
+    rightVerticalSplitter->setStyleSheet(
+        "QSplitter::handle {"
+        "  background-color: #cbd5e1;"
+        "  height: 4px;"
+        "}"
+        "QSplitter::handle:hover {"
+        "  background-color: #2563eb;"
+        "}"
+    );
+
+    // Right Upper: Logistics Batches (delivery / shipment)
+    auto* rightUpperContainer = new QWidget(rightVerticalSplitter);
+    auto* rightUpperLayout = new QVBoxLayout(rightUpperContainer);
+    rightUpperLayout->setContentsMargins(0, 0, 0, 0);
+    rightUpperLayout->setSpacing(4);
+
+    auto* rightUpperHeaderLayout = new QHBoxLayout();
+    QString rightUpperTitle = (hubType == HubType::INBOUND)
+        ? "🚚 Các đợt giao nhận (delivery)"
+        : "🚚 Các đợt xuất hàng (shipment)";
+    auto* rightUpperTitleLabel = new QLabel(rightUpperTitle, rightUpperContainer);
+    rightUpperTitleLabel->setStyleSheet("font-size: 13px; font-weight: bold; color: #1e293b;");
+    logisticsCountLabel = new QLabel("(0 đợt)", rightUpperContainer);
+    logisticsCountLabel->setStyleSheet("font-size: 12px; color: #64748b;");
+    rightUpperHeaderLayout->addWidget(rightUpperTitleLabel);
+    rightUpperHeaderLayout->addWidget(logisticsCountLabel);
+    rightUpperHeaderLayout->addStretch();
+    rightUpperLayout->addLayout(rightUpperHeaderLayout);
+
+    logisticsTable = new QTableWidget(rightUpperContainer);
+    logisticsTable->setColumnCount(4);
+    logisticsTable->setHorizontalHeaderLabels({
+        (hubType == HubType::INBOUND ? "Mã đợt nhận" : "Mã đợt xuất"),
+        "Ngày dự kiến",
+        (hubType == HubType::INBOUND ? "Ngày nhận thực tế" : "Ngày xuất thực tế"),
+        "Trạng thái"
+    });
+    logisticsTable->setAlternatingRowColors(true);
+    logisticsTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    logisticsTable->verticalHeader()->setVisible(false);
+    logisticsTable->horizontalHeader()->setHighlightSections(false);
+    logisticsTable->horizontalHeader()->setSectionsClickable(true);
+    logisticsTable->horizontalHeader()->setSortIndicatorShown(true);
+    logisticsTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
+    logisticsTable->horizontalHeader()->setStretchLastSection(true);
+    logisticsTable->setStyleSheet(masterTable->styleSheet());
+    TableClipboardHelper::setupClipboardForTable(logisticsTable);
+
+    rightUpperLayout->addWidget(logisticsTable);
+    rightVerticalSplitter->addWidget(rightUpperContainer);
+
+    // Right Lower: Batch Line Items (delivery_detail / shipment_detail)
+    auto* rightLowerContainer = new QWidget(rightVerticalSplitter);
+    auto* rightLowerLayout = new QVBoxLayout(rightLowerContainer);
+    rightLowerLayout->setContentsMargins(0, 0, 0, 0);
+    rightLowerLayout->setSpacing(4);
+
+    auto* rightLowerHeaderLayout = new QHBoxLayout();
+    QString rightLowerTitle = (hubType == HubType::INBOUND)
+        ? "📦 Hàng của đợt nhận đang chọn (delivery_detail)"
+        : "📦 Hàng của đợt xuất đang chọn (shipment_detail)";
+    auto* rightLowerTitleLabel = new QLabel(rightLowerTitle, rightLowerContainer);
+    rightLowerTitleLabel->setStyleSheet("font-size: 13px; font-weight: bold; color: #1e293b;");
+    logisticsDetailCountLabel = new QLabel("(0 mục)", rightLowerContainer);
+    logisticsDetailCountLabel->setStyleSheet("font-size: 12px; color: #64748b;");
+    rightLowerHeaderLayout->addWidget(rightLowerTitleLabel);
+    rightLowerHeaderLayout->addWidget(logisticsDetailCountLabel);
+    rightLowerHeaderLayout->addStretch();
+    rightLowerLayout->addLayout(rightLowerHeaderLayout);
+
+    logisticsDetailTable = new QTableWidget(rightLowerContainer);
+    logisticsDetailTable->setColumnCount(4);
+    logisticsDetailTable->setHorizontalHeaderLabels({
+        "Mã sản phẩm", "Tên sản phẩm", "SL Đợt này", "Thực nhận/xuất"
+    });
+    logisticsDetailTable->setAlternatingRowColors(true);
+    logisticsDetailTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    logisticsDetailTable->verticalHeader()->setVisible(false);
+    logisticsDetailTable->horizontalHeader()->setHighlightSections(false);
+    logisticsDetailTable->horizontalHeader()->setSectionsClickable(true);
+    logisticsDetailTable->horizontalHeader()->setSortIndicatorShown(true);
+    logisticsDetailTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
+    logisticsDetailTable->horizontalHeader()->setStretchLastSection(true);
+    logisticsDetailTable->setStyleSheet(masterTable->styleSheet());
+    TableClipboardHelper::setupClipboardForTable(logisticsDetailTable);
+
+    rightLowerLayout->addWidget(logisticsDetailTable);
+    rightVerticalSplitter->addWidget(rightLowerContainer);
+
+    rightLayout->addWidget(rightVerticalSplitter);
+    horizontalSplitter->addWidget(rightContainer);
+
+    // Set horizontal splitter initial ratio 45% : 55%
+    horizontalSplitter->setSizes({500, 600});
+
+    bottomLayout->addWidget(horizontalSplitter, 1);
+    mainSplitter->addWidget(bottomContainer);
+
+    // Set vertical splitter initial ratio 40% (master) : 60% (detail)
+    mainSplitter->setSizes({320, 480});
+    mainLayout->addWidget(mainSplitter, 1);
+
+    // Signal connections for row selection
+    connect(masterTable, &QTableWidget::itemSelectionChanged, [this]() {
+        onTransactionSelected(masterTable->currentRow());
+    });
+    connect(logisticsTable, &QTableWidget::itemSelectionChanged, [this]() {
+        onLogisticsSelected(logisticsTable->currentRow());
+    });
+
+    // Sorting connections for all 4 tables
+    connect(masterTable->horizontalHeader(), &QHeaderView::sectionClicked, [this](int logicalIndex) {
+        if (logicalIndex < 0 || logicalIndex >= static_cast<int>(masterKeys.size())) return;
+        if (currentSortColumn == logicalIndex) {
+            currentSortAscending = !currentSortAscending;
+        } else {
+            currentSortColumn = logicalIndex;
+            currentSortAscending = true;
+        }
+        user_query::sort_query_results(cachedTransactions, masterKeys[currentSortColumn], currentSortAscending);
+        renderMasterRows();
+        masterTable->horizontalHeader()->setSortIndicator(currentSortColumn, currentSortAscending ? Qt::AscendingOrder : Qt::DescendingOrder);
+    });
+
+    connect(orderDetailTable->horizontalHeader(), &QHeaderView::sectionClicked, [this](int logicalIndex) {
+        const string detailKeys[] = {"product.product_code", "product.product_name", "ordered_quantity", "actual_quantity", "actual_quantity"};
+        if (logicalIndex < 0 || logicalIndex >= 5) return;
+        if (currentDetailSortCol == logicalIndex) currentDetailSortAsc = !currentDetailSortAsc;
+        else { currentDetailSortCol = logicalIndex; currentDetailSortAsc = true; }
+        user_query::sort_query_results(cachedOrderDetails, detailKeys[currentDetailSortCol], currentDetailSortAsc);
+        renderOrderDetails();
+        orderDetailTable->horizontalHeader()->setSortIndicator(currentDetailSortCol, currentDetailSortAsc ? Qt::AscendingOrder : Qt::DescendingOrder);
+    });
+
+    connect(logisticsTable->horizontalHeader(), &QHeaderView::sectionClicked, [this](int logicalIndex) {
+        string logKeys[4];
+        if (hubType == HubType::INBOUND) {
+            logKeys[0] = "delivery.delivery_code"; logKeys[1] = "delivery.expected_at";
+            logKeys[2] = "delivery.delivery_at"; logKeys[3] = "delivery.status";
+        } else {
+            logKeys[0] = "shipment.shipment_code"; logKeys[1] = "shipment.expected_at";
+            logKeys[2] = "shipment.ship_at"; logKeys[3] = "shipment.status";
+        }
+        if (logicalIndex < 0 || logicalIndex >= 4) return;
+        if (currentLogisticsSortCol == logicalIndex) currentLogisticsSortAsc = !currentLogisticsSortAsc;
+        else { currentLogisticsSortCol = logicalIndex; currentLogisticsSortAsc = true; }
+        user_query::sort_query_results(cachedLogistics, logKeys[currentLogisticsSortCol], currentLogisticsSortAsc);
+        renderLogisticsBatches();
+        logisticsTable->horizontalHeader()->setSortIndicator(currentLogisticsSortCol, currentLogisticsSortAsc ? Qt::AscendingOrder : Qt::DescendingOrder);
+    });
+
+    connect(logisticsDetailTable->horizontalHeader(), &QHeaderView::sectionClicked, [this](int logicalIndex) {
+        const string logDetailKeys[] = {"product.product_code", "product.product_name", "received_quantity", "actual_quantity"};
+        if (logicalIndex < 0 || logicalIndex >= 4) return;
+        if (currentLogisticsDetailSortCol == logicalIndex) currentLogisticsDetailSortAsc = !currentLogisticsDetailSortAsc;
+        else { currentLogisticsDetailSortCol = logicalIndex; currentLogisticsDetailSortAsc = true; }
+        user_query::sort_query_results(cachedLogisticsDetails, logDetailKeys[currentLogisticsDetailSortCol], currentLogisticsDetailSortAsc);
+        renderLogisticsDetails();
+        logisticsDetailTable->horizontalHeader()->setSortIndicator(currentLogisticsDetailSortCol, currentLogisticsDetailSortAsc ? Qt::AscendingOrder : Qt::DescendingOrder);
+    });
+}
+
+void TransactionHubWidget::setMasterColumns(const QStringList& displayHeaders, const std::vector<std::string>& columnKeys)
+{
+    masterHeaders = displayHeaders;
+    masterKeys = columnKeys;
+    masterTable->setColumnCount(masterHeaders.size());
+    masterTable->setHorizontalHeaderLabels(masterHeaders);
+}
+
+void TransactionHubWidget::setFilterColumns(const std::vector<FilterColumnDef>& defs)
+{
+    filterDefs = defs;
+    filterColumnCombo->clear();
+    filterColumnCombo->addItem("-- Không lọc (Toàn bộ) --");
+    for (const auto& d : filterDefs) {
+        filterColumnCombo->addItem(d.displayName);
+    }
+}
+
+void TransactionHubWidget::setRefreshCallback(std::function<void()> callback)
+{
+    onRefresh = callback;
+}
+
+void TransactionHubWidget::setFilterCallback(FilterCallback callback)
+{
+    onFilter = callback;
+}
+
+void TransactionHubWidget::setData(const Vector<Record>& records)
+{
+    cachedTransactions = records;
+    currentSortColumn = -1;
+    currentSortAscending = true;
+    masterTable->horizontalHeader()->setSortIndicator(-1, Qt::AscendingOrder);
+
+    renderMasterRows();
+
+    // Auto-select first row if available
+    if (masterTable->rowCount() > 0) {
+        masterTable->selectRow(0);
+        onTransactionSelected(0);
+    } else {
+        detailBanner->setText("📌 Không có đơn hàng nào.");
+        cachedOrderDetails.clear();
+        cachedLogistics.clear();
+        cachedLogisticsDetails.clear();
+        renderOrderDetails();
+        renderLogisticsBatches();
+        renderLogisticsDetails();
+    }
+}
+
+void TransactionHubWidget::onFilterColumnChanged(int index)
+{
+    if (index <= 0 || index - 1 >= static_cast<int>(filterDefs.size())) {
+        filterExactInput->hide();
+        filterDateWidget->hide();
+        filterSelectCombo->hide();
+        applyFilterBtn->hide();
+        return;
+    }
+
+    const auto& def = filterDefs[index - 1];
+    filterExactInput->hide();
+    filterDateWidget->hide();
+    filterSelectCombo->hide();
+
+    switch (def.type) {
+    case FilterType::EXACT_TEXT:
+        filterExactInput->clear();
+        filterExactInput->setPlaceholderText("Nhập giá trị chính xác cho " + def.displayName + "...");
+        filterExactInput->show();
+        filterExactInput->setFocus();
+        break;
+    case FilterType::DATE_RANGE:
+        filterDateWidget->show();
+        break;
+    case FilterType::SELECT_OR_TYPE:
+        filterSelectCombo->clear();
+        filterSelectCombo->addItem("-- Tất cả --");
+        for (const auto& opt : def.options) {
+            filterSelectCombo->addItem(opt);
+        }
+        filterSelectCombo->show();
+        break;
+    }
+    applyFilterBtn->show();
+}
+
+void TransactionHubWidget::applyFilter()
+{
+    int idx = filterColumnCombo->currentIndex();
+    if (idx <= 0 || idx - 1 >= static_cast<int>(filterDefs.size())) {
+        if (onRefresh) onRefresh();
+        return;
+    }
+
+    const auto& def = filterDefs[idx - 1];
+    if (!onFilter) return;
+
+    if (def.type == FilterType::EXACT_TEXT) {
+        QString text = filterExactInput->text().trimmed();
+        if (text.isEmpty()) {
+            if (onRefresh) onRefresh();
+            return;
+        }
+        onFilter(def.columnKey, text, "", false);
+    } else if (def.type == FilterType::DATE_RANGE) {
+        QString fromDate = fromDateEdit->date().toString("yyyy-MM-dd");
+        QString toDate = toDateEdit->date().toString("yyyy-MM-dd");
+        onFilter(def.columnKey, fromDate, toDate, true);
+    } else if (def.type == FilterType::SELECT_OR_TYPE) {
+        QString text = filterSelectCombo->currentText().trimmed();
+        if (text == "-- Tất cả --" || text.isEmpty()) {
+            if (onRefresh) onRefresh();
+            return;
+        }
+        onFilter(def.columnKey, text, "", false);
+    }
+}
+
+void TransactionHubWidget::resetFilter()
+{
+    filterColumnCombo->setCurrentIndex(0);
+    filterExactInput->clear();
+    filterExactInput->hide();
+    filterDateWidget->hide();
+    filterSelectCombo->hide();
+    applyFilterBtn->hide();
+    searchInput->clear();
+
+    if (onRefresh) onRefresh();
+}
+
+void TransactionHubWidget::renderMasterRows()
+{
+    masterTable->setSortingEnabled(false);
+    masterTable->setUpdatesEnabled(false);
+    masterTable->blockSignals(true);
+
+    int rowCount = static_cast<int>(cachedTransactions.size());
+    masterTable->setRowCount(rowCount);
+
+    for (size_t r = 0; r < cachedTransactions.size(); ++r) {
+        const auto& rec = cachedTransactions[r];
+        for (size_t c = 0; c < masterKeys.size(); ++c) {
+            QString text = "-";
+            if (rec.has(masterKeys[c])) {
+                text = formatValue(rec.get(masterKeys[c]));
+            } else {
+                for (const auto& item : rec.getValues()) {
+                    size_t dot = item.first.find('.');
+                    string colName = (dot == string::npos) ? item.first : item.first.substr(dot + 1);
+                    size_t reqDot = masterKeys[c].find('.');
+                    string reqCol = (reqDot == string::npos) ? masterKeys[c] : masterKeys[c].substr(reqDot + 1);
+                    if (colName == reqCol) {
+                        text = formatValue(item.second);
+                        break;
+                    }
+                }
+            }
+            auto* item = new QTableWidgetItem(text);
+            masterTable->setItem(static_cast<int>(r), static_cast<int>(c), item);
+        }
+    }
+
+    // Default widths
+    masterTable->setColumnWidth(0, 160); // Code
+    masterTable->setColumnWidth(1, 140); // Customer
+    masterTable->setColumnWidth(2, 110); // Date
+    masterTable->setColumnWidth(3, 130); // Type
+    masterTable->setColumnWidth(4, 120); // Status
+
+    masterTable->blockSignals(false);
+    masterTable->setUpdatesEnabled(true);
+
+    if (searchInput->text().trimmed().isEmpty()) {
+        countLabel->setText(QString("Tổng cộng: %1 đơn hàng").arg(rowCount));
+    } else {
+        filterMasterRows(searchInput->text());
+    }
+}
+
+void TransactionHubWidget::filterMasterRows(const QString& query)
+{
+    QString q = query.trimmed().toLower();
+    int visibleCount = 0;
+    for (int r = 0; r < masterTable->rowCount(); ++r) {
+        bool match = false;
+        if (q.isEmpty()) {
+            match = true;
+        } else {
+            for (int c = 0; c < masterTable->columnCount(); ++c) {
+                QTableWidgetItem* item = masterTable->item(r, c);
+                if (item && item->text().toLower().contains(q)) {
+                    match = true;
+                    break;
+                }
+            }
+        }
+        masterTable->setRowHidden(r, !match);
+        if (match) visibleCount++;
+    }
+    if (!q.isEmpty()) {
+        countLabel->setText(QString("Hiển thị %1 / %2 đơn hàng khớp từ khóa").arg(visibleCount).arg(masterTable->rowCount()));
+    } else {
+        countLabel->setText(QString("Tổng cộng: %1 đơn hàng").arg(masterTable->rowCount()));
+    }
+}
+
+void TransactionHubWidget::onTransactionSelected(int row)
+{
+    if (row < 0 || row >= static_cast<int>(cachedTransactions.size())) {
+        return;
+    }
+
+    const auto& rec = cachedTransactions[row];
+    std::string orderCode;
+    if (hubType == HubType::INBOUND) {
+        if (rec.has("inbound_transaction.inbound_code")) orderCode = get<string>(rec.get("inbound_transaction.inbound_code"));
+        else if (rec.has("inbound_code")) orderCode = get<string>(rec.get("inbound_code"));
+    } else {
+        if (rec.has("outbound_transaction.outbound_code")) orderCode = get<string>(rec.get("outbound_transaction.outbound_code"));
+        else if (rec.has("outbound_code")) orderCode = get<string>(rec.get("outbound_code"));
+    }
+
+    if (orderCode.empty() && masterTable->item(row, 0)) {
+        orderCode = masterTable->item(row, 0)->text().toStdString();
+    }
+
+    currentOrderCode = orderCode;
+
+    // Customer name/code
+    QString customerStr;
+    if (rec.has("customer.customer_code")) customerStr = QString::fromStdString(get<string>(rec.get("customer.customer_code")));
+    else if (masterTable->item(row, 1)) customerStr = masterTable->item(row, 1)->text();
+
+    QString dateStr;
+    if (rec.has("inbound_transaction.order_at")) dateStr = QString::fromStdString(get<string>(rec.get("inbound_transaction.order_at")));
+    else if (rec.has("outbound_transaction.order_at")) dateStr = QString::fromStdString(get<string>(rec.get("outbound_transaction.order_at")));
+    else if (masterTable->item(row, 2)) dateStr = masterTable->item(row, 2)->text();
+
+    detailBanner->setText(QString("📌 Chi tiết đối chiếu theo đơn: %1 | Đối tác: %2 | Ngày đặt: %3")
+        .arg(QString::fromStdString(orderCode)).arg(customerStr).arg(dateStr));
+
+    // Load Bottom-Left: Order details
+    loadOrderDetails(orderCode);
+
+    // Load Bottom-Right: Logistics batches
+    loadLogisticsBatches(orderCode);
+}
+
+void TransactionHubWidget::loadOrderDetails(const std::string& orderCode)
+{
+    if (!db || orderCode.empty()) return;
+    cachedOrderDetails.clear();
+
+    if (hubType == HubType::INBOUND) {
+        user_query::inbound_detail_query(db, cachedOrderDetails, "inbound_code", Value(orderCode));
+    } else {
+        user_query::outbound_detail_query(db, cachedOrderDetails, "outbound_code", Value(orderCode));
+    }
+
+    renderOrderDetails();
+}
+
+void TransactionHubWidget::renderOrderDetails()
+{
+    orderDetailTable->setSortingEnabled(false);
+    orderDetailTable->setUpdatesEnabled(false);
+    orderDetailTable->blockSignals(true);
+
+    int count = static_cast<int>(cachedOrderDetails.size());
+    orderDetailTable->setRowCount(count);
+    orderDetailCountLabel->setText(QString("(%1 mặt hàng)").arg(count));
+
+    for (int i = 0; i < count; ++i) {
+        const auto& r = cachedOrderDetails[i];
+        QString pCode = r.has("product.product_code") ? QString::fromStdString(get<string>(r.get("product.product_code"))) : "-";
+        QString pName = r.has("product.product_name") ? QString::fromStdString(get<string>(r.get("product.product_name"))) : "-";
+
+        int orderedQty = 0;
+        if (r.has("inbound_detail.ordered_quantity") && holds_alternative<int>(r.get("inbound_detail.ordered_quantity"))) {
+            orderedQty = get<int>(r.get("inbound_detail.ordered_quantity"));
+        } else if (r.has("outbound_detail.ordered_quantity") && holds_alternative<int>(r.get("outbound_detail.ordered_quantity"))) {
+            orderedQty = get<int>(r.get("outbound_detail.ordered_quantity"));
+        } else if (r.has("ordered_quantity") && holds_alternative<int>(r.get("ordered_quantity"))) {
+            orderedQty = get<int>(r.get("ordered_quantity"));
+        }
+
+        int actualQty = 0;
+        if (r.has("inbound_detail.actual_quantity") && holds_alternative<int>(r.get("inbound_detail.actual_quantity"))) {
+            actualQty = get<int>(r.get("inbound_detail.actual_quantity"));
+        } else if (r.has("outbound_detail.actual_quantity") && holds_alternative<int>(r.get("outbound_detail.actual_quantity"))) {
+            actualQty = get<int>(r.get("outbound_detail.actual_quantity"));
+        } else if (r.has("actual_quantity") && holds_alternative<int>(r.get("actual_quantity"))) {
+            actualQty = get<int>(r.get("actual_quantity"));
+        }
+
+        int pct = (orderedQty > 0) ? std::min(100, (actualQty * 100) / orderedQty) : 0;
+        QString progressStr = QString("%1% (%2/%3)").arg(pct).arg(actualQty).arg(orderedQty);
+
+        auto* it0 = new QTableWidgetItem(pCode);
+        auto* it1 = new QTableWidgetItem(pName);
+        auto* it2 = new QTableWidgetItem(QString::number(orderedQty));
+        auto* it3 = new QTableWidgetItem(QString::number(actualQty));
+        auto* it4 = new QTableWidgetItem(progressStr);
+
+        it2->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        it3->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        it4->setTextAlignment(Qt::AlignCenter);
+
+        if (pct >= 100) {
+            it4->setForeground(QColor(16, 185, 129)); // Green
+        } else if (pct > 0) {
+            it4->setForeground(QColor(37, 99, 235)); // Blue
+        } else {
+            it4->setForeground(QColor(234, 88, 12)); // Orange
+        }
+
+        orderDetailTable->setItem(i, 0, it0);
+        orderDetailTable->setItem(i, 1, it1);
+        orderDetailTable->setItem(i, 2, it2);
+        orderDetailTable->setItem(i, 3, it3);
+        orderDetailTable->setItem(i, 4, it4);
+    }
+
+    orderDetailTable->setColumnWidth(0, 160);
+    orderDetailTable->setColumnWidth(1, 240);
+    orderDetailTable->setColumnWidth(2, 70);
+    orderDetailTable->setColumnWidth(3, 80);
+    orderDetailTable->setColumnWidth(4, 110);
+
+    orderDetailTable->blockSignals(false);
+    orderDetailTable->setUpdatesEnabled(true);
+}
+
+void TransactionHubWidget::loadLogisticsBatches(const std::string& orderCode)
+{
+    if (!db || orderCode.empty()) return;
+    cachedLogistics.clear();
+
+    if (hubType == HubType::INBOUND) {
+        user_query::delivery_query(db, cachedLogistics, "inbound_code", Value(orderCode));
+    } else {
+        user_query::shipment_query(db, cachedLogistics, "outbound_code", Value(orderCode));
+    }
+
+    renderLogisticsBatches();
+
+    // Auto-select first batch if available
+    if (logisticsTable->rowCount() > 0) {
+        logisticsTable->selectRow(0);
+        onLogisticsSelected(0);
+    } else {
+        cachedLogisticsDetails.clear();
+        renderLogisticsDetails();
+    }
+}
+
+void TransactionHubWidget::renderLogisticsBatches()
+{
+    logisticsTable->setSortingEnabled(false);
+    logisticsTable->setUpdatesEnabled(false);
+    logisticsTable->blockSignals(true);
+
+    int count = static_cast<int>(cachedLogistics.size());
+    logisticsTable->setRowCount(count);
+    logisticsCountLabel->setText(QString("(%1 đợt)").arg(count));
+
+    for (int i = 0; i < count; ++i) {
+        const auto& r = cachedLogistics[i];
+        QString code = "-";
+        QString expDate = "-";
+        QString actDate = "-";
+        QString status = "-";
+
+        if (hubType == HubType::INBOUND) {
+            if (r.has("delivery.delivery_code")) code = QString::fromStdString(get<string>(r.get("delivery.delivery_code")));
+            else if (r.has("delivery_code")) code = QString::fromStdString(get<string>(r.get("delivery_code")));
+
+            if (r.has("delivery.expected_at")) expDate = QString::fromStdString(get<string>(r.get("delivery.expected_at")));
+            if (r.has("delivery.delivery_at")) actDate = QString::fromStdString(get<string>(r.get("delivery.delivery_at")));
+            if (r.has("delivery.status")) status = QString::fromStdString(get<string>(r.get("delivery.status")));
+        } else {
+            if (r.has("shipment.shipment_code")) code = QString::fromStdString(get<string>(r.get("shipment.shipment_code")));
+            else if (r.has("shipment_code")) code = QString::fromStdString(get<string>(r.get("shipment_code")));
+
+            if (r.has("shipment.expected_at")) expDate = QString::fromStdString(get<string>(r.get("shipment.expected_at")));
+            if (r.has("shipment.ship_at")) actDate = QString::fromStdString(get<string>(r.get("shipment.ship_at")));
+            if (r.has("shipment.status")) status = QString::fromStdString(get<string>(r.get("shipment.status")));
+        }
+
+        auto* it0 = new QTableWidgetItem(code);
+        auto* it1 = new QTableWidgetItem(expDate);
+        auto* it2 = new QTableWidgetItem(actDate);
+        auto* it3 = new QTableWidgetItem(status);
+
+        if (status == "COMPLETED") {
+            it3->setForeground(QColor(16, 185, 129));
+            it3->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
+        } else if (status == "IN_PROGRESS") {
+            it3->setForeground(QColor(37, 99, 235));
+        } else {
+            it3->setForeground(QColor(234, 88, 12));
+        }
+
+        logisticsTable->setItem(i, 0, it0);
+        logisticsTable->setItem(i, 1, it1);
+        logisticsTable->setItem(i, 2, it2);
+        logisticsTable->setItem(i, 3, it3);
+    }
+
+    logisticsTable->setColumnWidth(0, 160);
+    logisticsTable->setColumnWidth(1, 100);
+    logisticsTable->setColumnWidth(2, 110);
+    logisticsTable->setColumnWidth(3, 110);
+
+    logisticsTable->blockSignals(false);
+    logisticsTable->setUpdatesEnabled(true);
+}
+
+void TransactionHubWidget::onLogisticsSelected(int row)
+{
+    if (row < 0 || row >= static_cast<int>(cachedLogistics.size())) return;
+
+    const auto& rec = cachedLogistics[row];
+    std::string logisticsCode;
+    if (hubType == HubType::INBOUND) {
+        if (rec.has("delivery.delivery_code")) logisticsCode = get<string>(rec.get("delivery.delivery_code"));
+        else if (rec.has("delivery_code")) logisticsCode = get<string>(rec.get("delivery_code"));
+    } else {
+        if (rec.has("shipment.shipment_code")) logisticsCode = get<string>(rec.get("shipment.shipment_code"));
+        else if (rec.has("shipment_code")) logisticsCode = get<string>(rec.get("shipment_code"));
+    }
+
+    if (logisticsCode.empty() && logisticsTable->item(row, 0)) {
+        logisticsCode = logisticsTable->item(row, 0)->text().toStdString();
+    }
+
+    currentLogisticsCode = logisticsCode;
+    loadLogisticsDetails(logisticsCode);
+}
+
+void TransactionHubWidget::loadLogisticsDetails(const std::string& logisticsCode)
+{
+    if (!db || logisticsCode.empty()) return;
+    cachedLogisticsDetails.clear();
+
+    if (hubType == HubType::INBOUND) {
+        user_query::delivery_detail_query(db, cachedLogisticsDetails, "delivery_code", Value(logisticsCode));
+    } else {
+        user_query::shipment_detail_query(db, cachedLogisticsDetails, "shipment_code", Value(logisticsCode));
+    }
+
+    renderLogisticsDetails();
+}
+
+void TransactionHubWidget::renderLogisticsDetails()
+{
+    logisticsDetailTable->setSortingEnabled(false);
+    logisticsDetailTable->setUpdatesEnabled(false);
+    logisticsDetailTable->blockSignals(true);
+
+    int count = static_cast<int>(cachedLogisticsDetails.size());
+    logisticsDetailTable->setRowCount(count);
+    logisticsDetailCountLabel->setText(QString("(%1 mục)").arg(count));
+
+    for (int i = 0; i < count; ++i) {
+        const auto& r = cachedLogisticsDetails[i];
+        QString pCode = r.has("product.product_code") ? QString::fromStdString(get<string>(r.get("product.product_code"))) : "-";
+        QString pName = r.has("product.product_name") ? QString::fromStdString(get<string>(r.get("product.product_name"))) : "-";
+
+        int receivedQty = 0;
+        if (r.has("delivery_detail.received_quantity") && holds_alternative<int>(r.get("delivery_detail.received_quantity"))) {
+            receivedQty = get<int>(r.get("delivery_detail.received_quantity"));
+        } else if (r.has("shipment_detail.received_quantity") && holds_alternative<int>(r.get("shipment_detail.received_quantity"))) {
+            receivedQty = get<int>(r.get("shipment_detail.received_quantity"));
+        } else if (r.has("received_quantity") && holds_alternative<int>(r.get("received_quantity"))) {
+            receivedQty = get<int>(r.get("received_quantity"));
+        }
+
+        int actualQty = 0;
+        if (r.has("delivery_detail.actual_quantity") && holds_alternative<int>(r.get("delivery_detail.actual_quantity"))) {
+            actualQty = get<int>(r.get("delivery_detail.actual_quantity"));
+        } else if (r.has("shipment_detail.actual_quantity") && holds_alternative<int>(r.get("shipment_detail.actual_quantity"))) {
+            actualQty = get<int>(r.get("shipment_detail.actual_quantity"));
+        } else if (r.has("actual_quantity") && holds_alternative<int>(r.get("actual_quantity"))) {
+            actualQty = get<int>(r.get("actual_quantity"));
+        }
+
+        auto* it0 = new QTableWidgetItem(pCode);
+        auto* it1 = new QTableWidgetItem(pName);
+        auto* it2 = new QTableWidgetItem(QString::number(receivedQty));
+        auto* it3 = new QTableWidgetItem(QString::number(actualQty));
+
+        it2->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        it3->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+
+        logisticsDetailTable->setItem(i, 0, it0);
+        logisticsDetailTable->setItem(i, 1, it1);
+        logisticsDetailTable->setItem(i, 2, it2);
+        logisticsDetailTable->setItem(i, 3, it3);
+    }
+
+    logisticsDetailTable->setColumnWidth(0, 160);
+    logisticsDetailTable->setColumnWidth(1, 240);
+    logisticsDetailTable->setColumnWidth(2, 90);
+    logisticsDetailTable->setColumnWidth(3, 100);
+
+    logisticsDetailTable->blockSignals(false);
+    logisticsDetailTable->setUpdatesEnabled(true);
+}
+
+void TransactionHubWidget::exportMasterCsv()
+{
+    QString fileName = QFileDialog::getSaveFileName(this, "Xuất CSV Đơn hàng", "", "CSV Files (*.csv)");
+    if (fileName.isEmpty()) return;
+
+    QFile file(fileName);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QMessageBox::critical(this, "Lỗi", "Không thể mở file để ghi: " + file.errorString());
+        return;
+    }
+
+    QTextStream out(&file);
+    out.setEncoding(QStringConverter::Utf8);
+
+    // Headers
+    out << masterHeaders.join(",") << "\n";
+
+    // Data
+    for (int r = 0; r < masterTable->rowCount(); ++r) {
+        if (masterTable->isRowHidden(r)) continue;
+        QStringList rowVals;
+        for (int c = 0; c < masterTable->columnCount(); ++c) {
+            auto* item = masterTable->item(r, c);
+            QString text = item ? item->text() : "";
+            if (text.contains(',') || text.contains('"')) {
+                text.replace('"', "\"\"");
+                text = "\"" + text + "\"";
+            }
+            rowVals << text;
+        }
+        out << rowVals.join(",") << "\n";
+    }
+
+    file.close();
+    QMessageBox::information(this, "Thành công", "Đã xuất dữ liệu ra file:\n" + fileName);
+}
+
+QString TransactionHubWidget::formatValue(const Value& val)
+{
+    if (holds_alternative<monostate>(val)) return "-";
+    if (holds_alternative<int>(val)) return QString::number(get<int>(val));
+    if (holds_alternative<double>(val)) return QString::number(get<double>(val), 'f', 2);
+    if (holds_alternative<string>(val)) return QString::fromStdString(get<string>(val));
+    if (holds_alternative<bool>(val)) return get<bool>(val) ? "TRUE" : "FALSE";
+    return "-";
+}
