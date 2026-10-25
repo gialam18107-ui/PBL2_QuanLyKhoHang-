@@ -7,6 +7,9 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QComboBox>
+#include <QSpinBox>
+#include <QTableWidget>
+#include <QHeaderView>
 #include <QMenuBar>
 #include <QMenu>
 #include <QAction>
@@ -32,30 +35,36 @@ private:
     QStringList loadColumnOptions(const QString& tableName, const QString& colName);
     void updateCategoryFilterOptions();
 
-    void switchToDomain(int domainIndex); // 0: Warehouse, 1: Category, 2: Aux Specs, 3: Customers
+    void switchToDomain(int domainIndex); // 0: Warehouse, 1: Category, 2: Customers, 3: Aux Specs, 4: Report
     void selectWarehouseQuery(int row);
     void selectCategoryQuery(int row);
     void selectAuxSpecQuery(const QString& tableName);
     void selectCustomerQuery(int row);
+    void selectReportQuery();
+    void setupReportPage();
+    void renderReportTable();
 
     Database* db;
 
-    // Top Menus (Rule 9.2, 9.3 & 9.4)
+    // Top Menus (Rule 9.2, 9.3 & 9.4, Section 9)
     QMenu* warehouseMenu;
     QMenu* categoryMenu;   // "Danh mục sản phẩm"
     QMenu* customerMenu;   // "Khách hàng" (Rule 9.4)
     QMenu* auxSpecMenu;    // "Danh mục phụ"
+    QMenu* reportMenu;     // "Báo cáo" (Section 9)
 
     // Sidebar navigation tabs & separated lists
     QPushButton* tabWarehouseBtn;
     QPushButton* tabCategoryBtn;
     QPushButton* tabCustomerBtn;
     QPushButton* tabAuxSpecBtn;
+    QPushButton* tabReportBtn;
     QStackedWidget* sidebarStack;
     QListWidget* warehouseList;
     QListWidget* categoryList;
     QListWidget* customerList;
     QListWidget* auxSpecList;
+    QListWidget* reportList;
 
     QStackedWidget* stackedWidget;
     QLabel* statusLabel;
@@ -91,6 +100,23 @@ private:
     // 2 Customer Query Table Widgets (Rule 9.4)
     QueryTableWidget* individualCustomerWidget;
     QueryTableWidget* businessCustomerWidget;
+
+    // Periodic Inventory Report Widget & Caching (Section 9)
+    QWidget* reportPageWidget;
+    QComboBox* reportMonthCombo;
+    QSpinBox* reportYearSpin;
+    QPushButton* btnGenerateReport;
+    QPushButton* btnExportCsv;
+    QTableWidget* reportTable;
+    QLabel* reportSummaryLabel;
+
+    bool reportDataCached;
+    int cachedMonth;
+    int cachedYear;
+    Vector<Record> cachedReportRecords;
+    Record cachedGrandTotal;
+    int currentReportSortColumn;
+    bool currentReportSortAscending;
 };
 
 #endif // MAIN_WINDOW_H

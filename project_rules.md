@@ -287,6 +287,8 @@ All auto-generated codes and user inputs must strictly conform to the specificat
     - `customer_id` must be retained in the query `Record` internally for CRUD/identification, but must remain hidden from UI table columns.
     - **Individual Customer** (`individual_customer_query`): Mã khách hàng (`customer.customer_code`), Tên khách hàng (`customer.name`), Số điện thoại (`individual_info.phone_number`), Email (`individual_info.email`).
     - **Business Customer** (`business_customer_query`): Mã đối tác / DN (`customer.customer_code`), Tên doanh nghiệp (`customer.name`), Mã số thuế (`business_info.tax_code`), Số điện thoại (`business_info.phone_number`), Email (`business_info.email`).
+- **Report Domain Separation**:
+  - Add a dedicated top menu **`Báo cáo`** and a dedicated navigation choice for **`Báo cáo xuất nhập tồn định kỳ`** (Periodic Inventory Movement Report), separated into its own domain and isolated from operational CRUD tables.
 
 ### 7.4 Column Filtering & Input Controls
 - Call `user_query` functions to filter by the user-selected column:
@@ -352,3 +354,66 @@ All auto-generated codes and user inputs must strictly conform to the specificat
     - Prohibit mixing or interchanging specifications between different product categories.
   - **Schema & Relational Integrity**:
     - All crawled and exported data must strictly satisfy all data types, column names, constraints, and relationships in `QuanLyKhoHang_schema.json` so outputs can be cleanly loaded without modifying schema or existing records.
+
+---
+
+## 9. Periodic Inventory Movement Report (Báo Cáo Xuất - Nhập - Tồn Định Kỳ)
+
+### 9.1 Overview & Scope
+- **Reporting Period**: Monthly basis (e.g., Month `MM`, Year `YYYY`).
+- **Product Scope**: Only products that are actively on sale (`product.is_sold == TRUE`) are included in the report. Products marked as discontinued (`is_sold == FALSE`) are excluded from periodic stock movement reporting.
+
+### 9.2 Report Columns & Data Structure
+The periodic inventory report contains the following columns for each eligible product:
+1. **`product_code`** (Mã sản phẩm): Unique product code (from `product.product_code`).
+2. **`product_name`** (Tên sản phẩm): Full product name/description (from `product.product_name`).
+3. **`opening_stock`** (Tồn đầu kỳ): Total stock quantity remaining in warehouse up to 23:59:59 of the last day of the month preceding the reporting month (e.g., for a September 2026 report, calculates cumulative stock movements through August 31, 2026).
+4. **`inbound_quantity`** (Tổng nhập trong tháng): Total quantity of goods actually received into warehouse during the reporting month.
+5. **`outbound_quantity`** (Tổng xuất trong tháng): Total quantity of goods actually dispatched from warehouse during the reporting month.
+6. **`closing_stock`** (Tồn cuối tháng): Total stock quantity remaining at the end of the reporting month, satisfying the invariant:
+   $$\text{closing\_stock} = \text{opening\_stock} + \text{inbound\_quantity} - \text{outbound\_quantity}$$
+7. **`available_quan`** (Tồn khả dụng): Quantity available for commercial sale at the end of the reporting month.
+8. **`warranty_quan`** (Hàng bảo hành): Quantity held under warranty inspection/replacement at the end of the reporting month.
+9. **`scrapped_quan`** (Hàng lỗi / hỏng): Quantity marked defective or scrapped at the end of the reporting month.
+
+### 9.3 Calculation Rules Based on Actual Quantities
+- All inventory movements (Inbound, Outbound, Opening Stock, Closing Stock) must be strictly computed from the **`actual_quantity`** of inbound and outbound transactions:
+  - **Inbound movements**: Sourced from `delivery_detail.actual_quantity` paired with `delivery.delivery_at` (actual receipt date).
+  - **Outbound movements**: Sourced from `shipment_detail.actual_quantity` paired with `shipment.ship_at` (actual dispatch date).
+- **Opening Stock Calculation**:
+  $$\text{opening\_stock}(product\_id) = \sum \text{Inbound } actual\_quantity(delivery\_at < D_{start}) - \sum \text{Outbound } actual\_quantity(ship\_at < D_{start})$$
+  *(where $D_{start} = \text{"YYYY-MM-01"}$ of the reporting month).*
+- **Inbound & Outbound Quantities in Period**:
+  - `inbound_quantity` = Total `actual_quantity` of deliveries where $D_{start} \le delivery\_at \le D_{end}$.
+  - `outbound_quantity` = Total `actual_quantity` of shipments where $D_{start} \le ship\_at \le D_{end}$.
+- **Status Breakdown at Month End**:
+  - `available_quan`, `warranty_quan`, and `scrapped_quan` represent the component quantities of `closing_stock` ($\text{available\_quan} + \text{warranty\_quan} + \text{scrapped\_quan} = \text{closing\_stock}$).
+
+### 9.4 Grand Totals Summary Row (Dòng Tổng Cộng)
+- The bottom of the report must contain a **Summary / Grand Total row** aggregating all numeric columns across all included products:
+  - `Total Opening Stock` ($\sum \text{opening\_stock}$)
+  - `Total Inbound` ($\sum \text{inbound\_quantity}$)
+  - `Total Outbound` ($\sum \text{outbound\_quantity}$)
+  - `Total Closing Stock` ($\sum \text{closing\_stock}$)
+  - `Total Available` ($\sum \text{available\_quan}$)
+  - `Total Warranty` ($\sum \text{warranty\_quan}$)
+  - `Total Scrapped` ($\sum \text{scrapped\_quan}$)
+
+### 9.5 Report Export & Storage
+- **Output Directory**: Exported report CSV files must be saved directly into the `report/` folder.
+- **File Naming Convention**:
+  - Format: `BaoCao_Thang_<tháng>_Nam_<Năm>.csv`
+  - Examples: `BaoCao_Thang_09_Nam_2026.csv`, `BaoCao_Thang_10_Nam_2026.csv`.
+- The CSV file must maintain UTF-8 encoding and follow standard tabular formatting compatible with external tools (such as Excel).
+
+### 9.6 UI Design & Interaction Rules (Qt Widgets)
+- **Dedicated Menu & Interface**:
+  - Accessible via a dedicated top menu **`Báo cáo`** and a separate navigation tab/page, isolated from transactional and master tables.
+- **Month & Year Selectors**:
+  - Provides intuitive UI controls (such as dropdown combo boxes or spinboxes) to select the reporting **Month** (1–12) and **Year** (e.g., 2020–2030), accompanied by a "Xem báo cáo" (Generate / View Report) trigger button and an "Xuất CSV" (Export CSV) button.
+- **Initial Blank State**:
+  - When the report page is first opened or switched to, **no data is displayed** (the table and summary metrics remain completely blank/empty).
+  - Data calculation and presentation only commence after the user explicitly selects a Month/Year and triggers the report generation.
+- **Query Caching & Invalidation Behavior (Cache Flag)**:
+  - **Cache Preservation (Clean Flag)**: When there are no data modification events in the database, previously computed report results remain cached in memory (`Vector<Record>`). In-place column sorting operates directly on this cached dataset without re-querying or recalculating.
+  - **Cache Invalidation & Blank Reset (Dirty Flag)**: When any database insert, update, or delete operation occurs across the system (raising the cache dirty/invalidated flag), the report cache is invalidated. Upon invalidation, the report view **must not display any outdated information** (resets back to the empty/blank state), requiring the user to explicitly re-execute the report generation to compute fresh data.

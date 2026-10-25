@@ -10,19 +10,26 @@
 
 #include "data_io/DatabaseIO.h"
 #include "schema/UserQuery.h"
+#include "ui/TableClipboardHelper.h"
 
 MainWindow::MainWindow(Database* database, QWidget* parent)
     : QMainWindow(parent), db(database),
-      warehouseMenu(nullptr), categoryMenu(nullptr), customerMenu(nullptr), auxSpecMenu(nullptr),
-      tabWarehouseBtn(nullptr), tabCategoryBtn(nullptr), tabCustomerBtn(nullptr), tabAuxSpecBtn(nullptr),
-      sidebarStack(nullptr), warehouseList(nullptr), categoryList(nullptr), customerList(nullptr), auxSpecList(nullptr),
+      warehouseMenu(nullptr), categoryMenu(nullptr), customerMenu(nullptr), auxSpecMenu(nullptr), reportMenu(nullptr),
+      tabWarehouseBtn(nullptr), tabCategoryBtn(nullptr), tabCustomerBtn(nullptr), tabAuxSpecBtn(nullptr), tabReportBtn(nullptr),
+      sidebarStack(nullptr), warehouseList(nullptr), categoryList(nullptr), customerList(nullptr), auxSpecList(nullptr), reportList(nullptr),
+      stackedWidget(nullptr), statusLabel(nullptr), reloadDbBtn(nullptr),
       productQuantityWidget(nullptr), unitInventoryWidget(nullptr), statusHistoryWidget(nullptr),
       inboundTxnWidget(nullptr), inboundDetailWidget(nullptr), deliveryWidget(nullptr),
       deliveryDetailWidget(nullptr), outboundTxnWidget(nullptr), outboundDetailWidget(nullptr),
       shipmentWidget(nullptr), shipmentDetailWidget(nullptr), cpuWidget(nullptr), gpuWidget(nullptr),
       mainboardWidget(nullptr), ramWidget(nullptr), ssdWidget(nullptr), psuWidget(nullptr),
       coolingWidget(nullptr), caseWidget(nullptr), auxSpecWidget(nullptr), auxSpecTableCombo(nullptr),
-      individualCustomerWidget(nullptr), businessCustomerWidget(nullptr)
+      individualCustomerWidget(nullptr), businessCustomerWidget(nullptr),
+      reportPageWidget(nullptr), reportMonthCombo(nullptr), reportYearSpin(nullptr),
+      btnGenerateReport(nullptr), btnExportCsv(nullptr), reportTable(nullptr),
+      reportSummaryLabel(nullptr), reportDataCached(false), cachedMonth(9), cachedYear(2026),
+      cachedReportRecords(), cachedGrandTotal(),
+      currentReportSortColumn(-1), currentReportSortAscending(true)
 {
     setWindowTitle("Hệ thống Quản lý Kho Hàng - PBL2 (Query for Interface)");
     resize(1300, 850);
@@ -187,6 +194,13 @@ void MainWindow::setupMenuBar()
     addAuxAction(statusSpecSub, "Trạng thái đơn xuất (outbound_status)", "outbound_status");
     addAuxAction(statusSpecSub, "Trạng thái xuất kiện (shipment_status)", "shipment_status");
     addAuxAction(statusSpecSub, "Trạng thái linh kiện (unit_status)", "unit_status");
+
+    // 5. Menu Báo cáo (Section 9: Báo cáo xuất - nhập - tồn định kỳ)
+    reportMenu = mBar->addMenu("📊 Báo cáo");
+    auto* actReport = reportMenu->addAction("📈 Báo cáo Xuất - Nhập - Tồn Định Kỳ");
+    connect(actReport, &QAction::triggered, [this]() {
+        selectReportQuery();
+    });
 }
 
 void MainWindow::setupUI()
@@ -257,13 +271,17 @@ void MainWindow::setupUI()
     tabAuxSpecBtn = new QPushButton("⚙️ Danh mục phụ", tabContainer);
     tabAuxSpecBtn->setToolTip("Bảng thông số phụ & Master data (Rule 9.3)");
 
+    tabReportBtn = new QPushButton("📊 Báo cáo", tabContainer);
+    tabReportBtn->setToolTip("Báo cáo xuất - nhập - tồn định kỳ (Section 9)");
+
     tabGrid->addWidget(tabWarehouseBtn, 0, 0);
     tabGrid->addWidget(tabCategoryBtn, 0, 1);
     tabGrid->addWidget(tabCustomerBtn, 1, 0);
     tabGrid->addWidget(tabAuxSpecBtn, 1, 1);
+    tabGrid->addWidget(tabReportBtn, 2, 0, 1, 2);
     sidebarLayout->addWidget(tabContainer);
 
-    // Stacked sidebar lists for the 4 separated domains
+    // Stacked sidebar lists for the 5 separated domains
     sidebarStack = new QStackedWidget(sidebarWidget);
     sidebarStack->setStyleSheet(
         "QListWidget {"
@@ -293,11 +311,13 @@ void MainWindow::setupUI()
     categoryList = new QListWidget(sidebarStack);
     customerList = new QListWidget(sidebarStack);
     auxSpecList = new QListWidget(sidebarStack);
+    reportList = new QListWidget(sidebarStack);
 
     sidebarStack->addWidget(warehouseList); // Index 0: Warehouse
     sidebarStack->addWidget(categoryList);  // Index 1: Category
     sidebarStack->addWidget(customerList);  // Index 2: Customer
     sidebarStack->addWidget(auxSpecList);   // Index 3: Aux Specs
+    sidebarStack->addWidget(reportList);    // Index 4: Periodic Report
 
     sidebarLayout->addWidget(sidebarStack);
 
@@ -1252,6 +1272,9 @@ void MainWindow::setupPages()
             .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(businessCustomerWidget);
+
+    setupReportPage();
+    stackedWidget->addWidget(reportPageWidget); // Index 22: Periodic Report
 }
 
 void MainWindow::loadAuxSpecData(const QString& tableName)
@@ -1377,6 +1400,9 @@ void MainWindow::setupSidebar()
     addAuxItem("📑 Xuất kiện - Trạng thái (shipment_status)", "shipment_status");
     addAuxItem("📑 Linh kiện - Trạng thái (unit_status)", "unit_status");
 
+    // 5. Periodic Report Item (Section 9)
+    reportList->addItem("📈 Báo cáo Xuất - Nhập - Tồn Định Kỳ");
+
     // Connect domain tabs
     connect(tabWarehouseBtn, &QPushButton::clicked, [this]() {
         switchToDomain(0);
@@ -1389,6 +1415,14 @@ void MainWindow::setupSidebar()
     });
     connect(tabAuxSpecBtn, &QPushButton::clicked, [this]() {
         switchToDomain(3);
+    });
+    connect(tabReportBtn, &QPushButton::clicked, [this]() {
+        switchToDomain(4);
+    });
+    connect(reportList, &QListWidget::currentRowChanged, [this](int row) {
+        if (row >= 0) {
+            selectReportQuery();
+        }
     });
 
     // Connect list selection changes
@@ -1455,6 +1489,7 @@ void MainWindow::switchToDomain(int domainIndex)
     setTabStyle(tabCategoryBtn, domainIndex == 1);
     setTabStyle(tabCustomerBtn, domainIndex == 2);
     setTabStyle(tabAuxSpecBtn, domainIndex == 3);
+    setTabStyle(tabReportBtn, domainIndex == 4);
 
     if (domainIndex == 0) {
         if (warehouseList->currentRow() < 0) {
@@ -1480,6 +1515,12 @@ void MainWindow::switchToDomain(int domainIndex)
         } else {
             QString tbl = auxSpecList->currentItem()->data(Qt::UserRole).toString();
             selectAuxSpecQuery(tbl);
+        }
+    } else if (domainIndex == 4) {
+        if (reportList->currentRow() < 0) {
+            reportList->setCurrentRow(0);
+        } else {
+            selectReportQuery();
         }
     }
 }
@@ -1654,6 +1695,11 @@ void MainWindow::refreshQuery(int index)
         user_query::business_customer_query(db, results);
         businessCustomerWidget->setData(results);
         break;
+    case 22:
+        if (reportDataCached) {
+            renderReportTable();
+        }
+        return;
     default:
         break;
     }
@@ -1682,6 +1728,393 @@ void MainWindow::refreshQuery(int index)
     );
 }
 
+void MainWindow::selectReportQuery()
+{
+    if (sidebarStack->currentIndex() != 4) {
+        switchToDomain(4);
+    }
+    reportList->blockSignals(true);
+    reportList->setCurrentRow(0);
+    reportList->blockSignals(false);
+
+    stackedWidget->setCurrentIndex(22);
+
+    // Rule 9.6: Ban đầu không hiển thị thông tin gì cả; chỉ hiển thị khi đã cache và dữ liệu chưa bị thay đổi
+    if (reportDataCached) {
+        renderReportTable();
+    } else {
+        if (reportTable) reportTable->setRowCount(0);
+        if (reportSummaryLabel) reportSummaryLabel->setText("Trạng thái: Chưa có dữ liệu. Vui lòng chọn Tháng, Năm và bấm 'Xem báo cáo'.");
+    }
+}
+
+void MainWindow::setupReportPage()
+{
+    reportPageWidget = new QWidget(this);
+    auto* mainLayout = new QVBoxLayout(reportPageWidget);
+    mainLayout->setContentsMargins(18, 16, 18, 16);
+    mainLayout->setSpacing(12);
+
+    // 1. Header Card (Title & Description)
+    auto* headerFrame = new QFrame(reportPageWidget);
+    headerFrame->setStyleSheet(
+        "QFrame {"
+        "  background-color: #ffffff;"
+        "  border: 1px solid #e2e8f0;"
+        "  border-radius: 8px;"
+        "  padding: 12px 16px;"
+        "}"
+    );
+    auto* headerLayout = new QVBoxLayout(headerFrame);
+    headerLayout->setContentsMargins(0, 0, 0, 0);
+    headerLayout->setSpacing(4);
+
+    auto* titleLabel = new QLabel("📈 BÁO CÁO XUẤT - NHẬP - TỒN ĐỊNH KỲ (PERIODIC INVENTORY REPORT)", headerFrame);
+    titleLabel->setStyleSheet("font-size: 16px; font-weight: bold; color: #0f172a;");
+    auto* descLabel = new QLabel("Thống kê biến động nhập, xuất và số lượng tồn kho theo tháng đối với các sản phẩm đang kinh doanh (is_sold = TRUE). Dữ liệu được tính toán dựa trên actual_quantity.", headerFrame);
+    descLabel->setStyleSheet("font-size: 12px; color: #64748b;");
+    headerLayout->addWidget(titleLabel);
+    headerLayout->addWidget(descLabel);
+    mainLayout->addWidget(headerFrame);
+
+    // 2. Control Toolbar (Chọn Tháng, Năm, Nút Xem Báo Cáo, Nút Xuất CSV)
+    auto* controlFrame = new QFrame(reportPageWidget);
+    controlFrame->setStyleSheet(
+        "QFrame {"
+        "  background-color: #ffffff;"
+        "  border: 1px solid #e2e8f0;"
+        "  border-radius: 8px;"
+        "  padding: 10px 14px;"
+        "}"
+    );
+    auto* controlLayout = new QHBoxLayout(controlFrame);
+    controlLayout->setContentsMargins(0, 0, 0, 0);
+    controlLayout->setSpacing(10);
+
+    auto* lblMonth = new QLabel("📅 Tháng:", controlFrame);
+    lblMonth->setStyleSheet("font-weight: 600; color: #334155; font-size: 13px;");
+    controlLayout->addWidget(lblMonth);
+
+    reportMonthCombo = new QComboBox(controlFrame);
+    reportMonthCombo->setStyleSheet(
+        "QComboBox {"
+        "  padding: 5px 12px;"
+        "  border: 1px solid #cbd5e1;"
+        "  border-radius: 6px;"
+        "  background-color: #ffffff;"
+        "  color: #0f172a;"
+        "  font-size: 13px;"
+        "  min-width: 60px;"
+        "}"
+        "QComboBox::drop-down { border: none; }"
+    );
+    for (int m = 1; m <= 12; ++m) {
+        reportMonthCombo->addItem(QString::number(m), m);
+    }
+    reportMonthCombo->setCurrentIndex(8); // Default Tháng 9 (0-indexed 8)
+    controlLayout->addWidget(reportMonthCombo);
+
+    auto* lblYear = new QLabel("Năm:", controlFrame);
+    lblYear->setStyleSheet("font-weight: 600; color: #334155; font-size: 13px;");
+    controlLayout->addWidget(lblYear);
+
+    reportYearSpin = new QSpinBox(controlFrame);
+    reportYearSpin->setRange(2020, 2035);
+    reportYearSpin->setValue(2026);
+    reportYearSpin->setStyleSheet(
+        "QSpinBox {"
+        "  padding: 5px 10px;"
+        "  border: 1px solid #cbd5e1;"
+        "  border-radius: 6px;"
+        "  background-color: #ffffff;"
+        "  color: #0f172a;"
+        "  font-size: 13px;"
+        "  min-width: 75px;"
+        "}"
+    );
+    controlLayout->addWidget(reportYearSpin);
+
+    btnGenerateReport = new QPushButton("🔍 Xem báo cáo", controlFrame);
+    btnGenerateReport->setCursor(Qt::PointingHandCursor);
+    btnGenerateReport->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #2563eb;"
+        "  color: #ffffff;"
+        "  border: none;"
+        "  border-radius: 6px;"
+        "  padding: 6px 16px;"
+        "  font-size: 13px;"
+        "  font-weight: 600;"
+        "}"
+        "QPushButton:hover { background-color: #1d4ed8; }"
+        "QPushButton:pressed { background-color: #1e40af; }"
+    );
+    controlLayout->addWidget(btnGenerateReport);
+
+    btnExportCsv = new QPushButton("📥 Xuất file CSV", controlFrame);
+    btnExportCsv->setCursor(Qt::PointingHandCursor);
+    btnExportCsv->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #059669;"
+        "  color: #ffffff;"
+        "  border: none;"
+        "  border-radius: 6px;"
+        "  padding: 6px 16px;"
+        "  font-size: 13px;"
+        "  font-weight: 600;"
+        "}"
+        "QPushButton:hover { background-color: #047857; }"
+        "QPushButton:pressed { background-color: #065f46; }"
+    );
+    controlLayout->addWidget(btnExportCsv);
+
+    controlLayout->addStretch(1);
+    mainLayout->addWidget(controlFrame);
+
+    // 3. Status & Summary Bar
+    reportSummaryLabel = new QLabel("Trạng thái: Chưa có dữ liệu. Vui lòng chọn Tháng, Năm và bấm 'Xem báo cáo'.", reportPageWidget);
+    reportSummaryLabel->setStyleSheet(
+        "QLabel {"
+        "  background-color: #f1f5f9;"
+        "  color: #334155;"
+        "  border: 1px solid #cbd5e1;"
+        "  border-radius: 6px;"
+        "  padding: 8px 12px;"
+        "  font-size: 12px;"
+        "  font-weight: 500;"
+        "}"
+    );
+    mainLayout->addWidget(reportSummaryLabel);
+
+    // 4. Data Table
+    reportTable = new QTableWidget(reportPageWidget);
+    reportTable->setColumnCount(9);
+    reportTable->setHorizontalHeaderLabels({
+        "Mã sản phẩm", "Tên sản phẩm", "Tồn đầu kỳ",
+        "Nhập trong tháng", "Xuất trong tháng", "Tồn cuối tháng",
+        "Tồn khả dụng", "Hàng bảo hành", "Hàng lỗi / hỏng"
+    });
+    reportTable->setStyleSheet(
+        "QTableWidget {"
+        "  background-color: #ffffff;"
+        "  border: 1px solid #e2e8f0;"
+        "  border-radius: 8px;"
+        "  gridline-color: #f1f5f9;"
+        "  font-size: 13px;"
+        "}"
+        "QHeaderView::section {"
+        "  background-color: #f8fafc;"
+        "  color: #334155;"
+        "  font-weight: 600;"
+        "  padding: 8px 10px;"
+        "  border: none;"
+        "  border-bottom: 2px solid #cbd5e1;"
+        "  border-right: 1px solid #e2e8f0;"
+        "}"
+        "QHeaderView::section:hover {"
+        "  background-color: #e2e8f0;"
+        "}"
+        "QTableWidget::item {"
+        "  padding: 6px 10px;"
+        "  border-bottom: 1px solid #f1f5f9;"
+        "}"
+        "QTableWidget::item:selected {"
+        "  background-color: #dbeafe;"
+        "  color: #1e3a8a;"
+        "}"
+    );
+    reportTable->setAlternatingRowColors(true);
+    reportTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+
+    // Cho phép người dùng tự do kéo thả chỉnh sửa độ rộng từng cột (Interactive Resize Mode)
+    reportTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
+    reportTable->horizontalHeader()->setSectionsClickable(true);
+    reportTable->horizontalHeader()->setStretchLastSection(false);
+    reportTable->horizontalHeader()->setSortIndicatorShown(true);
+
+    // Thiết lập độ rộng mặc định ban đầu thoáng đẹp cho từng cột
+    reportTable->setColumnWidth(0, 185); // Mã sản phẩm
+    reportTable->setColumnWidth(1, 340); // Tên sản phẩm
+    reportTable->setColumnWidth(2, 110); // Tồn đầu kỳ
+    reportTable->setColumnWidth(3, 130); // Nhập trong tháng
+    reportTable->setColumnWidth(4, 130); // Xuất trong tháng
+    reportTable->setColumnWidth(5, 120); // Tồn cuối tháng
+    reportTable->setColumnWidth(6, 110); // Tồn khả dụng
+    reportTable->setColumnWidth(7, 120); // Hàng bảo hành
+    reportTable->setColumnWidth(8, 120); // Hàng lỗi / hỏng
+
+    // Kích hoạt tính năng chọn ("bôi đen") ô/vùng ô và sao chép (Ctrl+C / Chuột phải / Double-click)
+    TableClipboardHelper::setupClipboardForTable(reportTable, statusLabel);
+
+    // Initially blank (Rule 9.6: Ban đầu sẽ không hiển thị thông tin gì cả)
+    reportTable->setRowCount(0);
+    mainLayout->addWidget(reportTable, 1);
+
+    // Connect Header Click for in-place sorting
+    connect(reportTable->horizontalHeader(), &QHeaderView::sectionClicked, [this](int logicalIndex) {
+        if (!reportDataCached || cachedReportRecords.empty()) return;
+        const string colKeys[] = {
+            "product_code", "product_name", "opening_stock",
+            "inbound_quantity", "outbound_quantity", "closing_stock",
+            "available_quan", "warranty_quan", "scrapped_quan"
+        };
+        if (logicalIndex < 0 || logicalIndex >= 9) return;
+
+        if (currentReportSortColumn == logicalIndex) {
+            currentReportSortAscending = !currentReportSortAscending;
+        } else {
+            currentReportSortColumn = logicalIndex;
+            currentReportSortAscending = true;
+        }
+
+        user_query::sort_query_results(cachedReportRecords, colKeys[logicalIndex], currentReportSortAscending);
+        renderReportTable();
+    });
+
+    // Connect Generate Report
+    connect(btnGenerateReport, &QPushButton::clicked, [this]() {
+        if (!db) return;
+        int m = reportMonthCombo->currentData().toInt();
+        int y = reportYearSpin->value();
+
+        if (reportDataCached && cachedMonth == m && cachedYear == y) {
+            renderReportTable();
+            statusLabel->setText(QString("Hiển thị từ cache bộ nhớ: Báo cáo tháng %1/%2 (%3 sản phẩm)").arg(m).arg(y).arg(cachedReportRecords.size()));
+            return;
+        }
+
+        QElapsedTimer timer;
+        timer.start();
+        user_query::periodic_inventory_report(db, m, y, cachedReportRecords, cachedGrandTotal);
+        reportDataCached = true;
+        cachedMonth = m;
+        cachedYear = y;
+        currentReportSortColumn = -1;
+
+        renderReportTable();
+        statusLabel->setText(QString("Đã tạo Báo cáo Xuất - Nhập - Tồn tháng %1/%2 thành công: %3 sản phẩm (%4 ms)")
+            .arg(m).arg(y).arg(cachedReportRecords.size()).arg(timer.elapsed()));
+    });
+
+    // Connect Export CSV
+    connect(btnExportCsv, &QPushButton::clicked, [this]() {
+        if (!reportDataCached || cachedReportRecords.empty()) {
+            QMessageBox::warning(this, "Thông báo", "Chưa có dữ liệu báo cáo. Vui lòng bấm 'Xem báo cáo' trước khi xuất file CSV!");
+            return;
+        }
+        bool ok = user_query::export_periodic_inventory_report_csv(cachedMonth, cachedYear, cachedReportRecords, cachedGrandTotal);
+        if (ok) {
+            QString filename = QString("report/BaoCao_Thang_%1_Nam_%2.csv")
+                                    .arg(cachedMonth, 2, 10, QChar('0'))
+                                    .arg(cachedYear);
+            QMessageBox::information(this, "Xuất file thành công", QString("Đã xuất báo cáo thành công ra file:\n%1").arg(filename));
+        } else {
+            QMessageBox::critical(this, "Lỗi", "Không thể ghi file báo cáo vào thư mục report/!");
+        }
+    });
+}
+
+void MainWindow::renderReportTable()
+{
+    if (!reportTable) return;
+
+    if (!reportDataCached || cachedReportRecords.empty()) {
+        reportTable->setRowCount(0);
+        reportSummaryLabel->setText("Trạng thái: Chưa có dữ liệu. Vui lòng chọn Tháng, Năm và bấm 'Xem báo cáo'.");
+        return;
+    }
+
+    int nRows = static_cast<int>(cachedReportRecords.size());
+    reportTable->setRowCount(nRows + 1); // +1 for Grand Total
+
+    QFont normalFont;
+    normalFont.setPointSize(10);
+
+    QFont boldFont;
+    boldFont.setPointSize(10);
+    boldFont.setBold(true);
+
+    for (int i = 0; i < nRows; ++i) {
+        const auto& r = cachedReportRecords[i];
+        QString pCode = r.has("product_code") ? QString::fromStdString(get<string>(r.get("product_code"))) : "";
+        QString pName = r.has("product_name") ? QString::fromStdString(get<string>(r.get("product_name"))) : "";
+        int openStock = r.has("opening_stock") ? get<int>(r.get("opening_stock")) : 0;
+        int inQty = r.has("inbound_quantity") ? get<int>(r.get("inbound_quantity")) : 0;
+        int outQty = r.has("outbound_quantity") ? get<int>(r.get("outbound_quantity")) : 0;
+        int closeStock = r.has("closing_stock") ? get<int>(r.get("closing_stock")) : 0;
+        int avail = r.has("available_quan") ? get<int>(r.get("available_quan")) : 0;
+        int warr = r.has("warranty_quan") ? get<int>(r.get("warranty_quan")) : 0;
+        int scrap = r.has("scrapped_quan") ? get<int>(r.get("scrapped_quan")) : 0;
+
+        auto* it0 = new QTableWidgetItem(pCode);
+        auto* it1 = new QTableWidgetItem(pName);
+        auto* it2 = new QTableWidgetItem(QString::number(openStock));
+        auto* it3 = new QTableWidgetItem(QString::number(inQty));
+        auto* it4 = new QTableWidgetItem(QString::number(outQty));
+        auto* it5 = new QTableWidgetItem(QString::number(closeStock));
+        auto* it6 = new QTableWidgetItem(QString::number(avail));
+        auto* it7 = new QTableWidgetItem(QString::number(warr));
+        auto* it8 = new QTableWidgetItem(QString::number(scrap));
+
+        it2->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        it3->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        it4->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        it5->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        it6->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        it7->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        it8->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+
+        reportTable->setItem(i, 0, it0);
+        reportTable->setItem(i, 1, it1);
+        reportTable->setItem(i, 2, it2);
+        reportTable->setItem(i, 3, it3);
+        reportTable->setItem(i, 4, it4);
+        reportTable->setItem(i, 5, it5);
+        reportTable->setItem(i, 6, it6);
+        reportTable->setItem(i, 7, it7);
+        reportTable->setItem(i, 8, it8);
+    }
+
+    // Grand Total Row
+    int gOpen = cachedGrandTotal.has("opening_stock") ? get<int>(cachedGrandTotal.get("opening_stock")) : 0;
+    int gIn = cachedGrandTotal.has("inbound_quantity") ? get<int>(cachedGrandTotal.get("inbound_quantity")) : 0;
+    int gOut = cachedGrandTotal.has("outbound_quantity") ? get<int>(cachedGrandTotal.get("outbound_quantity")) : 0;
+    int gClose = cachedGrandTotal.has("closing_stock") ? get<int>(cachedGrandTotal.get("closing_stock")) : 0;
+    int gAvail = cachedGrandTotal.has("available_quan") ? get<int>(cachedGrandTotal.get("available_quan")) : 0;
+    int gWarr = cachedGrandTotal.has("warranty_quan") ? get<int>(cachedGrandTotal.get("warranty_quan")) : 0;
+    int gScrap = cachedGrandTotal.has("scrapped_quan") ? get<int>(cachedGrandTotal.get("scrapped_quan")) : 0;
+
+    auto* t0 = new QTableWidgetItem("📌 TỔNG CỘNG");
+    auto* t1 = new QTableWidgetItem(QString("(%1 mặt hàng)").arg(nRows));
+    auto* t2 = new QTableWidgetItem(QString::number(gOpen));
+    auto* t3 = new QTableWidgetItem(QString::number(gIn));
+    auto* t4 = new QTableWidgetItem(QString::number(gOut));
+    auto* t5 = new QTableWidgetItem(QString::number(gClose));
+    auto* t6 = new QTableWidgetItem(QString::number(gAvail));
+    auto* t7 = new QTableWidgetItem(QString::number(gWarr));
+    auto* t8 = new QTableWidgetItem(QString::number(gScrap));
+
+    QTableWidgetItem* totalItems[] = {t0, t1, t2, t3, t4, t5, t6, t7, t8};
+    QColor totalBg(241, 245, 249);
+    for (int col = 0; col < 9; ++col) {
+        totalItems[col]->setFont(boldFont);
+        totalItems[col]->setBackground(totalBg);
+        if (col >= 2) {
+            totalItems[col]->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+            totalItems[col]->setForeground(QColor(37, 99, 235));
+        }
+        reportTable->setItem(nRows, col, totalItems[col]);
+    }
+
+    reportSummaryLabel->setText(
+        QString("📊 Kỳ báo cáo: Tháng %1/%2 | Tổng sản phẩm: %3 | Tồn đầu: %4 | Tổng nhập: %5 | Tổng xuất: %6 | Tồn cuối: %7 (Khả dụng: %8, Bảo hành: %9, Lỗi: %10)")
+            .arg(cachedMonth).arg(cachedYear)
+            .arg(nRows)
+            .arg(gOpen).arg(gIn).arg(gOut).arg(gClose)
+            .arg(gAvail).arg(gWarr).arg(gScrap)
+    );
+}
+
 void MainWindow::reloadDatabase()
 {
     if (!db) return;
@@ -1694,6 +2127,17 @@ void MainWindow::reloadDatabase()
 
     // Làm mới danh sách lựa chọn lọc của các bảng danh mục sản phẩm
     updateCategoryFilterOptions();
+
+    // Xóa cache báo cáo định kỳ khi CSDL thay đổi (Rule 9.6: Nếu có cờ thay đổi dữ liệu thì không hiển thị thông tin gì cả)
+    reportDataCached = false;
+    cachedReportRecords.clear();
+    cachedGrandTotal = Record();
+    if (reportTable) {
+        reportTable->setRowCount(0);
+    }
+    if (reportSummaryLabel) {
+        reportSummaryLabel->setText("Trạng thái: Dữ liệu cơ sở dữ liệu đã thay đổi. Vui lòng chọn Tháng, Năm và bấm 'Xem báo cáo'.");
+    }
 
     if (ok) {
         statusLabel->setText(QString("Đã nạp lại CSDL thành công (%1 ms)").arg(elapsedMs));

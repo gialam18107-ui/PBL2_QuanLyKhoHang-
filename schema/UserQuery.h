@@ -111,6 +111,17 @@ namespace user_query {
     // ========================================================
     void individual_customer_query(Database *db, Vector<Record> &results, const string& indexedColumn = "", const Value& val = Value());
     void business_customer_query(Database *db, Vector<Record> &results, const string& indexedColumn = "", const Value& val = Value());
+
+    // ========================================================
+    // 15. BÁO CÁO XUẤT - NHẬP - TỒN ĐỊNH KỲ (PERIODIC INVENTORY REPORT - Section 9)
+    // - Tính toán số lượng biến động và tồn kho theo từng tháng cho sản phẩm đang bán (is_sold == TRUE)
+    // - Tồn đầu kỳ: tính dồn mọi giao dịch trước ngày 01 của tháng báo cáo
+    // - Nhập/Xuất trong tháng: tính theo actual_quantity của delivery_detail và shipment_detail trong tháng
+    // - Trả về danh sách kết quả sản phẩm và Record grandTotal chứa dòng tổng cộng
+    // ========================================================
+    void periodic_inventory_report(Database *db, int month, int year, Vector<Record> &results, Record &grandTotal);
+    bool export_periodic_inventory_report_csv(int month, int year, const Vector<Record> &results, const Record &grandTotal, const string &outPath = "");
 }
 
 #endif // USERQUERY_H
+
