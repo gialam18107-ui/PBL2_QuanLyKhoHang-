@@ -250,6 +250,8 @@ All auto-generated codes and user inputs must strictly conform to the specificat
     - `customer_id` must be retained in the query `Record` internally for CRUD/identification, but must remain hidden from UI table columns.
     - **Individual Customer** (`individual_customer_query`): Mã khách hàng (`customer.customer_code`), Tên khách hàng (`customer.name`), Số điện thoại (`individual_info.phone_number`), Email (`individual_info.email`).
     - **Business Customer** (`business_customer_query`): Mã đối tác / DN (`customer.customer_code`), Tên doanh nghiệp (`customer.name`), Mã số thuế (`business_info.tax_code`), Số điện thoại (`business_info.phone_number`), Email (`business_info.email`).
+- **Report Domain Separation**:
+  - Add a dedicated top menu **`Báo cáo`** and a dedicated navigation choice for **`Báo cáo xuất nhập tồn định kỳ`** (Periodic Inventory Movement Report), separated into its own domain and isolated from operational CRUD tables.
 
 ### 7.4 Column Filtering & Input Controls
 - Call `user_query` functions to filter by the user-selected column:
@@ -363,4 +365,16 @@ The periodic inventory report contains the following columns for each eligible p
 - **File Naming Convention**:
   - Format: `BaoCao_Thang_<tháng>_Nam_<Năm>.csv`
   - Examples: `BaoCao_Thang_09_Nam_2026.csv`, `BaoCao_Thang_10_Nam_2026.csv`.
-- The CSV file must maintain UTF-8 encoding and follow standard tabular formatting compatible with external tools (such as Excel).
+- The CSV file must maintain UTF-8 encoding and follow standard tabular formatting compatible with external tools (such as Excel).
+
+### 9.6 UI Design & Interaction Rules (Qt Widgets)
+- **Dedicated Menu & Interface**:
+  - Accessible via a dedicated top menu **`Báo cáo`** and a separate navigation tab/page, isolated from transactional and master tables.
+- **Month & Year Selectors**:
+  - Provides intuitive UI controls (such as dropdown combo boxes or spinboxes) to select the reporting **Month** (1–12) and **Year** (e.g., 2020–2030), accompanied by a "Xem báo cáo" (Generate / View Report) trigger button and an "Xuất CSV" (Export CSV) button.
+- **Initial Blank State**:
+  - When the report page is first opened or switched to, **no data is displayed** (the table and summary metrics remain completely blank/empty).
+  - Data calculation and presentation only commence after the user explicitly selects a Month/Year and triggers the report generation.
+- **Query Caching & Invalidation Behavior (Cache Flag)**:
+  - **Cache Preservation (Clean Flag)**: When there are no data modification events in the database, previously computed report results remain cached in memory (`Vector<Record>`). In-place column sorting operates directly on this cached dataset without re-querying or recalculating.
+  - **Cache Invalidation & Blank Reset (Dirty Flag)**: When any database insert, update, or delete operation occurs across the system (raising the cache dirty/invalidated flag), the report cache is invalidated. Upon invalidation, the report view **must not display any outdated information** (resets back to the empty/blank state), requiring the user to explicitly re-execute the report generation to compute fresh data.
