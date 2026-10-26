@@ -361,7 +361,12 @@ All auto-generated codes and user inputs must strictly conform to the specificat
 
 ### 9.1 Overview & Scope
 - **Reporting Period**: Monthly basis (e.g., Month `MM`, Year `YYYY`).
-- **Product Scope**: Only products that are actively on sale (`product.is_sold == TRUE`) are included in the report. Products marked as discontinued (`is_sold == FALSE`) are excluded from periodic stock movement reporting.
+- **Product Scope & Dynamic Monthly Filtering**:
+  - Does **not** restrict products by current selling status (`product.is_sold == TRUE`). Even if a product is discontinued (`is_sold == FALSE`), it must still be included in the report if it had transactions or stock during the reporting month, ensuring complete and accurate historical auditing when querying past periods.
+  - **Exclusion Rule (Quy tắc loại trừ)**: The report must exclude (not include) any product that simultaneously satisfies both conditions in the reporting month:
+    1. **No transactions occurred** in that month (neither inbound nor outbound: `inbound_quantity == 0` and `outbound_quantity == 0`).
+    2. **Total stock is zero** at the end of that month (`closing_stock == 0`, i.e., `available_quan + warranty_quan + scrapped_quan == 0`), and opening stock was also zero (`opening_stock == 0`).
+  - **Inclusion Criteria (Điều kiện đưa vào báo cáo)**: A product is included in the monthly report if in that month it had any transaction activity (`inbound_quantity > 0` or `outbound_quantity > 0`) OR maintained non-zero inventory (`opening_stock > 0` or `closing_stock > 0`).
 
 ### 9.2 Report Columns & Data Structure
 The periodic inventory report contains the following columns for each eligible product:
