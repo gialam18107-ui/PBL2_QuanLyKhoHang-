@@ -1830,7 +1830,11 @@ void periodic_inventory_report(Database *db, int month, int year,
     }
   }
 
-  // 6. Tính toán cho từng sản phẩm đang kinh doanh (is_sold == TRUE)
+  // 6. Tính toán cho từng sản phẩm
+  // Theo Rule 9.1: Duyệt qua tất cả sản phẩm (không phụ thuộc vào is_sold).
+  // Loại trừ những sản phẩm mà trong tháng đó:
+  // (1) Không phát sinh transaction (inMonth == 0 && outMonth == 0)
+  // (2) Tổng tồn kho = 0 (available + warranty + scrapped == 0)
   int sumOpening = 0;
   int sumInbound = 0;
   int sumOutbound = 0;
@@ -1839,30 +1843,10 @@ void periodic_inventory_report(Database *db, int month, int year,
   int sumWarr = 0;
   int sumScrap = 0;
 
-  // Tận dụng index is_sold nếu có
-  Vector<Record> prods = Query::filterRecords(*pTable, "is_sold", Value(true));
-  bool useIndexedProds = !prods.empty();
-  size_t prodCount = useIndexedProds ? prods.size() : pTable->getRows().size();
-  results.reserve(prodCount);
+  const auto &pRows = pTable->getRows();
+  results.reserve(pRows.size());
 
   auto processProduct = [&](const Record &p) {
-    if (!useIndexedProds) {
-      bool isSold = false;
-      if (p.has("is_sold")) {
-        const Value &v = p.get("is_sold");
-        if (holds_alternative<bool>(v))
-          isSold = get<bool>(v);
-        else if (holds_alternative<int>(v))
-          isSold = (get<int>(v) != 0);
-        else if (holds_alternative<string>(v)) {
-          string s = toLowerStr(get<string>(v));
-          isSold = (s == "true" || s == "1");
-        }
-      }
-      if (!isSold)
-        return;
-    }
-
     Value pId = p.get("product_id");
     int inBefore = inBeforeMap.find(pId) != inBeforeMap.end() ? inBeforeMap[pId] : 0;
     int outBefore = outBeforeMap.find(pId) != outBeforeMap.end() ? outBeforeMap[pId] : 0;
@@ -1905,6 +1889,13 @@ void periodic_inventory_report(Database *db, int month, int year,
       }
     }
 
+    // Quy tắc loại trừ (Rule 9.1):
+    // Loại trừ các sản phẩm không phát sinh transaction và tổng tồn kho = 0 trong tháng báo cáo
+    int totalStock = avail + warr + scrap;
+    if (inMonth == 0 && outMonth == 0 && totalStock == 0) {
+      return;
+    }
+
     Record out;
     out.set("product_id", pId);
     if (p.has("product_code"))
@@ -1930,16 +1921,9 @@ void periodic_inventory_report(Database *db, int month, int year,
     results.push_back(std::move(out));
   };
 
-  if (useIndexedProds) {
-    for (size_t i = 0; i < prods.size(); ++i) {
-      processProduct(prods[i]);
-    }
-  } else {
-    const auto &pRows = pTable->getRows();
-    for (size_t i = 0; i < pRows.size(); ++i) {
-      if (!pTable->isRowDeleted(i)) {
-        processProduct(pRows[i]);
-      }
+  for (size_t i = 0; i < pRows.size(); ++i) {
+    if (!pTable->isRowDeleted(i)) {
+      processProduct(pRows[i]);
     }
   }
 
