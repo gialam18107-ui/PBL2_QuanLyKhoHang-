@@ -487,7 +487,7 @@ namespace Schema
         table->addColumn(Column("received_quantity", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("actual_quantity", DataType::INTEGER, 0, false, false, true, false, "0"));
 
-        table->addConstraint(new PrimaryKeyConstraint("pk_delivery_detail", "id"));
+        table->addConstraint(new PrimaryKeyConstraint("pk_delivery_detail", "delivery_detail_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_delivery_detail_delivery", "delivery_id", "delivery", "delivery_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_delivery_detail_product", "product_id", "product", "product_id"));
         return table;
@@ -573,7 +573,7 @@ namespace Schema
         table->addColumn(Column("received_quantity", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("actual_quantity", DataType::INTEGER, 0, false, false, true, false, "0"));
 
-        table->addConstraint(new PrimaryKeyConstraint("pk_shipment_detail", "id"));
+        table->addConstraint(new PrimaryKeyConstraint("pk_shipment_detail", "shipment_detail_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_shipment_detail_shipment", "shipment_id", "shipment", "shipment_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_shipment_detail_product", "product_id", "product", "product_id"));
         return table;
