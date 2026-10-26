@@ -481,7 +481,7 @@ namespace Schema
     Table* createDeliveryDetailTable()
     {
         auto table = new Table("delivery_detail");
-        table->addColumn(Column("id", DataType::VARCHAR, 255, true, true, true));
+        table->addColumn(Column("delivery_detail_id", DataType::INTEGER, 0, true, true, true));
         table->addColumn(Column("delivery_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("received_quantity", DataType::INTEGER, 0, false, false, true));
@@ -567,7 +567,7 @@ namespace Schema
     Table* createShipmentDetailTable()
     {
         auto table = new Table("shipment_detail");
-        table->addColumn(Column("id", DataType::VARCHAR, 17, true, true, true));
+        table->addColumn(Column("shipment_detail_id", DataType::INTEGER, 0, true, true, true));
         table->addColumn(Column("shipment_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("received_quantity", DataType::INTEGER, 0, false, false, true));
