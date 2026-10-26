@@ -49,9 +49,11 @@ namespace Generator
         int nextInboundTxnId;
         int nextInboundDetailId;
         int nextDeliveryId;
+        int nextDeliveryDetailId;
         int nextOutboundTxnId;
         int nextOutboundDetailId;
         int nextShipmentId;
+        int nextShipmentDetailId;
         int nextStatusHistoryId;
 
         // Sequence number counters for code generation

@@ -14,9 +14,11 @@ namespace Generator
           nextInboundTxnId(1),
           nextInboundDetailId(1),
           nextDeliveryId(1),
+          nextDeliveryDetailId(1),
           nextOutboundTxnId(1),
           nextOutboundDetailId(1),
           nextShipmentId(1),
+          nextShipmentDetailId(1),
           nextStatusHistoryId(1),
           rngSeed(seed == 0 ? static_cast<unsigned int>(time(nullptr)) : seed)
     {
@@ -142,6 +144,18 @@ namespace Generator
             }
         }
 
+        // 4b. Scan Delivery Detail
+        Table* delDetTbl = db.getTable("delivery_detail");
+        if (delDetTbl != nullptr)
+        {
+            const auto& rows = delDetTbl->getRows();
+            for (size_t i = 0; i < rows.size(); i++)
+            {
+                int id = get<int>(rows[i].get("delivery_detail_id"));
+                if (id >= nextDeliveryDetailId) nextDeliveryDetailId = id + 1;
+            }
+        }
+
         // 5. Scan Outbound Transaction
         Table* outTxnTbl = db.getTable("outbound_transaction");
         if (outTxnTbl != nullptr)
@@ -185,6 +199,18 @@ namespace Generator
             {
                 int id = get<int>(rows[i].get("shipment_id"));
                 if (id >= nextShipmentId) nextShipmentId = id + 1;
+            }
+        }
+
+        // 8b. Scan Shipment Detail
+        Table* shipDetTbl = db.getTable("shipment_detail");
+        if (shipDetTbl != nullptr)
+        {
+            const auto& rows = shipDetTbl->getRows();
+            for (size_t i = 0; i < rows.size(); i++)
+            {
+                int id = get<int>(rows[i].get("shipment_detail_id"));
+                if (id >= nextShipmentDetailId) nextShipmentDetailId = id + 1;
             }
         }
 
@@ -378,7 +404,7 @@ namespace Generator
                 if (delDetTbl != nullptr && deliveryQty > 0)
                 {
                     Record delDet;
-                    delDet.set("id", delCode + "-P" + to_string(pid));
+                    delDet.set("delivery_detail_id", nextDeliveryDetailId++);
                     delDet.set("delivery_id", delId);
                     delDet.set("product_id", pid);
                     delDet.set("received_quantity", deliveryQty);
@@ -709,7 +735,7 @@ namespace Generator
                 if (shipDetTbl != nullptr && shipmentQty > 0)
                 {
                     Record shipDet;
-                    shipDet.set("id", shipCode + "-P" + to_string(pid));
+                    shipDet.set("shipment_detail_id", nextShipmentDetailId++);
                     shipDet.set("shipment_id", shipId);
                     shipDet.set("product_id", pid);
                     shipDet.set("received_quantity", shipmentQty);

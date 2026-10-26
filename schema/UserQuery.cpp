@@ -759,10 +759,9 @@ void delivery_detail_query_impl(Database *db, Vector<Record> &results,
 			const Record &d = *(dit->second);
 			const Record &p = *(pit->second);
 			Record out;
-			if (dd.has("id")) {
-				out.set("delivery_detail.id", dd.get("id"));
-				out.set("delivery_detail_id", dd.get("id"));
-				out.set("id", dd.get("id"));
+			if (dd.has("delivery_detail_id")) {
+				out.set("delivery_detail.delivery_detail_id", dd.get("delivery_detail_id"));
+				out.set("delivery_detail_id", dd.get("delivery_detail_id"));
 			}
 			if (d.has("delivery_code"))
 				out.set("delivery.delivery_code", d.get("delivery_code"));
@@ -1195,10 +1194,9 @@ void shipment_detail_query_impl(Database *db, Vector<Record> &results,
 			const Record &s = *(sit->second);
 			const Record &p = *(pit->second);
 			Record out;
-			if (sd.has("id")) {
-				out.set("shipment_detail.id", sd.get("id"));
-				out.set("shipment_detail_id", sd.get("id"));
-				out.set("id", sd.get("id"));
+			if (sd.has("shipment_detail_id")) {
+				out.set("shipment_detail.shipment_detail_id", sd.get("shipment_detail_id"));
+				out.set("shipment_detail_id", sd.get("shipment_detail_id"));
 			}
 			if (s.has("shipment_code"))
 				out.set("shipment.shipment_code", s.get("shipment_code"));

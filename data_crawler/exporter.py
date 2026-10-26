@@ -363,14 +363,14 @@ class SchemaExporter:
         # 27. DELIVERY_DETAIL (transactions/)
         delivery_details = [
             {
-                "id": "IN-PUR-000001-D01-P001",
+                "delivery_detail_id": 1,
                 "delivery_id": 1,
                 "product_id": 1,
                 "received_quantity": 25,
                 "actual_quantity": 25,
             }
         ]
-        delivery_detail_headers = ["id", "delivery_id", "product_id", "received_quantity", "actual_quantity"]
+        delivery_detail_headers = ["delivery_detail_id", "delivery_id", "product_id", "received_quantity", "actual_quantity"]
         self._write_csv("delivery_detail.csv", delivery_detail_headers, delivery_details)
         summary["delivery_detail"] = len(delivery_details)
 
@@ -445,14 +445,14 @@ class SchemaExporter:
         # 32. SHIPMENT_DETAIL (transactions/)
         shipment_details = [
             {
-                "id": "OUT-SEL-000001-S01-P001",
+                "shipment_detail_id": 1,
                 "shipment_id": 1,
                 "product_id": 1,
                 "received_quantity": 1,
                 "actual_quantity": 1,
             }
         ]
-        shipment_detail_headers = ["id", "shipment_id", "product_id", "received_quantity", "actual_quantity"]
+        shipment_detail_headers = ["shipment_detail_id", "shipment_id", "product_id", "received_quantity", "actual_quantity"]
         self._write_csv("shipment_detail.csv", shipment_detail_headers, shipment_details)
         summary["shipment_detail"] = len(shipment_details)
 

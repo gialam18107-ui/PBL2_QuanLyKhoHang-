@@ -823,16 +823,16 @@
       "fields": [
         {
           "id": "o-5JdhqUp_AMX6ucIBo5t",
-          "name": "id",
-          "type": "VARCHAR",
+          "name": "delivery_detail_id",
+          "type": "INTEGER",
           "default": "",
           "check": "",
           "primary": true,
           "unique": false,
+          "unsigned": true,
           "notNull": true,
-          "increment": false,
-          "comment": "",
-          "size": 255
+          "increment": true,
+          "comment": ""
         },
         {
           "name": "delivery_id",
@@ -1448,18 +1448,17 @@
       "locked": false,
       "fields": [
         {
-          "name": "id",
-          "type": "VARCHAR",
+          "name": "shipment_detail_id",
+          "type": "INTEGER",
           "default": "",
           "check": "",
           "primary": true,
           "unique": false,
           "unsigned": true,
           "notNull": true,
-          "increment": false,
+          "increment": true,
           "comment": "",
-          "id": "QmdticQ47CsKkaKBLicbd",
-          "size": 17
+          "id": "QmdticQ47CsKkaKBLicbd"
         },
         {
           "id": "fy9w4ykEeT5wNpcYU4c-5",
