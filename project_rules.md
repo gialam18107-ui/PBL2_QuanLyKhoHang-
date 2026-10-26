@@ -214,7 +214,7 @@ All auto-generated codes and user inputs must strictly conform to the specificat
   - Records in tables are modified directly through their `id` in the table (e.g., `product_id`, `delivery_id`, `customer_id`), without needing SQL `Condition` clauses at the user interface level.
   - When a user interacts with the UI to update or delete a row, the UI retrieves the hidden `*_id` from the selected row in `Vector<Record>`.
   - The UI calls the database/schema methods passing the target table name and record `id`.
-  - The parameters of update functions include: `tableName`, `record_id`, `Vector<string>& modifiedColumns`, `Vector<Value>& modifyingValues`.
+  - The parameters of update functions include: `tableName`, `record_id`, `Record &update_infor`.
   - The parameters of insert functions include: `tableName`, `Record& r`.
   - The parameters of delete functions include: `tableName`, `record_id`.
   - Column names, constraints, datatypes, and referential integrity must be validated before modifying tables.

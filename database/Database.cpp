@@ -13,7 +13,6 @@ Database::Database(const string& name)
 Database::Database(Database&& other) noexcept
     : databaseName(std::move(other.databaseName)),
       tables(std::move(other.tables)),
-      users(std::move(other.users)),
       inTransaction(other.inTransaction),
       transactionSnapshot(std::move(other.transactionSnapshot))
 {
@@ -26,12 +25,9 @@ Database& Database::operator=(Database&& other) noexcept
     {
         clear();
         clearTransactionSnapshot();
-        for (const auto& item : users) delete item.second;
-        users.clear();
 
         databaseName = std::move(other.databaseName);
         tables = std::move(other.tables);
-        users = std::move(other.users);
         inTransaction = other.inTransaction;
         transactionSnapshot = std::move(other.transactionSnapshot);
         other.inTransaction = false;
@@ -43,8 +39,6 @@ Database::~Database()
 {
     clear();
     clearTransactionSnapshot();
-    for (const auto& item : users) delete item.second;
-    users.clear();
 }
 
 string Database::getName() const { return databaseName; }
@@ -147,7 +141,78 @@ static bool containsColumnValue(const Table& table, const string& columnName, co
     return false;
 }
 
-bool Database::insert(const string& tableName, const Record& record)
+static Value resolveDefaultColumnValue(const Column& col)
+{
+    if (col.getDefaultValue().empty()) return monostate{};
+    if (col.getType() == DataType::INTEGER)
+    {
+        try { return stoi(col.getDefaultValue()); }
+        catch (...) { return 0; }
+    }
+    if (col.getType() == DataType::BOOLEAN)
+    {
+        return (col.getDefaultValue() == "1" || col.getDefaultValue() == "true" || col.getDefaultValue() == "TRUE");
+    }
+    return col.getDefaultValue();
+}
+
+static bool isColumnValueReferenced(
+    const Database& database,
+    const string& parentTableName,
+    const string& parentColumnName,
+    const Value& parentValue
+)
+{
+    if (isNull(parentValue)) return false;
+
+    Vector<string> names = database.getTableNames();
+    for (size_t tableIndex = 0; tableIndex < names.size(); ++tableIndex)
+    {
+        const Table* childTable = database.getTable(names[tableIndex]);
+        if (childTable == nullptr || childTable->getName() == parentTableName) continue;
+
+        for (size_t constraintIndex = 0; constraintIndex < childTable->getConstraints().size(); ++constraintIndex)
+        {
+            const auto* foreignKey = dynamic_cast<const ForeignKeyConstraint*>(childTable->getConstraints()[constraintIndex]);
+            if (foreignKey == nullptr) continue;
+            if (foreignKey->getReferenceTable() != parentTableName) continue;
+            if (foreignKey->getReferenceColumn() != parentColumnName) continue;
+
+            if (containsColumnValue(*childTable, foreignKey->getColumnName(), parentValue))
+            {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static bool isRecordReferenced(const Database& database, const string& tableName, const Record& parentRecord)
+{
+    Vector<string> names = database.getTableNames();
+    for (size_t tableIndex = 0; tableIndex < names.size(); ++tableIndex)
+    {
+        const Table* childTable = database.getTable(names[tableIndex]);
+        if (childTable == nullptr || childTable->getName() == tableName) continue;
+
+        for (size_t constraintIndex = 0; constraintIndex < childTable->getConstraints().size(); ++constraintIndex)
+        {
+            const auto* foreignKey = dynamic_cast<const ForeignKeyConstraint*>(childTable->getConstraints()[constraintIndex]);
+            if (foreignKey == nullptr || foreignKey->getReferenceTable() != tableName) continue;
+
+            const string& refCol = foreignKey->getReferenceColumn();
+            if (!parentRecord.has(refCol) || isNull(parentRecord.get(refCol))) continue;
+
+            if (containsColumnValue(*childTable, foreignKey->getColumnName(), parentRecord.get(refCol)))
+            {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool Database::insert(const string& tableName, const Record& r)
 {
     Table* table = getTable(tableName);
     if (table == nullptr) return false;
@@ -157,17 +222,30 @@ bool Database::insert(const string& tableName, const Record& record)
         Constraint* constraint = table->getConstraints()[index];
         if (constraint->getType() != ConstraintType::FOREIGN_KEY) continue;
         auto* foreignKey = dynamic_cast<ForeignKeyConstraint*>(constraint);
-        if (foreignKey == nullptr || !record.has(foreignKey->getColumnName())
-            || isNull(record.get(foreignKey->getColumnName()))) continue;
+        if (foreignKey == nullptr) continue;
+
+        const string& fkCol = foreignKey->getColumnName();
+        Value fkVal;
+        if (r.has(fkCol))
+        {
+            fkVal = r.get(fkCol);
+        }
+        else if (const Column* col = table->getColumn(fkCol))
+        {
+            fkVal = resolveDefaultColumnValue(*col);
+        }
+
+        if (isNull(fkVal)) continue;
+
         const Table* referenced = getTable(foreignKey->getReferenceTable());
         if (referenced == nullptr
-            || !containsColumnValue(*referenced, foreignKey->getReferenceColumn(), record.get(foreignKey->getColumnName())))
+            || !containsColumnValue(*referenced, foreignKey->getReferenceColumn(), fkVal))
         {
             cout << "Foreign key constraint failed: " << constraint->getName() << endl;
             return false;
         }
     }
-    return table->insert(record);
+    return table->insert(r);
 }
 
 Vector<Record> Database::selectAll(const string& tableName) const
@@ -184,104 +262,99 @@ Vector<Record> Database::selectAll(const string& tableName) const
 }
 
 static bool validateForeignKeyUpdates(
-    Database& database,
-    Table& table,
-    const Record& current,
-    const Record& newValues
+    const Database& database,
+    const Table& table,
+    const Record& update_infor
 )
 {
-    Record updated = current;
-    for (const auto& item : newValues.getValues()) updated.set(item.first, item.second);
-
     for (size_t index = 0; index < table.getConstraints().size(); ++index)
     {
-        Constraint* constraint = table.getConstraints()[index];
+        const Constraint* constraint = table.getConstraints()[index];
         if (constraint->getType() != ConstraintType::FOREIGN_KEY) continue;
-        auto* foreignKey = dynamic_cast<ForeignKeyConstraint*>(constraint);
-        if (foreignKey == nullptr || !newValues.has(foreignKey->getColumnName())) continue;
-        const Table* referenced = database.getTable(foreignKey->getReferenceTable());
-        if (referenced == nullptr) return false;
-        if (!updated.has(foreignKey->getColumnName()) || isNull(updated.get(foreignKey->getColumnName())))
+        const auto* foreignKey = dynamic_cast<const ForeignKeyConstraint*>(constraint);
+        if (foreignKey == nullptr || !update_infor.has(foreignKey->getColumnName())) continue;
+
+        const Value& newFkVal = update_infor.get(foreignKey->getColumnName());
+        if (isNull(newFkVal))
         {
-            continue; // NULL foreign-key values are permitted by this implementation.
+            continue; // NULL foreign-key values are permitted if column allows NULL (checked by Table::update).
         }
-        if (!containsColumnValue(*referenced, foreignKey->getReferenceColumn(), updated.get(foreignKey->getColumnName())))
+
+        const Table* referenced = database.getTable(foreignKey->getReferenceTable());
+        if (referenced == nullptr
+            || !containsColumnValue(*referenced, foreignKey->getReferenceColumn(), newFkVal))
         {
+            cout << "Foreign key constraint failed: " << constraint->getName() << endl;
             return false;
         }
     }
     return true;
 }
 
-bool Database::update(const string& tableName, const Condition& condition, const Record& newValues)
+bool Database::update(const string& tableName, int record_id, const Record& update_infor)
 {
     Table* table = getTable(tableName);
-    if (table == nullptr) return false;
-    for (size_t index = 0; index < table->getRows().size(); ++index)
-    {
-        if (table->isRowDeleted(index)) continue;
-        const Record& row = table->getRows()[index];
-        if (condition.evaluate(row) && !validateForeignKeyUpdates(*this, *table, row, newValues)) return false;
-    }
-    return table->update(condition, newValues);
-}
+    if (table == nullptr || update_infor.size() == 0) return false;
 
-bool Database::update(const string& tableName, const ConditionGroup& group, const Record& newValues)
-{
-    Table* table = getTable(tableName);
-    if (table == nullptr) return false;
-    for (size_t index = 0; index < table->getRows().size(); ++index)
-    {
-        if (table->isRowDeleted(index)) continue;
-        const Record& row = table->getRows()[index];
-        if (group.evaluate(row) && !validateForeignKeyUpdates(*this, *table, row, newValues)) return false;
-    }
-    return table->update(group, newValues);
-}
+    int rowIndex = table->findRowIndexById(record_id);
+    if (rowIndex < 0) return false;
 
-static bool isReferenced(Database& database, const string& tableName, const Vector<Record>& removedRows)
-{
-    Vector<string> names = database.getTableNames();
-    for (size_t tableIndex = 0; tableIndex < names.size(); ++tableIndex)
+    const string pkCol = table->getPrimaryKeyColumn();
+    const Record& currentRow = table->getRows()[static_cast<size_t>(rowIndex)];
+
+    // Validate column existence and primary key immutability before checking foreign keys
+    for (const auto& item : update_infor.getValues())
     {
-        Table* childTable = database.getTable(names[tableIndex]);
-        if (childTable == nullptr || childTable->getName() == tableName) continue;
-        for (size_t constraintIndex = 0; constraintIndex < childTable->getConstraints().size(); ++constraintIndex)
+        if (!table->hasColumn(item.first))
         {
-            auto* foreignKey = dynamic_cast<ForeignKeyConstraint*>(childTable->getConstraints()[constraintIndex]);
-            if (foreignKey == nullptr || foreignKey->getReferenceTable() != tableName) continue;
-            for (size_t removedIndex = 0; removedIndex < removedRows.size(); ++removedIndex)
-            {
-                const Record& parent = removedRows[removedIndex];
-                if (!parent.has(foreignKey->getReferenceColumn())) continue;
-                Value parentValue = parent.get(foreignKey->getReferenceColumn());
-                if (containsColumnValue(*childTable, foreignKey->getColumnName(), parentValue)) return true;
-            }
+            cout << "Update failed: column not found: " << item.first << endl;
+            return false;
+        }
+        if (item.first == pkCol && !(item.second == Value(record_id)))
+        {
+            cout << "Update failed: cannot modify primary key column: " << pkCol << endl;
+            return false;
         }
     }
-    return false;
+
+    if (!validateForeignKeyUpdates(*this, *table, update_infor))
+    {
+        return false;
+    }
+
+    // Protect referential integrity if updating a parent column currently referenced by child tables
+    for (const auto& item : update_infor.getValues())
+    {
+        if (!currentRow.has(item.first) || isNull(currentRow.get(item.first))) continue;
+        const Value oldVal = currentRow.get(item.first);
+        if (oldVal == item.second) continue;
+
+        if (isColumnValueReferenced(*this, tableName, item.first, oldVal))
+        {
+            cout << "Update failed: column '" << item.first << "' is referenced by another table." << endl;
+            return false;
+        }
+    }
+
+    return table->update(record_id, update_infor);
 }
 
-bool Database::remove(const string& tableName, const Condition& condition)
+bool Database::remove(const string& tableName, int record_id)
 {
     Table* table = getTable(tableName);
     if (table == nullptr) return false;
-    Vector<Record> removed;
-    for (size_t index = 0; index < table->getRows().size(); ++index)
-        if (!table->isRowDeleted(index) && condition.evaluate(table->getRows()[index]))
-            removed.push_back(table->getRows()[index]);
-    return !isReferenced(*this, tableName, removed) && table->remove(condition);
-}
 
-bool Database::remove(const string& tableName, const ConditionGroup& group)
-{
-    Table* table = getTable(tableName);
-    if (table == nullptr) return false;
-    Vector<Record> removed;
-    for (size_t index = 0; index < table->getRows().size(); ++index)
-        if (!table->isRowDeleted(index) && group.evaluate(table->getRows()[index]))
-            removed.push_back(table->getRows()[index]);
-    return !isReferenced(*this, tableName, removed) && table->remove(group);
+    int rowIndex = table->findRowIndexById(record_id);
+    if (rowIndex < 0) return false;
+
+    const Record& targetRow = table->getRows()[static_cast<size_t>(rowIndex)];
+    if (isRecordReferenced(*this, tableName, targetRow))
+    {
+        cout << "Remove failed: record is referenced by another table." << endl;
+        return false;
+    }
+
+    return table->remove(record_id);
 }
 
 void Database::clear()
@@ -318,55 +391,3 @@ bool Database::rollback()
 }
 
 bool Database::isInTransaction() const { return inTransaction; }
-
-bool Database::createUser(const string& username, const string& password)
-{
-    if (users.find(username) != users.end()) return false;
-    users[username] = new User(username, password);
-    return true;
-}
-
-bool Database::dropUser(const string& username)
-{
-    auto it = users.find(username);
-    if (it == users.end()) return false;
-    delete it->second;
-    users.erase(username);
-    return true;
-}
-
-bool Database::authenticate(const string& username, const string& password) const
-{
-    auto it = users.find(username);
-    return it != users.end() && it->second->verifyPassword(password);
-}
-
-bool Database::grantPermission(const string& username, const string& tableName, Permission permission)
-{
-    auto it = users.find(username);
-    if (it == users.end()) return false;
-    if (tableName.empty() || tableName == "*") it->second->grantGlobal(permission);
-    else it->second->grant(tableName, permission);
-    return true;
-}
-
-bool Database::revokePermission(const string& username, const string& tableName, Permission permission)
-{
-    auto it = users.find(username);
-    if (it == users.end()) return false;
-    if (tableName.empty() || tableName == "*") it->second->revokeGlobal(permission);
-    else it->second->revoke(tableName, permission);
-    return true;
-}
-
-bool Database::hasPermission(const string& username, const string& tableName, Permission permission) const
-{
-    auto it = users.find(username);
-    return it != users.end() && it->second->hasPermission(tableName, permission);
-}
-
-User* Database::getUser(const string& username)
-{
-    auto it = users.find(username);
-    return it == users.end() ? nullptr : it->second;
-}

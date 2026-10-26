@@ -8,8 +8,6 @@
 #include "Column.h"
 #include "Record.h"
 #include "Constraint.h"
-#include "Condition.h"
-#include "ConditionGroup.h"
 #include "Index.h"
 
 using namespace std;
@@ -98,37 +96,33 @@ public:
     /// Get all indexes defined on this table.
     const Vector<Index*>& getIndexes() const;
 
+    /// Get the primary key column name of this table (empty string if none).
+    string getPrimaryKeyColumn() const;
+
+    /// Find active row index matching the given integer primary key ID (-1 if not found).
+    int findRowIndexById(int record_id) const;
+
     /**
-     * @brief Insert a record into the table, checking data types and table constraints.
-     * @param record Record containing column values to insert.
+     * @brief Insert a record into the table, checking column names, data types, and table constraints.
+     * @param r Record containing column values to insert.
      * @return true if inserted, false if validation failed.
      */
-    bool insert(const Record& record);
+    bool insert(const Record& r);
 
     /**
-     * @brief Update records matching a Condition with newValues.
-     * @param condition Matching condition for rows to modify.
-     * @param newValues Record containing columns and updated values.
-     * @return true if at least one row matched and updated without constraint violation.
+     * @brief Update a record identified by its primary key ID with update_infor.
+     * @param record_id Primary key ID of the row to modify.
+     * @param update_infor Record containing columns and updated values.
+     * @return true if the row existed and was updated without constraint violation.
      */
-    bool update(const Condition& condition, const Record& newValues);
+    bool update(int record_id, const Record& update_infor);
 
     /**
-     * @brief Update records matching a ConditionGroup.
+     * @brief Remove a record identified by its primary key ID from the table.
+     * @param record_id Primary key ID of the row to delete.
+     * @return true if the row existed and was deleted.
      */
-    bool update(const ConditionGroup& group, const Record& newValues);
-
-    /**
-     * @brief Remove records matching a Condition from the table.
-     * @param condition Matching filter for deletion.
-     * @return true if matching rows were deleted.
-     */
-    bool remove(const Condition& condition);
-
-    /**
-     * @brief Remove records matching a compound ConditionGroup.
-     */
-    bool remove(const ConditionGroup& group);
+    bool remove(int record_id);
 
     /// Get total number of rows in the table.
     int getRowCount() const;

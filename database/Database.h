@@ -5,14 +5,11 @@
 #include "datastructure/vector/Vector.h"
 #include "datastructure/hashmap/HashMap.h"
 #include "Table.h"
-#include "Condition.h"
-#include "ConditionGroup.h"
-#include "User.h"
 
 using namespace std;
 
 /**
- * @brief Represents a relational database containing tables, user access controls, and transaction state.
+ * @brief Represents a relational database containing tables and transaction state.
  * Implements full manual memory management without smart pointers or STL containers.
  */
 class Database
@@ -20,7 +17,6 @@ class Database
 private:
     string databaseName;
     HashMap<string, Table*> tables;
-    HashMap<string, User*> users;
 
     // Transaction management
     bool inTransaction;
@@ -101,12 +97,12 @@ public:
     // ========================================================
 
     /**
-     * @brief Insert a record into a table after validating PK, FK, and CHECK constraints.
+     * @brief Insert a record into a table after validating column names, data types, PK, FK, UNIQUE, NOT NULL, and CHECK constraints.
      * @param tableName Target table name.
-     * @param record Record object containing column-value mappings.
-     * @return true if successfully inserted, false if constraint violation.
+     * @param r Record object containing column-value mappings.
+     * @return true if successfully inserted, false if table not found or constraint violation.
      */
-    bool insert(const string& tableName, const Record& record);
+    bool insert(const string& tableName, const Record& r);
 
     /**
      * @brief Retrieve all records stored in a table.
@@ -116,36 +112,22 @@ public:
     Vector<Record> selectAll(const string& tableName) const;
 
     /**
-     * @brief Update rows in a table matching a single condition.
+     * @brief Update a record in a table identified by its primary key ID.
+     * Validates column names, data types, primary key immutability, constraints, and referential integrity.
      * @param tableName Target table name.
-     * @param condition Filter condition to match rows to update.
-     * @param newValues Record containing new column values to set.
-     * @return true if update succeeded, false if foreign key or table error.
+     * @param record_id Primary key ID of the record to update.
+     * @param update_infor Record containing new column values to set.
+     * @return true if update succeeded, false if table/record not found or validation failed.
      */
-    bool update(const string& tableName, const Condition& condition, const Record& newValues);
+    bool update(const string& tableName, int record_id, const Record& update_infor);
 
     /**
-     * @brief Update rows in a table matching a compound ConditionGroup.
+     * @brief Delete a record identified by its primary key ID. Enforces referential integrity across child tables.
      * @param tableName Target table name.
-     * @param group Logical group of conditions (AND/OR).
-     * @param newValues Record containing new column values to set.
+     * @param record_id Primary key ID of the record to remove.
+     * @return true if deleted, false if table/record not found or record is referenced by other tables.
      */
-    bool update(const string& tableName, const ConditionGroup& group, const Record& newValues);
-
-    /**
-     * @brief Delete rows matching condition. Enforces referential integrity (Rule 2 & 4).
-     * @param tableName Target table name.
-     * @param condition Filter condition for rows to remove.
-     * @return true if deleted, false if rows are referenced by other tables (FK protection).
-     */
-    bool remove(const string& tableName, const Condition& condition);
-
-    /**
-     * @brief Delete rows matching ConditionGroup with referential integrity protection.
-     * @param tableName Target table name.
-     * @param group Compound filter condition.
-     */
-    bool remove(const string& tableName, const ConditionGroup& group);
+    bool remove(const string& tableName, int record_id);
 
     /// Remove all tables and free all allocated table memory.
     void clear();
@@ -174,53 +156,6 @@ public:
 
     /// Check if currently in an active transaction block.
     bool isInTransaction() const;
-
-    // ========================================================
-    // USER & PERMISSION MANAGEMENT
-    // ========================================================
-
-    /**
-     * @brief Create a new user with username and password.
-     * @param username Login username.
-     * @param password Raw password (will be hashed internally).
-     * @return true if created, false if username already exists.
-     */
-    bool createUser(const string& username, const string& password);
-
-    /**
-     * @brief Drop an existing user by username.
-     * @param username Username to remove.
-     */
-    bool dropUser(const string& username);
-
-    /**
-     * @brief Authenticate user credentials.
-     * @param username User's login name.
-     * @param password Password to verify.
-     * @return true if credentials match, false otherwise.
-     */
-    bool authenticate(const string& username, const string& password) const;
-
-    /**
-     * @brief Grant a permission to a user for a table (or "*" for global).
-     * @param username Target username.
-     * @param tableName Table name or "*" for all tables.
-     * @param permission Permission enum (SELECT, INSERT, UPDATE, DELETE, etc.).
-     */
-    bool grantPermission(const string& username, const string& tableName, Permission permission);
-
-    /**
-     * @brief Revoke a previously granted permission from a user.
-     */
-    bool revokePermission(const string& username, const string& tableName, Permission permission);
-
-    /**
-     * @brief Check if user has specific permission on table.
-     */
-    bool hasPermission(const string& username, const string& tableName, Permission permission) const;
-
-    /// Get user pointer by username.
-    User* getUser(const string& username);
 };
 
 #endif // DATABASE_H

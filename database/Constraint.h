@@ -4,7 +4,6 @@
 #include <string>
 #include "datastructure/vector/Vector.h"
 #include "Record.h"
-#include "Condition.h"
 
 using namespace std;
 
@@ -14,8 +13,7 @@ enum class ConstraintType
     UNIQUE,
     FOREIGN_KEY,
     NOT_NULL,
-    DEFAULT,
-    CHECK
+    DEFAULT
 };
 
 /**
@@ -268,41 +266,6 @@ public:
 
     /// Get specified default value.
     const Value& getDefaultValue() const;
-
-    bool validate(
-        const Record& record,
-        const Vector<Record>& existingRecords,
-        const Vector<Record>& referencedRecords
-    ) const override;
-};
-
-// ============================================================
-// CHECK CONSTRAINT
-// ============================================================
-
-/**
- * @brief Enforces a logical condition on row values (e.g. price > 0, rating >= 1).
- */
-class CheckConstraint : public Constraint
-{
-private:
-    Condition condition;
-
-public:
-    /**
-     * @brief Construct a CheckConstraint.
-     * @param name Constraint identifier.
-     * @param condition Condition that all rows must satisfy.
-     */
-    CheckConstraint(
-        const string& name,
-        const Condition& condition
-    );
-
-    Constraint* clone() const override;
-
-    /// Get the validation condition.
-    const Condition& getCondition() const;
 
     bool validate(
         const Record& record,
