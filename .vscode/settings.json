@@ -5,5 +5,5 @@
   ],
   "editor.tabSize": 4,
   "editor.detectIndentation": false,
-  "C_Cpp.intelliSenseEngine": "disabled"
+  "C_Cpp.intelliSenseEngine": "default"
 }
