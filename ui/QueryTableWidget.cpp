@@ -10,7 +10,8 @@
 #include "ui/TableClipboardHelper.h"
 
 QueryTableWidget::QueryTableWidget(const QString& title, const QString& description, QWidget* parent)
-    : QWidget(parent), titleText(title), descText(description)
+    : QWidget(parent), titleText(title), descText(description),
+      addBtn(nullptr), editBtn(nullptr), deleteBtn(nullptr), extraActionBtn(nullptr)
 {
     auto* mainLayout = new QVBoxLayout(this);
     mainLayout->setContentsMargins(18, 18, 18, 18);
@@ -31,7 +32,7 @@ QueryTableWidget::QueryTableWidget(const QString& title, const QString& descript
     // 2. Setup dynamic filter bar (Rule 9.1)
     setupFilterUI(mainLayout);
 
-    // 3. Setup secondary toolbar (Search, count, refresh, export)
+    // 3. Setup secondary toolbar (Search, count, CRUD actions, refresh, export)
     setupToolbarUI(mainLayout);
 
     // 4. Setup table widget & sorting (Rule 11)
@@ -252,12 +253,12 @@ void QueryTableWidget::setupFilterUI(QVBoxLayout* mainLayout)
 void QueryTableWidget::setupToolbarUI(QVBoxLayout* mainLayout)
 {
     controlsLayout = new QHBoxLayout();
-    controlsLayout->setSpacing(10);
+    controlsLayout->setSpacing(8);
 
     searchInput = new QLineEdit(this);
     searchInput->setPlaceholderText("⚡ Tìm nhanh từ khóa trên bảng (Bộ nhớ đệm Vector)...");
     searchInput->setClearButtonEnabled(true);
-    searchInput->setMinimumWidth(280);
+    searchInput->setMinimumWidth(260);
     searchInput->setStyleSheet(
         "QLineEdit {"
         "  padding: 6px 12px;"
@@ -273,13 +274,83 @@ void QueryTableWidget::setupToolbarUI(QVBoxLayout* mainLayout)
     countLabel = new QLabel("Tổng cộng: 0 bản ghi", this);
     countLabel->setStyleSheet("font-size: 13px; font-weight: 500; color: #475569;");
 
+    // CRUD Action Buttons (hidden until configured)
+    addBtn = new QPushButton("➕ Thêm mới", this);
+    addBtn->setCursor(Qt::PointingHandCursor);
+    addBtn->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #2563eb;"
+        "  border: none;"
+        "  border-radius: 6px;"
+        "  padding: 6px 12px;"
+        "  font-size: 13px;"
+        "  font-weight: 600;"
+        "  color: #ffffff;"
+        "}"
+        "QPushButton:hover { background-color: #1d4ed8; }"
+        "QPushButton:pressed { background-color: #1e40af; }"
+    );
+    addBtn->hide();
+
+    editBtn = new QPushButton("✏️ Sửa", this);
+    editBtn->setCursor(Qt::PointingHandCursor);
+    editBtn->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #eff6ff;"
+        "  border: 1px solid #93c5fd;"
+        "  border-radius: 6px;"
+        "  padding: 6px 12px;"
+        "  font-size: 13px;"
+        "  font-weight: 600;"
+        "  color: #1d4ed8;"
+        "}"
+        "QPushButton:hover { background-color: #dbeafe; }"
+        "QPushButton:pressed { background-color: #bfdbfe; }"
+    );
+    editBtn->hide();
+
+    deleteBtn = new QPushButton("🗑️ Xóa", this);
+    deleteBtn->setCursor(Qt::PointingHandCursor);
+    deleteBtn->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #fef2f2;"
+        "  border: 1px solid #fca5a5;"
+        "  border-radius: 6px;"
+        "  padding: 6px 12px;"
+        "  font-size: 13px;"
+        "  font-weight: 600;"
+        "  color: #dc2626;"
+        "}"
+        "QPushButton:hover { background-color: #fee2e2; }"
+        "QPushButton:pressed { background-color: #fecaca; }"
+    );
+    deleteBtn->hide();
+
+    extraActionBtn = new QPushButton(this);
+    extraActionBtn->setCursor(Qt::PointingHandCursor);
+    extraActionBtn->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #fffbeb;"
+        "  border: 1px solid #fcd34d;"
+        "  border-radius: 6px;"
+        "  padding: 6px 12px;"
+        "  font-size: 13px;"
+        "  font-weight: 600;"
+        "  color: #b45309;"
+        "}"
+        "QPushButton:hover { background-color: #fef3c7; }"
+        "QPushButton:pressed { background-color: #fde68a; }"
+    );
+    extraActionBtn->hide();
+
     refreshBtn = new QPushButton("🔄 Làm mới", this);
+    refreshBtn->setCursor(Qt::PointingHandCursor);
     refreshBtn->setStyleSheet(
         "QPushButton {"
         "  background-color: #f1f5f9;"
         "  border: 1px solid #cbd5e1;"
         "  border-radius: 6px;"
-        "  padding: 6px 14px;"
+        "  padding: 6px 12px;"
         "  font-size: 13px;"
         "  color: #334155;"
         "}"
@@ -288,12 +359,13 @@ void QueryTableWidget::setupToolbarUI(QVBoxLayout* mainLayout)
     );
 
     exportBtn = new QPushButton("📥 Xuất CSV", this);
+    exportBtn->setCursor(Qt::PointingHandCursor);
     exportBtn->setStyleSheet(
         "QPushButton {"
         "  background-color: #10b981;"
         "  border: none;"
         "  border-radius: 6px;"
-        "  padding: 6px 14px;"
+        "  padding: 6px 12px;"
         "  font-size: 13px;"
         "  color: #ffffff;"
         "  font-weight: 500;"
@@ -305,6 +377,10 @@ void QueryTableWidget::setupToolbarUI(QVBoxLayout* mainLayout)
     controlsLayout->addWidget(searchInput);
     controlsLayout->addWidget(countLabel);
     controlsLayout->addStretch();
+    controlsLayout->addWidget(addBtn);
+    controlsLayout->addWidget(editBtn);
+    controlsLayout->addWidget(extraActionBtn);
+    controlsLayout->addWidget(deleteBtn);
     controlsLayout->addWidget(refreshBtn);
     controlsLayout->addWidget(exportBtn);
 
@@ -312,6 +388,28 @@ void QueryTableWidget::setupToolbarUI(QVBoxLayout* mainLayout)
 
     connect(searchInput, &QLineEdit::textChanged, [this](const QString& q) {
         filterRows(q);
+    });
+
+    connect(addBtn, &QPushButton::clicked, [this]() {
+        if (onAdd) onAdd();
+    });
+
+    connect(editBtn, &QPushButton::clicked, [this]() {
+        if (!onEdit) return;
+        const Record* rec = getSelectedRecord(true);
+        if (rec) onEdit(*rec);
+    });
+
+    connect(deleteBtn, &QPushButton::clicked, [this]() {
+        if (!onDelete) return;
+        const Record* rec = getSelectedRecord(true);
+        if (rec) onDelete(*rec);
+    });
+
+    connect(extraActionBtn, &QPushButton::clicked, [this]() {
+        if (!onExtraAction) return;
+        const Record* rec = getSelectedRecord(true);
+        if (rec) onExtraAction(*rec);
     });
 
     connect(refreshBtn, &QPushButton::clicked, [this]() {
@@ -598,6 +696,70 @@ void QueryTableWidget::setFilterCallback(FilterCallback callback)
 void QueryTableWidget::addExtraControl(QWidget* widget)
 {
     controlsLayout->insertWidget(2, widget);
+}
+
+void QueryTableWidget::setCrudCallbacks(
+    std::function<void()> onAddCallback,
+    RecordActionCallback onEditCallback,
+    RecordActionCallback onDeleteCallback,
+    const QString& addText,
+    const QString& editText,
+    const QString& deleteText)
+{
+    onAdd = onAddCallback;
+    onEdit = onEditCallback;
+    onDelete = onDeleteCallback;
+
+    if (!addText.isEmpty()) addBtn->setText(addText);
+    if (!editText.isEmpty()) editBtn->setText(editText);
+    if (!deleteText.isEmpty()) deleteBtn->setText(deleteText);
+
+    addBtn->setVisible(static_cast<bool>(onAdd));
+    editBtn->setVisible(static_cast<bool>(onEdit));
+    deleteBtn->setVisible(static_cast<bool>(onDelete));
+}
+
+void QueryTableWidget::setCrudPermissions(bool canAdd, bool canEdit, bool canDelete)
+{
+    addBtn->setVisible(canAdd && static_cast<bool>(onAdd));
+    editBtn->setVisible(canEdit && static_cast<bool>(onEdit));
+    deleteBtn->setVisible(canDelete && static_cast<bool>(onDelete));
+}
+
+void QueryTableWidget::setExtraAction(const QString& label, RecordActionCallback callback)
+{
+    onExtraAction = callback;
+    extraActionBtn->setText(label);
+    extraActionBtn->setVisible(static_cast<bool>(onExtraAction));
+}
+
+void QueryTableWidget::clearExtraAction()
+{
+    onExtraAction = nullptr;
+    extraActionBtn->hide();
+}
+
+const Record* QueryTableWidget::getSelectedRecord(bool warnIfNone)
+{
+    int row = tableWidget->currentRow();
+    if ((row < 0 || tableWidget->isRowHidden(row)) && tableWidget->selectionModel()) {
+        const auto selectedIdxs = tableWidget->selectionModel()->selectedIndexes();
+        for (const auto& idx : selectedIdxs) {
+            if (!tableWidget->isRowHidden(idx.row())) {
+                row = idx.row();
+                break;
+            }
+        }
+    }
+
+    if (row < 0 || row >= static_cast<int>(cachedRecords.size()) || tableWidget->isRowHidden(row)) {
+        if (warnIfNone) {
+            QMessageBox::warning(this, "Chưa chọn bản ghi", "Vui lòng chọn một dòng dữ liệu trên bảng trước khi thực hiện thao tác!");
+        }
+        return nullptr;
+    }
+
+    return &cachedRecords[row];
 }
 
 void QueryTableWidget::filterRows(const QString& query)

@@ -1,6 +1,7 @@
 #include "TransactionHubWidget.h"
 #include "schema/UserQuery.h"
 #include "ui/TableClipboardHelper.h"
+#include "ui/OrderDialog.h"
 
 #include <QHeaderView>
 #include <QFileDialog>
@@ -12,6 +13,8 @@
 
 TransactionHubWidget::TransactionHubWidget(HubType type, Database* database, const QString& title, const QString& description, QWidget* parent)
     : QWidget(parent), hubType(type), db(database), titleText(title), descText(description),
+      createOrderBtn(nullptr), updateOrderStatusBtn(nullptr), inspectOrderBtn(nullptr),
+      updateLogisticsBtn(nullptr), inspectLogisticsBtn(nullptr),
       masterTable(nullptr), detailBanner(nullptr),
       orderDetailTable(nullptr), orderDetailCountLabel(nullptr),
       logisticsTable(nullptr), logisticsCountLabel(nullptr),
@@ -309,6 +312,60 @@ void TransactionHubWidget::setupToolbarUI(QVBoxLayout* mainLayout)
     controlsLayout->addWidget(searchInput);
     controlsLayout->addWidget(countLabel);
     controlsLayout->addStretch();
+    createOrderBtn = new QPushButton(hubType == HubType::INBOUND ? "➕ Tạo Đơn Nhập" : "➕ Tạo Đơn Xuất", this);
+    createOrderBtn->setCursor(Qt::PointingHandCursor);
+    createOrderBtn->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #2563eb;"
+        "  border: none;"
+        "  border-radius: 6px;"
+        "  padding: 5px 12px;"
+        "  font-size: 13px;"
+        "  font-weight: 600;"
+        "  color: #ffffff;"
+        "}"
+        "QPushButton:hover { background-color: #1d4ed8; }"
+        "QPushButton:pressed { background-color: #1e40af; }"
+    );
+    connect(createOrderBtn, &QPushButton::clicked, [this]() { onCreateOrderClicked(); });
+
+    updateOrderStatusBtn = new QPushButton("✏️ Cập nhật TT Đơn", this);
+    updateOrderStatusBtn->setCursor(Qt::PointingHandCursor);
+    updateOrderStatusBtn->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #eff6ff;"
+        "  border: 1px solid #93c5fd;"
+        "  border-radius: 6px;"
+        "  padding: 5px 12px;"
+        "  font-size: 13px;"
+        "  font-weight: 600;"
+        "  color: #1d4ed8;"
+        "}"
+        "QPushButton:hover { background-color: #dbeafe; }"
+        "QPushButton:pressed { background-color: #bfdbfe; }"
+    );
+    connect(updateOrderStatusBtn, &QPushButton::clicked, [this]() { onUpdateOrderStatusClicked(); });
+
+    inspectOrderBtn = new QPushButton("🔍 Chi tiết đơn", this);
+    inspectOrderBtn->setCursor(Qt::PointingHandCursor);
+    inspectOrderBtn->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #fffbeb;"
+        "  border: 1px solid #fcd34d;"
+        "  border-radius: 6px;"
+        "  padding: 5px 12px;"
+        "  font-size: 13px;"
+        "  font-weight: 600;"
+        "  color: #b45309;"
+        "}"
+        "QPushButton:hover { background-color: #fef3c7; }"
+        "QPushButton:pressed { background-color: #fde68a; }"
+    );
+    connect(inspectOrderBtn, &QPushButton::clicked, [this]() { onInspectOrderClicked(); });
+
+    controlsLayout->addWidget(createOrderBtn);
+    controlsLayout->addWidget(updateOrderStatusBtn);
+    controlsLayout->addWidget(inspectOrderBtn);
     controlsLayout->addWidget(refreshBtn);
     controlsLayout->addWidget(exportBtn);
     controlsLayout->addWidget(btnMaxMaster);
@@ -527,6 +584,40 @@ void TransactionHubWidget::setupSplitterUI(QVBoxLayout* mainLayout)
     rightUpperHeaderLayout->addWidget(rightUpperTitleLabel);
     rightUpperHeaderLayout->addWidget(logisticsCountLabel);
     rightUpperHeaderLayout->addStretch();
+    updateLogisticsBtn = new QPushButton("✏️ Cập nhật đợt", rightUpperContainer);
+    updateLogisticsBtn->setCursor(Qt::PointingHandCursor);
+    updateLogisticsBtn->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #eff6ff;"
+        "  border: 1px solid #93c5fd;"
+        "  border-radius: 4px;"
+        "  padding: 3px 8px;"
+        "  font-size: 11px;"
+        "  font-weight: 600;"
+        "  color: #1d4ed8;"
+        "}"
+        "QPushButton:hover { background-color: #dbeafe; }"
+    );
+    connect(updateLogisticsBtn, &QPushButton::clicked, [this]() { onUpdateLogisticsClicked(); });
+
+    inspectLogisticsBtn = new QPushButton("🔍 Chi tiết đợt", rightUpperContainer);
+    inspectLogisticsBtn->setCursor(Qt::PointingHandCursor);
+    inspectLogisticsBtn->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #fffbeb;"
+        "  border: 1px solid #fcd34d;"
+        "  border-radius: 4px;"
+        "  padding: 3px 8px;"
+        "  font-size: 11px;"
+        "  font-weight: 600;"
+        "  color: #b45309;"
+        "}"
+        "QPushButton:hover { background-color: #fef3c7; }"
+    );
+    connect(inspectLogisticsBtn, &QPushButton::clicked, [this]() { onInspectLogisticsClicked(); });
+
+    rightUpperHeaderLayout->addWidget(updateLogisticsBtn);
+    rightUpperHeaderLayout->addWidget(inspectLogisticsBtn);
     rightUpperHeaderLayout->addWidget(btnMaxRightUpper);
     rightUpperLayout->addLayout(rightUpperHeaderLayout);
 
@@ -1360,6 +1451,250 @@ void TransactionHubWidget::exportMasterCsv()
 
     file.close();
     QMessageBox::information(this, "Thành công", "Đã xuất dữ liệu ra file:\n" + fileName);
+}
+
+void TransactionHubWidget::setDataChangedCallback(DataChangedCallback callback)
+{
+    onDataChanged = callback;
+}
+
+const Record* TransactionHubWidget::getSelectedMasterRecord(bool warnIfNone)
+{
+    int row = masterTable->currentRow();
+    if ((row < 0 || masterTable->isRowHidden(row)) && masterTable->selectionModel()) {
+        for (const auto& idx : masterTable->selectionModel()->selectedIndexes()) {
+            if (!masterTable->isRowHidden(idx.row())) {
+                row = idx.row();
+                break;
+            }
+        }
+    }
+    if (row < 0 || row >= static_cast<int>(cachedTransactions.size()) || masterTable->isRowHidden(row)) {
+        if (warnIfNone) {
+            QMessageBox::warning(this, "Chưa chọn đơn giao dịch", "Vui lòng chọn một đơn giao dịch ở bảng trên trước khi thực hiện thao tác!");
+        }
+        return nullptr;
+    }
+    return &cachedTransactions[row];
+}
+
+const Record* TransactionHubWidget::getSelectedLogisticsRecord(bool warnIfNone)
+{
+    int row = logisticsTable->currentRow();
+    if ((row < 0 || logisticsTable->isRowHidden(row)) && logisticsTable->selectionModel()) {
+        for (const auto& idx : logisticsTable->selectionModel()->selectedIndexes()) {
+            if (!logisticsTable->isRowHidden(idx.row())) {
+                row = idx.row();
+                break;
+            }
+        }
+    }
+    if (row < 0 || row >= static_cast<int>(cachedLogistics.size()) || logisticsTable->isRowHidden(row)) {
+        if (warnIfNone) {
+            QMessageBox::warning(this, "Chưa chọn đợt giao nhận / xuất hàng", "Vui lòng chọn một đợt vận chuyển ở bảng bên phải trước khi thực hiện thao tác!");
+        }
+        return nullptr;
+    }
+    return &cachedLogistics[row];
+}
+
+void TransactionHubWidget::onCreateOrderClicked()
+{
+    OrderDialog dlg(hubType, db, this);
+    int rc = dlg.exec();
+    if (rc == QDialog::Accepted) {
+        if (onDataChanged) {
+            onDataChanged(hubType == HubType::INBOUND
+                ? "Đã tạo mới đơn nhập kho kèm đợt nhận hàng đầu tiên"
+                : "Đã tạo mới đơn xuất kho kèm đợt xuất hàng đầu tiên");
+        } else if (onRefresh) {
+            onRefresh();
+        }
+    } else if (dlg.didCreateAuxCustomer()) {
+        if (onDataChanged) {
+            onDataChanged("Đã thêm mới khách hàng / đối tác trong quá trình lập đơn");
+        }
+    }
+}
+
+void TransactionHubWidget::onUpdateOrderStatusClicked()
+{
+    const Record* rec = getSelectedMasterRecord(true);
+    if (!rec) return;
+
+    int txnId = -1;
+    QString orderCode, custCode, orderDate, status;
+
+    if (hubType == HubType::INBOUND) {
+        if (rec->has("inbound_transaction_id") && holds_alternative<int>(rec->get("inbound_transaction_id")))
+            txnId = get<int>(rec->get("inbound_transaction_id"));
+        else if (rec->has("inbound_id") && holds_alternative<int>(rec->get("inbound_id")))
+            txnId = get<int>(rec->get("inbound_id"));
+
+        if (rec->has("inbound_transaction.inbound_code") && holds_alternative<string>(rec->get("inbound_transaction.inbound_code")))
+            orderCode = QString::fromStdString(get<string>(rec->get("inbound_transaction.inbound_code")));
+        if (rec->has("inbound_transaction.order_at") && holds_alternative<string>(rec->get("inbound_transaction.order_at")))
+            orderDate = QString::fromStdString(get<string>(rec->get("inbound_transaction.order_at")));
+        if (rec->has("inbound_transaction.status") && holds_alternative<string>(rec->get("inbound_transaction.status")))
+            status = QString::fromStdString(get<string>(rec->get("inbound_transaction.status")));
+    } else {
+        if (rec->has("outbound_transaction_id") && holds_alternative<int>(rec->get("outbound_transaction_id")))
+            txnId = get<int>(rec->get("outbound_transaction_id"));
+        else if (rec->has("outbound_id") && holds_alternative<int>(rec->get("outbound_id")))
+            txnId = get<int>(rec->get("outbound_id"));
+
+        if (rec->has("outbound_transaction.outbound_code") && holds_alternative<string>(rec->get("outbound_transaction.outbound_code")))
+            orderCode = QString::fromStdString(get<string>(rec->get("outbound_transaction.outbound_code")));
+        if (rec->has("outbound_transaction.order_at") && holds_alternative<string>(rec->get("outbound_transaction.order_at")))
+            orderDate = QString::fromStdString(get<string>(rec->get("outbound_transaction.order_at")));
+        if (rec->has("outbound_transaction.status") && holds_alternative<string>(rec->get("outbound_transaction.status")))
+            status = QString::fromStdString(get<string>(rec->get("outbound_transaction.status")));
+    }
+
+    if (rec->has("customer.customer_code") && holds_alternative<string>(rec->get("customer.customer_code"))) {
+        custCode = QString::fromStdString(get<string>(rec->get("customer.customer_code")));
+    }
+
+    if (txnId <= 0) {
+        QMessageBox::critical(this, "Lỗi dữ liệu", "Không xác định được khóa chính nội bộ của đơn giao dịch.");
+        return;
+    }
+
+    TransactionStatusDialog dlg(hubType, db, txnId, orderCode, custCode, orderDate, status, this);
+    if (dlg.exec() == QDialog::Accepted) {
+        if (onDataChanged) {
+            onDataChanged(QString("Đã cập nhật trạng thái đơn %1").arg(orderCode));
+        } else if (onRefresh) {
+            onRefresh();
+        }
+    }
+}
+
+void TransactionHubWidget::onInspectOrderClicked()
+{
+    const Record* rec = getSelectedMasterRecord(true);
+    if (!rec) return;
+
+    QString orderCode, custCode, orderDate, status;
+    if (hubType == HubType::INBOUND) {
+        if (rec->has("inbound_transaction.inbound_code") && holds_alternative<string>(rec->get("inbound_transaction.inbound_code")))
+            orderCode = QString::fromStdString(get<string>(rec->get("inbound_transaction.inbound_code")));
+        if (rec->has("inbound_transaction.order_at") && holds_alternative<string>(rec->get("inbound_transaction.order_at")))
+            orderDate = QString::fromStdString(get<string>(rec->get("inbound_transaction.order_at")));
+        if (rec->has("inbound_transaction.status") && holds_alternative<string>(rec->get("inbound_transaction.status")))
+            status = QString::fromStdString(get<string>(rec->get("inbound_transaction.status")));
+    } else {
+        if (rec->has("outbound_transaction.outbound_code") && holds_alternative<string>(rec->get("outbound_transaction.outbound_code")))
+            orderCode = QString::fromStdString(get<string>(rec->get("outbound_transaction.outbound_code")));
+        if (rec->has("outbound_transaction.order_at") && holds_alternative<string>(rec->get("outbound_transaction.order_at")))
+            orderDate = QString::fromStdString(get<string>(rec->get("outbound_transaction.order_at")));
+        if (rec->has("outbound_transaction.status") && holds_alternative<string>(rec->get("outbound_transaction.status")))
+            status = QString::fromStdString(get<string>(rec->get("outbound_transaction.status")));
+    }
+    if (rec->has("customer.customer_code") && holds_alternative<string>(rec->get("customer.customer_code")))
+        custCode = QString::fromStdString(get<string>(rec->get("customer.customer_code")));
+
+    QString summary = QString("Đối tác / Khách hàng: %1  |  Ngày đặt: %2  |  Trạng thái: %3").arg(custCode, orderDate, status);
+    DetailInspectionDialog dlg(
+        hubType == HubType::INBOUND ? DetailInspectionDialog::InspectionMode::INBOUND_ORDER
+                                    : DetailInspectionDialog::InspectionMode::OUTBOUND_ORDER,
+        db, orderCode, summary, this
+    );
+    dlg.exec();
+}
+
+void TransactionHubWidget::onUpdateLogisticsClicked()
+{
+    const Record* rec = getSelectedLogisticsRecord(true);
+    if (!rec) return;
+
+    int logId = -1;
+    QString batchCode, parentCode, expDate, actDate, status;
+
+    if (hubType == HubType::INBOUND) {
+        if (rec->has("delivery_id") && holds_alternative<int>(rec->get("delivery_id")))
+            logId = get<int>(rec->get("delivery_id"));
+        if (rec->has("delivery.delivery_code") && holds_alternative<string>(rec->get("delivery.delivery_code")))
+            batchCode = QString::fromStdString(get<string>(rec->get("delivery.delivery_code")));
+        if (rec->has("inbound_transaction.inbound_code") && holds_alternative<string>(rec->get("inbound_transaction.inbound_code")))
+            parentCode = QString::fromStdString(get<string>(rec->get("inbound_transaction.inbound_code")));
+        if (rec->has("delivery.expected_at") && holds_alternative<string>(rec->get("delivery.expected_at")))
+            expDate = QString::fromStdString(get<string>(rec->get("delivery.expected_at")));
+        if (rec->has("delivery.delivery_at") && holds_alternative<string>(rec->get("delivery.delivery_at")))
+            actDate = QString::fromStdString(get<string>(rec->get("delivery.delivery_at")));
+        if (rec->has("delivery.status") && holds_alternative<string>(rec->get("delivery.status")))
+            status = QString::fromStdString(get<string>(rec->get("delivery.status")));
+    } else {
+        if (rec->has("shipment_id") && holds_alternative<int>(rec->get("shipment_id")))
+            logId = get<int>(rec->get("shipment_id"));
+        if (rec->has("shipment.shipment_code") && holds_alternative<string>(rec->get("shipment.shipment_code")))
+            batchCode = QString::fromStdString(get<string>(rec->get("shipment.shipment_code")));
+        if (rec->has("outbound_transaction.outbound_code") && holds_alternative<string>(rec->get("outbound_transaction.outbound_code")))
+            parentCode = QString::fromStdString(get<string>(rec->get("outbound_transaction.outbound_code")));
+        if (rec->has("shipment.expected_at") && holds_alternative<string>(rec->get("shipment.expected_at")))
+            expDate = QString::fromStdString(get<string>(rec->get("shipment.expected_at")));
+        if (rec->has("shipment.ship_at") && holds_alternative<string>(rec->get("shipment.ship_at")))
+            actDate = QString::fromStdString(get<string>(rec->get("shipment.ship_at")));
+        if (rec->has("shipment.status") && holds_alternative<string>(rec->get("shipment.status")))
+            status = QString::fromStdString(get<string>(rec->get("shipment.status")));
+    }
+
+    if (parentCode.isEmpty()) parentCode = QString::fromStdString(currentOrderCode);
+    if (logId <= 0) {
+        QMessageBox::critical(this, "Lỗi dữ liệu", "Không xác định được khóa chính nội bộ của đợt vận chuyển.");
+        return;
+    }
+
+    LogisticsUpdateDialog dlg(hubType, db, logId, batchCode, parentCode, expDate, actDate, status, this);
+    if (dlg.exec() == QDialog::Accepted) {
+        if (onDataChanged) {
+            onDataChanged(QString("Đã cập nhật tiến độ đợt vận chuyển %1").arg(batchCode));
+        } else if (onRefresh) {
+            onRefresh();
+        }
+    }
+}
+
+void TransactionHubWidget::onInspectLogisticsClicked()
+{
+    const Record* rec = getSelectedLogisticsRecord(true);
+    if (!rec) return;
+
+    QString batchCode, parentCode, expDate, actDate, status;
+    if (hubType == HubType::INBOUND) {
+        if (rec->has("delivery.delivery_code") && holds_alternative<string>(rec->get("delivery.delivery_code")))
+            batchCode = QString::fromStdString(get<string>(rec->get("delivery.delivery_code")));
+        if (rec->has("inbound_transaction.inbound_code") && holds_alternative<string>(rec->get("inbound_transaction.inbound_code")))
+            parentCode = QString::fromStdString(get<string>(rec->get("inbound_transaction.inbound_code")));
+        if (rec->has("delivery.expected_at") && holds_alternative<string>(rec->get("delivery.expected_at")))
+            expDate = QString::fromStdString(get<string>(rec->get("delivery.expected_at")));
+        if (rec->has("delivery.delivery_at") && holds_alternative<string>(rec->get("delivery.delivery_at")))
+            actDate = QString::fromStdString(get<string>(rec->get("delivery.delivery_at")));
+        if (rec->has("delivery.status") && holds_alternative<string>(rec->get("delivery.status")))
+            status = QString::fromStdString(get<string>(rec->get("delivery.status")));
+    } else {
+        if (rec->has("shipment.shipment_code") && holds_alternative<string>(rec->get("shipment.shipment_code")))
+            batchCode = QString::fromStdString(get<string>(rec->get("shipment.shipment_code")));
+        if (rec->has("outbound_transaction.outbound_code") && holds_alternative<string>(rec->get("outbound_transaction.outbound_code")))
+            parentCode = QString::fromStdString(get<string>(rec->get("outbound_transaction.outbound_code")));
+        if (rec->has("shipment.expected_at") && holds_alternative<string>(rec->get("shipment.expected_at")))
+            expDate = QString::fromStdString(get<string>(rec->get("shipment.expected_at")));
+        if (rec->has("shipment.ship_at") && holds_alternative<string>(rec->get("shipment.ship_at")))
+            actDate = QString::fromStdString(get<string>(rec->get("shipment.ship_at")));
+        if (rec->has("shipment.status") && holds_alternative<string>(rec->get("shipment.status")))
+            status = QString::fromStdString(get<string>(rec->get("shipment.status")));
+    }
+    if (parentCode.isEmpty()) parentCode = QString::fromStdString(currentOrderCode);
+    if (actDate.isEmpty()) actDate = "-";
+
+    QString summary = QString("Thuộc đơn: %1  |  Dự kiến: %2  |  Thực tế: %3  |  Trạng thái: %4")
+                          .arg(parentCode, expDate, actDate, status);
+    DetailInspectionDialog dlg(
+        hubType == HubType::INBOUND ? DetailInspectionDialog::InspectionMode::DELIVERY_BATCH
+                                    : DetailInspectionDialog::InspectionMode::SHIPMENT_BATCH,
+        db, batchCode, summary, this
+    );
+    dlg.exec();
 }
 
 QString TransactionHubWidget::formatValue(const Value& val)

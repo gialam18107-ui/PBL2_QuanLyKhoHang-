@@ -37,6 +37,7 @@ class QueryTableWidget : public QWidget
 {
 public:
     using FilterCallback = std::function<void(const std::string& columnKey, const QString& val1, const QString& val2, bool isRange)>;
+    using RecordActionCallback = std::function<void(const Record&)>;
 
     explicit QueryTableWidget(const QString& title, const QString& description, QWidget* parent = nullptr);
 
@@ -46,6 +47,21 @@ public:
     void setRefreshCallback(std::function<void()> callback);
     void setFilterCallback(FilterCallback callback);
     void addExtraControl(QWidget* widget);
+
+    // CRUD & Action callbacks (Rule 6.3, 7.1, 7.2)
+    void setCrudCallbacks(
+        std::function<void()> onAddCallback,
+        RecordActionCallback onEditCallback,
+        RecordActionCallback onDeleteCallback,
+        const QString& addText = "➕ Thêm mới",
+        const QString& editText = "✏️ Sửa",
+        const QString& deleteText = "🗑️ Xóa"
+    );
+    void setCrudPermissions(bool canAdd, bool canEdit, bool canDelete);
+    void setExtraAction(const QString& label, RecordActionCallback callback);
+    void clearExtraAction();
+
+    const Record* getSelectedRecord(bool warnIfNone = true);
 
     void resetFilter();
     QTableWidget* getTableWidget() const { return tableWidget; }
@@ -86,6 +102,10 @@ private:
     QHBoxLayout* controlsLayout;
     QLineEdit* searchInput;
     QLabel* countLabel;
+    QPushButton* addBtn;
+    QPushButton* editBtn;
+    QPushButton* deleteBtn;
+    QPushButton* extraActionBtn;
     QPushButton* refreshBtn;
     QPushButton* exportBtn;
 
@@ -97,6 +117,10 @@ private:
 
     std::function<void()> onRefresh;
     FilterCallback onFilter;
+    std::function<void()> onAdd;
+    RecordActionCallback onEdit;
+    RecordActionCallback onDelete;
+    RecordActionCallback onExtraAction;
 };
 
 #endif // QUERY_TABLE_WIDGET_H

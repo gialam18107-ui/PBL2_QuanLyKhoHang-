@@ -13,31 +13,49 @@
 #include "database/Database.h"
 
 /**
- * @brief Dedicated dialog for inserting new products and dynamic specifications (Rule 7.2 & 4.1-4.2).
+ * @brief Dedicated dialog for inserting new products and editing existing products
+ * along with dynamic category hardware specifications (Rule 4.1, 4.2, 6.3, 6.3.1, 7.2).
  */
 class ProductDialog : public QDialog
 {
 public:
-    explicit ProductDialog(Database* database, QWidget* parent = nullptr);
+    /// Create Mode constructor (optionally pre-selecting a category like "CPU", "GPU", etc.)
+    explicit ProductDialog(Database* database, const QString& initialCategory = "", QWidget* parent = nullptr);
+
+    /// Edit Mode constructor (loads existing product and its category hardware specs)
+    ProductDialog(Database* database, int productIdToEdit, QWidget* parent);
+
     ~ProductDialog() override = default;
 
 private:
     void setupUI();
     void populateCombos();
     void createSpecPages();
+    void loadExistingProductData();
     QStringList loadSpecList(const std::string& tableName, const std::string& colName = "spec");
+    void ensureSpecOptionExists(const std::string& specTableName, const std::string& specValue);
 
     void onCategoryChanged(int index);
     void onBrandChanged(int index);
+    void onQuickAddBrand();
     void generateAllCodes();
     void onSaveClicked();
 
     Database* db;
+    bool isEditMode;
+    int editProductId;
+    int editSpecRecordId;
+    std::string editSpecTableName;
+
+    QLabel* titleLabel;
+    QLabel* subTitleLabel;
+    QPushButton* saveBtn;
 
     // Basic Product Fields
     QLineEdit* nameEdit;
     QComboBox* categoryCombo;
     QComboBox* brandCombo;
+    QPushButton* quickAddBrandBtn;
     QCheckBox* isSoldCheck;
 
     // Identification Codes
@@ -91,4 +109,3 @@ private:
 };
 
 #endif // PRODUCT_DIALOG_H
-

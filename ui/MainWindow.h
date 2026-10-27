@@ -13,6 +13,7 @@
 #include <QMenuBar>
 #include <QMenu>
 #include <QAction>
+#include <QCloseEvent>
 
 #include "database/Database.h"
 #include "QueryTableWidget.h"
@@ -25,17 +26,31 @@ public:
     explicit MainWindow(Database* database, QWidget* parent = nullptr);
     ~MainWindow() override = default;
 
+protected:
+    void closeEvent(QCloseEvent* event) override;
+
 private:
     void setupUI();
     void setupMenuBar();
     void setupSidebar();
     void setupPages();
+    void setupCrudWiring();
     void refreshQuery(int index);
     void reloadDatabase();
+    bool saveDatabase(bool showSuccessPopup = true);
+    void notifyDataChanged(const QString& summary = "");
     void loadAuxSpecData(const QString& tableName);
     QStringList loadSpecOptions(const QString& specTableName);
     QStringList loadColumnOptions(const QString& tableName, const QString& colName);
     void updateCategoryFilterOptions();
+
+    int resolveProductId(const Record& rec, const std::string& catTable = "") const;
+    int resolveCustomerId(const Record& rec) const;
+    static bool isEditableSpecSubTable(const QString& tableName);
+
+    void onAddAuxSpecOrBrand();
+    void onEditAuxSpecOrBrand(const Record& rec);
+    void onDeleteAuxSpecOrBrand(const Record& rec);
 
     void switchToDomain(int domainIndex); // 0: Warehouse, 1: Category, 2: Customers, 3: Aux Specs, 4: Report
     void selectWarehouseQuery(int row);
@@ -47,6 +62,7 @@ private:
     void renderReportTable();
 
     Database* db;
+    bool hasUnsavedChanges;
 
     // Top Menus (Rule 9.2, 9.3 & 9.4, Section 9)
     QMenu* warehouseMenu;
@@ -70,6 +86,7 @@ private:
 
     QStackedWidget* stackedWidget;
     QLabel* statusLabel;
+    QPushButton* saveDbBtn;
     QPushButton* reloadDbBtn;
 
     // 11 Warehouse Query Table Widgets

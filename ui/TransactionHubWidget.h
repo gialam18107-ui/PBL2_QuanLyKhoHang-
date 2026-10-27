@@ -31,6 +31,7 @@ class TransactionHubWidget : public QWidget
 {
 public:
     using FilterCallback = std::function<void(const std::string& columnKey, const QString& val1, const QString& val2, bool isRange)>;
+    using DataChangedCallback = std::function<void(const QString& summary)>;
 
     TransactionHubWidget(HubType type, Database* database, const QString& title, const QString& description, QWidget* parent = nullptr);
 
@@ -39,6 +40,7 @@ public:
     void setData(const Vector<Record>& records);
     void setRefreshCallback(std::function<void()> callback);
     void setFilterCallback(FilterCallback callback);
+    void setDataChangedCallback(DataChangedCallback callback);
 
     void resetFilter();
     QTableWidget* getMasterTable() const { return masterTable; }
@@ -64,6 +66,15 @@ private:
     void renderOrderDetails();
     void renderLogisticsBatches();
     void renderLogisticsDetails();
+
+    const Record* getSelectedMasterRecord(bool warnIfNone = true);
+    const Record* getSelectedLogisticsRecord(bool warnIfNone = true);
+
+    void onCreateOrderClicked();
+    void onUpdateOrderStatusClicked();
+    void onInspectOrderClicked();
+    void onUpdateLogisticsClicked();
+    void onInspectLogisticsClicked();
 
     void exportMasterCsv();
 
@@ -114,8 +125,15 @@ private:
     // Toolbar controls
     QLineEdit* searchInput;
     QLabel* countLabel;
+    QPushButton* createOrderBtn;
+    QPushButton* updateOrderStatusBtn;
+    QPushButton* inspectOrderBtn;
     QPushButton* refreshBtn;
     QPushButton* exportBtn;
+
+    // Logistics action controls
+    QPushButton* updateLogisticsBtn;
+    QPushButton* inspectLogisticsBtn;
 
     // UI Tables & Labels
     QTableWidget* masterTable;
@@ -157,6 +175,7 @@ private:
 
     std::function<void()> onRefresh;
     FilterCallback onFilter;
+    DataChangedCallback onDataChanged;
 };
 
 #endif // TRANSACTION_HUB_WIDGET_H

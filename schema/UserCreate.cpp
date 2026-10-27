@@ -522,14 +522,14 @@ namespace user_create
     OperationResult createInboundOrder(
         Database* db,
         const std::string& inboundType,
-        const std::string& customer_Code,
+        const std::string& customerCode,
         const Vector<Pair<int, int>>& items,
         const std::string& orderDate,
         const std::string& expectedDeliveryDate,
         const std::string& note
     ) {
         if (!db) return OperationResult{false, "Cơ sở dữ liệu chưa được khởi tạo.", 0};
-        if (customer_Code.empty()) {
+        if (customerCode.empty()) {
             return OperationResult{false, "Mã đối tác / khách hàng không được để trống.", 0};
         }
         if (items.empty()) return OperationResult{false, "Đơn nhập kho phải có ít nhất một mặt hàng.", 0};

@@ -13,13 +13,22 @@
 #include "schema/UserQuery.h"
 #include "ui/TableClipboardHelper.h"
 #include "ui/TransactionHubWidget.h"
+#include "ui/ProductDialog.h"
+#include "ui/CustomerDialog.h"
+#include "ui/OrderDialog.h"
+#include "schema/UserCreate.h"
+#include "schema/UserUpdate.h"
+#include "schema/UserDelete.h"
+#include <QDialog>
+#include <QLineEdit>
+#include <QGroupBox>
 
 MainWindow::MainWindow(Database* database, QWidget* parent)
-    : QMainWindow(parent), db(database),
+    : QMainWindow(parent), db(database), hasUnsavedChanges(false),
       warehouseMenu(nullptr), categoryMenu(nullptr), customerMenu(nullptr), auxSpecMenu(nullptr), reportMenu(nullptr),
       tabWarehouseBtn(nullptr), tabCategoryBtn(nullptr), tabCustomerBtn(nullptr), tabAuxSpecBtn(nullptr), tabReportBtn(nullptr),
       sidebarStack(nullptr), warehouseList(nullptr), categoryList(nullptr), customerList(nullptr), auxSpecList(nullptr), reportList(nullptr),
-      stackedWidget(nullptr), statusLabel(nullptr), reloadDbBtn(nullptr),
+      stackedWidget(nullptr), statusLabel(nullptr), saveDbBtn(nullptr), reloadDbBtn(nullptr),
       productQuantityWidget(nullptr), unitInventoryWidget(nullptr), statusHistoryWidget(nullptr),
       inboundTxnWidget(nullptr), inboundDetailWidget(nullptr), deliveryWidget(nullptr),
       deliveryDetailWidget(nullptr), outboundTxnWidget(nullptr), outboundDetailWidget(nullptr),
@@ -203,6 +212,18 @@ void MainWindow::setupMenuBar()
     // 5. Menu Báo cáo (Section 9: Báo cáo xuất - nhập - tồn định kỳ)
     reportMenu = mBar->addMenu("📊 Báo cáo");
     auto* actReport = reportMenu->addAction("📈 Báo cáo Xuất - Nhập - Tồn Định Kỳ");
+
+    // 6. Menu Hệ thống (Lưu / Nạp CSDL CSV)
+    auto* sysMenu = mBar->addMenu("💾 Hệ thống");
+    auto* actSaveCsv = sysMenu->addAction("💾 Lưu thay đổi ra CSV (Ctrl+S)");
+    actSaveCsv->setShortcut(QKeySequence::Save);
+    connect(actSaveCsv, &QAction::triggered, [this]() {
+        saveDatabase(true);
+    });
+    auto* actReloadCsv = sysMenu->addAction("🔄 Nạp lại CSDL từ thư mục data/");
+    connect(actReloadCsv, &QAction::triggered, [this]() {
+        reloadDatabase();
+    });
     connect(actReport, &QAction::triggered, [this]() {
         selectReportQuery();
     });
@@ -242,6 +263,27 @@ void MainWindow::setupUI()
     sidebarLayout->addWidget(subBrandLabel);
 
     // Reload DB Button
+    // Save & Reload DB Buttons
+    saveDbBtn = new QPushButton("💾 Lưu dữ liệu ra CSV", this);
+    saveDbBtn->setCursor(Qt::PointingHandCursor);
+    saveDbBtn->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #059669;"
+        "  border: none;"
+        "  border-radius: 6px;"
+        "  padding: 8px 12px;"
+        "  font-size: 12px;"
+        "  font-weight: 600;"
+        "  color: #ffffff;"
+        "}"
+        "QPushButton:hover { background-color: #047857; }"
+        "QPushButton:pressed { background-color: #065f46; }"
+    );
+    sidebarLayout->addWidget(saveDbBtn);
+    connect(saveDbBtn, &QPushButton::clicked, [this]() {
+        saveDatabase(true);
+    });
+
     reloadDbBtn = new QPushButton("🔄 Nạp lại dữ liệu CSDL", this);
     reloadDbBtn->setStyleSheet(
         "QPushButton {"
@@ -1210,7 +1252,14 @@ void MainWindow::setupPages()
         int iv = v1.toInt(&isInt);
         val = (col == "id" && isInt) ? Value(iv) : Value(v1.toStdString());
         user_query::auxiliary_spec_query(db, tbl, results, col, val);
-        auxSpecWidget->setData(results);
+        // Rule 4.6: Enable CRUD for 'brand' and editable '<cat>_<spec>' sub-tables; strictly Read-Only for 'category' and status/type tables
+    if (tbl == "brand" || isEditableSpecSubTable(QString::fromStdString(tbl))) {
+        auxSpecWidget->setCrudPermissions(true, true, true);
+    } else {
+        auxSpecWidget->setCrudPermissions(false, false, false);
+    }
+
+    auxSpecWidget->setData(results);
         statusLabel->setText(QString("Tìm kiếm trên %1 [%2 = %3]: %4 bản ghi (%5 ms)")
             .arg(QString::fromStdString(tbl)).arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
     });
@@ -1282,6 +1331,8 @@ void MainWindow::setupPages()
 
     setupReportPage();
     stackedWidget->addWidget(reportPageWidget); // Index 22: Periodic Report
+
+    setupCrudWiring();
 }
 
 void MainWindow::loadAuxSpecData(const QString& tableName)
@@ -1334,6 +1385,13 @@ void MainWindow::loadAuxSpecData(const QString& tableName)
         auxSpecWidget->setFilterColumns({
             {"Giá trị thông số (spec)", "spec", FilterType::EXACT_TEXT, {}}
         });
+    }
+
+    // Rule 4.6: Enable CRUD for 'brand' and editable '<cat>_<spec>' sub-tables; strictly Read-Only for 'category' and status/type tables
+    if (tbl == "brand" || isEditableSpecSubTable(QString::fromStdString(tbl))) {
+        auxSpecWidget->setCrudPermissions(true, true, true);
+    } else {
+        auxSpecWidget->setCrudPermissions(false, false, false);
     }
 
     auxSpecWidget->setData(results);
@@ -2148,9 +2206,24 @@ void MainWindow::reloadDatabase()
 
     QElapsedTimer timer;
     timer.start();
+    if (hasUnsavedChanges) {
+        auto reply = QMessageBox::question(
+            this,
+            "Xác nhận nạp lại CSDL",
+            "Hiện có thay đổi dữ liệu trong bộ nhớ chưa được lưu ra CSV.\n"
+            "Nạp lại từ thư mục data/ sẽ hủy bỏ các thay đổi chưa lưu. Bạn có chắc chắn muốn tiếp tục?",
+            QMessageBox::Yes | QMessageBox::No,
+            QMessageBox::No
+        );
+        if (reply != QMessageBox::Yes) return;
+    }
+
     bool ok = DataIO::DatabaseIO::readAll(*db, "data");
     DataIO::DatabaseIO::readAllCategorySpecs(*db, "data");
     qint64 elapsedMs = timer.elapsed();
+
+    hasUnsavedChanges = false;
+    if (saveDbBtn) saveDbBtn->setText("💾 Lưu dữ liệu ra CSV");
 
     // Làm mới danh sách lựa chọn lọc của các bảng danh mục sản phẩm
     updateCategoryFilterOptions();
@@ -2174,4 +2247,942 @@ void MainWindow::reloadDatabase()
         QMessageBox::warning(this, "Cảnh báo", "Đã nạp một phần dữ liệu CSDL từ data/. Vui lòng kiểm tra lại cấu trúc.");
         refreshQuery(stackedWidget->currentIndex());
     }
+}
+
+
+// ============================================================================
+// CRUD INTEGRATION, PERSISTENCE & CACHE INVALIDATION (Rule 4, 5, 6.2, 6.3, 9.6)
+// ============================================================================
+
+bool MainWindow::saveDatabase(bool showSuccessPopup)
+{
+    if (!db) return false;
+
+    QElapsedTimer timer;
+    timer.start();
+    bool okMain = DataIO::DatabaseIO::writeAll(*db, "data");
+    bool okSpecs = DataIO::DatabaseIO::writeAllCategorySpecs(*db, "data");
+    qint64 elapsedMs = timer.elapsed();
+
+    if (okMain && okSpecs) {
+        hasUnsavedChanges = false;
+        if (saveDbBtn) saveDbBtn->setText("💾 Lưu dữ liệu ra CSV");
+        statusLabel->setText(QString("✅ Đã ghi toàn bộ dữ liệu CSDL ra thư mục data/ thành công (%1 ms)").arg(elapsedMs));
+        if (showSuccessPopup) {
+            QMessageBox::information(this, "Lưu CSDL thành công",
+                QString("Đã lưu toàn bộ các bảng dữ liệu và thông số danh mục ra thư mục data/ (%1 ms)!").arg(elapsedMs));
+        }
+        return true;
+    }
+
+    QMessageBox::critical(this, "Lỗi lưu dữ liệu",
+        "Một số tệp CSV trong thư mục data/ không thể ghi được. Vui lòng kiểm tra quyền truy cập tệp.");
+    return false;
+}
+
+void MainWindow::closeEvent(QCloseEvent* event)
+{
+    if (!hasUnsavedChanges) {
+        event->accept();
+        return;
+    }
+
+    QMessageBox msgBox(this);
+    msgBox.setWindowTitle("Thay đổi chưa được lưu");
+    msgBox.setIcon(QMessageBox::Question);
+    msgBox.setText("Bạn có các thay đổi dữ liệu (Thêm / Sửa / Xóa) chưa được lưu ra tệp CSV.");
+    msgBox.setInformativeText("Bạn có muốn ghi các thay đổi này xuống thư mục data/ trước khi đóng ứng dụng không?");
+    auto* btnSave = msgBox.addButton("💾 Lưu & Thoát", QMessageBox::AcceptRole);
+    auto* btnDiscard = msgBox.addButton("Không lưu", QMessageBox::DestructiveRole);
+    auto* btnCancel = msgBox.addButton("Hủy bỏ", QMessageBox::RejectRole);
+    msgBox.setDefaultButton(btnSave);
+    msgBox.exec();
+
+    if (msgBox.clickedButton() == btnSave) {
+        if (saveDatabase(false)) {
+            event->accept();
+        } else {
+            event->ignore();
+        }
+    } else if (msgBox.clickedButton() == btnDiscard) {
+        event->accept();
+    } else if (msgBox.clickedButton() == btnCancel) {
+        event->ignore();
+    }
+}
+
+void MainWindow::notifyDataChanged(const QString& summary)
+{
+    hasUnsavedChanges = true;
+    if (saveDbBtn) {
+        saveDbBtn->setText("💾 Lưu dữ liệu ra CSV *");
+    }
+
+    // Rule 6.2 & Rule 9.6: Invalidate Periodic Inventory Report cache immediately on any CRUD mutation
+    reportDataCached = false;
+    cachedReportRecords.clear();
+    cachedGrandTotal = Record();
+    if (reportTable) {
+        reportTable->setRowCount(0);
+    }
+    if (reportSummaryLabel) {
+        reportSummaryLabel->setText("Trạng thái: Dữ liệu CSDL vừa được cập nhật. Vui lòng chọn Tháng, Năm và bấm 'Xem báo cáo' để tính toán lại.");
+    }
+
+    updateCategoryFilterOptions();
+    refreshQuery(stackedWidget->currentIndex());
+
+    if (!summary.isEmpty()) {
+        statusLabel->setText(QString("✅ %1 | Có thay đổi chưa lưu CSV (Nhấn Ctrl+S để lưu)").arg(summary));
+    }
+}
+
+int MainWindow::resolveProductId(const Record& rec, const std::string& catTable) const
+{
+    if (!db) return -1;
+
+    if (rec.has("product_id") && holds_alternative<int>(rec.get("product_id"))) {
+        return get<int>(rec.get("product_id"));
+    }
+    if (rec.has("product.product_id") && holds_alternative<int>(rec.get("product.product_id"))) {
+        return get<int>(rec.get("product.product_id"));
+    }
+
+    // Category hardware queries store <cat>_id (e.g. cpu_id, gpu_id)
+    if (!catTable.empty()) {
+        std::string specPk = catTable + "_id";
+        if (rec.has(specPk) && holds_alternative<int>(rec.get(specPk))) {
+            int specId = get<int>(rec.get(specPk));
+            Table* specTbl = db->getTable(catTable);
+            if (specTbl) {
+                const Record* sRec = specTbl->getRecordById(specId);
+                if (sRec && sRec->has("product_id") && holds_alternative<int>(sRec->get("product_id"))) {
+                    return get<int>(sRec->get("product_id"));
+                }
+            }
+        }
+    }
+
+    // Fallback: match product_code in product table
+    std::string code;
+    if (rec.has("product.product_code") && holds_alternative<std::string>(rec.get("product.product_code"))) {
+        code = get<std::string>(rec.get("product.product_code"));
+    } else if (rec.has("product_code") && holds_alternative<std::string>(rec.get("product_code"))) {
+        code = get<std::string>(rec.get("product_code"));
+    }
+
+    if (!code.empty()) {
+        Table* prodTable = db->getTable("product");
+        if (prodTable) {
+            const auto& rows = prodTable->getRows();
+            for (size_t i = 0; i < rows.size(); ++i) {
+                if (prodTable->isRowDeleted(i)) continue;
+                const Record& r = rows[i];
+                if (r.has("product_code") && holds_alternative<std::string>(r.get("product_code")) &&
+                    get<std::string>(r.get("product_code")) == code) {
+                    if (r.has("product_id") && holds_alternative<int>(r.get("product_id"))) {
+                        return get<int>(r.get("product_id"));
+                    }
+                }
+            }
+        }
+    }
+
+    return -1;
+}
+
+int MainWindow::resolveCustomerId(const Record& rec) const
+{
+    if (!db) return -1;
+
+    if (rec.has("customer_id") && holds_alternative<int>(rec.get("customer_id"))) {
+        return get<int>(rec.get("customer_id"));
+    }
+    if (rec.has("customer.customer_id") && holds_alternative<int>(rec.get("customer.customer_id"))) {
+        return get<int>(rec.get("customer.customer_id"));
+    }
+
+    std::string code;
+    if (rec.has("customer.customer_code") && holds_alternative<std::string>(rec.get("customer.customer_code"))) {
+        code = get<std::string>(rec.get("customer.customer_code"));
+    } else if (rec.has("customer_code") && holds_alternative<std::string>(rec.get("customer_code"))) {
+        code = get<std::string>(rec.get("customer_code"));
+    }
+
+    if (!code.empty()) {
+        Table* custTable = db->getTable("customer");
+        if (custTable) {
+            const auto& rows = custTable->getRows();
+            for (size_t i = 0; i < rows.size(); ++i) {
+                if (custTable->isRowDeleted(i)) continue;
+                const Record& r = rows[i];
+                if (r.has("customer_code") && holds_alternative<std::string>(r.get("customer_code")) &&
+                    get<std::string>(r.get("customer_code")) == code) {
+                    if (r.has("customer_id") && holds_alternative<int>(r.get("customer_id"))) {
+                        return get<int>(r.get("customer_id"));
+                    }
+                }
+            }
+        }
+    }
+
+    return -1;
+}
+
+bool MainWindow::isEditableSpecSubTable(const QString& tableName)
+{
+    if (tableName.isEmpty() || tableName == "brand") return false;
+
+    // Rule 4.6: Strictly Read-Only master tables
+    static const QStringList readOnlyMasterTables = {
+        "category",
+        "inbound_type", "inbound_status", "delivery_status",
+        "outbound_type", "outbound_status", "shipment_status",
+        "unit_status"
+    };
+
+    return !readOnlyMasterTables.contains(tableName);
+}
+
+void MainWindow::setupCrudWiring()
+{
+    // --------------------------------------------------------
+    // 1. Product CRUD on PRODUCT_QUANTITY & 8 Category Views
+    // --------------------------------------------------------
+    auto wireProductCrud = [this](QueryTableWidget* widget, const QString& defaultCategory, const std::string& catTable) {
+        if (!widget) return;
+
+        widget->setCrudCallbacks(
+            // Add Product
+            [this, defaultCategory]() {
+                ProductDialog dlg(db, defaultCategory, this);
+                if (dlg.exec() == QDialog::Accepted) {
+                    notifyDataChanged("Đã thêm mới sản phẩm vào hệ thống");
+                }
+            },
+            // Edit Product & Hardware Specs
+            [this, catTable](const Record& rec) {
+                int pid = resolveProductId(rec, catTable);
+                if (pid <= 0) {
+                    QMessageBox::critical(this, "Lỗi dữ liệu", "Không xác định được khóa chính sản phẩm cần chỉnh sửa.");
+                    return;
+                }
+                ProductDialog dlg(db, pid, this);
+                if (dlg.exec() == QDialog::Accepted) {
+                    notifyDataChanged("Đã cập nhật thông tin & thông số sản phẩm");
+                }
+            },
+            // Delete Product (Rule 4.1 & 6.3.1: 0 stock & no transaction history)
+            [this, catTable](const Record& rec) {
+                int pid = resolveProductId(rec, catTable);
+                if (pid <= 0) {
+                    QMessageBox::critical(this, "Lỗi dữ liệu", "Không xác định được khóa chính sản phẩm cần xóa.");
+                    return;
+                }
+                Table* prodTable = db ? db->getTable("product") : nullptr;
+                const Record* pRec = prodTable ? prodTable->getRecordById(pid) : nullptr;
+                QString pCode = (pRec && pRec->has("product_code") && holds_alternative<std::string>(pRec->get("product_code")))
+                    ? QString::fromStdString(get<std::string>(pRec->get("product_code"))) : QString::number(pid);
+                QString pName = (pRec && pRec->has("product_name") && holds_alternative<std::string>(pRec->get("product_name")))
+                    ? QString::fromStdString(get<std::string>(pRec->get("product_name"))) : "";
+
+                auto reply = QMessageBox::question(
+                    this,
+                    "Xác nhận xóa sản phẩm",
+                    QString("Bạn có chắc chắn muốn xóa sản phẩm:\n[%1] %2?\n\n"
+                            "Lưu ý: Chỉ sản phẩm có tồn kho = 0 và chưa phát sinh lịch sử giao dịch mới được phép xóa (Rule 4.1).")
+                        .arg(pCode, pName),
+                    QMessageBox::Yes | QMessageBox::No,
+                    QMessageBox::No
+                );
+                if (reply != QMessageBox::Yes) return;
+
+                OperationResult res = user_delete::deleteProduct(db, pid);
+                if (!res.success) {
+                    QMessageBox::critical(this, "Không thể xóa sản phẩm", QString::fromStdString(res.message));
+                    return;
+                }
+                QMessageBox::information(this, "Thành công", QString::fromStdString(res.message));
+                notifyDataChanged(QString("Đã xóa sản phẩm [%1]").arg(pCode));
+            },
+            "➕ Thêm sản phẩm",
+            "✏️ Sửa sản phẩm",
+            "🗑️ Xóa sản phẩm"
+        );
+
+        // Quick Toggle Selling Status (Rule 4.2: product.is_sold)
+        widget->setExtraAction("🔄 Đổi TT Bán", [this, catTable](const Record& rec) {
+            int pid = resolveProductId(rec, catTable);
+            if (pid <= 0 || !db) return;
+            Table* prodTable = db->getTable("product");
+            const Record* pRec = prodTable ? prodTable->getRecordById(pid) : nullptr;
+            if (!pRec) return;
+
+            bool curSold = true;
+            if (pRec->has("is_sold") && holds_alternative<bool>(pRec->get("is_sold"))) {
+                curSold = get<bool>(pRec->get("is_sold"));
+            }
+            QString pCode = (pRec->has("product_code") && holds_alternative<std::string>(pRec->get("product_code")))
+                ? QString::fromStdString(get<std::string>(pRec->get("product_code"))) : "";
+
+            bool nextSold = !curSold;
+            auto reply = QMessageBox::question(
+                this,
+                "Đổi trạng thái kinh doanh (is_sold)",
+                QString("Chuyển trạng thái sản phẩm [%1] sang:\n➡ %2?")
+                    .arg(pCode, nextSold ? "ĐANG MỞ BÁN (is_sold = TRUE)" : "NGỪNG KINH DOANH (is_sold = FALSE)"),
+                QMessageBox::Yes | QMessageBox::No,
+                QMessageBox::Yes
+            );
+            if (reply != QMessageBox::Yes) return;
+
+            OperationResult res = user_update::updateProductSellingStatus(db, pid, nextSold);
+            if (!res.success) {
+                QMessageBox::critical(this, "Không thể đổi trạng thái bán", QString::fromStdString(res.message));
+                return;
+            }
+            notifyDataChanged(QString("Đã đổi trạng thái bán [%1] -> %2").arg(pCode, nextSold ? "TRUE" : "FALSE"));
+        });
+    };
+
+    wireProductCrud(productQuantityWidget, "", "");
+    wireProductCrud(cpuWidget, "CPU", "cpu");
+    wireProductCrud(gpuWidget, "GPU", "gpu");
+    wireProductCrud(mainboardWidget, "MAINBOARD", "mainboard");
+    wireProductCrud(ramWidget, "RAM", "ram");
+    wireProductCrud(ssdWidget, "SSD", "ssd");
+    wireProductCrud(psuWidget, "PSU", "psu");
+    wireProductCrud(coolingWidget, "COOLING", "cooling");
+    wireProductCrud(caseWidget, "CASE", "case");
+
+    // --------------------------------------------------------
+    // 2. Customer CRUD on Individual & Business Views
+    // --------------------------------------------------------
+    auto wireCustomerCrud = [this](QueryTableWidget* widget, CustomerDialog::CustomerKind kind, const QString& addLabel) {
+        if (!widget) return;
+
+        widget->setCrudCallbacks(
+            [this, kind]() {
+                CustomerDialog dlg(db, kind, false, this);
+                if (dlg.exec() == QDialog::Accepted) {
+                    notifyDataChanged("Đã thêm mới hồ sơ khách hàng / đối tác");
+                }
+            },
+            [this](const Record& rec) {
+                int cid = resolveCustomerId(rec);
+                if (cid <= 0) {
+                    QMessageBox::critical(this, "Lỗi dữ liệu", "Không xác định được ID khách hàng cần chỉnh sửa.");
+                    return;
+                }
+                CustomerDialog dlg(db, cid, this);
+                if (dlg.exec() == QDialog::Accepted) {
+                    notifyDataChanged("Đã cập nhật thông tin liên hệ khách hàng");
+                }
+            },
+            [this](const Record& rec) {
+                int cid = resolveCustomerId(rec);
+                if (cid <= 0) {
+                    QMessageBox::critical(this, "Lỗi dữ liệu", "Không xác định được ID khách hàng cần xóa.");
+                    return;
+                }
+                Table* custTable = db ? db->getTable("customer") : nullptr;
+                const Record* cRec = custTable ? custTable->getRecordById(cid) : nullptr;
+                QString cCode = (cRec && cRec->has("customer_code") && holds_alternative<std::string>(cRec->get("customer_code")))
+                    ? QString::fromStdString(get<std::string>(cRec->get("customer_code"))) : QString::number(cid);
+                QString cName = (cRec && cRec->has("name") && holds_alternative<std::string>(cRec->get("name")))
+                    ? QString::fromStdString(get<std::string>(cRec->get("name"))) : "";
+
+                auto reply = QMessageBox::question(
+                    this,
+                    "Xác nhận xóa khách hàng",
+                    QString("Bạn có chắc chắn muốn xóa hồ sơ khách hàng:\n[%1] %2?\n\n"
+                            "Lưu ý: Khách hàng đã phát sinh giao dịch nhập/xuất sẽ được bảo vệ không cho phép xóa.")
+                        .arg(cCode, cName),
+                    QMessageBox::Yes | QMessageBox::No,
+                    QMessageBox::No
+                );
+                if (reply != QMessageBox::Yes) return;
+
+                OperationResult res = user_delete::deleteCustomer(db, cid);
+                if (!res.success) {
+                    QMessageBox::critical(this, "Không thể xóa khách hàng", QString::fromStdString(res.message));
+                    return;
+                }
+                QMessageBox::information(this, "Thành công", QString::fromStdString(res.message));
+                notifyDataChanged(QString("Đã xóa khách hàng [%1]").arg(cCode));
+            },
+            addLabel,
+            "✏️ Sửa liên hệ",
+            "🗑️ Xóa"
+        );
+    };
+
+    wireCustomerCrud(individualCustomerWidget, CustomerDialog::CustomerKind::INDIVIDUAL, "➕ Thêm KH Cá nhân");
+    wireCustomerCrud(businessCustomerWidget, CustomerDialog::CustomerKind::BUSINESS, "➕ Thêm Đối tác / DN");
+
+    // --------------------------------------------------------
+    // 3. Auxiliary Specs & Brand CRUD (Rule 4.1, 4.6, 9.3)
+    // --------------------------------------------------------
+    if (auxSpecWidget) {
+        auxSpecWidget->setCrudCallbacks(
+            [this]() { onAddAuxSpecOrBrand(); },
+            [this](const Record& rec) { onEditAuxSpecOrBrand(rec); },
+            [this](const Record& rec) { onDeleteAuxSpecOrBrand(rec); },
+            "➕ Thêm mục mới",
+            "✏️ Sửa giá trị",
+            "🗑️ Xóa mục"
+        );
+    }
+
+    // --------------------------------------------------------
+    // 4. Transaction Hubs & Full-screen Logistics Views
+    // --------------------------------------------------------
+    if (inboundTxnWidget) {
+        inboundTxnWidget->setDataChangedCallback([this](const QString& summary) {
+            notifyDataChanged(summary);
+        });
+    }
+    if (outboundTxnWidget) {
+        outboundTxnWidget->setDataChangedCallback([this](const QString& summary) {
+            notifyDataChanged(summary);
+        });
+    }
+
+    if (deliveryWidget) {
+        deliveryWidget->setCrudCallbacks(
+            nullptr,
+            [this](const Record& rec) {
+                int delId = (rec.has("delivery_id") && holds_alternative<int>(rec.get("delivery_id")))
+                    ? get<int>(rec.get("delivery_id")) : -1;
+                if (delId <= 0) return;
+
+                QString dCode = (rec.has("delivery.delivery_code") && holds_alternative<std::string>(rec.get("delivery.delivery_code")))
+                    ? QString::fromStdString(get<std::string>(rec.get("delivery.delivery_code"))) : "";
+                QString inCode = (rec.has("inbound_transaction.inbound_code") && holds_alternative<std::string>(rec.get("inbound_transaction.inbound_code")))
+                    ? QString::fromStdString(get<std::string>(rec.get("inbound_transaction.inbound_code"))) : "";
+                QString expAt = (rec.has("delivery.expected_at") && holds_alternative<std::string>(rec.get("delivery.expected_at")))
+                    ? QString::fromStdString(get<std::string>(rec.get("delivery.expected_at"))) : "";
+                QString delAt = (rec.has("delivery.delivery_at") && holds_alternative<std::string>(rec.get("delivery.delivery_at")))
+                    ? QString::fromStdString(get<std::string>(rec.get("delivery.delivery_at"))) : "";
+                QString st = (rec.has("delivery.status") && holds_alternative<std::string>(rec.get("delivery.status")))
+                    ? QString::fromStdString(get<std::string>(rec.get("delivery.status"))) : "";
+
+                LogisticsUpdateDialog dlg(HubType::INBOUND, db, delId, dCode, inCode, expAt, delAt, st, this);
+                if (dlg.exec() == QDialog::Accepted) {
+                    notifyDataChanged(QString("Đã cập nhật đợt nhận hàng %1").arg(dCode));
+                }
+            },
+            nullptr,
+            "",
+            "✏️ Cập nhật đợt nhận",
+            ""
+        );
+
+        deliveryWidget->setExtraAction("🔍 Xem mặt hàng đợt này", [this](const Record& rec) {
+            QString dCode = (rec.has("delivery.delivery_code") && holds_alternative<std::string>(rec.get("delivery.delivery_code")))
+                ? QString::fromStdString(get<std::string>(rec.get("delivery.delivery_code"))) : "";
+            QString inCode = (rec.has("inbound_transaction.inbound_code") && holds_alternative<std::string>(rec.get("inbound_transaction.inbound_code")))
+                ? QString::fromStdString(get<std::string>(rec.get("inbound_transaction.inbound_code"))) : "";
+            QString st = (rec.has("delivery.status") && holds_alternative<std::string>(rec.get("delivery.status")))
+                ? QString::fromStdString(get<std::string>(rec.get("delivery.status"))) : "";
+            DetailInspectionDialog dlg(
+                DetailInspectionDialog::InspectionMode::DELIVERY_BATCH,
+                db, dCode,
+                QString("Thuộc đơn nhập: %1  |  Trạng thái đợt nhận: %2").arg(inCode, st),
+                this
+            );
+            dlg.exec();
+        });
+    }
+
+    if (shipmentWidget) {
+        shipmentWidget->setCrudCallbacks(
+            nullptr,
+            [this](const Record& rec) {
+                int shipId = (rec.has("shipment_id") && holds_alternative<int>(rec.get("shipment_id")))
+                    ? get<int>(rec.get("shipment_id")) : -1;
+                if (shipId <= 0) return;
+
+                QString sCode = (rec.has("shipment.shipment_code") && holds_alternative<std::string>(rec.get("shipment.shipment_code")))
+                    ? QString::fromStdString(get<std::string>(rec.get("shipment.shipment_code"))) : "";
+                QString outCode = (rec.has("outbound_transaction.outbound_code") && holds_alternative<std::string>(rec.get("outbound_transaction.outbound_code")))
+                    ? QString::fromStdString(get<std::string>(rec.get("outbound_transaction.outbound_code"))) : "";
+                QString expAt = (rec.has("shipment.expected_at") && holds_alternative<std::string>(rec.get("shipment.expected_at")))
+                    ? QString::fromStdString(get<std::string>(rec.get("shipment.expected_at"))) : "";
+                QString shipAt = (rec.has("shipment.ship_at") && holds_alternative<std::string>(rec.get("shipment.ship_at")))
+                    ? QString::fromStdString(get<std::string>(rec.get("shipment.ship_at"))) : "";
+                QString st = (rec.has("shipment.status") && holds_alternative<std::string>(rec.get("shipment.status")))
+                    ? QString::fromStdString(get<std::string>(rec.get("shipment.status"))) : "";
+
+                LogisticsUpdateDialog dlg(HubType::OUTBOUND, db, shipId, sCode, outCode, expAt, shipAt, st, this);
+                if (dlg.exec() == QDialog::Accepted) {
+                    notifyDataChanged(QString("Đã cập nhật đợt xuất hàng %1").arg(sCode));
+                }
+            },
+            nullptr,
+            "",
+            "✏️ Cập nhật đợt xuất",
+            ""
+        );
+
+        shipmentWidget->setExtraAction("🔍 Xem mặt hàng đợt này", [this](const Record& rec) {
+            QString sCode = (rec.has("shipment.shipment_code") && holds_alternative<std::string>(rec.get("shipment.shipment_code")))
+                ? QString::fromStdString(get<std::string>(rec.get("shipment.shipment_code"))) : "";
+            QString outCode = (rec.has("outbound_transaction.outbound_code") && holds_alternative<std::string>(rec.get("outbound_transaction.outbound_code")))
+                ? QString::fromStdString(get<std::string>(rec.get("outbound_transaction.outbound_code"))) : "";
+            QString st = (rec.has("shipment.status") && holds_alternative<std::string>(rec.get("shipment.status")))
+                ? QString::fromStdString(get<std::string>(rec.get("shipment.status"))) : "";
+            DetailInspectionDialog dlg(
+                DetailInspectionDialog::InspectionMode::SHIPMENT_BATCH,
+                db, sCode,
+                QString("Thuộc đơn xuất: %1  |  Trạng thái đợt xuất: %2").arg(outCode, st),
+                this
+            );
+            dlg.exec();
+        });
+    }
+}
+
+void MainWindow::onAddAuxSpecOrBrand()
+{
+    if (!db || !auxSpecTableCombo) return;
+    QString tbl = auxSpecTableCombo->currentData().toString();
+
+    if (tbl == "brand") {
+        QDialog dlg(this);
+        dlg.setWindowTitle("Thêm Thương Hiệu / Hãng Sản Xuất Mới");
+        dlg.setMinimumWidth(400);
+        auto* layout = new QVBoxLayout(&dlg);
+        auto* grid = new QGridLayout();
+
+        auto* nameEdit = new QLineEdit(&dlg);
+        nameEdit->setMaxLength(50);
+        nameEdit->setPlaceholderText("VD: THERMALRIGHT, NZXT...");
+
+        auto* codeEdit = new QLineEdit(&dlg);
+        codeEdit->setMaxLength(20);
+        codeEdit->setPlaceholderText("VD: TR, NZXT (Mã viết tắt duy nhất)");
+
+        grid->addWidget(new QLabel("Tên thương hiệu (*):", &dlg), 0, 0);
+        grid->addWidget(nameEdit, 0, 1);
+        grid->addWidget(new QLabel("Mã viết tắt (*):", &dlg), 1, 0);
+        grid->addWidget(codeEdit, 1, 1);
+        layout->addLayout(grid);
+
+        auto* btns = new QHBoxLayout();
+        btns->addStretch();
+        auto* cancelBtn = new QPushButton("Hủy bỏ", &dlg);
+        auto* saveBtn = new QPushButton("💾 Lưu thương hiệu", &dlg);
+        saveBtn->setStyleSheet("background-color: #2563eb; color: white; font-weight: 600; padding: 6px 14px; border-radius: 6px;");
+        btns->addWidget(cancelBtn);
+        btns->addWidget(saveBtn);
+        layout->addLayout(btns);
+
+        connect(cancelBtn, &QPushButton::clicked, &dlg, &QDialog::reject);
+        connect(saveBtn, &QPushButton::clicked, [&]() {
+            QString bName = nameEdit->text().trimmed().toUpper();
+            QString bCode = codeEdit->text().trimmed().toUpper();
+            OperationResult res = user_create::createBrand(db, bName.toStdString(), bCode.toStdString());
+            if (!res.success) {
+                QMessageBox::critical(&dlg, "Không thể thêm thương hiệu", QString::fromStdString(res.message));
+                return;
+            }
+            dlg.accept();
+        });
+
+        if (dlg.exec() == QDialog::Accepted) {
+            notifyDataChanged("Đã thêm mới thương hiệu vào bảng brand");
+        }
+        return;
+    }
+
+    if (!isEditableSpecSubTable(tbl)) {
+        QMessageBox::warning(this, "Bảng dữ liệu chuẩn (Read-Only)", "Bảng danh mục chính / trạng thái hệ thống không cho phép chỉnh sửa (Rule 4.6).");
+        return;
+    }
+
+    QDialog dlg(this);
+    dlg.setWindowTitle("Thêm Giá Trị Thông Số Mới — " + tbl);
+    dlg.setMinimumWidth(420);
+    auto* layout = new QVBoxLayout(&dlg);
+
+    auto* specEdit = new QLineEdit(&dlg);
+    specEdit->setMaxLength(255);
+    specEdit->setPlaceholderText("Nhập giá trị thông số mới...");
+
+    layout->addWidget(new QLabel(QString("Giá trị thông số mới cho bảng [%1] (*):").arg(tbl), &dlg));
+    layout->addWidget(specEdit);
+
+    auto* btns = new QHBoxLayout();
+    btns->addStretch();
+    auto* cancelBtn = new QPushButton("Hủy bỏ", &dlg);
+    auto* saveBtn = new QPushButton("💾 Thêm thông số", &dlg);
+    saveBtn->setStyleSheet("background-color: #2563eb; color: white; font-weight: 600; padding: 6px 14px; border-radius: 6px;");
+    btns->addWidget(cancelBtn);
+    btns->addWidget(saveBtn);
+    layout->addLayout(btns);
+
+    connect(cancelBtn, &QPushButton::clicked, &dlg, &QDialog::reject);
+    connect(saveBtn, &QPushButton::clicked, [&]() {
+        QString val = specEdit->text().trimmed();
+        if (val.isEmpty()) {
+            QMessageBox::critical(&dlg, "Lỗi nhập liệu", "Giá trị thông số không được để trống.");
+            return;
+        }
+
+        std::string tblStd = tbl.toStdString();
+        Table* t = db->getTable(tblStd);
+        if (t) {
+            for (size_t i = 0; i < t->getRows().size(); ++i) {
+                if (t->isRowDeleted(i)) continue;
+                const Record& r = t->getRows()[i];
+                if (r.has("spec") && holds_alternative<std::string>(r.get("spec")) &&
+                    QString::fromStdString(get<std::string>(r.get("spec"))).compare(val, Qt::CaseInsensitive) == 0) {
+                    QMessageBox::critical(&dlg, "Trùng lặp dữ liệu", "Giá trị thông số này đã tồn tại trong bảng " + tbl + "!");
+                    return;
+                }
+            }
+        }
+
+        if (tbl == "gpu_vram" || tbl == "psu_capacity") {
+            bool ok = false;
+            int iv = val.toInt(&ok);
+            if (!ok || iv <= 0) {
+                QMessageBox::critical(&dlg, "Lỗi định dạng số", "Thông số này yêu cầu giá trị số nguyên dương!");
+                return;
+            }
+        }
+
+        Record newRec;
+        newRec.set("id", user_create::getNextTableId(db, tblStd));
+        newRec.set("spec", val.toStdString());
+        OperationResult res = user_create::insertRecord(db, tblStd, newRec);
+        if (!res.success) {
+            QMessageBox::critical(&dlg, "Không thể thêm thông số", QString::fromStdString(res.message));
+            return;
+        }
+        dlg.accept();
+    });
+
+    if (dlg.exec() == QDialog::Accepted) {
+        notifyDataChanged(QString("Đã thêm thông số mới vào bảng %1").arg(tbl));
+    }
+}
+
+void MainWindow::onEditAuxSpecOrBrand(const Record& rec)
+{
+    if (!db || !auxSpecTableCombo) return;
+    QString tbl = auxSpecTableCombo->currentData().toString();
+
+    if (tbl == "brand") {
+        int brandId = (rec.has("brand_id") && holds_alternative<int>(rec.get("brand_id")))
+            ? get<int>(rec.get("brand_id")) : -1;
+        QString oldBrand = (rec.has("brand") && holds_alternative<std::string>(rec.get("brand")))
+            ? QString::fromStdString(get<std::string>(rec.get("brand"))) : "";
+        QString oldCode = (rec.has("code") && holds_alternative<std::string>(rec.get("code")))
+            ? QString::fromStdString(get<std::string>(rec.get("code"))) : "";
+
+        if (brandId <= 0) return;
+
+        // Check if any product references this brand
+        bool referencedByProduct = false;
+        Table* prodTable = db->getTable("product");
+        if (prodTable) {
+            for (size_t i = 0; i < prodTable->getRows().size(); ++i) {
+                if (prodTable->isRowDeleted(i)) continue;
+                const Record& pr = prodTable->getRows()[i];
+                if (pr.has("brand") && holds_alternative<std::string>(pr.get("brand")) &&
+                    QString::fromStdString(get<std::string>(pr.get("brand"))) == oldBrand) {
+                    referencedByProduct = true;
+                    break;
+                }
+            }
+        }
+
+        QDialog dlg(this);
+        dlg.setWindowTitle("Chỉnh Sửa Thương Hiệu — " + oldBrand);
+        dlg.setMinimumWidth(420);
+        auto* layout = new QVBoxLayout(&dlg);
+        auto* grid = new QGridLayout();
+
+        auto* nameEdit = new QLineEdit(oldBrand, &dlg);
+        nameEdit->setMaxLength(50);
+        auto* codeEdit = new QLineEdit(oldCode, &dlg);
+        codeEdit->setMaxLength(20);
+        if (referencedByProduct) {
+            codeEdit->setReadOnly(true);
+            codeEdit->setStyleSheet("background-color: #f1f5f9; color: #64748b;");
+        }
+
+        grid->addWidget(new QLabel("Tên thương hiệu (*):", &dlg), 0, 0);
+        grid->addWidget(nameEdit, 0, 1);
+        grid->addWidget(new QLabel("Mã viết tắt (*):", &dlg), 1, 0);
+        grid->addWidget(codeEdit, 1, 1);
+        layout->addLayout(grid);
+
+        if (referencedByProduct) {
+            auto* noteLbl = new QLabel("ℹ Mã viết tắt được khóa cố định do đã có sản phẩm thuộc thương hiệu này.", &dlg);
+            noteLbl->setStyleSheet("font-size: 11px; color: #64748b;");
+            layout->addWidget(noteLbl);
+        }
+
+        auto* btns = new QHBoxLayout();
+        btns->addStretch();
+        auto* cancelBtn = new QPushButton("Hủy bỏ", &dlg);
+        auto* saveBtn = new QPushButton("💾 Lưu cập nhật", &dlg);
+        saveBtn->setStyleSheet("background-color: #2563eb; color: white; font-weight: 600; padding: 6px 14px; border-radius: 6px;");
+        btns->addWidget(cancelBtn);
+        btns->addWidget(saveBtn);
+        layout->addLayout(btns);
+
+        connect(cancelBtn, &QPushButton::clicked, &dlg, &QDialog::reject);
+        connect(saveBtn, &QPushButton::clicked, [&]() {
+            QString newBrand = nameEdit->text().trimmed().toUpper();
+            QString newCode = codeEdit->text().trimmed().toUpper();
+            if (newBrand.isEmpty() || newCode.isEmpty()) {
+                QMessageBox::critical(&dlg, "Lỗi nhập liệu", "Tên thương hiệu và mã viết tắt không được để trống.");
+                return;
+            }
+
+            if (!referencedByProduct) {
+                Vector<std::string> cols;
+                Vector<Value> vals;
+                cols.push_back("brand"); vals.push_back(Value(newBrand.toStdString()));
+                cols.push_back("code");  vals.push_back(Value(newCode.toStdString()));
+                OperationResult res = user_update::updateRecord(db, "brand", brandId, cols, vals);
+                if (!res.success) {
+                    QMessageBox::critical(&dlg, "Không thể cập nhật thương hiệu", QString::fromStdString(res.message));
+                    return;
+                }
+            } else if (newBrand != oldBrand) {
+                if (!db->beginTransaction()) return;
+                OperationResult res = user_update::updateBrand(db, brandId, newBrand.toStdString());
+                if (!res.success) {
+                    db->rollback();
+                    QMessageBox::critical(&dlg, "Không thể cập nhật thương hiệu", QString::fromStdString(res.message));
+                    return;
+                }
+                // Cascade brand name update to product rows so FK remains valid
+                if (prodTable) {
+                    for (size_t i = 0; i < prodTable->getRows().size(); ++i) {
+                        if (prodTable->isRowDeleted(i)) continue;
+                        const Record& pr = prodTable->getRows()[i];
+                        if (pr.has("brand") && holds_alternative<std::string>(pr.get("brand")) &&
+                            QString::fromStdString(get<std::string>(pr.get("brand"))) == oldBrand) {
+                            int pid = (pr.has("product_id") && holds_alternative<int>(pr.get("product_id")))
+                                ? get<int>(pr.get("product_id")) : -1;
+                            if (pid > 0) {
+                                Record pUp;
+                                pUp.set("brand", newBrand.toStdString());
+                                db->update("product", pid, pUp);
+                            }
+                        }
+                    }
+                }
+                db->commit();
+            }
+            dlg.accept();
+        });
+
+        if (dlg.exec() == QDialog::Accepted) {
+            notifyDataChanged(QString("Đã cập nhật thương hiệu [%1]").arg(oldBrand));
+        }
+        return;
+    }
+
+    if (!isEditableSpecSubTable(tbl)) return;
+
+    int specId = (rec.has("id") && holds_alternative<int>(rec.get("id")))
+        ? get<int>(rec.get("id")) : -1;
+    QString oldSpec = (rec.has("spec") && holds_alternative<std::string>(rec.get("spec")))
+        ? QString::fromStdString(get<std::string>(rec.get("spec"))) : "";
+    if (specId <= 0) return;
+
+    QDialog dlg(this);
+    dlg.setWindowTitle("Sửa Giá Trị Thông Số — " + tbl);
+    dlg.setMinimumWidth(420);
+    auto* layout = new QVBoxLayout(&dlg);
+
+    auto* specEdit = new QLineEdit(oldSpec, &dlg);
+    specEdit->setMaxLength(255);
+    layout->addWidget(new QLabel(QString("Cập nhật giá trị thông số trong bảng [%1]:").arg(tbl), &dlg));
+    layout->addWidget(specEdit);
+
+    auto* btns = new QHBoxLayout();
+    btns->addStretch();
+    auto* cancelBtn = new QPushButton("Hủy bỏ", &dlg);
+    auto* saveBtn = new QPushButton("💾 Lưu thay đổi", &dlg);
+    saveBtn->setStyleSheet("background-color: #2563eb; color: white; font-weight: 600; padding: 6px 14px; border-radius: 6px;");
+    btns->addWidget(cancelBtn);
+    btns->addWidget(saveBtn);
+    layout->addLayout(btns);
+
+    connect(cancelBtn, &QPushButton::clicked, &dlg, &QDialog::reject);
+    connect(saveBtn, &QPushButton::clicked, [&]() {
+        QString newSpec = specEdit->text().trimmed();
+        if (newSpec.isEmpty()) {
+            QMessageBox::critical(&dlg, "Lỗi nhập liệu", "Giá trị thông số không được để trống.");
+            return;
+        }
+        if (newSpec == oldSpec) {
+            dlg.accept();
+            return;
+        }
+
+        std::string tblStd = tbl.toStdString();
+        Table* t = db->getTable(tblStd);
+        if (t) {
+            for (size_t i = 0; i < t->getRows().size(); ++i) {
+                if (t->isRowDeleted(i)) continue;
+                const Record& r = t->getRows()[i];
+                int rid = (r.has("id") && holds_alternative<int>(r.get("id"))) ? get<int>(r.get("id")) : -1;
+                if (rid != specId && r.has("spec") && holds_alternative<std::string>(r.get("spec")) &&
+                    QString::fromStdString(get<std::string>(r.get("spec"))).compare(newSpec, Qt::CaseInsensitive) == 0) {
+                    QMessageBox::critical(&dlg, "Trùng lặp dữ liệu", "Giá trị thông số này đã tồn tại trong bảng!");
+                    return;
+                }
+            }
+        }
+
+        int newIntVal = 0;
+        bool isIntCol = (tbl == "gpu_vram" || tbl == "psu_capacity");
+        if (isIntCol) {
+            bool ok = false;
+            newIntVal = newSpec.toInt(&ok);
+            if (!ok || newIntVal <= 0) {
+                QMessageBox::critical(&dlg, "Lỗi định dạng số", "Thông số này yêu cầu số nguyên dương!");
+                return;
+            }
+        }
+
+        if (!db->beginTransaction()) return;
+
+        Vector<std::string> cols; cols.push_back("spec");
+        Vector<Value> vals; vals.push_back(Value(newSpec.toStdString()));
+        OperationResult res = user_update::updateRecord(db, tblStd, specId, cols, vals);
+        if (!res.success) {
+            db->rollback();
+            QMessageBox::critical(&dlg, "Không thể cập nhật thông số", QString::fromStdString(res.message));
+            return;
+        }
+
+        // Sync category hardware table rows using oldSpec
+        int underscoreIdx = tbl.indexOf('_');
+        if (underscoreIdx > 0) {
+            std::string catTblName = tbl.left(underscoreIdx).toStdString();
+            std::string colName = tbl.mid(underscoreIdx + 1).toStdString();
+            Table* catTbl = db->getTable(catTblName);
+            if (catTbl) {
+                std::string pkCol = catTbl->getPrimaryKeyColumn();
+                for (size_t i = 0; i < catTbl->getRows().size(); ++i) {
+                    if (catTbl->isRowDeleted(i)) continue;
+                    const Record& cr = catTbl->getRows()[i];
+                    if (!cr.has(colName) || !cr.has(pkCol) || !holds_alternative<int>(cr.get(pkCol))) continue;
+                    bool matches = false;
+                    if (isIntCol && holds_alternative<int>(cr.get(colName))) {
+                        matches = (QString::number(get<int>(cr.get(colName))) == oldSpec);
+                    } else if (holds_alternative<std::string>(cr.get(colName))) {
+                        matches = (QString::fromStdString(get<std::string>(cr.get(colName))) == oldSpec);
+                    }
+                    if (matches) {
+                        Record cUp;
+                        cUp.set(colName, isIntCol ? Value(newIntVal) : Value(newSpec.toStdString()));
+                        db->update(catTblName, get<int>(cr.get(pkCol)), cUp);
+                    }
+                }
+            }
+        }
+
+        db->commit();
+        dlg.accept();
+    });
+
+    if (dlg.exec() == QDialog::Accepted) {
+        notifyDataChanged(QString("Đã cập nhật thông số trong bảng %1").arg(tbl));
+    }
+}
+
+void MainWindow::onDeleteAuxSpecOrBrand(const Record& rec)
+{
+    if (!db || !auxSpecTableCombo) return;
+    QString tbl = auxSpecTableCombo->currentData().toString();
+
+    if (tbl == "brand") {
+        int brandId = (rec.has("brand_id") && holds_alternative<int>(rec.get("brand_id")))
+            ? get<int>(rec.get("brand_id")) : -1;
+        QString bName = (rec.has("brand") && holds_alternative<std::string>(rec.get("brand")))
+            ? QString::fromStdString(get<std::string>(rec.get("brand"))) : "";
+        if (brandId <= 0) return;
+
+        auto reply = QMessageBox::question(
+            this,
+            "Xác nhận xóa thương hiệu",
+            QString("Bạn có chắc chắn muốn xóa thương hiệu [%1]?\n"
+                    "(Chỉ xóa được khi chưa có sản phẩm nào tham chiếu đến thương hiệu này)").arg(bName),
+            QMessageBox::Yes | QMessageBox::No,
+            QMessageBox::No
+        );
+        if (reply != QMessageBox::Yes) return;
+
+        OperationResult res = user_delete::deleteBrand(db, brandId);
+        if (!res.success) {
+            QMessageBox::critical(this, "Không thể xóa thương hiệu", QString::fromStdString(res.message));
+            return;
+        }
+        QMessageBox::information(this, "Thành công", QString::fromStdString(res.message));
+        notifyDataChanged(QString("Đã xóa thương hiệu [%1]").arg(bName));
+        return;
+    }
+
+    if (!isEditableSpecSubTable(tbl)) return;
+
+    int specId = (rec.has("id") && holds_alternative<int>(rec.get("id")))
+        ? get<int>(rec.get("id")) : -1;
+    QString specVal = (rec.has("spec") && holds_alternative<std::string>(rec.get("spec")))
+        ? QString::fromStdString(get<std::string>(rec.get("spec"))) : "";
+    if (specId <= 0) return;
+
+    // Check referential usage in category hardware table before deleting
+    int underscoreIdx = tbl.indexOf('_');
+    if (underscoreIdx > 0) {
+        std::string catTblName = tbl.left(underscoreIdx).toStdString();
+        std::string colName = tbl.mid(underscoreIdx + 1).toStdString();
+        Table* catTbl = db->getTable(catTblName);
+        if (catTbl) {
+            bool isIntCol = (tbl == "gpu_vram" || tbl == "psu_capacity");
+            for (size_t i = 0; i < catTbl->getRows().size(); ++i) {
+                if (catTbl->isRowDeleted(i)) continue;
+                const Record& cr = catTbl->getRows()[i];
+                if (!cr.has(colName)) continue;
+                bool inUse = false;
+                if (isIntCol && holds_alternative<int>(cr.get(colName))) {
+                    inUse = (QString::number(get<int>(cr.get(colName))) == specVal);
+                } else if (holds_alternative<std::string>(cr.get(colName))) {
+                    inUse = (QString::fromStdString(get<std::string>(cr.get(colName))) == specVal);
+                }
+                if (inUse) {
+                    QMessageBox::critical(this, "Không thể xóa thông số đang sử dụng",
+                        QString("Giá trị thông số \"%1\" đang được sử dụng bởi sản phẩm trong bảng [%2].\n"
+                                "Không thể xóa để đảm bảo toàn vẹn dữ liệu!").arg(specVal, QString::fromStdString(catTblName)));
+                    return;
+                }
+            }
+        }
+    }
+
+    auto reply = QMessageBox::question(
+        this,
+        "Xác nhận xóa thông số",
+        QString("Bạn có chắc chắn muốn xóa giá trị thông số \"%1\" khỏi bảng [%2]?").arg(specVal, tbl),
+        QMessageBox::Yes | QMessageBox::No,
+        QMessageBox::No
+    );
+    if (reply != QMessageBox::Yes) return;
+
+    OperationResult res = user_delete::deleteRecord(db, tbl.toStdString(), specId);
+    if (!res.success) {
+        QMessageBox::critical(this, "Không thể xóa thông số", QString::fromStdString(res.message));
+        return;
+    }
+    notifyDataChanged(QString("Đã xóa thông số \"%1\" khỏi bảng %2").arg(specVal, tbl));
 }

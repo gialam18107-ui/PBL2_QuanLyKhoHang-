@@ -79,7 +79,7 @@ namespace user_create
     OperationResult createInboundOrder(
         Database* db,
         const std::string& inboundType,
-        const std::string& customer_Code,
+        const std::string& customerCode,
         const Vector<Pair<int, int>>& items,
         const std::string& orderDate,
         const std::string& expectedDeliveryDate,
