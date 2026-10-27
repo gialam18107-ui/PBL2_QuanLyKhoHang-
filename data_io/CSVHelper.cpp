@@ -154,6 +154,43 @@ namespace DataIO
         return line;
     }
 
+    string CSVHelper::formatLine(const Record& record, const Vector<string>& columns)
+    {
+        Vector<string> fields;
+        fields.reserve(columns.size());
+        for (const auto& colName : columns)
+        {
+            if (record.has(colName))
+            {
+                const Value& val = record.get(colName);
+                if (holds_alternative<monostate>(val))
+                {
+                    fields.push_back("");
+                }
+                else
+                {
+                    fields.push_back(valueToString(val));
+                }
+            }
+            else
+            {
+                fields.push_back("");
+            }
+        }
+        return formatLine(fields);
+    }
+
+    string CSVHelper::formatLine(const Record& record, const Vector<Column>& columns)
+    {
+        Vector<string> colNames;
+        colNames.reserve(columns.size());
+        for (const auto& col : columns)
+        {
+            colNames.push_back(col.getName());
+        }
+        return formatLine(record, colNames);
+    }
+
     string CSVHelper::formatLine(const Record& record)
     {
         Vector<string> fields;

@@ -23,6 +23,12 @@ namespace DataIO
         // Write table to explicit filePath (skips deleted records)
         static bool writeToFile(const Table& table, const string& filePath);
 
+        // Format a single record into a CSV line given column names
+        static string formatLine(const Record& record, const Vector<string>& columns);
+
+        // Format a single record into a CSV line given column definitions
+        static string formatLine(const Record& record, const Vector<Column>& columns);
+
         // Format a single record into a CSV line from its stored values
         static string formatLine(const Record& record);
     };
