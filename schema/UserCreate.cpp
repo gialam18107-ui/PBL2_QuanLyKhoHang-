@@ -55,6 +55,24 @@ namespace user_create
         return maxSeq;
     }
 
+    static int findCustomerIdByCode(Table* custTable, const std::string& customerCode)
+    {
+        if (!custTable || customerCode.empty()) return -1;
+        const auto& rows = custTable->getRows();
+        for (size_t i = 0; i < rows.size(); ++i) {
+            if (custTable->isRowDeleted(i)) continue;
+            const Record& r = rows[i];
+            if (r.has("customer_code") && std::holds_alternative<std::string>(r.get("customer_code"))) {
+                if (std::get<std::string>(r.get("customer_code")) == customerCode) {
+                    if (r.has("customer_id") && std::holds_alternative<int>(r.get("customer_id"))) {
+                        return std::get<int>(r.get("customer_id"));
+                    }
+                }
+            }
+        }
+        return -1;
+    }
+
     int getNextTableId(Database* db, const std::string& tableName)
     {
         if (!db) return 1;
@@ -504,13 +522,16 @@ namespace user_create
     OperationResult createInboundOrder(
         Database* db,
         const std::string& inboundType,
-        int customerId,
+        const std::string& customer_Code,
         const Vector<Pair<int, int>>& items,
         const std::string& orderDate,
         const std::string& expectedDeliveryDate,
         const std::string& note
     ) {
         if (!db) return OperationResult{false, "Cơ sở dữ liệu chưa được khởi tạo.", 0};
+        if (customer_Code.empty()) {
+            return OperationResult{false, "Mã đối tác / khách hàng không được để trống.", 0};
+        }
         if (items.empty()) return OperationResult{false, "Đơn nhập kho phải có ít nhất một mặt hàng.", 0};
         if (orderDate.empty() || expectedDeliveryDate.empty()) {
             return OperationResult{false, "Ngày đặt hàng và ngày dự kiến giao không được để trống.", 0};
@@ -520,8 +541,11 @@ namespace user_create
         }
 
         Table* custTable = db->getTable("customer");
-        if (!custTable || custTable->findRowIndexById(customerId) < 0) {
-            return OperationResult{false, "Không tìm thấy đối tác/khách hàng với ID " + std::to_string(customerId) + ".", 0};
+        if (!custTable) return OperationResult{false, "Bảng 'customer' không tồn tại.", 0};
+
+        int customerId = findCustomerIdByCode(custTable, customerCode);
+        if (customerId < 0) {
+            return OperationResult{false, "Không tìm thấy đối tác/khách hàng với mã: '" + customerCode + "'.", 0};
         }
 
         Table* prodTable = db->getTable("product");
@@ -619,13 +643,16 @@ namespace user_create
     OperationResult createOutboundOrder(
         Database* db,
         const std::string& outboundType,
-        int customerId,
+        const std::string& customerCode,
         const Vector<Pair<int, int>>& items,
         const std::string& orderDate,
         const std::string& expectedShipDate,
         const std::string& note
     ) {
         if (!db) return OperationResult{false, "Cơ sở dữ liệu chưa được khởi tạo.", 0};
+        if (customerCode.empty()) {
+            return OperationResult{false, "Mã khách hàng / đối tác không được để trống.", 0};
+        }
         if (items.empty()) return OperationResult{false, "Đơn xuất kho phải có ít nhất một mặt hàng.", 0};
         if (orderDate.empty() || expectedShipDate.empty()) {
             return OperationResult{false, "Ngày đặt hàng và ngày dự kiến xuất không được để trống.", 0};
@@ -635,8 +662,11 @@ namespace user_create
         }
 
         Table* custTable = db->getTable("customer");
-        if (!custTable || custTable->findRowIndexById(customerId) < 0) {
-            return OperationResult{false, "Không tìm thấy khách hàng/đối tác với ID " + std::to_string(customerId) + ".", 0};
+        if (!custTable) return OperationResult{false, "Bảng 'customer' không tồn tại.", 0};
+
+        int customerId = findCustomerIdByCode(custTable, customerCode);
+        if (customerId < 0) {
+            return OperationResult{false, "Không tìm thấy khách hàng/đối tác với mã: '" + customerCode + "'.", 0};
         }
 
         Table* prodTable = db->getTable("product");

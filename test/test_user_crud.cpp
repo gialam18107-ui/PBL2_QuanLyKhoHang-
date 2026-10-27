@@ -127,24 +127,29 @@ int main()
     // ==========================================
     std::cout << "\n--- [4] Testing Coupled Transactions & Stock Checks ---" << std::endl;
 
-    // 4.1 Create Inbound Order (coupled with delivery)
+    // 4.1 Create Inbound Order (coupled with delivery) using customer_code
     Vector<Pair<int, int>> inItems;
     inItems.push_back(Pair<int, int>(1, 10)); // Product 1, qty 10
-    OperationResult cIn = user_create::createInboundOrder(&db, "PURCHASING", 4, inItems, "2026-10-25", "2026-10-28", "Test purchasing order");
+    OperationResult cIn = user_create::createInboundOrder(&db, "PURCHASING", "BS-0000001", inItems, "2026-10-25", "2026-10-28", "Test purchasing order");
     std::cout << "createInboundOrder: success=" << cIn.success << ", msg: " << cIn.message << std::endl;
     assert(cIn.success == true);
 
-    // 4.2 Outbound Order Stock Precondition Check (requesting 99999 units must fail)
+    // 4.1b Non-existent customer code rejection check
+    OperationResult cInBadCust = user_create::createInboundOrder(&db, "PURCHASING", "NON_EXIST_CODE", inItems, "2026-10-25", "2026-10-28", "Test bad customer");
+    std::cout << "Non-existent customer_code check: success=" << cInBadCust.success << " (expected false), msg: " << cInBadCust.message << std::endl;
+    assert(cInBadCust.success == false);
+
+    // 4.2 Outbound Order Stock Precondition Check (requesting 99999 units must fail) using customer_code
     Vector<Pair<int, int>> badOutItems;
     badOutItems.push_back(Pair<int, int>(1, 999999));
-    OperationResult cOutFail = user_create::createOutboundOrder(&db, "SELLING", 1, badOutItems, "2026-10-25", "2026-10-28", "Excessive order");
+    OperationResult cOutFail = user_create::createOutboundOrder(&db, "SELLING", "IN-0000001", badOutItems, "2026-10-25", "2026-10-28", "Excessive order");
     std::cout << "Stock Availability Precondition check (excessive qty): success=" << cOutFail.success << " (expected false), msg: " << cOutFail.message << std::endl;
     assert(cOutFail.success == false);
 
-    // 4.3 Create Outbound Order with available stock (1 unit of product 1)
+    // 4.3 Create Outbound Order with available stock using customer_code (1 unit of product 1)
     Vector<Pair<int, int>> goodOutItems;
     goodOutItems.push_back(Pair<int, int>(1, 1));
-    OperationResult cOutOk = user_create::createOutboundOrder(&db, "SELLING", 1, goodOutItems, "2026-10-25", "2026-10-28", "Normal retail sale");
+    OperationResult cOutOk = user_create::createOutboundOrder(&db, "SELLING", "IN-0000001", goodOutItems, "2026-10-25", "2026-10-28", "Normal retail sale");
     std::cout << "createOutboundOrder with available stock: success=" << cOutOk.success << ", msg: " << cOutOk.message << std::endl;
     assert(cOutOk.success == true);
 

@@ -79,7 +79,7 @@ namespace user_create
     OperationResult createInboundOrder(
         Database* db,
         const std::string& inboundType,
-        int customerId,
+        const std::string& customer_Code,
         const Vector<Pair<int, int>>& items,
         const std::string& orderDate,
         const std::string& expectedDeliveryDate,
@@ -90,7 +90,7 @@ namespace user_create
      * @brief Create an Outbound Transaction coupled with its primary Shipment.
      * Enforces active product check and Stock Availability Precondition.
      * @param outboundType SELLING, ADJUSTMENT_OUT, RETURN_TO_SUPPLIER, WARRANTY_RETURN, WARRANTY_REPLACEMENT_TO_CUSTOMER
-     * @param customerId ID of customer or partner
+     * @param customer_Code Code of customer or partner (e.g. "IN-0000001", "BS-0000001")
      * @param items List of Pairs (productId, orderedQuantity)
      * @param orderDate Order date (YYYY-MM-DD)
      * @param expectedShipDate Expected shipment date (YYYY-MM-DD >= orderDate)
@@ -99,7 +99,7 @@ namespace user_create
     OperationResult createOutboundOrder(
         Database* db,
         const std::string& outboundType,
-        int customerId,
+        const std::string& customerCode,
         const Vector<Pair<int, int>>& items,
         const std::string& orderDate,
         const std::string& expectedShipDate,
