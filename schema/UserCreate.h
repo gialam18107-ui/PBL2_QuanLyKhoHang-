@@ -2,9 +2,11 @@
 #define USER_CREATE_H
 
 #include <string>
+#include "datastructure/vector/Vector.h"
+#include "datastructure/hashmap/Pair.h"
 #include "database/Database.h"
 #include "database/Record.h"
-#include "schema/OperationResult.h"
+#include "database/OperationResult.h"
 
 namespace user_create
 {
@@ -29,8 +31,87 @@ namespace user_create
     );
 
     // ========================================================
+    // CUSTOMER CREATION (Rule 4.1)
+    // ========================================================
+
+    /// Create an Individual Customer (creates in customer + individual_info atomically)
+    OperationResult createIndividualCustomer(
+        Database* db,
+        const std::string& name,
+        const std::string& phone,
+        const std::string& email
+    );
+
+    /// Create a Business Customer (creates in customer + business_info atomically)
+    OperationResult createBusinessCustomer(
+        Database* db,
+        const std::string& companyName,
+        const std::string& taxCode,
+        const std::string& phone,
+        const std::string& email
+    );
+
+    // ========================================================
+    // BRAND CREATION (Rule 4.1)
+    // ========================================================
+
+    /// Create a new brand/manufacturer
+    OperationResult createBrand(
+        Database* db,
+        const std::string& brandName,
+        const std::string& brandCode
+    );
+
+    // ========================================================
+    // TRANSACTION COUPLED CREATION (Rule 4.3 & 4.4)
+    // ========================================================
+
+    /**
+     * @brief Create an Inbound Transaction coupled with its primary Delivery.
+     * Enforces active product check (is_sold == TRUE).
+     * @param inboundType PURCHASING, ADJUSTMENT_IN, WARRANTY_CHECKING, WARRANTY_REPLACEMENT, CUSTOMER_RETURN
+     * @param customerId ID of supplier or customer
+     * @param items List of Pairs (productId, orderedQuantity)
+     * @param orderDate Order date (YYYY-MM-DD)
+     * @param expectedDeliveryDate Expected delivery date (YYYY-MM-DD >= orderDate)
+     * @param note Order notes
+     */
+    OperationResult createInboundOrder(
+        Database* db,
+        const std::string& inboundType,
+        int customerId,
+        const Vector<Pair<int, int>>& items,
+        const std::string& orderDate,
+        const std::string& expectedDeliveryDate,
+        const std::string& note = ""
+    );
+
+    /**
+     * @brief Create an Outbound Transaction coupled with its primary Shipment.
+     * Enforces active product check and Stock Availability Precondition.
+     * @param outboundType SELLING, ADJUSTMENT_OUT, RETURN_TO_SUPPLIER, WARRANTY_RETURN, WARRANTY_REPLACEMENT_TO_CUSTOMER
+     * @param customerId ID of customer or partner
+     * @param items List of Pairs (productId, orderedQuantity)
+     * @param orderDate Order date (YYYY-MM-DD)
+     * @param expectedShipDate Expected shipment date (YYYY-MM-DD >= orderDate)
+     * @param note Order notes
+     */
+    OperationResult createOutboundOrder(
+        Database* db,
+        const std::string& outboundType,
+        int customerId,
+        const Vector<Pair<int, int>>& items,
+        const std::string& orderDate,
+        const std::string& expectedShipDate,
+        const std::string& note = ""
+    );
+
+    // ========================================================
     // AUTO-GENERATION AND VALIDATION HELPERS
     // ========================================================
+
+    /// Calculate next available record ID by scanning max primary key + 1
+    int getNextTableId(Database* db, const std::string& tableName);
 
     /// Calculate next available product_id by scanning max product_id + 1
     int getNextProductId(Database* db);
@@ -41,17 +122,6 @@ namespace user_create
         const std::string& brandName,
         const std::string& categoryName
     );
-
-    /// Generate SKU code in format: <cat_code>-<brand_code>-XXXX (e.g. CPU-INTEL-0095)
-    std::string generateNextSku(
-        Database* db,
-        const std::string& brandName,
-        const std::string& categoryName,
-        int productId
-    );
-
-    /// Generate valid 13-digit EAN-13 barcode with check digit
-    std::string generateEan13Barcode(int productId);
 
     /// Validate product code format: <PRODUCER>-<CAT>-<4DIGITS>-<4DIGITS>
     bool isValidProductCodeFormat(const std::string& code);
@@ -67,4 +137,3 @@ namespace user_create
 }
 
 #endif // USER_CREATE_H
-

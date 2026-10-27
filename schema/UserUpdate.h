@@ -5,7 +5,7 @@
 #include "database/Database.h"
 #include "database/Record.h"
 #include "datastructure/vector/Vector.h"
-#include "schema/OperationResult.h"
+#include "database/OperationResult.h"
 
 namespace user_update
 {
@@ -22,7 +22,7 @@ namespace user_update
      * 1. Schema & Existence (table exists, record exists, columns exist, type compatibility).
      * 2. Integrity & Constraints (NOT NULL, UNIQUE, Foreign Key lookup).
      * 3. Domain Business Rules:
-     *    - Frozen/Immutable fields on confirmed transactions and logistics.
+     *    - Frozen/Immutable fields on confirmed transactions, logistics, customer, and brand.
      *    - Chronological date validation: delivery_at >= order_at, ship_at >= order_at.
      */
     OperationResult updateRecord(
@@ -61,6 +61,36 @@ namespace user_update
         Database* db,
         int productId,
         bool isSold
+    );
+
+    // ========================================================
+    // CUSTOMER UPDATE
+    // ========================================================
+
+    /**
+     * @brief Update customer contact details (name/company, phone, email, optional tax code).
+     * Customer code, ID, and type are strictly protected against modification.
+     */
+    OperationResult updateCustomerContact(
+        Database* db,
+        int customerId,
+        const std::string& nameOrCompany,
+        const std::string& phone,
+        const std::string& email,
+        const std::string& taxCode = ""
+    );
+
+    // ========================================================
+    // BRAND UPDATE
+    // ========================================================
+
+    /**
+     * @brief Update brand display name (code is immutable if products reference it).
+     */
+    OperationResult updateBrand(
+        Database* db,
+        int brandId,
+        const std::string& newBrandName
     );
 }
 

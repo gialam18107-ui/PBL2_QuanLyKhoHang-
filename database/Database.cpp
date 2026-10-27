@@ -6,7 +6,7 @@
 using namespace std;
 
 Database::Database(const string& name)
-    : databaseName(name), inTransaction(false)
+    : databaseName(name), inTransaction(false), transactionDepth(0)
 {
 }
 
@@ -15,9 +15,11 @@ Database::Database(Database&& other) noexcept
       tables(std::move(other.tables)),
       users(std::move(other.users)),
       inTransaction(other.inTransaction),
+      transactionDepth(other.transactionDepth),
       transactionSnapshot(std::move(other.transactionSnapshot))
 {
     other.inTransaction = false;
+    other.transactionDepth = 0;
 }
 
 Database& Database::operator=(Database&& other) noexcept
@@ -33,8 +35,11 @@ Database& Database::operator=(Database&& other) noexcept
         tables = std::move(other.tables);
         users = std::move(other.users);
         inTransaction = other.inTransaction;
+        transactionDepth = other.transactionDepth;
         transactionSnapshot = std::move(other.transactionSnapshot);
+
         other.inTransaction = false;
+        other.transactionDepth = 0;
     }
     return *this;
 }
@@ -133,7 +138,7 @@ static bool containsColumnValue(const Table& table, const string& columnName, co
         return false;
     }
 
-    // Keep compatibility for referenced columns that are not indexed.
+    // Fallback scan for unindexed columns
     const Vector<Record>& rows = table.getRows();
     for (size_t rowIndex = 0; rowIndex < rows.size(); ++rowIndex)
     {
@@ -203,7 +208,7 @@ static bool validateForeignKeyUpdates(
         if (referenced == nullptr) return false;
         if (!updated.has(foreignKey->getColumnName()) || isNull(updated.get(foreignKey->getColumnName())))
         {
-            continue; // NULL foreign-key values are permitted by this implementation.
+            continue;
         }
         if (!containsColumnValue(*referenced, foreignKey->getReferenceColumn(), updated.get(foreignKey->getColumnName())))
         {
@@ -284,6 +289,73 @@ bool Database::remove(const string& tableName, const ConditionGroup& group)
     return !isReferenced(*this, tableName, removed) && table->remove(group);
 }
 
+OperationResult Database::insertRecord(const string& tableName, const Record& record)
+{
+    Table* table = getTable(tableName);
+    if (table == nullptr)
+    {
+        return OperationResult(false, "Bảng '" + tableName + "' không tồn tại trong CSDL.", 0);
+    }
+    if (!insert(tableName, record))
+    {
+        return OperationResult(false, "Vi phạm ràng buộc dữ liệu hoặc khóa ngoại khi thêm vào bảng '" + tableName + "'.", 0);
+    }
+    return OperationResult(true, "Thêm bản ghi thành công.", 1);
+}
+
+OperationResult Database::update(const string& tableName, int recordId, const Record& newValues)
+{
+    Table* table = getTable(tableName);
+    if (table == nullptr)
+    {
+        return OperationResult(false, "Bảng '" + tableName + "' không tồn tại trong CSDL.", 0);
+    }
+    const Record* current = table->getRecordById(recordId);
+    if (current == nullptr)
+    {
+        return OperationResult(false, "Không tìm thấy bản ghi với ID " + to_string(recordId) + " trong bảng '" + tableName + "'.", 0);
+    }
+    if (!validateForeignKeyUpdates(*this, *table, *current, newValues))
+    {
+        return OperationResult(false, "Vi phạm ràng buộc khóa ngoại khi cập nhật bảng '" + tableName + "'.", 0);
+    }
+    if (!table->updateById(recordId, newValues))
+    {
+        return OperationResult(false, "Cập nhật dữ liệu thất bại do vi phạm ràng buộc bảng.", 0);
+    }
+    return OperationResult(true, "Cập nhật bản ghi thành công.", 1);
+}
+
+OperationResult Database::remove(const string& tableName, int recordId)
+{
+    Table* table = getTable(tableName);
+    if (table == nullptr)
+    {
+        return OperationResult(false, "Bảng '" + tableName + "' không tồn tại trong cơ sở dữ liệu.", 0);
+    }
+    string pkCol = table->getPrimaryKeyColumn();
+    if (pkCol.empty())
+    {
+        return OperationResult(false, "Không tìm thấy khóa chính của bảng '" + tableName + "'.", 0);
+    }
+    const Record* record = table->getRecordById(recordId);
+    if (record == nullptr)
+    {
+        return OperationResult(false, "Không tìm thấy bản ghi với ID " + to_string(recordId) + " trong bảng '" + tableName + "'.", 0);
+    }
+    Vector<Record> removedRows;
+    removedRows.push_back(*record);
+    if (isReferenced(*this, tableName, removedRows))
+    {
+        return OperationResult(false, "Không thể xóa bản ghi: Đang có dữ liệu ở các bảng khác tham chiếu đến bản ghi này (vi phạm toàn vẹn tham chiếu).", 0);
+    }
+    if (!table->removeById(recordId))
+    {
+        return OperationResult(false, "Lỗi khi xóa bản ghi khỏi bảng '" + tableName + "'.", 0);
+    }
+    return OperationResult(true, "Xóa bản ghi thành công.", 1);
+}
+
 void Database::clear()
 {
     for (const auto& item : tables) delete item.second;
@@ -292,32 +364,57 @@ void Database::clear()
 
 bool Database::beginTransaction()
 {
-    if (inTransaction) return false;
+    if (inTransaction)
+    {
+        ++transactionDepth;
+        return true;
+    }
     clearTransactionSnapshot();
     for (const auto& item : tables) transactionSnapshot[item.first] = new Table(*item.second);
     inTransaction = true;
+    transactionDepth = 1;
     return true;
 }
 
 bool Database::commit()
 {
     if (!inTransaction) return false;
+    if (transactionDepth > 1)
+    {
+        --transactionDepth;
+        return true;
+    }
     clearTransactionSnapshot();
     inTransaction = false;
+    transactionDepth = 0;
     return true;
 }
 
 bool Database::rollback()
 {
     if (!inTransaction) return false;
-    clear();
-    for (const auto& item : transactionSnapshot) tables[item.first] = item.second;
-    transactionSnapshot.clear();
+    // Restore state while preserving Table pointers
+    for (const auto& item : transactionSnapshot)
+    {
+        Table* current = getTable(item.first);
+        if (current != nullptr)
+        {
+            *current = *item.second;
+        }
+        else
+        {
+            tables[item.first] = new Table(*item.second);
+        }
+    }
+    clearTransactionSnapshot();
     inTransaction = false;
+    transactionDepth = 0;
     return true;
 }
 
 bool Database::isInTransaction() const { return inTransaction; }
+
+int Database::getTransactionDepth() const { return transactionDepth; }
 
 bool Database::createUser(const string& username, const string& password)
 {

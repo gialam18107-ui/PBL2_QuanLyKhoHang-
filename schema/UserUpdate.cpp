@@ -6,30 +6,7 @@ namespace user_update
 {
     std::string getPrimaryKeyColumn(const Table* table)
     {
-        if (!table) return "";
-
-        // Check columns directly
-        for (const auto& col : table->getColumns()) {
-            if (col.isPrimaryKey()) {
-                return col.getName();
-            }
-        }
-
-        // Check constraints
-        for (const auto* c : table->getConstraints()) {
-            if (c && c->getType() == ConstraintType::PRIMARY_KEY) {
-                const auto* pk = dynamic_cast<const PrimaryKeyConstraint*>(c);
-                if (pk) return pk->getColumnName();
-            }
-        }
-
-        // Fallbacks
-        const std::string& name = table->getName();
-        if (table->getColumn(name + "_id")) return name + "_id";
-        if (table->getColumn("id")) return "id";
-        if (table->getColumn("status_id")) return "status_id";
-
-        return "";
+        return table ? table->getPrimaryKeyColumn() : "";
     }
 
     OperationResult updateRecord(
@@ -40,13 +17,9 @@ namespace user_update
         const Vector<Value>& modifyingValues
     ) {
         // 1. Schema & Existence Validation
-        if (!db) {
-            return OperationResult{false, "Cơ sở dữ liệu chưa được khởi tạo.", 0};
-        }
+        if (!db) return OperationResult{false, "Cơ sở dữ liệu chưa được khởi tạo.", 0};
         Table* table = db->getTable(tableName);
-        if (!table) {
-            return OperationResult{false, "Bảng '" + tableName + "' không tồn tại trong CSDL.", 0};
-        }
+        if (!table) return OperationResult{false, "Bảng '" + tableName + "' không tồn tại trong CSDL.", 0};
         if (modifiedColumns.size() != modifyingValues.size()) {
             return OperationResult{false, "Số lượng cột và giá trị cần cập nhật không khớp.", 0};
         }
@@ -56,27 +29,14 @@ namespace user_update
             return OperationResult{false, "Không tìm thấy khóa chính của bảng '" + tableName + "'.", 0};
         }
 
-        // Locate existing record
-        int targetRowIdx = -1;
-        Record oldRecord;
-        const auto& rows = table->getRows();
-        for (size_t i = 0; i < rows.size(); ++i) {
-            if (table->isRowDeleted(i)) continue;
-            const Record& r = rows[i];
-            if (r.has(pkCol) && holds_alternative<int>(r.get(pkCol))) {
-                if (get<int>(r.get(pkCol)) == recordId) {
-                    targetRowIdx = static_cast<int>(i);
-                    oldRecord = r;
-                    break;
-                }
-            }
-        }
-
-        if (targetRowIdx == -1) {
+        int targetRowIdx = table->findRowIndexById(recordId);
+        if (targetRowIdx < 0) {
             return OperationResult{false, "Không tìm thấy bản ghi với ID " + std::to_string(recordId) + " trong bảng '" + tableName + "'.", 0};
         }
+        const Record& oldRecord = table->getRows()[targetRowIdx];
 
         // 2. Validate columns, types, and constraints
+        const auto& rows = table->getRows();
         for (size_t i = 0; i < modifiedColumns.size(); ++i) {
             const std::string& colName = modifiedColumns[i];
             const Value& val = modifyingValues[i];
@@ -110,8 +70,7 @@ namespace user_update
         // 3. Domain Business Rules & Immutable Fields Validation (Rule 5.3 & 6.3.1)
         if (tableName == "inbound_transaction" || tableName == "outbound_transaction") {
             for (size_t i = 0; i < modifiedColumns.size(); ++i) {
-                const std::string& colName = modifiedColumns[i];
-                if (colName != "status") {
+                if (modifiedColumns[i] != "status") {
                     return OperationResult{false, "Chỉ được phép cập nhật trạng thái (status) của đơn giao dịch đã xác nhận.", 0};
                 }
             }
@@ -124,36 +83,23 @@ namespace user_update
                 }
 
                 // Chronological Date Validation: delivery_at >= inbound_transaction.order_at
-                if (colName == "delivery_at" && holds_alternative<std::string>(modifyingValues[i])) {
-                    std::string newDeliveryAt = get<std::string>(modifyingValues[i]);
+                if (colName == "delivery_at" && std::holds_alternative<std::string>(modifyingValues[i])) {
+                    std::string newDeliveryAt = std::get<std::string>(modifyingValues[i]);
                     int inId = -1;
-                    if (oldRecord.has("inbound_transaction_id") && holds_alternative<int>(oldRecord.get("inbound_transaction_id"))) {
-                        inId = get<int>(oldRecord.get("inbound_transaction_id"));
-                    } else if (oldRecord.has("inbound_id") && holds_alternative<int>(oldRecord.get("inbound_id"))) {
-                        inId = get<int>(oldRecord.get("inbound_id"));
+                    if (oldRecord.has("inbound_transaction_id") && std::holds_alternative<int>(oldRecord.get("inbound_transaction_id"))) {
+                        inId = std::get<int>(oldRecord.get("inbound_transaction_id"));
+                    } else if (oldRecord.has("inbound_id") && std::holds_alternative<int>(oldRecord.get("inbound_id"))) {
+                        inId = std::get<int>(oldRecord.get("inbound_id"));
                     }
 
                     if (inId != -1) {
                         Table* inTab = db->getTable("inbound_transaction");
                         if (inTab) {
-                            for (size_t r = 0; r < inTab->getRows().size(); ++r) {
-                                if (inTab->isRowDeleted(r)) continue;
-                                const Record& inRec = inTab->getRows()[r];
-                                int curId = -1;
-                                if (inRec.has("inbound_transaction_id") && holds_alternative<int>(inRec.get("inbound_transaction_id"))) {
-                                    curId = get<int>(inRec.get("inbound_transaction_id"));
-                                } else if (inRec.has("inbound_id") && holds_alternative<int>(inRec.get("inbound_id"))) {
-                                    curId = get<int>(inRec.get("inbound_id"));
-                                }
-
-                                if (curId == inId) {
-                                    if (inRec.has("order_at") && holds_alternative<std::string>(inRec.get("order_at"))) {
-                                        std::string orderAt = get<std::string>(inRec.get("order_at"));
-                                        if (newDeliveryAt < orderAt) {
-                                            return OperationResult{false, "Ngày giao nhận thực tế (delivery_at: " + newDeliveryAt + ") không được sớm hơn ngày đặt hàng (order_at: " + orderAt + ").", 0};
-                                        }
-                                    }
-                                    break;
+                            const Record* inRec = inTab->getRecordById(inId);
+                            if (inRec && inRec->has("order_at") && std::holds_alternative<std::string>(inRec->get("order_at"))) {
+                                std::string orderAt = std::get<std::string>(inRec->get("order_at"));
+                                if (newDeliveryAt < orderAt) {
+                                    return OperationResult{false, "Ngày giao nhận thực tế (delivery_at: " + newDeliveryAt + ") không được sớm hơn ngày đặt hàng (order_at: " + orderAt + ").", 0};
                                 }
                             }
                         }
@@ -169,38 +115,25 @@ namespace user_update
                 }
 
                 // Chronological Date Validation: ship_at >= outbound_transaction.order_at
-                if (colName == "ship_at" && holds_alternative<std::string>(modifyingValues[i])) {
-                    std::string newShipAt = get<std::string>(modifyingValues[i]);
+                if (colName == "ship_at" && std::holds_alternative<std::string>(modifyingValues[i])) {
+                    std::string newShipAt = std::get<std::string>(modifyingValues[i]);
                     int outId = -1;
-                    if (oldRecord.has("sell_id") && holds_alternative<int>(oldRecord.get("sell_id"))) {
-                        outId = get<int>(oldRecord.get("sell_id"));
-                    } else if (oldRecord.has("outbound_trainsaction_id") && holds_alternative<int>(oldRecord.get("outbound_trainsaction_id"))) {
-                        outId = get<int>(oldRecord.get("outbound_trainsaction_id"));
-                    } else if (oldRecord.has("outbound_id") && holds_alternative<int>(oldRecord.get("outbound_id"))) {
-                        outId = get<int>(oldRecord.get("outbound_id"));
+                    if (oldRecord.has("sell_id") && std::holds_alternative<int>(oldRecord.get("sell_id"))) {
+                        outId = std::get<int>(oldRecord.get("sell_id"));
+                    } else if (oldRecord.has("outbound_trainsaction_id") && std::holds_alternative<int>(oldRecord.get("outbound_trainsaction_id"))) {
+                        outId = std::get<int>(oldRecord.get("outbound_trainsaction_id"));
+                    } else if (oldRecord.has("outbound_id") && std::holds_alternative<int>(oldRecord.get("outbound_id"))) {
+                        outId = std::get<int>(oldRecord.get("outbound_id"));
                     }
 
                     if (outId != -1) {
                         Table* outTab = db->getTable("outbound_transaction");
                         if (outTab) {
-                            for (size_t r = 0; r < outTab->getRows().size(); ++r) {
-                                if (outTab->isRowDeleted(r)) continue;
-                                const Record& outRec = outTab->getRows()[r];
-                                int curId = -1;
-                                if (outRec.has("outbound_trainsaction_id") && holds_alternative<int>(outRec.get("outbound_trainsaction_id"))) {
-                                    curId = get<int>(outRec.get("outbound_trainsaction_id"));
-                                } else if (outRec.has("outbound_id") && holds_alternative<int>(outRec.get("outbound_id"))) {
-                                    curId = get<int>(outRec.get("outbound_id"));
-                                }
-
-                                if (curId == outId) {
-                                    if (outRec.has("order_at") && holds_alternative<std::string>(outRec.get("order_at"))) {
-                                        std::string orderAt = get<std::string>(outRec.get("order_at"));
-                                        if (newShipAt < orderAt) {
-                                            return OperationResult{false, "Ngày xuất hàng thực tế (ship_at: " + newShipAt + ") không được sớm hơn ngày đặt hàng (order_at: " + orderAt + ").", 0};
-                                        }
-                                    }
-                                    break;
+                            const Record* outRec = outTab->getRecordById(outId);
+                            if (outRec && outRec->has("order_at") && std::holds_alternative<std::string>(outRec->get("order_at"))) {
+                                std::string orderAt = std::get<std::string>(outRec->get("order_at"));
+                                if (newShipAt < orderAt) {
+                                    return OperationResult{false, "Ngày xuất hàng thực tế (ship_at: " + newShipAt + ") không được sớm hơn ngày đặt hàng (order_at: " + orderAt + ").", 0};
                                 }
                             }
                         }
@@ -210,23 +143,44 @@ namespace user_update
         }
         else if (tableName == "inbound_detail" || tableName == "delivery_detail" ||
                  tableName == "outbound_detail" || tableName == "shipment_detail" ||
-                 tableName == "status_history") {
-            return OperationResult{false, "Bảng chi tiết giao dịch / lịch sử không được phép sửa đổi trực tiếp.", 0};
+                 tableName == "status_history" || tableName == "product_quantity") {
+            return OperationResult{false, "Bảng chi tiết giao dịch / lịch sử / số lượng tồn kho không được phép sửa đổi trực tiếp.", 0};
+        }
+        else if (tableName == "customer") {
+            for (size_t i = 0; i < modifiedColumns.size(); ++i) {
+                const std::string& colName = modifiedColumns[i];
+                if (colName == "customer_code" || colName == "customer_id" || colName == "type") {
+                    return OperationResult{false, "Không được phép thay đổi mã khách hàng, ID hoặc loại khách hàng (Rule 4.1).", 0};
+                }
+            }
+        }
+        else if (tableName == "brand") {
+            for (size_t i = 0; i < modifiedColumns.size(); ++i) {
+                if (modifiedColumns[i] == "code") {
+                    Table* prodTable = db->getTable("product");
+                    if (prodTable && oldRecord.has("brand") && std::holds_alternative<std::string>(oldRecord.get("brand"))) {
+                        std::string bName = std::get<std::string>(oldRecord.get("brand"));
+                        for (size_t r = 0; r < prodTable->getRows().size(); ++r) {
+                            if (prodTable->isRowDeleted(r)) continue;
+                            const Record& pRec = prodTable->getRows()[r];
+                            if (pRec.has("brand") && std::holds_alternative<std::string>(pRec.get("brand"))) {
+                                if (std::get<std::string>(pRec.get("brand")) == bName) {
+                                    return OperationResult{false, "Không được phép sửa mã thương hiệu (code) khi đã có sản phẩm trong danh mục.", 0};
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
-        // 4. Perform Update
+        // 4. Dispatch directly to Database
         Record newValuesRecord;
         for (size_t i = 0; i < modifiedColumns.size(); ++i) {
             newValuesRecord.set(modifiedColumns[i], modifyingValues[i]);
         }
 
-        Condition cond(pkCol, CompareOperator::EQUAL, Value(recordId));
-        bool updated = table->update(cond, newValuesRecord);
-        if (!updated) {
-            return OperationResult{false, "Cập nhật dữ liệu thất bại do vi phạm ràng buộc bảng.", 0};
-        }
-
-        return OperationResult{true, "Cập nhật bản ghi thành công.", 1};
+        return db->update(tableName, recordId, newValuesRecord);
     }
 
     OperationResult updateTransactionStatus(
@@ -271,5 +225,92 @@ namespace user_update
         Vector<Value> vals;
         vals.push_back(Value(isSold));
         return updateRecord(db, "product", productId, cols, vals);
+    }
+
+    OperationResult updateCustomerContact(
+        Database* db,
+        int customerId,
+        const std::string& nameOrCompany,
+        const std::string& phone,
+        const std::string& email,
+        const std::string& taxCode
+    ) {
+        if (!db) return OperationResult{false, "Cơ sở dữ liệu chưa được khởi tạo.", 0};
+        Table* custTable = db->getTable("customer");
+        if (!custTable) return OperationResult{false, "Bảng customer không tồn tại.", 0};
+
+        const Record* cRec = custTable->getRecordById(customerId);
+        if (!cRec) {
+            return OperationResult{false, "Không tìm thấy khách hàng với ID " + std::to_string(customerId) + ".", 0};
+        }
+
+        std::string custType = cRec->has("type") && std::holds_alternative<std::string>(cRec->get("type"))
+                             ? std::get<std::string>(cRec->get("type")) : "";
+
+        if (!db->beginTransaction()) {
+            return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
+        }
+
+        // Update name in customer table if provided
+        if (!nameOrCompany.empty()) {
+            Record cUp;
+            cUp.set("name", nameOrCompany);
+            OperationResult rName = db->update("customer", customerId, cUp);
+            if (!rName) {
+                db->rollback();
+                return rName;
+            }
+        }
+
+        // Update contact info in individual_info or business_info
+        if (custType == "individual") {
+            Record iUp;
+            if (!phone.empty()) iUp.set("phone_number", phone);
+            if (!email.empty()) iUp.set("email", email);
+            if (!iUp.getValues().empty()) {
+                OperationResult rInfo = db->update("individual_info", customerId, iUp);
+                if (!rInfo) {
+                    db->rollback();
+                    return rInfo;
+                }
+            }
+        } else if (custType == "business") {
+            Record bUp;
+            if (!phone.empty()) bUp.set("phone_number", phone);
+            if (!email.empty()) bUp.set("email", email);
+            if (!taxCode.empty()) bUp.set("tax_code", taxCode);
+            if (!bUp.getValues().empty()) {
+                OperationResult rInfo = db->update("business_info", customerId, bUp);
+                if (!rInfo) {
+                    db->rollback();
+                    return rInfo;
+                }
+            }
+        }
+
+        db->commit();
+        return OperationResult{true, "Cập nhật thông tin khách hàng thành công.", 1};
+    }
+
+    OperationResult updateBrand(
+        Database* db,
+        int brandId,
+        const std::string& newBrandName
+    ) {
+        if (!db) return OperationResult{false, "Cơ sở dữ liệu chưa được khởi tạo.", 0};
+        if (newBrandName.empty()) {
+            return OperationResult{false, "Tên thương hiệu không được để trống.", 0};
+        }
+        Table* brandTable = db->getTable("brand");
+        if (!brandTable) return OperationResult{false, "Bảng brand không tồn tại.", 0};
+
+        const Record* bRec = brandTable->getRecordById(brandId);
+        if (!bRec) {
+            return OperationResult{false, "Không tìm thấy thương hiệu với ID " + std::to_string(brandId) + ".", 0};
+        }
+
+        Record bUp;
+        bUp.set("brand", newBrandName);
+        return db->update("brand", brandId, bUp);
     }
 }

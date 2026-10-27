@@ -1,189 +1,230 @@
 #include "UserDelete.h"
-#include "UserUpdate.h"
 #include <iostream>
+#include <cctype>
 
 namespace user_delete
 {
-    OperationResult deleteProduct(Database* db, int productId)
+    static std::string getSpecTableName(const std::string& categoryName)
     {
-        if (!db) {
-            return OperationResult{false, "Cơ sở dữ liệu chưa được khởi tạo.", 0};
-        }
-        Table* prodTable = db->getTable("product");
-        if (!prodTable) {
-            return OperationResult{false, "Bảng 'product' không tồn tại.", 0};
-        }
+        std::string catUpper = categoryName;
+        for (auto& c : catUpper) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        if (catUpper == "CPU") return "cpu";
+        if (catUpper == "GPU") return "gpu";
+        if (catUpper == "MAINBOARD") return "mainboard";
+        if (catUpper == "RAM") return "ram";
+        if (catUpper == "SSD") return "ssd";
+        if (catUpper == "PSU") return "psu";
+        if (catUpper == "COOLING") return "cooling";
+        if (catUpper == "CASE") return "case";
+        return "";
+    }
 
-        // 1. Locate product and get its category
-        int prodRowIdx = -1;
-        std::string categoryName;
-        const auto& pRows = prodTable->getRows();
-        for (size_t i = 0; i < pRows.size(); ++i) {
-            if (prodTable->isRowDeleted(i)) continue;
-            const Record& r = pRows[i];
-            if (r.has("product_id") && holds_alternative<int>(r.get("product_id"))) {
-                if (get<int>(r.get("product_id")) == productId) {
-                    prodRowIdx = static_cast<int>(i);
-                    if (r.has("category") && holds_alternative<std::string>(r.get("category"))) {
-                        categoryName = get<std::string>(r.get("category"));
-                    }
-                    break;
-                }
+    static bool hasMatchingRecord(Table* table, const std::string& colName, int value)
+    {
+        if (!table) return false;
+        const auto& rows = table->getRows();
+        for (size_t i = 0; i < rows.size(); ++i) {
+            if (table->isRowDeleted(i)) continue;
+            const Record& r = rows[i];
+            if (r.has(colName) && std::holds_alternative<int>(r.get(colName)) && std::get<int>(r.get(colName)) == value) {
+                return true;
             }
         }
+        return false;
+    }
 
-        if (prodRowIdx == -1) {
+    OperationResult deleteProduct(Database* db, int productId)
+    {
+        if (!db) return OperationResult{false, "Cơ sở dữ liệu chưa được khởi tạo.", 0};
+        Table* prodTable = db->getTable("product");
+        if (!prodTable) return OperationResult{false, "Bảng 'product' không tồn tại.", 0};
+
+        // 1. Locate product and get category
+        const Record* pRec = prodTable->getRecordById(productId);
+        if (!pRec) {
             return OperationResult{false, "Không tìm thấy sản phẩm với ID " + std::to_string(productId) + ".", 0};
         }
+        std::string categoryName = pRec->has("category") && std::holds_alternative<std::string>(pRec->get("category"))
+                                 ? std::get<std::string>(pRec->get("category")) : "";
 
         // 2. Stock Precondition Check: Product cannot be deleted if active stock exists
         Table* qtyTable = db->getTable("product_quantity");
         if (qtyTable) {
-            const auto& qRows = qtyTable->getRows();
-            for (size_t i = 0; i < qRows.size(); ++i) {
-                if (qtyTable->isRowDeleted(i)) continue;
-                const Record& r = qRows[i];
-                if (r.has("product_id") && holds_alternative<int>(r.get("product_id")) && get<int>(r.get("product_id")) == productId) {
-                    int avail = r.has("available_quan") && holds_alternative<int>(r.get("available_quan")) ? get<int>(r.get("available_quan")) : 0;
-                    int wrt = r.has("warranty_quan") && holds_alternative<int>(r.get("warranty_quan")) ? get<int>(r.get("warranty_quan")) : 0;
-                    int scr = r.has("scrapped_quan") && holds_alternative<int>(r.get("scrapped_quan")) ? get<int>(r.get("scrapped_quan")) : 0;
-                    if (avail > 0 || wrt > 0 || scr > 0) {
-                        return OperationResult{false, "Không thể xóa sản phẩm: Vẫn còn hàng tồn trong kho (Khả dụng: " + std::to_string(avail) + ", Bảo hành: " + std::to_string(wrt) + ", Phế phẩm: " + std::to_string(scr) + ").", 0};
-                    }
-                    break;
+            const Record* qRec = qtyTable->getRecordById(productId);
+            if (qRec) {
+                int avail = qRec->has("available_quan") && std::holds_alternative<int>(qRec->get("available_quan")) ? std::get<int>(qRec->get("available_quan")) : 0;
+                int wrt = qRec->has("warranty_quan") && std::holds_alternative<int>(qRec->get("warranty_quan")) ? std::get<int>(qRec->get("warranty_quan")) : 0;
+                int scr = qRec->has("scrapped_quan") && std::holds_alternative<int>(qRec->get("scrapped_quan")) ? std::get<int>(qRec->get("scrapped_quan")) : 0;
+                if (avail > 0 || wrt > 0 || scr > 0) {
+                    return OperationResult{false, "Không thể xóa sản phẩm: Vẫn còn hàng tồn trong kho (Khả dụng: " + std::to_string(avail) + ", Bảo hành: " + std::to_string(wrt) + ", Phế phẩm: " + std::to_string(scr) + ").", 0};
                 }
             }
         }
 
         // 3. Transaction History Check
-        Table* inDetailTab = db->getTable("inbound_detail");
-        if (inDetailTab) {
-            const auto& rows = inDetailTab->getRows();
-            for (size_t i = 0; i < rows.size(); ++i) {
-                if (inDetailTab->isRowDeleted(i)) continue;
-                if (rows[i].has("product_id") && holds_alternative<int>(rows[i].get("product_id")) && get<int>(rows[i].get("product_id")) == productId) {
-                    return OperationResult{false, "Không thể xóa sản phẩm: Đã có lịch sử trong Đơn nhập kho (inbound_detail).", 0};
-                }
-            }
+        if (hasMatchingRecord(db->getTable("inbound_detail"), "product_id", productId)) {
+            return OperationResult{false, "Không thể xóa sản phẩm: Đã có lịch sử trong Đơn nhập kho (inbound_detail).", 0};
+        }
+        if (hasMatchingRecord(db->getTable("outbound_detail"), "product_id", productId)) {
+            return OperationResult{false, "Không thể xóa sản phẩm: Đã có lịch sử trong Đơn xuất kho (outbound_detail).", 0};
+        }
+        if (hasMatchingRecord(db->getTable("unit_inventory"), "product_id", productId)) {
+            return OperationResult{false, "Không thể xóa sản phẩm: Đang có Unit / Serial tồn tại cho sản phẩm này.", 0};
         }
 
-        Table* outDetailTab = db->getTable("outbound_detail");
-        if (outDetailTab) {
-            const auto& rows = outDetailTab->getRows();
-            for (size_t i = 0; i < rows.size(); ++i) {
-                if (outDetailTab->isRowDeleted(i)) continue;
-                if (rows[i].has("product_id") && holds_alternative<int>(rows[i].get("product_id")) && get<int>(rows[i].get("product_id")) == productId) {
-                    return OperationResult{false, "Không thể xóa sản phẩm: Đã có lịch sử trong Đơn xuất kho (outbound_detail).", 0};
-                }
-            }
-        }
-
-        Table* unitTab = db->getTable("unit_inventory");
-        if (unitTab) {
-            const auto& rows = unitTab->getRows();
-            for (size_t i = 0; i < rows.size(); ++i) {
-                if (unitTab->isRowDeleted(i)) continue;
-                if (rows[i].has("product_id") && holds_alternative<int>(rows[i].get("product_id")) && get<int>(rows[i].get("product_id")) == productId) {
-                    return OperationResult{false, "Không thể xóa sản phẩm: Đang có Unit / Serial tồn tại cho sản phẩm này.", 0};
-                }
-            }
-        }
-
-        // Determine specific hardware category table
-        std::string catUpper = categoryName;
-        for (auto& c : catUpper) c = std::toupper(static_cast<unsigned char>(c));
-
-        std::string specTable;
-        if (catUpper == "CPU") specTable = "cpu";
-        else if (catUpper == "GPU") specTable = "gpu";
-        else if (catUpper == "MAINBOARD") specTable = "mainboard";
-        else if (catUpper == "RAM") specTable = "ram";
-        else if (catUpper == "SSD") specTable = "ssd";
-        else if (catUpper == "PSU") specTable = "psu";
-        else if (catUpper == "COOLING") specTable = "cooling";
-        else if (catUpper == "CASE") specTable = "case";
+        std::string specTable = getSpecTableName(categoryName);
 
         // 4. Atomic Multi-table Deletion
         if (!db->beginTransaction()) {
             return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
         }
 
-        Condition cond("product_id", CompareOperator::EQUAL, Value(productId));
-
         // Delete from hardware spec table first (child)
         if (!specTable.empty() && db->hasTable(specTable)) {
             Table* sTab = db->getTable(specTable);
-            sTab->remove(cond);
+            if (sTab) {
+                std::string pkCol = sTab->getPrimaryKeyColumn();
+                Vector<int> specIds;
+                for (size_t i = 0; i < sTab->getRows().size(); ++i) {
+                    if (sTab->isRowDeleted(i)) continue;
+                    const Record& r = sTab->getRows()[i];
+                    if (r.has("product_id") && std::holds_alternative<int>(r.get("product_id")) && std::get<int>(r.get("product_id")) == productId) {
+                        if (!pkCol.empty() && r.has(pkCol) && std::holds_alternative<int>(r.get(pkCol))) {
+                            specIds.push_back(std::get<int>(r.get(pkCol)));
+                        }
+                    }
+                }
+                for (size_t i = 0; i < specIds.size(); ++i) {
+                    OperationResult specRes = db->remove(specTable, specIds[i]);
+                    if (!specRes && specRes.message.find("tham chiếu") != std::string::npos) {
+                        db->rollback();
+                        return specRes;
+                    }
+                }
+                Condition cond("product_id", CompareOperator::EQUAL, Value(productId));
+                sTab->remove(cond);
+            }
         }
 
         // Delete from product_quantity (child)
         if (qtyTable) {
-            qtyTable->remove(cond);
+            OperationResult qtyRes = db->remove("product_quantity", productId);
+            if (!qtyRes && qtyRes.message.find("tham chiếu") != std::string::npos) {
+                db->rollback();
+                return qtyRes;
+            }
         }
 
         // Delete from product (parent)
-        if (!prodTable->remove(cond)) {
+        OperationResult prodRes = db->remove("product", productId);
+        if (!prodRes) {
             db->rollback();
-            return OperationResult{false, "Không thể xóa sản phẩm khỏi bảng 'product'.", 0};
+            return OperationResult{false, "Không thể xóa sản phẩm khỏi bảng 'product': " + prodRes.message, 0};
         }
 
         db->commit();
         return OperationResult{true, "Xóa sản phẩm thành công!", 3};
     }
 
+    OperationResult deleteCustomer(Database* db, int customerId)
+    {
+        if (!db) return OperationResult{false, "Cơ sở dữ liệu chưa được khởi tạo.", 0};
+        Table* custTable = db->getTable("customer");
+        if (!custTable) return OperationResult{false, "Bảng customer không tồn tại.", 0};
+
+        const Record* cRec = custTable->getRecordById(customerId);
+        if (!cRec) {
+            return OperationResult{false, "Không tìm thấy khách hàng với ID " + std::to_string(customerId) + ".", 0};
+        }
+
+        // 1. Transaction History Precondition Check (Accounting / Economic Rule)
+        if (hasMatchingRecord(db->getTable("inbound_transaction"), "customer_id", customerId)) {
+            return OperationResult{false, "Không thể xóa khách hàng: Đã có lịch sử trong Đơn nhập kho (inbound_transaction). Quy định kế toán yêu cầu bảo lưu chứng từ.", 0};
+        }
+        if (hasMatchingRecord(db->getTable("outbound_transaction"), "customer_id", customerId)) {
+            return OperationResult{false, "Không thể xóa khách hàng: Đã có lịch sử trong Đơn xuất kho (outbound_transaction). Quy định kế toán yêu cầu bảo lưu chứng từ.", 0};
+        }
+
+        // 2. Safe deletion in transaction
+        if (!db->beginTransaction()) {
+            return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
+        }
+
+        // Remove from individual_info or business_info first
+        if (db->hasTable("individual_info")) {
+            Table* iTab = db->getTable("individual_info");
+            if (iTab && iTab->getRecordById(customerId)) {
+                db->remove("individual_info", customerId);
+            }
+        }
+        if (db->hasTable("business_info")) {
+            Table* bTab = db->getTable("business_info");
+            if (bTab && bTab->getRecordById(customerId)) {
+                db->remove("business_info", customerId);
+            }
+        }
+
+        OperationResult resCust = db->remove("customer", customerId);
+        if (!resCust) {
+            db->rollback();
+            return OperationResult{false, "Lỗi khi xóa khách hàng khỏi bảng customer: " + resCust.message, 0};
+        }
+
+        db->commit();
+        return OperationResult{true, "Xóa khách hàng thành công!", 2};
+    }
+
+    OperationResult deleteBrand(Database* db, int brandId)
+    {
+        if (!db) return OperationResult{false, "Cơ sở dữ liệu chưa được khởi tạo.", 0};
+        Table* brandTable = db->getTable("brand");
+        if (!brandTable) return OperationResult{false, "Bảng brand không tồn tại.", 0};
+
+        const Record* bRec = brandTable->getRecordById(brandId);
+        if (!bRec) {
+            return OperationResult{false, "Không tìm thấy thương hiệu với ID " + std::to_string(brandId) + ".", 0};
+        }
+
+        std::string brandName = bRec->has("brand") && std::holds_alternative<std::string>(bRec->get("brand"))
+                              ? std::get<std::string>(bRec->get("brand")) : "";
+
+        // Check if referenced by product
+        Table* prodTable = db->getTable("product");
+        if (prodTable && !brandName.empty()) {
+            for (size_t i = 0; i < prodTable->getRows().size(); ++i) {
+                if (prodTable->isRowDeleted(i)) continue;
+                const Record& r = prodTable->getRows()[i];
+                if (r.has("brand") && std::holds_alternative<std::string>(r.get("brand"))) {
+                    if (std::get<std::string>(r.get("brand")) == brandName) {
+                        return OperationResult{false, "Không thể xóa thương hiệu '" + brandName + "': Đang có sản phẩm trong danh mục thuộc thương hiệu này.", 0};
+                    }
+                }
+            }
+        }
+
+        return db->remove("brand", brandId);
+    }
+
     OperationResult deleteRecord(Database* db, const std::string& tableName, int recordId)
     {
-        if (!db) {
-            return OperationResult{false, "Cơ sở dữ liệu chưa được khởi tạo.", 0};
-        }
-        Table* table = db->getTable(tableName);
-        if (!table) {
-            return OperationResult{false, "Bảng '" + tableName + "' không tồn tại trong CSDL.", 0};
-        }
+        if (!db) return OperationResult{false, "Cơ sở dữ liệu chưa được khởi tạo.", 0};
 
         // 1. Transaction & History Immutability Protection (Rule 5.3 & 6.3.1)
         if (tableName == "inbound_transaction" || tableName == "inbound_detail" ||
             tableName == "delivery" || tableName == "delivery_detail" ||
             tableName == "outbound_transaction" || tableName == "outbound_detail" ||
             tableName == "shipment" || tableName == "shipment_detail" ||
-            tableName == "unit_inventory" || tableName == "status_history") {
-            return OperationResult{false, "Dữ liệu giao dịch và lịch sử vòng đời đã xác nhận, không được phép xóa (Rule 5.3).", 0};
+            tableName == "unit_inventory" || tableName == "status_history" ||
+            tableName == "product_quantity" || tableName == "category") {
+            return OperationResult{false, "Bảng '" + tableName + "' là dữ liệu hệ thống / chứng từ giao dịch đã xác nhận, không được phép xóa (Rule 5.3).", 0};
         }
 
-        // 2. Special handler for product
-        if (tableName == "product") {
-            return deleteProduct(db, recordId);
-        }
+        // 2. Handlers for coupled / special tables
+        if (tableName == "product") return deleteProduct(db, recordId);
+        if (tableName == "customer") return deleteCustomer(db, recordId);
+        if (tableName == "brand") return deleteBrand(db, recordId);
 
-        // 3. Standard single-table deletion with Foreign Key Protection
-        std::string pkCol = user_update::getPrimaryKeyColumn(table);
-        if (pkCol.empty()) {
-            return OperationResult{false, "Không tìm thấy khóa chính của bảng '" + tableName + "'.", 0};
-        }
-
-        // Locate existing record
-        bool found = false;
-        const auto& rows = table->getRows();
-        for (size_t i = 0; i < rows.size(); ++i) {
-            if (table->isRowDeleted(i)) continue;
-            const Record& r = rows[i];
-            if (r.has(pkCol) && holds_alternative<int>(r.get(pkCol))) {
-                if (get<int>(r.get(pkCol)) == recordId) {
-                    found = true;
-                    break;
-                }
-            }
-        }
-        if (!found) {
-            return OperationResult{false, "Không tìm thấy bản ghi với ID " + std::to_string(recordId) + " trong bảng '" + tableName + "'.", 0};
-        }
-
-        Condition cond(pkCol, CompareOperator::EQUAL, Value(recordId));
-        bool removed = db->remove(tableName, cond);
-        if (!removed) {
-            return OperationResult{false, "Không thể xóa bản ghi: Đang có dữ liệu ở các bảng khác tham chiếu đến bản ghi này (vi phạm toàn vẹn tham chiếu).", 0};
-        }
-
-        return OperationResult{true, "Xóa bản ghi thành công.", 1};
+        // 3. Dispatch directly to Database
+        return db->remove(tableName, recordId);
     }
 }

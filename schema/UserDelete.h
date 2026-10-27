@@ -3,7 +3,7 @@
 
 #include <string>
 #include "database/Database.h"
-#include "schema/OperationResult.h"
+#include "database/OperationResult.h"
 
 namespace user_delete
 {
@@ -24,7 +24,25 @@ namespace user_delete
      * Atomically removes the hardware spec record, product_quantity, and product record.
      */
     OperationResult deleteProduct(Database* db, int productId);
+
+    // ========================================================
+    // CUSTOMER DELETION (Safe Accounting Rule)
+    // ========================================================
+
+    /**
+     * @brief Delete a customer only if they have NO transaction history.
+     * If transactions exist, deletion is prohibited by accounting rules.
+     */
+    OperationResult deleteCustomer(Database* db, int customerId);
+
+    // ========================================================
+    // BRAND DELETION
+    // ========================================================
+
+    /**
+     * @brief Delete a brand only if no products reference it.
+     */
+    OperationResult deleteBrand(Database* db, int brandId);
 }
 
 #endif // USER_DELETE_H
-

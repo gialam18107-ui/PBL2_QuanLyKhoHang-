@@ -1,4 +1,4 @@
-#ifndef TABLE_H
+﻿#ifndef TABLE_H
 #define TABLE_H
 
 #include <string>
@@ -129,6 +129,30 @@ public:
      * @brief Remove records matching a compound ConditionGroup.
      */
     bool remove(const ConditionGroup& group);
+
+    /// Get the primary key column name of this table.
+    string getPrimaryKeyColumn() const;
+
+    /// Find row index by record ID in the primary key column (-1 if not found or deleted).
+    int findRowIndexById(int id) const;
+
+    /// Get pointer to record by record ID in the primary key column (nullptr if not found or deleted).
+    const Record* getRecordById(int id) const;
+
+    /**
+     * @brief Update a record directly by its primary key ID (Rule 6.3).
+     * @param id Value of the primary key.
+     * @param newValues Column-value updates.
+     * @return true if updated, false if not found or constraint failed.
+     */
+    bool updateById(int id, const Record& newValues);
+
+    /**
+     * @brief Remove a record directly by its primary key ID (Rule 6.3).
+     * @param id Value of the primary key.
+     * @return true if found and removed.
+     */
+    bool removeById(int id);
 
     /// Get total number of rows in the table.
     int getRowCount() const;

@@ -725,6 +725,137 @@ bool Table::remove(const ConditionGroup& group)
     return anyRemoved;
 }
 
+string Table::getPrimaryKeyColumn() const
+{
+    for (size_t i = 0; i < constraints.size(); ++i)
+    {
+        if (constraints[i] && constraints[i]->getType() == ConstraintType::PRIMARY_KEY)
+        {
+            const auto* pk = dynamic_cast<const PrimaryKeyConstraint*>(constraints[i]);
+            if (pk != nullptr) return pk->getColumnName();
+        }
+    }
+    for (size_t i = 0; i < columns.size(); ++i)
+    {
+        if (columns[i].isPrimaryKey()) return columns[i].getName();
+    }
+    if (hasColumn(name + "_id")) return name + "_id";
+    if (hasColumn("id")) return "id";
+    if (hasColumn("status_id")) return "status_id";
+    return "";
+}
+
+int Table::findRowIndexById(int id) const
+{
+    string pkCol = getPrimaryKeyColumn();
+    if (pkCol.empty()) return -1;
+
+    for (size_t j = 0; j < indexes.size(); ++j)
+    {
+        if (indexes[j]->getColumnName() == pkCol)
+        {
+            Vector<size_t> matched = indexes[j]->find(Value(id));
+            for (size_t m = 0; m < matched.size(); ++m)
+            {
+                size_t rIdx = matched[m];
+                if (!isRowDeleted(rIdx) && rows[rIdx].has(pkCol) && holds_alternative<int>(rows[rIdx].get(pkCol)) && get<int>(rows[rIdx].get(pkCol)) == id)
+                {
+                    return static_cast<int>(rIdx);
+                }
+            }
+            return -1;
+        }
+    }
+
+    for (size_t i = 0; i < rows.size(); ++i)
+    {
+        if (isRowDeleted(i)) continue;
+        const Record& r = rows[i];
+        if (r.has(pkCol) && holds_alternative<int>(r.get(pkCol)))
+        {
+            if (get<int>(r.get(pkCol)) == id)
+            {
+                return static_cast<int>(i);
+            }
+        }
+    }
+    return -1;
+}
+
+const Record* Table::getRecordById(int id) const
+{
+    int idx = findRowIndexById(id);
+    if (idx < 0 || idx >= static_cast<int>(rows.size())) return nullptr;
+    return &rows[idx];
+}
+
+bool Table::removeById(int id)
+{
+    int idx = findRowIndexById(id);
+    if (idx < 0) return false;
+
+    // Remove from indexes
+    for (size_t j = 0; j < indexes.size(); ++j)
+    {
+        const string& colName = indexes[j]->getColumnName();
+        if (rows[idx].has(colName))
+        {
+            indexes[j]->remove(rows[idx].get(colName), idx);
+        }
+    }
+
+    deletedRows[idx] = 1;
+    ++deletedRowCount;
+
+    if (deletedRowCount >= rows.size() / 2)
+    {
+        compactRows();
+    }
+    return true;
+}
+
+bool Table::updateById(int id, const Record& newValues)
+{
+    int idx = findRowIndexById(id);
+    if (idx < 0) return false;
+
+    Record updatedRecord = rows[idx];
+    for (const auto& pair : newValues.getValues())
+    {
+        const Column* col = getColumn(pair.first);
+        if (col == nullptr)
+        {
+            cout << "Update failed: column not found: " << pair.first << endl;
+            return false;
+        }
+        if (!checkDataType(*col, pair.second))
+        {
+            cout << "Update failed: invalid data type for: " << pair.first << endl;
+            return false;
+        }
+        updatedRecord.set(pair.first, pair.second);
+    }
+
+    if (!checkConstraints(updatedRecord, idx))
+    {
+        return false;
+    }
+
+    // Update indexes
+    for (size_t j = 0; j < indexes.size(); ++j)
+    {
+        const string& colName = indexes[j]->getColumnName();
+        if (newValues.has(colName))
+        {
+            indexes[j]->remove(rows[idx].get(colName), idx);
+            indexes[j]->insert(updatedRecord.get(colName), idx);
+        }
+    }
+
+    rows[idx] = updatedRecord;
+    return true;
+}
+
 int Table::getRowCount() const
 {
     return static_cast<int>(rows.size() - deletedRowCount);

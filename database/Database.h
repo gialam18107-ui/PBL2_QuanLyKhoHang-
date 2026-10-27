@@ -1,4 +1,4 @@
-#ifndef DATABASE_H
+﻿#ifndef DATABASE_H
 #define DATABASE_H
 
 #include <string>
@@ -8,6 +8,7 @@
 #include "Condition.h"
 #include "ConditionGroup.h"
 #include "User.h"
+#include "OperationResult.h"
 
 using namespace std;
 
@@ -24,6 +25,7 @@ private:
 
     // Transaction management
     bool inTransaction;
+    int transactionDepth = 0;
     HashMap<string, Table*> transactionSnapshot;
 
     void clearTransactionSnapshot();
@@ -147,6 +149,29 @@ public:
      */
     bool remove(const string& tableName, const ConditionGroup& group);
 
+    /**
+     * @brief Insert a record and return OperationResult with detailed status.
+     */
+    OperationResult insertRecord(const string& tableName, const Record& record);
+
+    /**
+     * @brief Update a record directly by record ID in the primary key column (Rule 6.3).
+     * @param tableName Target table name.
+     * @param recordId ID of the record in primary key column.
+     * @param newValues Column-value mappings to update.
+     * @return OperationResult status.
+     */
+    OperationResult update(const string& tableName, int recordId, const Record& newValues);
+
+    /**
+     * @brief Delete a record directly by table name and ID (Rule 6.3).
+     * Validates existence and enforces referential integrity (Rule 2 & 4) before deletion.
+     * @param tableName Target table name.
+     * @param recordId ID of the record to remove.
+     * @return OperationResult status and affected row count.
+     */
+    OperationResult remove(const string& tableName, int recordId);
+
     /// Remove all tables and free all allocated table memory.
     void clear();
 
@@ -174,6 +199,9 @@ public:
 
     /// Check if currently in an active transaction block.
     bool isInTransaction() const;
+
+    /// Get current transaction nesting depth.
+    int getTransactionDepth() const;
 
     // ========================================================
     // USER & PERMISSION MANAGEMENT

@@ -1,4 +1,4 @@
-#include "ProductDialog.h"
+﻿#include "ProductDialog.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -23,7 +23,7 @@ ProductDialog::ProductDialog(Database* database, QWidget* parent)
       psuQualityCombo(nullptr), psuCapacitySpin(nullptr), psuSizeCombo(nullptr),
       coolTypeCombo(nullptr), caseNameEdit(nullptr), caseSizeCombo(nullptr)
 {
-    setWindowTitle("Thêm Sản Phẩm Mới (Product Insertion)");
+    setWindowTitle("ThĂªm Sáº£n Pháº©m Má»›i (Product Insertion)");
     resize(720, 680);
     setMinimumSize(650, 600);
 
@@ -126,46 +126,46 @@ void ProductDialog::setupUI()
     mainLayout->setSpacing(12);
 
     // Title Banner
-    auto* titleLabel = new QLabel("✨ Thêm Mới Sản Phẩm Vào Kho", this);
+    auto* titleLabel = new QLabel("âœ¨ ThĂªm Má»›i Sáº£n Pháº©m VĂ o Kho", this);
     titleLabel->setStyleSheet("font-size: 18px; font-weight: 700; color: #0f172a; margin-bottom: 2px;");
     auto* subTitleLabel = new QLabel(
-        "Nhập thông tin sản phẩm và các thông số phần cứng tương ứng. Tồn kho khởi tạo khả dụng = 0.", this
+        "Nháº­p thĂ´ng tin sáº£n pháº©m vĂ  cĂ¡c thĂ´ng sá»‘ pháº§n cá»©ng tÆ°Æ¡ng á»©ng. Tá»“n kho khá»Ÿi táº¡o kháº£ dá»¥ng = 0.", this
     );
     subTitleLabel->setStyleSheet("font-size: 12px; color: #64748b; margin-bottom: 6px;");
     mainLayout->addWidget(titleLabel);
     mainLayout->addWidget(subTitleLabel);
 
     // Group 1: Basic Product Information
-    auto* basicGroup = new QGroupBox("1. Thông tin cơ bản", this);
+    auto* basicGroup = new QGroupBox("1. ThĂ´ng tin cÆ¡ báº£n", this);
     auto* basicGrid = new QGridLayout(basicGroup);
     basicGrid->setContentsMargins(14, 16, 14, 14);
     basicGrid->setHorizontalSpacing(16);
     basicGrid->setVerticalSpacing(10);
 
     nameEdit = new QLineEdit(this);
-    nameEdit->setPlaceholderText("VD: Intel Core i9-14900K Processor hoặc ASUS Dual RTX 4070...");
-    basicGrid->addWidget(new QLabel("Tên sản phẩm (*):", this), 0, 0);
+    nameEdit->setPlaceholderText("VD: Intel Core i9-14900K Processor hoáº·c ASUS Dual RTX 4070...");
+    basicGrid->addWidget(new QLabel("TĂªn sáº£n pháº©m (*):", this), 0, 0);
     basicGrid->addWidget(nameEdit, 0, 1, 1, 3);
 
     categoryCombo = new QComboBox(this);
     categoryCombo->addItems({"CPU", "GPU", "MAINBOARD", "RAM", "SSD", "PSU", "COOLING", "CASE"});
     connect(categoryCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &ProductDialog::onCategoryChanged);
-    basicGrid->addWidget(new QLabel("Danh mục (*):", this), 1, 0);
+    basicGrid->addWidget(new QLabel("Danh má»¥c (*):", this), 1, 0);
     basicGrid->addWidget(categoryCombo, 1, 1);
 
     brandCombo = new QComboBox(this);
     connect(brandCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &ProductDialog::onBrandChanged);
-    basicGrid->addWidget(new QLabel("Hãng sản xuất (Brand *):", this), 1, 2);
+    basicGrid->addWidget(new QLabel("HĂ£ng sáº£n xuáº¥t (Brand *):", this), 1, 2);
     basicGrid->addWidget(brandCombo, 1, 3);
 
-    isSoldCheck = new QCheckBox("Đang mở bán / Kinh doanh (is_sold = TRUE)", this);
+    isSoldCheck = new QCheckBox("Äang má»Ÿ bĂ¡n / Kinh doanh (is_sold = TRUE)", this);
     isSoldCheck->setChecked(true); // Default TRUE per Rule 4.1
     basicGrid->addWidget(isSoldCheck, 2, 1, 1, 3);
 
     mainLayout->addWidget(basicGroup);
 
     // Group 2: Identification & Barcode
-    auto* idGroup = new QGroupBox("2. Định danh & Mã vạch (Rule 4.2)", this);
+    auto* idGroup = new QGroupBox("2. Äá»‹nh danh & MĂ£ váº¡ch (Rule 4.2)", this);
     auto* idGrid = new QGridLayout(idGroup);
     idGrid->setContentsMargins(14, 16, 14, 14);
     idGrid->setHorizontalSpacing(16);
@@ -173,7 +173,7 @@ void ProductDialog::setupUI()
 
     codeEdit = new QLineEdit(this);
     codeEdit->setPlaceholderText("BRAND-CAT-XXXX-YYYY");
-    autoGenBtn = new QPushButton("⚡ Tự động tạo mã", this);
+    autoGenBtn = new QPushButton("â¡ Tá»± Ä‘á»™ng táº¡o mĂ£", this);
     autoGenBtn->setObjectName("genBtn");
     connect(autoGenBtn, &QPushButton::clicked, this, &ProductDialog::generateAllCodes);
 
@@ -182,23 +182,23 @@ void ProductDialog::setupUI()
     codeLayout->addWidget(codeEdit);
     codeLayout->addWidget(autoGenBtn);
 
-    idGrid->addWidget(new QLabel("Mã sản phẩm (*):", this), 0, 0);
+    idGrid->addWidget(new QLabel("MĂ£ sáº£n pháº©m (*):", this), 0, 0);
     idGrid->addLayout(codeLayout, 0, 1, 1, 3);
 
     barcodeEdit = new QLineEdit(this);
-    barcodeEdit->setPlaceholderText("13 số (EAN-13)");
-    idGrid->addWidget(new QLabel("Mã vạch Barcode (*):", this), 1, 0);
+    barcodeEdit->setPlaceholderText("13 sá»‘ (EAN-13)");
+    idGrid->addWidget(new QLabel("MĂ£ váº¡ch Barcode (*):", this), 1, 0);
     idGrid->addWidget(barcodeEdit, 1, 1);
 
     skuEdit = new QLineEdit(this);
-    skuEdit->setPlaceholderText("CAT-BRAND-XXXX");
-    idGrid->addWidget(new QLabel("Mã SKU (*):", this), 1, 2);
+    skuEdit->setPlaceholderText("Nhập mã SKU nhà sản xuất");
+    idGrid->addWidget(new QLabel("MĂ£ SKU (*):", this), 1, 2);
     idGrid->addWidget(skuEdit, 1, 3);
 
     mainLayout->addWidget(idGroup);
 
     // Group 3: Dynamic Hardware Specifications
-    auto* specGroup = new QGroupBox("3. Thông số kỹ thuật chi tiết theo Danh mục", this);
+    auto* specGroup = new QGroupBox("3. ThĂ´ng sá»‘ ká»¹ thuáº­t chi tiáº¿t theo Danh má»¥c", this);
     auto* specLayout = new QVBoxLayout(specGroup);
     specLayout->setContentsMargins(12, 16, 12, 12);
 
@@ -212,12 +212,12 @@ void ProductDialog::setupUI()
     auto* btnLayout = new QHBoxLayout();
     btnLayout->addStretch();
 
-    auto* cancelBtn = new QPushButton("Hủy bỏ", this);
+    auto* cancelBtn = new QPushButton("Há»§y bá»", this);
     cancelBtn->setObjectName("cancelBtn");
     connect(cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
     btnLayout->addWidget(cancelBtn);
 
-    auto* saveBtn = new QPushButton("💾 Lưu sản phẩm", this);
+    auto* saveBtn = new QPushButton("đŸ’¾ LÆ°u sáº£n pháº©m", this);
     saveBtn->setObjectName("saveBtn");
     connect(saveBtn, &QPushButton::clicked, this, &ProductDialog::onSaveClicked);
     btnLayout->addWidget(saveBtn);
@@ -245,9 +245,9 @@ void ProductDialog::createSpecPages()
 
     cpuGrid->addWidget(new QLabel("Socket CPU (*):", this), 0, 0);
     cpuGrid->addWidget(cpuSocketCombo, 0, 1);
-    cpuGrid->addWidget(new QLabel("Phân khúc (Tier *):", this), 0, 2);
+    cpuGrid->addWidget(new QLabel("PhĂ¢n khĂºc (Tier *):", this), 0, 2);
     cpuGrid->addWidget(cpuTierCombo, 0, 3);
-    cpuGrid->addWidget(new QLabel("Dòng CPU (Series *):", this), 1, 0);
+    cpuGrid->addWidget(new QLabel("DĂ²ng CPU (Series *):", this), 1, 0);
     cpuGrid->addWidget(cpuSeriesCombo, 1, 1, 1, 3);
     specStack->addWidget(cpuPage);
 
@@ -267,11 +267,11 @@ void ProductDialog::createSpecPages()
     gpuVramCombo = new QComboBox(this);
     gpuVramCombo->setEditable(true);
 
-    gpuGrid->addWidget(new QLabel("Dòng GPU (Series *):", this), 0, 0);
+    gpuGrid->addWidget(new QLabel("DĂ²ng GPU (Series *):", this), 0, 0);
     gpuGrid->addWidget(gpuSeriesCombo, 0, 1);
-    gpuGrid->addWidget(new QLabel("Hãng chip (Producer *):", this), 0, 2);
+    gpuGrid->addWidget(new QLabel("HĂ£ng chip (Producer *):", this), 0, 2);
     gpuGrid->addWidget(gpuProducerCombo, 0, 3);
-    gpuGrid->addWidget(new QLabel("Dung lượng VRAM (GB *):", this), 1, 0);
+    gpuGrid->addWidget(new QLabel("Dung lÆ°á»£ng VRAM (GB *):", this), 1, 0);
     gpuGrid->addWidget(gpuVramCombo, 1, 1);
     specStack->addWidget(gpuPage);
 
@@ -295,15 +295,15 @@ void ProductDialog::createSpecPages()
     mbRamSupportCombo = new QComboBox(this);
     mbRamSupportCombo->setEditable(true);
 
-    mbGrid->addWidget(new QLabel("Hỗ trợ CPU (*):", this), 0, 0);
+    mbGrid->addWidget(new QLabel("Há»— trá»£ CPU (*):", this), 0, 0);
     mbGrid->addWidget(mbCpuSupportCombo, 0, 1);
     mbGrid->addWidget(new QLabel("Socket (*):", this), 0, 2);
     mbGrid->addWidget(mbSocketCombo, 0, 3);
-    mbGrid->addWidget(new QLabel("Kích cỡ (Size *):", this), 1, 0);
+    mbGrid->addWidget(new QLabel("KĂ­ch cá»¡ (Size *):", this), 1, 0);
     mbGrid->addWidget(mbSizeCombo, 1, 1);
     mbGrid->addWidget(new QLabel("Chipset (*):", this), 1, 2);
     mbGrid->addWidget(mbChipsetCombo, 1, 3);
-    mbGrid->addWidget(new QLabel("Chuẩn RAM hỗ trợ (*):", this), 2, 0);
+    mbGrid->addWidget(new QLabel("Chuáº©n RAM há»— trá»£ (*):", this), 2, 0);
     mbGrid->addWidget(mbRamSupportCombo, 2, 1, 1, 3);
     specStack->addWidget(mbPage);
 
@@ -326,13 +326,13 @@ void ProductDialog::createSpecPages()
     ramBusCombo = new QComboBox(this);
     ramBusCombo->setEditable(true);
 
-    ramGrid->addWidget(new QLabel("Thế hệ RAM (*):", this), 0, 0);
+    ramGrid->addWidget(new QLabel("Tháº¿ há»‡ RAM (*):", this), 0, 0);
     ramGrid->addWidget(ramGenCombo, 0, 1);
-    ramGrid->addWidget(new QLabel("Số thanh RAM (*):", this), 0, 2);
+    ramGrid->addWidget(new QLabel("Sá»‘ thanh RAM (*):", this), 0, 2);
     ramGrid->addWidget(ramQuantitySpin, 0, 3);
-    ramGrid->addWidget(new QLabel("Dung lượng (*):", this), 1, 0);
+    ramGrid->addWidget(new QLabel("Dung lÆ°á»£ng (*):", this), 1, 0);
     ramGrid->addWidget(ramCapacityCombo, 1, 1);
-    ramGrid->addWidget(new QLabel("Tốc độ Bus (*):", this), 1, 2);
+    ramGrid->addWidget(new QLabel("Tá»‘c Ä‘á»™ Bus (*):", this), 1, 2);
     ramGrid->addWidget(ramBusCombo, 1, 3);
     specStack->addWidget(ramPage);
 
@@ -352,11 +352,11 @@ void ProductDialog::createSpecPages()
     ssdCapacityCombo = new QComboBox(this);
     ssdCapacityCombo->setEditable(true);
 
-    ssdGrid->addWidget(new QLabel("Loại SSD (*):", this), 0, 0);
+    ssdGrid->addWidget(new QLabel("Loáº¡i SSD (*):", this), 0, 0);
     ssdGrid->addWidget(ssdTypeCombo, 0, 1);
-    ssdGrid->addWidget(new QLabel("Thế hệ giao tiếp (*):", this), 0, 2);
+    ssdGrid->addWidget(new QLabel("Tháº¿ há»‡ giao tiáº¿p (*):", this), 0, 2);
     ssdGrid->addWidget(ssdGenCombo, 0, 3);
-    ssdGrid->addWidget(new QLabel("Dung lượng (*):", this), 1, 0);
+    ssdGrid->addWidget(new QLabel("Dung lÆ°á»£ng (*):", this), 1, 0);
     ssdGrid->addWidget(ssdCapacityCombo, 1, 1, 1, 3);
     specStack->addWidget(ssdPage);
 
@@ -379,11 +379,11 @@ void ProductDialog::createSpecPages()
     psuSizeCombo = new QComboBox(this);
     psuSizeCombo->setEditable(true);
 
-    psuGrid->addWidget(new QLabel("Chuẩn hiệu suất (*):", this), 0, 0);
+    psuGrid->addWidget(new QLabel("Chuáº©n hiá»‡u suáº¥t (*):", this), 0, 0);
     psuGrid->addWidget(psuQualityCombo, 0, 1);
-    psuGrid->addWidget(new QLabel("Công suất (W *):", this), 0, 2);
+    psuGrid->addWidget(new QLabel("CĂ´ng suáº¥t (W *):", this), 0, 2);
     psuGrid->addWidget(psuCapacitySpin, 0, 3);
-    psuGrid->addWidget(new QLabel("Kích thước size:", this), 1, 0);
+    psuGrid->addWidget(new QLabel("KĂ­ch thÆ°á»›c size:", this), 1, 0);
     psuGrid->addWidget(psuSizeCombo, 1, 1, 1, 3);
     specStack->addWidget(psuPage);
 
@@ -399,7 +399,7 @@ void ProductDialog::createSpecPages()
     coolTypeCombo = new QComboBox(this);
     coolTypeCombo->setEditable(true);
 
-    coolGrid->addWidget(new QLabel("Loại tản nhiệt (*):", this), 0, 0);
+    coolGrid->addWidget(new QLabel("Loáº¡i táº£n nhiá»‡t (*):", this), 0, 0);
     coolGrid->addWidget(coolTypeCombo, 0, 1);
     specStack->addWidget(coolPage);
 
@@ -413,13 +413,13 @@ void ProductDialog::createSpecPages()
     caseGrid->setVerticalSpacing(8);
 
     caseNameEdit = new QLineEdit(this);
-    caseNameEdit->setPlaceholderText("Tên vỏ case (hoặc giữ nguyên tên sản phẩm)");
+    caseNameEdit->setPlaceholderText("TĂªn vá» case (hoáº·c giá»¯ nguyĂªn tĂªn sáº£n pháº©m)");
     caseSizeCombo = new QComboBox(this);
     caseSizeCombo->setEditable(true);
 
-    caseGrid->addWidget(new QLabel("Tên vỏ case:", this), 0, 0);
+    caseGrid->addWidget(new QLabel("TĂªn vá» case:", this), 0, 0);
     caseGrid->addWidget(caseNameEdit, 0, 1, 1, 3);
-    caseGrid->addWidget(new QLabel("Kích cỡ vỏ (Size *):", this), 1, 0);
+    caseGrid->addWidget(new QLabel("KĂ­ch cá»¡ vá» (Size *):", this), 1, 0);
     caseGrid->addWidget(caseSizeCombo, 1, 1);
     specStack->addWidget(casePage);
 }
@@ -492,26 +492,18 @@ void ProductDialog::generateAllCodes()
     std::string catName = categoryCombo->currentText().trimmed().toStdString();
     if (brandName.empty() || catName.empty()) return;
 
-    int nextId = user_create::getNextProductId(db);
-
-    // Auto-generate Product Code: BRAND-CAT-XXXX-YYYY
+    // Auto-generate Product Code: BRAND-CAT-XXXX-YYYY (Rule 4.2)
     std::string code = user_create::generateNextProductCode(db, brandName, catName);
     codeEdit->setText(QString::fromStdString(code));
-
-    // Auto-generate Barcode EAN-13
-    std::string barcode = user_create::generateEan13Barcode(nextId);
-    barcodeEdit->setText(QString::fromStdString(barcode));
-
-    // Auto-generate SKU
-    std::string sku = user_create::generateNextSku(db, brandName, catName, nextId);
-    skuEdit->setText(QString::fromStdString(sku));
+    // Note: Barcode and SKU must not be artificially generated;
+    // user/warehouse staff enters them directly from actual packaging.
 }
 
 void ProductDialog::onSaveClicked()
 {
     QString name = nameEdit->text().trimmed();
     if (name.isEmpty()) {
-        QMessageBox::critical(this, "Lỗi nhập liệu", "Vui lòng nhập tên sản phẩm.");
+        QMessageBox::critical(this, "Lá»—i nháº­p liá»‡u", "Vui lĂ²ng nháº­p tĂªn sáº£n pháº©m.");
         nameEdit->setFocus();
         return;
     }
@@ -523,17 +515,17 @@ void ProductDialog::onSaveClicked()
     QString sku = skuEdit->text().trimmed();
 
     if (code.isEmpty()) {
-        QMessageBox::critical(this, "Lỗi nhập liệu", "Vui lòng nhập hoặc nhấn tạo mã sản phẩm.");
+        QMessageBox::critical(this, "Lá»—i nháº­p liá»‡u", "Vui lĂ²ng nháº­p hoáº·c nháº¥n táº¡o mĂ£ sáº£n pháº©m.");
         codeEdit->setFocus();
         return;
     }
     if (barcode.isEmpty()) {
-        QMessageBox::critical(this, "Lỗi nhập liệu", "Vui lòng nhập mã vạch Barcode (13 số EAN-13).");
+        QMessageBox::critical(this, "Lá»—i nháº­p liá»‡u", "Vui lĂ²ng nháº­p mĂ£ váº¡ch Barcode (13 sá»‘ EAN-13).");
         barcodeEdit->setFocus();
         return;
     }
     if (sku.isEmpty()) {
-        QMessageBox::critical(this, "Lỗi nhập liệu", "Vui lòng nhập mã SKU sản phẩm.");
+        QMessageBox::critical(this, "Lá»—i nháº­p liá»‡u", "Vui lĂ²ng nháº­p mĂ£ SKU sáº£n pháº©m.");
         skuEdit->setFocus();
         return;
     }
@@ -557,7 +549,7 @@ void ProductDialog::onSaveClicked()
         QString tier = cpuTierCombo->currentText().trimmed();
         QString series = cpuSeriesCombo->currentText().trimmed();
         if (sock.isEmpty() || tier.isEmpty() || series.isEmpty()) {
-            QMessageBox::critical(this, "Lỗi thông số CPU", "Vui lòng chọn hoặc nhập đầy đủ Socket, Phân khúc và Dòng CPU.");
+            QMessageBox::critical(this, "Lá»—i thĂ´ng sá»‘ CPU", "Vui lĂ²ng chá»n hoáº·c nháº­p Ä‘áº§y Ä‘á»§ Socket, PhĂ¢n khĂºc vĂ  DĂ²ng CPU.");
             return;
         }
         specRecord.set("socket", sock.toStdString());
@@ -569,13 +561,13 @@ void ProductDialog::onSaveClicked()
         QString prod = gpuProducerCombo->currentText().trimmed();
         QString vramStr = gpuVramCombo->currentText().trimmed();
         if (series.isEmpty() || prod.isEmpty() || vramStr.isEmpty()) {
-            QMessageBox::critical(this, "Lỗi thông số GPU", "Vui lòng chọn hoặc nhập đầy đủ Dòng GPU, Hãng chip và VRAM.");
+            QMessageBox::critical(this, "Lá»—i thĂ´ng sá»‘ GPU", "Vui lĂ²ng chá»n hoáº·c nháº­p Ä‘áº§y Ä‘á»§ DĂ²ng GPU, HĂ£ng chip vĂ  VRAM.");
             return;
         }
         bool ok = false;
         int vram = vramStr.toInt(&ok);
         if (!ok || vram <= 0) {
-            QMessageBox::critical(this, "Lỗi thông số GPU", "Dung lượng VRAM phải là số nguyên dương (GB).");
+            QMessageBox::critical(this, "Lá»—i thĂ´ng sá»‘ GPU", "Dung lÆ°á»£ng VRAM pháº£i lĂ  sá»‘ nguyĂªn dÆ°Æ¡ng (GB).");
             return;
         }
         specRecord.set("series", series.toStdString());
@@ -589,7 +581,7 @@ void ProductDialog::onSaveClicked()
         QString chip = mbChipsetCombo->currentText().trimmed();
         QString ramSup = mbRamSupportCombo->currentText().trimmed();
         if (cpuSup.isEmpty() || sock.isEmpty() || size.isEmpty() || chip.isEmpty() || ramSup.isEmpty()) {
-            QMessageBox::critical(this, "Lỗi thông số Mainboard", "Vui lòng điền đầy đủ các thông số bo mạch chủ.");
+            QMessageBox::critical(this, "Lá»—i thĂ´ng sá»‘ Mainboard", "Vui lĂ²ng Ä‘iá»n Ä‘áº§y Ä‘á»§ cĂ¡c thĂ´ng sá»‘ bo máº¡ch chá»§.");
             return;
         }
         specRecord.set("cpu_support", cpuSup.toStdString());
@@ -604,7 +596,7 @@ void ProductDialog::onSaveClicked()
         QString cap = ramCapacityCombo->currentText().trimmed();
         QString bus = ramBusCombo->currentText().trimmed();
         if (gen.isEmpty() || cap.isEmpty() || bus.isEmpty()) {
-            QMessageBox::critical(this, "Lỗi thông số RAM", "Vui lòng điền đầy đủ Thế hệ, Dung lượng và Bus của RAM.");
+            QMessageBox::critical(this, "Lá»—i thĂ´ng sá»‘ RAM", "Vui lĂ²ng Ä‘iá»n Ä‘áº§y Ä‘á»§ Tháº¿ há»‡, Dung lÆ°á»£ng vĂ  Bus cá»§a RAM.");
             return;
         }
         specRecord.set("generation", gen.toStdString());
@@ -617,7 +609,7 @@ void ProductDialog::onSaveClicked()
         QString gen = ssdGenCombo->currentText().trimmed();
         QString cap = ssdCapacityCombo->currentText().trimmed();
         if (type.isEmpty() || gen.isEmpty() || cap.isEmpty()) {
-            QMessageBox::critical(this, "Lỗi thông số SSD", "Vui lòng điền đầy đủ Loại, Thế hệ và Dung lượng SSD.");
+            QMessageBox::critical(this, "Lá»—i thĂ´ng sá»‘ SSD", "Vui lĂ²ng Ä‘iá»n Ä‘áº§y Ä‘á»§ Loáº¡i, Tháº¿ há»‡ vĂ  Dung lÆ°á»£ng SSD.");
             return;
         }
         specRecord.set("type", type.toStdString());
@@ -629,7 +621,7 @@ void ProductDialog::onSaveClicked()
         int cap = psuCapacitySpin->value();
         QString size = psuSizeCombo->currentText().trimmed();
         if (quality.isEmpty()) {
-            QMessageBox::critical(this, "Lỗi thông số PSU", "Vui lòng chọn Chuẩn hiệu suất của nguồn.");
+            QMessageBox::critical(this, "Lá»—i thĂ´ng sá»‘ PSU", "Vui lĂ²ng chá»n Chuáº©n hiá»‡u suáº¥t cá»§a nguá»“n.");
             return;
         }
         specRecord.set("quality", quality.toStdString());
@@ -639,7 +631,7 @@ void ProductDialog::onSaveClicked()
     else if (catIdx == 6) { // COOLING
         QString type = coolTypeCombo->currentText().trimmed();
         if (type.isEmpty()) {
-            QMessageBox::critical(this, "Lỗi thông số Cooling", "Vui lòng chọn hoặc nhập Loại tản nhiệt.");
+            QMessageBox::critical(this, "Lá»—i thĂ´ng sá»‘ Cooling", "Vui lĂ²ng chá»n hoáº·c nháº­p Loáº¡i táº£n nhiá»‡t.");
             return;
         }
         specRecord.set("type", type.toStdString());
@@ -649,7 +641,7 @@ void ProductDialog::onSaveClicked()
         if (caseName.isEmpty()) caseName = name;
         QString size = caseSizeCombo->currentText().trimmed();
         if (size.isEmpty()) {
-            QMessageBox::critical(this, "Lỗi thông số Case", "Vui lòng chọn Kích cỡ vỏ case.");
+            QMessageBox::critical(this, "Lá»—i thĂ´ng sá»‘ Case", "Vui lĂ²ng chá»n KĂ­ch cá»¡ vá» case.");
             return;
         }
         specRecord.set("product_name", caseName.toStdString());
@@ -661,12 +653,12 @@ void ProductDialog::onSaveClicked()
 
     if (!result.success) {
         // Rule 6.3.1: On failure, display error message and keep dialog open
-        QMessageBox::critical(this, "Không thể thêm sản phẩm", QString::fromStdString(result.message));
+        QMessageBox::critical(this, "KhĂ´ng thá»ƒ thĂªm sáº£n pháº©m", QString::fromStdString(result.message));
         return;
     }
 
     // On success: notify and accept
-    QMessageBox::information(this, "Thành công", QString::fromStdString(result.message));
+    QMessageBox::information(this, "ThĂ nh cĂ´ng", QString::fromStdString(result.message));
     accept();
 }
 
