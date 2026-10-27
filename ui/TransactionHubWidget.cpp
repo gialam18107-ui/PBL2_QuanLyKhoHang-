@@ -1121,11 +1121,11 @@ void TransactionHubWidget::onTransactionSelected(int row)
     const auto& rec = cachedTransactions[row];
     std::string orderCode;
     if (hubType == HubType::INBOUND) {
-        if (rec.has("inbound_transaction.inbound_code")) orderCode = get<string>(rec.get("inbound_transaction.inbound_code"));
-        else if (rec.has("inbound_code")) orderCode = get<string>(rec.get("inbound_code"));
+        if (rec.has("inbound_transaction.inbound_code") && holds_alternative<string>(rec.get("inbound_transaction.inbound_code"))) orderCode = get<string>(rec.get("inbound_transaction.inbound_code"));
+        else if (rec.has("inbound_code") && holds_alternative<string>(rec.get("inbound_code"))) orderCode = get<string>(rec.get("inbound_code"));
     } else {
-        if (rec.has("outbound_transaction.outbound_code")) orderCode = get<string>(rec.get("outbound_transaction.outbound_code"));
-        else if (rec.has("outbound_code")) orderCode = get<string>(rec.get("outbound_code"));
+        if (rec.has("outbound_transaction.outbound_code") && holds_alternative<string>(rec.get("outbound_transaction.outbound_code"))) orderCode = get<string>(rec.get("outbound_transaction.outbound_code"));
+        else if (rec.has("outbound_code") && holds_alternative<string>(rec.get("outbound_code"))) orderCode = get<string>(rec.get("outbound_code"));
     }
 
     if (orderCode.empty() && masterTable->item(row, 0)) {
@@ -1136,12 +1136,12 @@ void TransactionHubWidget::onTransactionSelected(int row)
 
     // Customer name/code
     QString customerStr;
-    if (rec.has("customer.customer_code")) customerStr = QString::fromStdString(get<string>(rec.get("customer.customer_code")));
+    if (rec.has("customer.customer_code") && holds_alternative<string>(rec.get("customer.customer_code"))) customerStr = QString::fromStdString(get<string>(rec.get("customer.customer_code")));
     else if (masterTable->item(row, 1)) customerStr = masterTable->item(row, 1)->text();
 
     QString dateStr;
-    if (rec.has("inbound_transaction.order_at")) dateStr = QString::fromStdString(get<string>(rec.get("inbound_transaction.order_at")));
-    else if (rec.has("outbound_transaction.order_at")) dateStr = QString::fromStdString(get<string>(rec.get("outbound_transaction.order_at")));
+    if (rec.has("inbound_transaction.order_at") && holds_alternative<string>(rec.get("inbound_transaction.order_at"))) dateStr = QString::fromStdString(get<string>(rec.get("inbound_transaction.order_at")));
+    else if (rec.has("outbound_transaction.order_at") && holds_alternative<string>(rec.get("outbound_transaction.order_at"))) dateStr = QString::fromStdString(get<string>(rec.get("outbound_transaction.order_at")));
     else if (masterTable->item(row, 2)) dateStr = masterTable->item(row, 2)->text();
 
     detailBanner->setText(QString("📌 Chi tiết đối chiếu theo đơn: %1 | Đối tác: %2 | Ngày đặt: %3")
@@ -1180,8 +1180,8 @@ void TransactionHubWidget::renderOrderDetails()
 
     for (int i = 0; i < count; ++i) {
         const auto& r = cachedOrderDetails[i];
-        QString pCode = r.has("product.product_code") ? QString::fromStdString(get<string>(r.get("product.product_code"))) : "-";
-        QString pName = r.has("product.product_name") ? QString::fromStdString(get<string>(r.get("product.product_name"))) : "-";
+        QString pCode = (r.has("product.product_code") && holds_alternative<string>(r.get("product.product_code"))) ? QString::fromStdString(get<string>(r.get("product.product_code"))) : "-";
+        QString pName = (r.has("product.product_name") && holds_alternative<string>(r.get("product.product_name"))) ? QString::fromStdString(get<string>(r.get("product.product_name"))) : "-";
 
         int orderedQty = 0;
         if (r.has("inbound_detail.ordered_quantity") && holds_alternative<int>(r.get("inbound_detail.ordered_quantity"))) {
@@ -1280,19 +1280,19 @@ void TransactionHubWidget::renderLogisticsBatches()
         QString status = "-";
 
         if (hubType == HubType::INBOUND) {
-            if (r.has("delivery.delivery_code")) code = QString::fromStdString(get<string>(r.get("delivery.delivery_code")));
-            else if (r.has("delivery_code")) code = QString::fromStdString(get<string>(r.get("delivery_code")));
+            if (r.has("delivery.delivery_code") && holds_alternative<string>(r.get("delivery.delivery_code"))) code = QString::fromStdString(get<string>(r.get("delivery.delivery_code")));
+            else if (r.has("delivery_code") && holds_alternative<string>(r.get("delivery_code"))) code = QString::fromStdString(get<string>(r.get("delivery_code")));
 
-            if (r.has("delivery.expected_at")) expDate = QString::fromStdString(get<string>(r.get("delivery.expected_at")));
-            if (r.has("delivery.delivery_at")) actDate = QString::fromStdString(get<string>(r.get("delivery.delivery_at")));
-            if (r.has("delivery.status")) status = QString::fromStdString(get<string>(r.get("delivery.status")));
+            if (r.has("delivery.expected_at") && holds_alternative<string>(r.get("delivery.expected_at"))) expDate = QString::fromStdString(get<string>(r.get("delivery.expected_at")));
+            if (r.has("delivery.delivery_at") && holds_alternative<string>(r.get("delivery.delivery_at"))) actDate = QString::fromStdString(get<string>(r.get("delivery.delivery_at")));
+            if (r.has("delivery.status") && holds_alternative<string>(r.get("delivery.status"))) status = QString::fromStdString(get<string>(r.get("delivery.status")));
         } else {
-            if (r.has("shipment.shipment_code")) code = QString::fromStdString(get<string>(r.get("shipment.shipment_code")));
-            else if (r.has("shipment_code")) code = QString::fromStdString(get<string>(r.get("shipment_code")));
+            if (r.has("shipment.shipment_code") && holds_alternative<string>(r.get("shipment.shipment_code"))) code = QString::fromStdString(get<string>(r.get("shipment.shipment_code")));
+            else if (r.has("shipment_code") && holds_alternative<string>(r.get("shipment_code"))) code = QString::fromStdString(get<string>(r.get("shipment_code")));
 
-            if (r.has("shipment.expected_at")) expDate = QString::fromStdString(get<string>(r.get("shipment.expected_at")));
-            if (r.has("shipment.ship_at")) actDate = QString::fromStdString(get<string>(r.get("shipment.ship_at")));
-            if (r.has("shipment.status")) status = QString::fromStdString(get<string>(r.get("shipment.status")));
+            if (r.has("shipment.expected_at") && holds_alternative<string>(r.get("shipment.expected_at"))) expDate = QString::fromStdString(get<string>(r.get("shipment.expected_at")));
+            if (r.has("shipment.ship_at") && holds_alternative<string>(r.get("shipment.ship_at"))) actDate = QString::fromStdString(get<string>(r.get("shipment.ship_at")));
+            if (r.has("shipment.status") && holds_alternative<string>(r.get("shipment.status"))) status = QString::fromStdString(get<string>(r.get("shipment.status")));
         }
 
         auto* it0 = new QTableWidgetItem(code);
@@ -1331,11 +1331,11 @@ void TransactionHubWidget::onLogisticsSelected(int row)
     const auto& rec = cachedLogistics[row];
     std::string logisticsCode;
     if (hubType == HubType::INBOUND) {
-        if (rec.has("delivery.delivery_code")) logisticsCode = get<string>(rec.get("delivery.delivery_code"));
-        else if (rec.has("delivery_code")) logisticsCode = get<string>(rec.get("delivery_code"));
+        if (rec.has("delivery.delivery_code") && holds_alternative<string>(rec.get("delivery.delivery_code"))) logisticsCode = get<string>(rec.get("delivery.delivery_code"));
+        else if (rec.has("delivery_code") && holds_alternative<string>(rec.get("delivery_code"))) logisticsCode = get<string>(rec.get("delivery_code"));
     } else {
-        if (rec.has("shipment.shipment_code")) logisticsCode = get<string>(rec.get("shipment.shipment_code"));
-        else if (rec.has("shipment_code")) logisticsCode = get<string>(rec.get("shipment_code"));
+        if (rec.has("shipment.shipment_code") && holds_alternative<string>(rec.get("shipment.shipment_code"))) logisticsCode = get<string>(rec.get("shipment.shipment_code"));
+        else if (rec.has("shipment_code") && holds_alternative<string>(rec.get("shipment_code"))) logisticsCode = get<string>(rec.get("shipment_code"));
     }
 
     if (logisticsCode.empty() && logisticsTable->item(row, 0)) {
@@ -1372,8 +1372,8 @@ void TransactionHubWidget::renderLogisticsDetails()
 
     for (int i = 0; i < count; ++i) {
         const auto& r = cachedLogisticsDetails[i];
-        QString pCode = r.has("product.product_code") ? QString::fromStdString(get<string>(r.get("product.product_code"))) : "-";
-        QString pName = r.has("product.product_name") ? QString::fromStdString(get<string>(r.get("product.product_name"))) : "-";
+        QString pCode = (r.has("product.product_code") && holds_alternative<string>(r.get("product.product_code"))) ? QString::fromStdString(get<string>(r.get("product.product_code"))) : "-";
+        QString pName = (r.has("product.product_name") && holds_alternative<string>(r.get("product.product_name"))) ? QString::fromStdString(get<string>(r.get("product.product_name"))) : "-";
 
         int receivedQty = 0;
         if (r.has("delivery_detail.received_quantity") && holds_alternative<int>(r.get("delivery_detail.received_quantity"))) {
