@@ -174,33 +174,50 @@ namespace DataIO
             return false;
         }
 
-        const Vector<Column>& columns = table.getColumns();
+        const auto& rows = table.getRows();
         Vector<string> headerNames;
-        for (const auto& col : columns)
+        size_t firstValid = (size_t)-1;
+        for (size_t i = 0; i < rows.size(); ++i)
         {
-            headerNames.push_back(col.getName());
+            if (!table.isRowDeleted(i))
+            {
+                firstValid = i;
+                break;
+            }
+        }
+
+        if (firstValid != (size_t)-1 && rows[firstValid].size() > 0)
+        {
+            for (const auto& item : rows[firstValid].getValues())
+            {
+                headerNames.push_back(item.first);
+            }
+        }
+        else
+        {
+            for (const auto& col : table.getColumns())
+            {
+                headerNames.push_back(col.getName());
+            }
         }
 
         file << CSVHelper::formatLine(headerNames) << "\n";
 
-        for (const auto& record : table.getRows())
+        for (size_t i = 0; i < rows.size(); ++i)
         {
-            Vector<string> rowFields;
-            for (const auto& col : columns)
+            // Check if record is deleted before writing
+            if (table.isRowDeleted(i))
             {
-                if (record.has(col.getName()))
-                {
-                    Value val = record.get(col.getName());
-                    rowFields.push_back(valueToString(val));
-                }
-                else
-                {
-                    rowFields.push_back("");
-                }
+                continue;
             }
-            file << CSVHelper::formatLine(rowFields) << "\n";
+            file << CSVHelper::formatLine(rows[i]) << "\n";
         }
 
         return true;
+    }
+
+    string TableIO::formatLine(const Record& record)
+    {
+        return CSVHelper::formatLine(record);
     }
 }

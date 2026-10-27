@@ -3,6 +3,7 @@
 
 #include <string>
 #include "datastructure/vector/Vector.h"
+#include "database/Record.h"
 
 using namespace std;
 
@@ -19,6 +20,9 @@ namespace DataIO
 
         // Format a vector of fields into a comma-separated CSV line
         static string formatLine(const Vector<string>& fields);
+
+        // Format a record into a comma-separated CSV line from its stored values
+        static string formatLine(const Record& record);
 
         // Utility: trim whitespace from both ends
         static string trim(const string& str);

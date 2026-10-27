@@ -153,4 +153,21 @@ namespace DataIO
         }
         return line;
     }
+
+    string CSVHelper::formatLine(const Record& record)
+    {
+        Vector<string> fields;
+        for (const auto& item : record.getValues())
+        {
+            if (holds_alternative<monostate>(item.second))
+            {
+                fields.push_back("");
+            }
+            else
+            {
+                fields.push_back(valueToString(item.second));
+            }
+        }
+        return formatLine(fields);
+    }
 }
