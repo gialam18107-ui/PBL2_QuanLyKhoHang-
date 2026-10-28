@@ -1,4 +1,5 @@
 #include "UserCreate.h"
+#include "query/Query.h"
 #include <sstream>
 #include <iomanip>
 #include <cctype>
@@ -27,12 +28,27 @@ namespace user_create
     static bool isColumnValueUnique(Table* table, const std::string& colName, const std::string& val)
     {
         if (!table) return true;
-        const auto& rows = table->getRows();
-        for (size_t i = 0; i < rows.size(); ++i) {
-            if (table->isRowDeleted(i)) continue;
-            const Record& r = rows[i];
-            if (r.has(colName) && std::holds_alternative<std::string>(r.get(colName))) {
-                if (std::get<std::string>(r.get(colName)) == val) return false;
+        Vector<Record> recs = Query::filterRecords(*table, colName, Value(val));
+        if (!recs.empty()) return false;
+
+        // Defensive fallback only if no index covers colName
+        bool hasIndex = (table->getIndex(colName) != nullptr);
+        if (!hasIndex) {
+            for (const Index* idx : table->getIndexes()) {
+                if (idx != nullptr && idx->getColumnName() == colName) {
+                    hasIndex = true;
+                    break;
+                }
+            }
+        }
+        if (!hasIndex) {
+            const auto& rows = table->getRows();
+            for (size_t i = 0; i < rows.size(); ++i) {
+                if (table->isRowDeleted(i)) continue;
+                const Record& r = rows[i];
+                if (r.has(colName) && std::holds_alternative<std::string>(r.get(colName))) {
+                    if (std::get<std::string>(r.get(colName)) == val) return false;
+                }
             }
         }
         return true;
@@ -62,16 +78,11 @@ namespace user_create
     static int findCustomerIdByCode(Table* custTable, const std::string& customerCode)
     {
         if (!custTable || customerCode.empty()) return -1;
-        const auto& rows = custTable->getRows();
-        for (size_t i = 0; i < rows.size(); ++i) {
-            if (custTable->isRowDeleted(i)) continue;
-            const Record& r = rows[i];
-            if (r.has("customer_code") && std::holds_alternative<std::string>(r.get("customer_code"))) {
-                if (std::get<std::string>(r.get("customer_code")) == customerCode) {
-                    if (r.has("customer_id") && std::holds_alternative<int>(r.get("customer_id"))) {
-                        return std::get<int>(r.get("customer_id"));
-                    }
-                }
+        Vector<Record> recs = Query::filterRecords(*custTable, "customer_code", Value(customerCode));
+        if (!recs.empty()) {
+            const Record& r = recs[0];
+            if (r.has("customer_id") && std::holds_alternative<int>(r.get("customer_id"))) {
+                return std::get<int>(r.get("customer_id"));
             }
         }
         return -1;
@@ -113,15 +124,11 @@ namespace user_create
         std::string brandCode = brandName;
         Table* brandTable = db->getTable("brand");
         if (brandTable) {
-            const auto& rows = brandTable->getRows();
-            for (size_t i = 0; i < rows.size(); ++i) {
-                if (brandTable->isRowDeleted(i)) continue;
-                const Record& r = rows[i];
-                if (r.has("brand") && std::holds_alternative<std::string>(r.get("brand")) && std::get<std::string>(r.get("brand")) == brandName) {
-                    if (r.has("code") && std::holds_alternative<std::string>(r.get("code"))) {
-                        brandCode = std::get<std::string>(r.get("code"));
-                    }
-                    break;
+            Vector<Record> bRecs = Query::filterRecords(*brandTable, "brand", Value(brandName));
+            if (!bRecs.empty()) {
+                const Record& r = bRecs[0];
+                if (r.has("code") && std::holds_alternative<std::string>(r.get("code"))) {
+                    brandCode = std::get<std::string>(r.get("code"));
                 }
             }
         }
@@ -129,15 +136,11 @@ namespace user_create
         std::string catCode = categoryName;
         Table* catTable = db->getTable("category");
         if (catTable) {
-            const auto& rows = catTable->getRows();
-            for (size_t i = 0; i < rows.size(); ++i) {
-                if (catTable->isRowDeleted(i)) continue;
-                const Record& r = rows[i];
-                if (r.has("category_name") && std::holds_alternative<std::string>(r.get("category_name")) && std::get<std::string>(r.get("category_name")) == categoryName) {
-                    if (r.has("code") && std::holds_alternative<std::string>(r.get("code"))) {
-                        catCode = std::get<std::string>(r.get("code"));
-                    }
-                    break;
+            Vector<Record> cRecs = Query::filterRecords(*catTable, "category_name", Value(categoryName));
+            if (!cRecs.empty()) {
+                const Record& r = cRecs[0];
+                if (r.has("code") && std::holds_alternative<std::string>(r.get("code"))) {
+                    catCode = std::get<std::string>(r.get("code"));
                 }
             }
         }
@@ -146,17 +149,8 @@ namespace user_create
         int catSeq = 0;
         Table* prodTable = db->getTable("product");
         if (prodTable) {
-            const auto& rows = prodTable->getRows();
-            for (size_t i = 0; i < rows.size(); ++i) {
-                if (prodTable->isRowDeleted(i)) continue;
-                const Record& r = rows[i];
-                if (r.has("brand") && std::holds_alternative<std::string>(r.get("brand")) && std::get<std::string>(r.get("brand")) == brandName) {
-                    brandSeq++;
-                }
-                if (r.has("category") && std::holds_alternative<std::string>(r.get("category")) && std::get<std::string>(r.get("category")) == categoryName) {
-                    catSeq++;
-                }
-            }
+            brandSeq = static_cast<int>(Query::filterRecords(*prodTable, "brand", Value(brandName)).size());
+            catSeq = static_cast<int>(Query::filterRecords(*prodTable, "category", Value(categoryName)).size());
         }
         brandSeq += 1;
         catSeq += 1;
@@ -246,15 +240,8 @@ namespace user_create
         Table* brandTable = db->getTable("brand");
         bool brandFound = false;
         if (brandTable) {
-            const auto& rows = brandTable->getRows();
-            for (size_t i = 0; i < rows.size(); ++i) {
-                if (brandTable->isRowDeleted(i)) continue;
-                const Record& r = rows[i];
-                if (r.has("brand") && std::holds_alternative<std::string>(r.get("brand")) && std::get<std::string>(r.get("brand")) == brandName) {
-                    brandFound = true;
-                    break;
-                }
-            }
+            Vector<Record> bRecs = Query::filterRecords(*brandTable, "brand", Value(brandName));
+            brandFound = !bRecs.empty();
         }
         if (!brandFound) {
             return OperationResult{false, "Hãng sản xuất '" + brandName + "' không tồn tại trong CSDL.", 0};
@@ -267,15 +254,8 @@ namespace user_create
         Table* catTable = db->getTable("category");
         bool catFound = false;
         if (catTable) {
-            const auto& rows = catTable->getRows();
-            for (size_t i = 0; i < rows.size(); ++i) {
-                if (catTable->isRowDeleted(i)) continue;
-                const Record& r = rows[i];
-                if (r.has("category_name") && std::holds_alternative<std::string>(r.get("category_name")) && std::get<std::string>(r.get("category_name")) == catUpper) {
-                    catFound = true;
-                    break;
-                }
-            }
+            Vector<Record> cRecs = Query::filterRecords(*catTable, "category_name", Value(catUpper));
+            catFound = !cRecs.empty();
         }
         if (!catFound) {
             return OperationResult{false, "Danh mục '" + catUpper + "' không tồn tại trong CSDL.", 0};
@@ -439,13 +419,9 @@ namespace user_create
         }
 
         // Unique tax code check
-        const auto& bRows = infoTable->getRows();
-        for (size_t i = 0; i < bRows.size(); ++i) {
-            if (infoTable->isRowDeleted(i)) continue;
-            const Record& r = bRows[i];
-            if (r.has("tax_code") && std::holds_alternative<std::string>(r.get("tax_code")) && std::get<std::string>(r.get("tax_code")) == taxCode) {
-                return OperationResult{false, "Mã số thuế '" + taxCode + "' đã tồn tại trong hệ thống.", 0};
-            }
+        Vector<Record> taxMatches = Query::filterRecords(*infoTable, "tax_code", Value(taxCode));
+        if (!taxMatches.empty()) {
+            return OperationResult{false, "Mã số thuế '" + taxCode + "' đã tồn tại trong hệ thống.", 0};
         }
 
         int maxSeq = extractMaxSequence(custTable, "customer_code", "BS-", 3);
@@ -502,16 +478,11 @@ namespace user_create
         Table* brandTable = db->getTable("brand");
         if (!brandTable) return OperationResult{false, "Bảng 'brand' không tồn tại trong CSDL.", 0};
 
-        const auto& rows = brandTable->getRows();
-        for (size_t i = 0; i < rows.size(); ++i) {
-            if (brandTable->isRowDeleted(i)) continue;
-            const Record& r = rows[i];
-            if (r.has("brand") && std::holds_alternative<std::string>(r.get("brand")) && std::get<std::string>(r.get("brand")) == brandName) {
-                return OperationResult{false, "Thương hiệu '" + brandName + "' đã tồn tại trong CSDL.", 0};
-            }
-            if (r.has("code") && std::holds_alternative<std::string>(r.get("code")) && std::get<std::string>(r.get("code")) == brandCode) {
-                return OperationResult{false, "Mã thương hiệu '" + brandCode + "' đã tồn tại trong CSDL.", 0};
-            }
+        if (!Query::filterRecords(*brandTable, "brand", Value(brandName)).empty()) {
+            return OperationResult{false, "Thương hiệu '" + brandName + "' đã tồn tại trong CSDL.", 0};
+        }
+        if (!Query::filterRecords(*brandTable, "code", Value(brandCode)).empty()) {
+            return OperationResult{false, "Mã thương hiệu '" + brandCode + "' đã tồn tại trong CSDL.", 0};
         }
 
         int bId = getNextTableId(db, "brand");
@@ -815,15 +786,8 @@ namespace user_create
         if (!db) return true;
         Table* unitTab = db->getTable("unit_inventory");
         if (!unitTab) return true;
-        const auto& rows = unitTab->getRows();
-        for (size_t i = 0; i < rows.size(); ++i) {
-            if (unitTab->isRowDeleted(i)) continue;
-            const Record& r = rows[i];
-            if (r.has("serial") && std::holds_alternative<std::string>(r.get("serial"))) {
-                if (std::get<std::string>(r.get("serial")) == serial) return false;
-            }
-        }
-        return true;
+        Vector<Record> recs = Query::filterRecords(*unitTab, "serial", Value(serial));
+        return recs.empty();
     }
 
     std::string generateUniqueSerial(Database* db)
@@ -880,29 +844,23 @@ namespace user_create
 
         // 1. Gather original ordered quantity per product
         HashMap<int, int> orderedQuantities;
-        for (const auto& row : inDetTable->getRows()) {
-            if (row.has("inbound_transaction_id") && std::holds_alternative<int>(row.get("inbound_transaction_id")) &&
-                std::get<int>(row.get("inbound_transaction_id")) == inboundTransactionId) {
-                int pid = std::get<int>(row.get("product_id"));
-                int ordQty = std::get<int>(row.get("ordered_quantity"));
-                orderedQuantities[pid] = ordQty;
-            }
+        Vector<Record> inDetRows = Query::filterRecords(*inDetTable, "inbound_transaction_id", Value(inboundTransactionId));
+        for (const auto& row : inDetRows) {
+            int pid = std::get<int>(row.get("product_id"));
+            int ordQty = std::get<int>(row.get("ordered_quantity"));
+            orderedQuantities[pid] = ordQty;
         }
 
         // 2. Gather existing received_quantity across prior deliveries
         HashMap<int, int> totalPriorReceived;
-        for (const auto& delRow : delTable->getRows()) {
-            if (delRow.has("inbound_transaction_id") && std::holds_alternative<int>(delRow.get("inbound_transaction_id")) &&
-                std::get<int>(delRow.get("inbound_transaction_id")) == inboundTransactionId) {
-                int delId = std::get<int>(delRow.get("delivery_id"));
-                for (const auto& ddRow : delDetTable->getRows()) {
-                    if (ddRow.has("delivery_id") && std::holds_alternative<int>(ddRow.get("delivery_id")) &&
-                        std::get<int>(ddRow.get("delivery_id")) == delId) {
-                        int pid = std::get<int>(ddRow.get("product_id"));
-                        int recQty = std::get<int>(ddRow.get("received_quantity"));
-                        totalPriorReceived[pid] = (totalPriorReceived.contains(pid) ? totalPriorReceived[pid] : 0) + recQty;
-                    }
-                }
+        Vector<Record> delRows = Query::filterRecords(*delTable, "inbound_transaction_id", Value(inboundTransactionId));
+        for (const auto& delRow : delRows) {
+            int delId = std::get<int>(delRow.get("delivery_id"));
+            Vector<Record> ddRows = Query::filterRecords(*delDetTable, "delivery_id", Value(delId));
+            for (const auto& ddRow : ddRows) {
+                int pid = std::get<int>(ddRow.get("product_id"));
+                int recQty = std::get<int>(ddRow.get("received_quantity"));
+                totalPriorReceived[pid] = (totalPriorReceived.contains(pid) ? totalPriorReceived[pid] : 0) + recQty;
             }
         }
 
@@ -930,14 +888,7 @@ namespace user_create
             nextDelNo = std::get<int>(inTxnRec->get("next_delivery_no"));
             if (nextDelNo <= 0) nextDelNo = 1;
         } else {
-            int cnt = 0;
-            for (const auto& delRow : delTable->getRows()) {
-                if (delRow.has("inbound_transaction_id") && std::holds_alternative<int>(delRow.get("inbound_transaction_id")) &&
-                    std::get<int>(delRow.get("inbound_transaction_id")) == inboundTransactionId) {
-                    cnt++;
-                }
-            }
-            nextDelNo = cnt + 1;
+            nextDelNo = static_cast<int>(delRows.size()) + 1;
         }
 
         std::ostringstream delOss;
@@ -1018,29 +969,23 @@ namespace user_create
 
         // 1. Gather original ordered quantity per product
         HashMap<int, int> orderedQuantities;
-        for (const auto& row : outDetTable->getRows()) {
-            if (row.has("outbound_transaction_id") && std::holds_alternative<int>(row.get("outbound_transaction_id")) &&
-                std::get<int>(row.get("outbound_transaction_id")) == outboundTransactionId) {
-                int pid = std::get<int>(row.get("product_id"));
-                int ordQty = std::get<int>(row.get("ordered_quantity"));
-                orderedQuantities[pid] = ordQty;
-            }
+        Vector<Record> outDetRows = Query::filterRecords(*outDetTable, "outbound_transaction_id", Value(outboundTransactionId));
+        for (const auto& row : outDetRows) {
+            int pid = std::get<int>(row.get("product_id"));
+            int ordQty = std::get<int>(row.get("ordered_quantity"));
+            orderedQuantities[pid] = ordQty;
         }
 
         // 2. Gather existing received_quantity across prior shipments
         HashMap<int, int> totalPriorReceived;
-        for (const auto& shipRow : shipTable->getRows()) {
-            if (shipRow.has("sell_id") && std::holds_alternative<int>(shipRow.get("sell_id")) &&
-                std::get<int>(shipRow.get("sell_id")) == outboundTransactionId) {
-                int sId = std::get<int>(shipRow.get("shipment_id"));
-                for (const auto& sdRow : shipDetTable->getRows()) {
-                    if (sdRow.has("shipment_id") && std::holds_alternative<int>(sdRow.get("shipment_id")) &&
-                        std::get<int>(sdRow.get("shipment_id")) == sId) {
-                        int pid = std::get<int>(sdRow.get("product_id"));
-                        int recQty = std::get<int>(sdRow.get("received_quantity"));
-                        totalPriorReceived[pid] = (totalPriorReceived.contains(pid) ? totalPriorReceived[pid] : 0) + recQty;
-                    }
-                }
+        Vector<Record> shipRows = Query::filterRecords(*shipTable, "sell_id", Value(outboundTransactionId));
+        for (const auto& shipRow : shipRows) {
+            int sId = std::get<int>(shipRow.get("shipment_id"));
+            Vector<Record> sdRows = Query::filterRecords(*shipDetTable, "shipment_id", Value(sId));
+            for (const auto& sdRow : sdRows) {
+                int pid = std::get<int>(sdRow.get("product_id"));
+                int recQty = std::get<int>(sdRow.get("received_quantity"));
+                totalPriorReceived[pid] = (totalPriorReceived.contains(pid) ? totalPriorReceived[pid] : 0) + recQty;
             }
         }
 
@@ -1070,14 +1015,7 @@ namespace user_create
             nextShipNo = std::get<int>(outTxnRec->get("next_ship_no"));
             if (nextShipNo <= 0) nextShipNo = 1;
         } else {
-            int cnt = 0;
-            for (const auto& shipRow : shipTable->getRows()) {
-                if (shipRow.has("sell_id") && std::holds_alternative<int>(shipRow.get("sell_id")) &&
-                    std::get<int>(shipRow.get("sell_id")) == outboundTransactionId) {
-                    cnt++;
-                }
-            }
-            nextShipNo = cnt + 1;
+            nextShipNo = static_cast<int>(shipRows.size()) + 1;
         }
 
         std::ostringstream shipOss;
@@ -1465,10 +1403,9 @@ namespace user_create
         int delDetId = -1;
         int delRecQty = 0;
         int delActQty = 0;
-        for (const auto& row : delDetTable->getRows()) {
-            if (row.has("delivery_id") && std::holds_alternative<int>(row.get("delivery_id")) &&
-                std::get<int>(row.get("delivery_id")) == deliveryId &&
-                row.has("product_id") && std::holds_alternative<int>(row.get("product_id")) &&
+        Vector<Record> ddRecords = Query::filterRecords(*delDetTable, "delivery_id", Value(deliveryId));
+        for (const auto& row : ddRecords) {
+            if (row.has("product_id") && std::holds_alternative<int>(row.get("product_id")) &&
                 std::get<int>(row.get("product_id")) == productId) {
                 delDetId = std::get<int>(row.get("delivery_detail_id"));
                 delRecQty = std::get<int>(row.get("received_quantity"));
@@ -1489,10 +1426,9 @@ namespace user_create
         int inDetId = -1;
         int inOrdQty = 0;
         int inActQty = 0;
-        for (const auto& row : inDetTable->getRows()) {
-            if (row.has("inbound_transaction_id") && std::holds_alternative<int>(row.get("inbound_transaction_id")) &&
-                std::get<int>(row.get("inbound_transaction_id")) == inTxnId &&
-                row.has("product_id") && std::holds_alternative<int>(row.get("product_id")) &&
+        Vector<Record> idRecords = Query::filterRecords(*inDetTable, "inbound_transaction_id", Value(inTxnId));
+        for (const auto& row : idRecords) {
+            if (row.has("product_id") && std::holds_alternative<int>(row.get("product_id")) &&
                 std::get<int>(row.get("product_id")) == productId) {
                 inDetId = std::get<int>(row.get("inbound_detail_id"));
                 inOrdQty = std::get<int>(row.get("ordered_quantity"));
@@ -1579,14 +1515,13 @@ namespace user_create
                 std::string currentUnitStatus = "";
 
                 if (!sn.empty()) {
-                    for (const auto& uRow : unitTable->getRows()) {
-                        if (uRow.has("serial") && std::holds_alternative<std::string>(uRow.get("serial")) &&
-                            std::get<std::string>(uRow.get("serial")) == sn &&
-                            uRow.has("product_id") && std::holds_alternative<int>(uRow.get("product_id")) &&
+                    Vector<Record> uRecs = Query::filterRecords(*unitTable, "serial", Value(sn));
+                    if (!uRecs.empty()) {
+                        const auto& uRow = uRecs[0];
+                        if (uRow.has("product_id") && std::holds_alternative<int>(uRow.get("product_id")) &&
                             std::get<int>(uRow.get("product_id")) == productId) {
                             targetUnitId = std::get<int>(uRow.get("unit_id"));
                             currentUnitStatus = std::get<std::string>(uRow.get("status"));
-                            break;
                         }
                     }
                 }
@@ -1718,14 +1653,13 @@ namespace user_create
                 int targetUnitId = -1;
                 std::string currentUnitStatus = "";
 
-                for (const auto& uRow : unitTable->getRows()) {
-                    if (uRow.has("serial") && std::holds_alternative<std::string>(uRow.get("serial")) &&
-                        std::get<std::string>(uRow.get("serial")) == sn &&
-                        uRow.has("product_id") && std::holds_alternative<int>(uRow.get("product_id")) &&
+                Vector<Record> uRecs = Query::filterRecords(*unitTable, "serial", Value(sn));
+                if (!uRecs.empty()) {
+                    const auto& uRow = uRecs[0];
+                    if (uRow.has("product_id") && std::holds_alternative<int>(uRow.get("product_id")) &&
                         std::get<int>(uRow.get("product_id")) == productId) {
                         targetUnitId = std::get<int>(uRow.get("unit_id"));
                         currentUnitStatus = std::get<std::string>(uRow.get("status"));
-                        break;
                     }
                 }
 
@@ -1788,14 +1722,12 @@ namespace user_create
 
         // Check if delivery is fully received -> COMPLETED
         bool delivAllDone = true;
-        for (const auto& row : delDetTable->getRows()) {
-            if (row.has("delivery_id") && std::holds_alternative<int>(row.get("delivery_id")) &&
-                std::get<int>(row.get("delivery_id")) == deliveryId) {
-                int rQty = std::get<int>(row.get("received_quantity"));
-                int aQty = std::get<int>(row.get("actual_quantity"));
-                if (std::get<int>(row.get("delivery_detail_id")) == delDetId) aQty += quantity;
-                if (aQty < rQty) { delivAllDone = false; break; }
-            }
+        Vector<Record> curDelDets = Query::filterRecords(*delDetTable, "delivery_id", Value(deliveryId));
+        for (const auto& row : curDelDets) {
+            int rQty = std::get<int>(row.get("received_quantity"));
+            int aQty = std::get<int>(row.get("actual_quantity"));
+            if (std::get<int>(row.get("delivery_detail_id")) == delDetId) aQty += quantity;
+            if (aQty < rQty) { delivAllDone = false; break; }
         }
 
         Record delStatusUp;
@@ -1811,14 +1743,12 @@ namespace user_create
 
         // Check if inbound_transaction is fully received -> CONFIRMED
         bool inTxnAllDone = true;
-        for (const auto& row : inDetTable->getRows()) {
-            if (row.has("inbound_transaction_id") && std::holds_alternative<int>(row.get("inbound_transaction_id")) &&
-                std::get<int>(row.get("inbound_transaction_id")) == inTxnId) {
-                int ordQ = std::get<int>(row.get("ordered_quantity"));
-                int actQ = std::get<int>(row.get("actual_quantity"));
-                if (std::get<int>(row.get("inbound_detail_id")) == inDetId) actQ += quantity;
-                if (actQ < ordQ) { inTxnAllDone = false; break; }
-            }
+        Vector<Record> curInDets = Query::filterRecords(*inDetTable, "inbound_transaction_id", Value(inTxnId));
+        for (const auto& row : curInDets) {
+            int ordQ = std::get<int>(row.get("ordered_quantity"));
+            int actQ = std::get<int>(row.get("actual_quantity"));
+            if (std::get<int>(row.get("inbound_detail_id")) == inDetId) actQ += quantity;
+            if (actQ < ordQ) { inTxnAllDone = false; break; }
         }
 
         Record inTxnStatusUp;

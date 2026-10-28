@@ -1,4 +1,5 @@
 #include "UserUpdate.h"
+#include "query/Query.h"
 #include "database/Constraint.h"
 #include <iostream>
 #include <sstream>
@@ -40,7 +41,6 @@ namespace user_update
         const Record& oldRecord = table->getRows()[targetRowIdx];
 
         // 2. Validate columns, types, and constraints
-        const auto& rows = table->getRows();
         for (size_t i = 0; i < modifiedColumns.size(); ++i) {
             const std::string& colName = modifiedColumns[i];
             const Value& val = modifyingValues[i];
@@ -62,11 +62,14 @@ namespace user_update
 
             // UNIQUE check
             if (col->isUnique()) {
-                for (size_t r = 0; r < rows.size(); ++r) {
-                    if (table->isRowDeleted(r) || static_cast<int>(r) == targetRowIdx) continue;
-                    if (rows[r].has(colName) && rows[r].get(colName) == val) {
-                        return OperationResult{false, "Giá trị cập nhật của cột '" + colName + "' đã tồn tại (vi phạm ràng buộc UNIQUE).", 0};
+                Vector<Record> matches = Query::filterRecords(*table, colName, val);
+                for (size_t m = 0; m < matches.size(); ++m) {
+                    const Record& mRec = matches[m];
+                    if (mRec.has(pkCol) && std::holds_alternative<int>(mRec.get(pkCol)) &&
+                        std::get<int>(mRec.get(pkCol)) == recordId) {
+                        continue;
                     }
+                    return OperationResult{false, "Giá trị cập nhật của cột '" + colName + "' đã tồn tại (vi phạm ràng buộc UNIQUE).", 0};
                 }
             }
         }
@@ -164,14 +167,9 @@ namespace user_update
                     Table* prodTable = db->getTable("product");
                     if (prodTable && oldRecord.has("brand") && std::holds_alternative<std::string>(oldRecord.get("brand"))) {
                         std::string bName = std::get<std::string>(oldRecord.get("brand"));
-                        for (size_t r = 0; r < prodTable->getRows().size(); ++r) {
-                            if (prodTable->isRowDeleted(r)) continue;
-                            const Record& pRec = prodTable->getRows()[r];
-                            if (pRec.has("brand") && std::holds_alternative<std::string>(pRec.get("brand"))) {
-                                if (std::get<std::string>(pRec.get("brand")) == bName) {
-                                    return OperationResult{false, "Không được phép sửa mã thương hiệu (code) khi đã có sản phẩm trong danh mục.", 0};
-                                }
-                            }
+                        Vector<Record> pRecs = Query::filterRecords(*prodTable, "brand", Value(bName));
+                        if (!pRecs.empty()) {
+                            return OperationResult{false, "Không được phép sửa mã thương hiệu (code) khi đã có sản phẩm trong danh mục.", 0};
                         }
                     }
                 }
@@ -369,10 +367,9 @@ namespace user_update
         int shipDetId = -1;
         int shipRecQty = 0;
         int shipActQty = 0;
-        for (const auto& row : shipDetTable->getRows()) {
-            if (row.has("shipment_id") && std::holds_alternative<int>(row.get("shipment_id")) &&
-                std::get<int>(row.get("shipment_id")) == shipmentId &&
-                row.has("product_id") && std::holds_alternative<int>(row.get("product_id")) &&
+        Vector<Record> sdRecords = Query::filterRecords(*shipDetTable, "shipment_id", Value(shipmentId));
+        for (const auto& row : sdRecords) {
+            if (row.has("product_id") && std::holds_alternative<int>(row.get("product_id")) &&
                 std::get<int>(row.get("product_id")) == productId) {
                 shipDetId = std::get<int>(row.get("shipment_detail_id"));
                 shipRecQty = std::get<int>(row.get("received_quantity"));
@@ -394,10 +391,9 @@ namespace user_update
         int outDetId = -1;
         int outOrdQty = 0;
         int outActQty = 0;
-        for (const auto& row : outDetTable->getRows()) {
-            if (row.has("outbound_transaction_id") && std::holds_alternative<int>(row.get("outbound_transaction_id")) &&
-                std::get<int>(row.get("outbound_transaction_id")) == outTxnId &&
-                row.has("product_id") && std::holds_alternative<int>(row.get("product_id")) &&
+        Vector<Record> odRecords = Query::filterRecords(*outDetTable, "outbound_transaction_id", Value(outTxnId));
+        for (const auto& row : odRecords) {
+            if (row.has("product_id") && std::holds_alternative<int>(row.get("product_id")) &&
                 std::get<int>(row.get("product_id")) == productId) {
                 outDetId = std::get<int>(row.get("outbound_detail_id"));
                 outOrdQty = std::get<int>(row.get("ordered_quantity"));
@@ -431,14 +427,13 @@ namespace user_update
             int unitId = -1;
             std::string curStatus = "";
 
-            for (const auto& uRow : unitTable->getRows()) {
-                if (uRow.has("serial") && std::holds_alternative<std::string>(uRow.get("serial")) &&
-                    std::get<std::string>(uRow.get("serial")) == sn &&
-                    uRow.has("product_id") && std::holds_alternative<int>(uRow.get("product_id")) &&
+            Vector<Record> uRecs = Query::filterRecords(*unitTable, "serial", Value(sn));
+            if (!uRecs.empty()) {
+                const auto& uRow = uRecs[0];
+                if (uRow.has("product_id") && std::holds_alternative<int>(uRow.get("product_id")) &&
                     std::get<int>(uRow.get("product_id")) == productId) {
                     unitId = std::get<int>(uRow.get("unit_id"));
                     curStatus = std::get<std::string>(uRow.get("status"));
-                    break;
                 }
             }
 
@@ -547,14 +542,12 @@ namespace user_update
 
         // Check if shipment is fully dispatched -> COMPLETED
         bool shipAllDone = true;
-        for (const auto& row : shipDetTable->getRows()) {
-            if (row.has("shipment_id") && std::holds_alternative<int>(row.get("shipment_id")) &&
-                std::get<int>(row.get("shipment_id")) == shipmentId) {
-                int rQty = std::get<int>(row.get("received_quantity"));
-                int aQty = std::get<int>(row.get("actual_quantity"));
-                if (std::get<int>(row.get("shipment_detail_id")) == shipDetId) aQty += dispatchCount;
-                if (aQty < rQty) { shipAllDone = false; break; }
-            }
+        Vector<Record> curShipDets = Query::filterRecords(*shipDetTable, "shipment_id", Value(shipmentId));
+        for (const auto& row : curShipDets) {
+            int rQty = std::get<int>(row.get("received_quantity"));
+            int aQty = std::get<int>(row.get("actual_quantity"));
+            if (std::get<int>(row.get("shipment_detail_id")) == shipDetId) aQty += dispatchCount;
+            if (aQty < rQty) { shipAllDone = false; break; }
         }
 
         // Get current date
@@ -585,14 +578,12 @@ namespace user_update
 
         // Check if outbound_transaction is fully dispatched -> CONFIRMED
         bool outTxnAllDone = true;
-        for (const auto& row : outDetTable->getRows()) {
-            if (row.has("outbound_transaction_id") && std::holds_alternative<int>(row.get("outbound_transaction_id")) &&
-                std::get<int>(row.get("outbound_transaction_id")) == outTxnId) {
-                int ordQ = std::get<int>(row.get("ordered_quantity"));
-                int actQ = std::get<int>(row.get("actual_quantity"));
-                if (std::get<int>(row.get("outbound_detail_id")) == outDetId) actQ += dispatchCount;
-                if (actQ < ordQ) { outTxnAllDone = false; break; }
-            }
+        Vector<Record> curOutDets = Query::filterRecords(*outDetTable, "outbound_transaction_id", Value(outTxnId));
+        for (const auto& row : curOutDets) {
+            int ordQ = std::get<int>(row.get("ordered_quantity"));
+            int actQ = std::get<int>(row.get("actual_quantity"));
+            if (std::get<int>(row.get("outbound_detail_id")) == outDetId) actQ += dispatchCount;
+            if (actQ < ordQ) { outTxnAllDone = false; break; }
         }
 
         Record outTxnStatusUp;
