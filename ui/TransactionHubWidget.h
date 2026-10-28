@@ -73,8 +73,10 @@ private:
     void onCreateOrderClicked();
     void onUpdateOrderStatusClicked();
     void onInspectOrderClicked();
+    void onAddLogisticsBatchClicked();
     void onUpdateLogisticsClicked();
     void onInspectLogisticsClicked();
+    void onManageUnitsClicked();
 
     void exportMasterCsv();
 
@@ -126,12 +128,14 @@ private:
     QLineEdit* searchInput;
     QLabel* countLabel;
     QPushButton* createOrderBtn;
+    QPushButton* addLogisticsBatchBtn;
     QPushButton* updateOrderStatusBtn;
     QPushButton* inspectOrderBtn;
     QPushButton* refreshBtn;
     QPushButton* exportBtn;
 
     // Logistics action controls
+    QPushButton* manageUnitsBtn;
     QPushButton* updateLogisticsBtn;
     QPushButton* inspectLogisticsBtn;
 

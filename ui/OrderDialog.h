@@ -151,5 +151,100 @@ public:
     ~DetailInspectionDialog() override = default;
 };
 
+/**
+ * @brief Modal dialog to create an additional delivery or shipment batch (Rule 4.3).
+ */
+class LogisticsBatchDialog : public QDialog
+{
+public:
+    LogisticsBatchDialog(
+        HubType type,
+        Database* database,
+        int transactionId,
+        const QString& orderCode,
+        const QString& orderDate,
+        QWidget* parent = nullptr
+    );
+    ~LogisticsBatchDialog() override = default;
+
+private:
+    struct BatchLineItem {
+        int productId;
+        QString productCode;
+        QString productName;
+        int orderedQty;
+        int alreadyAllocatedQty;
+        int remainingToAllocate;
+        int thisBatchQty;
+    };
+
+    void setupUI();
+    void loadOrderProducts();
+    void renderItems();
+    void onSave();
+
+    HubType hubType;
+    Database* db;
+    int txnId;
+    QString orderCodeStr;
+    QString orderDateStr;
+
+    QDateEdit* expectedDateEdit;
+    QTableWidget* itemsTable;
+    std::vector<BatchLineItem> lineItems;
+};
+
+/**
+ * @brief Modal dialog for Unit Entry (receiving units into Delivery or dispatching units for Shipment) (Rule 4.4, 7.2).
+ */
+class UnitEntryDialog : public QDialog
+{
+public:
+    UnitEntryDialog(
+        HubType type,
+        Database* database,
+        int logisticsId,
+        const QString& batchCode,
+        const QString& parentOrderCode,
+        QWidget* parent = nullptr
+    );
+    ~UnitEntryDialog() override = default;
+
+private:
+    struct LogisticsItemInfo {
+        int productId;
+        QString productCode;
+        QString productName;
+        int receivedQty;
+        int actualQty;
+        int remainingQty;
+    };
+
+    void setupUI();
+    void loadLogisticsItems();
+    void onProductChanged(int index);
+    void onAutoGenerateSerial();
+    void onExecuteUnitOperation();
+    void loadExistingUnitsForCurrentProduct();
+
+    HubType hubType;
+    Database* db;
+    int logId;
+    QString batchCodeStr;
+    QString parentOrderCodeStr;
+    std::string transactionType;
+
+    QComboBox* productCombo;
+    QLabel* progressLabel;
+    QComboBox* targetStatusCombo;
+    QSpinBox* quantitySpin;
+    QLineEdit* serialInput;
+    QPushButton* autoGenSerialBtn;
+    QPushButton* executeBtn;
+    QTableWidget* existingUnitsTable;
+
+    std::vector<LogisticsItemInfo> items;
+};
+
 #endif // ORDER_DIALOG_H
 

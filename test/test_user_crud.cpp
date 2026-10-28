@@ -185,6 +185,196 @@ int main()
     std::cout << "Safe delete product (ID " << nextId << "): success=" << dProd.success << ", msg: " << dProd.message << std::endl;
     assert(dProd.success == true);
 
+    // ==========================================
+    // 6. TEST Coupled Logistics Allocations & Multi-Batches (Rule 4.3)
+    // ==========================================
+    std::cout << "\n--- [6] Testing Logistics Batch Allocations & Multi-Batch Orders ---" << std::endl;
+
+    // 6.1 Create Inbound Order with explicitly allocated delivery batches
+    Vector<Pair<int, int>> totalInItems;
+    totalInItems.push_back(Pair<int, int>(2, 20)); // Product 2, ordered 20
+
+    Vector<user_create::LogisticsBatchInput> delivBatches;
+    user_create::LogisticsBatchInput b1;
+    b1.expectedDate = "2026-11-01";
+    b1.items.push_back(Pair<int, int>(2, 12)); // Batch 1: 12 units
+    delivBatches.push_back(b1);
+
+    user_create::LogisticsBatchInput b2;
+    b2.expectedDate = "2026-11-05";
+    b2.items.push_back(Pair<int, int>(2, 8)); // Batch 2: 8 units
+    delivBatches.push_back(b2);
+
+    OperationResult cMultiIn = user_create::createInboundOrderWithDeliveries(
+        &db, "PURCHASING", "BS-0000001", totalInItems, delivBatches, "2026-10-28", "Multi-batch purchasing"
+    );
+    std::cout << "createInboundOrderWithDeliveries (12 + 8 = 20): success=" << cMultiIn.success << ", msg: " << cMultiIn.message << std::endl;
+    assert(cMultiIn.success == true);
+
+    // 6.2 Reject batch allocation exceeding ordered quantity (e.g. 15 + 10 = 25 > 20)
+    Vector<user_create::LogisticsBatchInput> badDelivBatches;
+    user_create::LogisticsBatchInput bb1;
+    bb1.expectedDate = "2026-11-01";
+    bb1.items.push_back(Pair<int, int>(2, 15));
+    badDelivBatches.push_back(bb1);
+    user_create::LogisticsBatchInput bb2;
+    bb2.expectedDate = "2026-11-05";
+    bb2.items.push_back(Pair<int, int>(2, 10)); // Total 25 > 20
+    badDelivBatches.push_back(bb2);
+
+    OperationResult cMultiInExcess = user_create::createInboundOrderWithDeliveries(
+        &db, "PURCHASING", "BS-0000001", totalInItems, badDelivBatches, "2026-10-28", "Excessive multi-batch"
+    );
+    std::cout << "createInboundOrderWithDeliveries excess rejection: success=" << cMultiInExcess.success << " (expected false), msg: " << cMultiInExcess.message << std::endl;
+    assert(cMultiInExcess.success == false);
+
+    // 6.3 Add an additional delivery batch to an existing order (createDeliveryBatch)
+    int latestInTxnId = user_create::getNextTableId(&db, "inbound_transaction") - 1;
+    Vector<Pair<int, int>> extraDelivItems;
+    extraDelivItems.push_back(Pair<int, int>(2, 1)); // Already allocated 12+8=20, adding 1 must fail
+    OperationResult cAddDelivFail = user_create::createDeliveryBatch(&db, latestInTxnId, "2026-11-10", extraDelivItems);
+    std::cout << "createDeliveryBatch exceeding ordered quantity: success=" << cAddDelivFail.success << " (expected false), msg: " << cAddDelivFail.message << std::endl;
+    assert(cAddDelivFail.success == false);
+
+    // 6.4 Reject delivery batch containing product not in original order (Logistics Product Scope Constraint)
+    Vector<Pair<int, int>> alienDelivItems;
+    alienDelivItems.push_back(Pair<int, int>(3, 1)); // Product 3 not in order for Product 2
+    OperationResult cAlienDeliv = user_create::createDeliveryBatch(&db, latestInTxnId, "2026-11-10", alienDelivItems);
+    std::cout << "Logistics Product Scope Constraint check (alien product): success=" << cAlienDeliv.success << " (expected false), msg: " << cAlienDeliv.message << std::endl;
+    assert(cAlienDeliv.success == false);
+
+    // 6.5 Create Outbound Order with multi-batches (createOutboundOrderWithShipments)
+    Vector<Pair<int, int>> totalOutItems;
+    totalOutItems.push_back(Pair<int, int>(1, 2)); // Product 1, ordered 2
+
+    Vector<user_create::LogisticsBatchInput> shipBatches;
+    user_create::LogisticsBatchInput sb1;
+    sb1.expectedDate = "2026-11-02";
+    sb1.items.push_back(Pair<int, int>(1, 1));
+    shipBatches.push_back(sb1);
+
+    user_create::LogisticsBatchInput sb2;
+    sb2.expectedDate = "2026-11-04";
+    sb2.items.push_back(Pair<int, int>(1, 1));
+    shipBatches.push_back(sb2);
+
+    OperationResult cMultiOut = user_create::createOutboundOrderWithShipments(
+        &db, "SELLING", "IN-0000001", totalOutItems, shipBatches, "2026-10-28", "Multi-batch sale"
+    );
+    std::cout << "createOutboundOrderWithShipments (1 + 1 = 2): success=" << cMultiOut.success << ", msg: " << cMultiOut.message << std::endl;
+    assert(cMultiOut.success == true);
+
+    // ==========================================
+    // 7. TEST Physical Unit Lifecycle & State Transitions (Rule 4.4, 5.5)
+    // ==========================================
+    std::cout << "\n--- [7] Testing Physical Unit Lifecycle & State Transitions ---" << std::endl;
+
+    // 7.1 Verify Serial Format & Uniqueness
+    std::string testSerial = user_create::generateUniqueSerial(&db);
+    std::cout << "Generated Serial: " << testSerial << std::endl;
+    assert(user_create::isValidSerialFormat(testSerial) == true);
+    assert(user_create::isSerialUnique(&db, testSerial) == true);
+
+    // 7.2 Inbound Receiving: Create new physical units for Delivery (receiveUnitsForDelivery)
+    // Find delivery ID that has Product 2 received_quantity = 12
+    Table* delDetTbl = db.getTable("delivery_detail");
+    int targetDelId = -1;
+    for (const auto& r : delDetTbl->getRows()) {
+        if (r.has("product_id") && std::get<int>(r.get("product_id")) == 2 &&
+            r.has("received_quantity") && std::get<int>(r.get("received_quantity")) == 12) {
+            targetDelId = std::get<int>(r.get("delivery_id"));
+            break;
+        }
+    }
+    assert(targetDelId != -1);
+
+    Table* pqTbl = db.getTable("product_quantity");
+    const Record* pqBefore = pqTbl->getRecordById(2);
+    int availBefore = std::get<int>(pqBefore->get("available_quan"));
+
+    // Receive 5 units of Product 2 into warehouse with status AVAILABLE
+    OperationResult rUnits = user_create::receiveUnitsForDelivery(&db, targetDelId, 2, "AVAILABLE", 5);
+    std::cout << "receiveUnitsForDelivery (5 units): success=" << rUnits.success << ", msg: " << rUnits.message << std::endl;
+    assert(rUnits.success == true);
+
+    // Verify product_quantity synchronization
+    const Record* pqAfter = pqTbl->getRecordById(2);
+    int availAfter = std::get<int>(pqAfter->get("available_quan"));
+    assert(availAfter == availBefore + 5);
+    std::cout << "Product 2 available inventory incremented: " << availBefore << " -> " << availAfter << " (verified)" << std::endl;
+
+    // Verify delivery_detail actual_quantity incremented to 5
+    int actualInDelDet = 0;
+    for (const auto& r : delDetTbl->getRows()) {
+        if (std::get<int>(r.get("delivery_id")) == targetDelId && std::get<int>(r.get("product_id")) == 2) {
+            actualInDelDet = std::get<int>(r.get("actual_quantity"));
+            break;
+        }
+    }
+    assert(actualInDelDet == 5);
+    std::cout << "delivery_detail.actual_quantity is now: " << actualInDelDet << " (verified)" << std::endl;
+
+    // 7.3 Rule 4.4.2 violation: Inbound Receiving with target status 'OUT' must be rejected
+    OperationResult rBadInStatus = user_create::receiveUnitsForDelivery(&db, targetDelId, 2, "OUT", 1);
+    std::cout << "Inbound receiving target 'OUT' rejection: success=" << rBadInStatus.success << " (expected false), msg: " << rBadInStatus.message << std::endl;
+    assert(rBadInStatus.success == false);
+
+    // 7.4 Receiving more than batch received_quantity (12) must be rejected (current 5 + 8 = 13 > 12)
+    OperationResult rExcessReceive = user_create::receiveUnitsForDelivery(&db, targetDelId, 2, "AVAILABLE", 8);
+    std::cout << "Delivery receiving excess rejection (5+8 > 12): success=" << rExcessReceive.success << " (expected false), msg: " << rExcessReceive.message << std::endl;
+    assert(rExcessReceive.success == false);
+
+    // 7.5 Outbound Dispatching: Dispatch AVAILABLE unit for Shipment (dispatchUnitsForShipment)
+    // Find the latest unit created for Product 2
+    Table* unitTbl = db.getTable("unit_inventory");
+    std::string unitToDispatch = "";
+    for (int i = static_cast<int>(unitTbl->getRowCount()) - 1; i >= 0; --i) {
+        const Record& u = unitTbl->getRows()[i];
+        if (std::get<int>(u.get("product_id")) == 2 && std::get<string>(u.get("status")) == "AVAILABLE") {
+            unitToDispatch = std::get<string>(u.get("serial"));
+            break;
+        }
+    }
+    assert(!unitToDispatch.empty());
+
+    // Create a 1-unit outbound order for Product 2
+    Vector<Pair<int, int>> p2Out;
+    p2Out.push_back(Pair<int, int>(2, 1));
+    OperationResult cOutP2 = user_create::createOutboundOrder(&db, "SELLING", "IN-0000001", p2Out, "2026-10-28", "2026-11-01", "Dispatch test");
+    assert(cOutP2.success == true);
+
+    int latestShipId = user_create::getNextTableId(&db, "shipment") - 1;
+    OperationResult rDispatch = user_update::dispatchUnitForShipment(&db, latestShipId, 2, unitToDispatch);
+    std::cout << "dispatchUnitForShipment (serial " << unitToDispatch << "): success=" << rDispatch.success << ", msg: " << rDispatch.message << std::endl;
+    assert(rDispatch.success == true);
+
+    // Verify unit status transitioned to OUT
+    for (const auto& u : unitTbl->getRows()) {
+        if (std::get<string>(u.get("serial")) == unitToDispatch) {
+            assert(std::get<string>(u.get("status")) == "OUT");
+            break;
+        }
+    }
+    std::cout << "Unit " << unitToDispatch << " status transitioned to 'OUT' (verified)" << std::endl;
+
+    // Verify product_quantity available decreased by 1
+    const Record* pqDispatched = pqTbl->getRecordById(2);
+    assert(std::get<int>(pqDispatched->get("available_quan")) == availAfter - 1);
+    std::cout << "Product 2 available inventory decremented by 1 (verified)" << std::endl;
+
+    // 7.6 Verify status_history logging (Rule 4.4.3)
+    Table* histTbl = db.getTable("status_history");
+    const Record& latestHist = histTbl->getRows().back();
+    assert(std::get<string>(latestHist.get("curr_status")) == "OUT");
+    assert(std::get<string>(latestHist.get("old_status")) == "AVAILABLE");
+    assert(std::get<string>(latestHist.get("type")) == "OUTBOUND");
+    std::cout << "status_history record logged: AVAILABLE -> OUT, type=OUTBOUND (verified)" << std::endl;
+
+    // 7.7 Re-dispatching an already OUT unit must be rejected
+    OperationResult rReDispatch = user_update::dispatchUnitForShipment(&db, latestShipId, 2, unitToDispatch);
+    std::cout << "Re-dispatching OUT unit rejection: success=" << rReDispatch.success << " (expected false), msg: " << rReDispatch.message << std::endl;
+    assert(rReDispatch.success == false);
+
     std::cout << "\n>>> ALL ENHANCED CRUD TESTS PASSED SUCCESSFULLY! <<<" << std::endl;
     return 0;
 }

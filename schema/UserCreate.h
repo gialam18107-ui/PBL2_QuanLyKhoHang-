@@ -70,7 +70,7 @@ namespace user_create
      * @brief Create an Inbound Transaction coupled with its primary Delivery.
      * Enforces active product check (is_sold == TRUE).
      * @param inboundType PURCHASING, ADJUSTMENT_IN, WARRANTY_CHECKING, WARRANTY_REPLACEMENT, CUSTOMER_RETURN
-     * @param customerId ID of supplier or customer
+     * @param customerCode Code of supplier or customer (e.g. "BS-0000001", "IN-0000001")
      * @param items List of Pairs (productId, orderedQuantity)
      * @param orderDate Order date (YYYY-MM-DD)
      * @param expectedDeliveryDate Expected delivery date (YYYY-MM-DD >= orderDate)
@@ -90,7 +90,7 @@ namespace user_create
      * @brief Create an Outbound Transaction coupled with its primary Shipment.
      * Enforces active product check and Stock Availability Precondition.
      * @param outboundType SELLING, ADJUSTMENT_OUT, RETURN_TO_SUPPLIER, WARRANTY_RETURN, WARRANTY_REPLACEMENT_TO_CUSTOMER
-     * @param customer_Code Code of customer or partner (e.g. "IN-0000001", "BS-0000001")
+     * @param customerCode Code of customer or partner (e.g. "IN-0000001", "BS-0000001")
      * @param items List of Pairs (productId, orderedQuantity)
      * @param orderDate Order date (YYYY-MM-DD)
      * @param expectedShipDate Expected shipment date (YYYY-MM-DD >= orderDate)
@@ -104,6 +104,106 @@ namespace user_create
         const std::string& orderDate,
         const std::string& expectedShipDate,
         const std::string& note = ""
+    );
+
+    // ========================================================
+    // LOGISTICS BATCH ALLOCATION & MULTI-BATCH ORDERS (Rule 4.3)
+    // ========================================================
+
+    /**
+     * @brief Logistics batch input structure for multi-batch allocation.
+     */
+    struct LogisticsBatchInput {
+        std::string expectedDate;
+        Vector<Pair<int, int>> items; // Pair<productId, received_quantity> allocated for this batch
+    };
+
+    /**
+     * @brief Create an Inbound Transaction with explicitly allocated delivery batches.
+     * Enforces active product check and sum(received_quantity) <= ordered_quantity.
+     */
+    OperationResult createInboundOrderWithDeliveries(
+        Database* db,
+        const std::string& inboundType,
+        const std::string& customerCode,
+        const Vector<Pair<int, int>>& totalOrderedItems,
+        const Vector<LogisticsBatchInput>& deliveryBatches,
+        const std::string& orderDate,
+        const std::string& note = ""
+    );
+
+    /**
+     * @brief Create an Outbound Transaction with explicitly allocated shipment batches.
+     * Enforces active product check, stock availability, and sum(received_quantity) <= ordered_quantity.
+     */
+    OperationResult createOutboundOrderWithShipments(
+        Database* db,
+        const std::string& outboundType,
+        const std::string& customerCode,
+        const Vector<Pair<int, int>>& totalOrderedItems,
+        const Vector<LogisticsBatchInput>& shipmentBatches,
+        const std::string& orderDate,
+        const std::string& note = ""
+    );
+
+    /**
+     * @brief Create an additional delivery batch for an existing Inbound Transaction (Rule 4.3).
+     * Enforces Logistics Product Scope and sum(received_quantity) <= ordered_quantity.
+     */
+    OperationResult createDeliveryBatch(
+        Database* db,
+        int inboundTransactionId,
+        const std::string& expectedDate,
+        const Vector<Pair<int, int>>& items
+    );
+
+    /**
+     * @brief Create an additional shipment batch for an existing Outbound Transaction (Rule 4.3).
+     * Enforces Logistics Product Scope, stock availability, and sum(received_quantity) <= ordered_quantity.
+     */
+    OperationResult createShipmentBatch(
+        Database* db,
+        int outboundTransactionId,
+        const std::string& expectedDate,
+        const Vector<Pair<int, int>>& items
+    );
+
+    // ========================================================
+    // SERIAL GENERATION & UNIT RECEIVING (Rule 4.4, 5.5)
+    // ========================================================
+
+    /// Generate unique Serial in format SN- + 7 uppercase alphanumeric characters
+    std::string generateUniqueSerial(Database* db);
+
+    /// Check if unit serial already exists in unit_inventory
+    bool isSerialUnique(Database* db, const std::string& serial);
+
+    /// Validate serial format ^SN-[A-Za-z0-9]{7}$
+    bool isValidSerialFormat(const std::string& serial);
+
+    /**
+     * @brief Receive physical units into warehouse for a Delivery batch (Rule 4.4.2).
+     * For PUR/WRP: creates new physical units in unit_inventory.
+     * For WCK/CRT: updates existing OUT units back to target status (AVAILABLE, WARRANTY, SCRAPPED).
+     * Automatically increments actual_quantity in delivery_detail and inbound_detail.
+     * Updates product_quantity buckets and logs immutable records into status_history.
+     */
+    OperationResult receiveUnitsForDelivery(
+        Database* db,
+        int deliveryId,
+        int productId,
+        const std::string& targetStatus,
+        int quantity,
+        const Vector<std::string>& customSerials = {}
+    );
+
+    /// Convenience overload for a single unit receiving
+    OperationResult receiveUnitForDelivery(
+        Database* db,
+        int deliveryId,
+        int productId,
+        const std::string& targetStatus,
+        const std::string& customSerial = ""
     );
 
     // ========================================================

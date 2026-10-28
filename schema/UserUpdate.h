@@ -92,6 +92,32 @@ namespace user_update
         int brandId,
         const std::string& newBrandName
     );
+
+    // ========================================================
+    // SHIPMENT UNIT DISPATCHING (Rule 4.4.1)
+    // ========================================================
+
+    /**
+     * @brief Dispatch physical units out of warehouse for a Shipment batch (Rule 4.4.1).
+     * Verifies status preconditions (e.g., AVAILABLE for SEL, SCRAPPED/WARRANTY for WRT, AVAILABLE/WARRANTY for WRC).
+     * Updates unit status in unit_inventory to 'OUT'.
+     * Automatically increments actual_quantity in shipment_detail and outbound_detail.
+     * Decrements corresponding bucket in product_quantity and logs immutable record into status_history.
+     */
+    OperationResult dispatchUnitsForShipment(
+        Database* db,
+        int shipmentId,
+        int productId,
+        const Vector<std::string>& serials
+    );
+
+    /// Convenience overload for dispatching a single unit
+    OperationResult dispatchUnitForShipment(
+        Database* db,
+        int shipmentId,
+        int productId,
+        const std::string& serial
+    );
 }
 
 #endif // USER_UPDATE_H

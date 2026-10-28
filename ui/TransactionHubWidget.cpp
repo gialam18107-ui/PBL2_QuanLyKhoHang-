@@ -329,6 +329,23 @@ void TransactionHubWidget::setupToolbarUI(QVBoxLayout* mainLayout)
     );
     connect(createOrderBtn, &QPushButton::clicked, [this]() { onCreateOrderClicked(); });
 
+    addLogisticsBatchBtn = new QPushButton(hubType == HubType::INBOUND ? "➕ Thêm Đợt Giao" : "➕ Thêm Đợt Xuất", this);
+    addLogisticsBatchBtn->setCursor(Qt::PointingHandCursor);
+    addLogisticsBatchBtn->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #0284c7;"
+        "  border: none;"
+        "  border-radius: 6px;"
+        "  padding: 5px 12px;"
+        "  font-size: 13px;"
+        "  font-weight: 600;"
+        "  color: #ffffff;"
+        "}"
+        "QPushButton:hover { background-color: #0369a1; }"
+        "QPushButton:pressed { background-color: #075985; }"
+    );
+    connect(addLogisticsBatchBtn, &QPushButton::clicked, [this]() { onAddLogisticsBatchClicked(); });
+
     updateOrderStatusBtn = new QPushButton("✏️ Cập nhật TT Đơn", this);
     updateOrderStatusBtn->setCursor(Qt::PointingHandCursor);
     updateOrderStatusBtn->setStyleSheet(
@@ -364,6 +381,7 @@ void TransactionHubWidget::setupToolbarUI(QVBoxLayout* mainLayout)
     connect(inspectOrderBtn, &QPushButton::clicked, [this]() { onInspectOrderClicked(); });
 
     controlsLayout->addWidget(createOrderBtn);
+    controlsLayout->addWidget(addLogisticsBatchBtn);
     controlsLayout->addWidget(updateOrderStatusBtn);
     controlsLayout->addWidget(inspectOrderBtn);
     controlsLayout->addWidget(refreshBtn);
@@ -584,6 +602,24 @@ void TransactionHubWidget::setupSplitterUI(QVBoxLayout* mainLayout)
     rightUpperHeaderLayout->addWidget(rightUpperTitleLabel);
     rightUpperHeaderLayout->addWidget(logisticsCountLabel);
     rightUpperHeaderLayout->addStretch();
+
+    manageUnitsBtn = new QPushButton(hubType == HubType::INBOUND ? "📦 Nhận Unit" : "📦 Xuất Unit", rightUpperContainer);
+    manageUnitsBtn->setCursor(Qt::PointingHandCursor);
+    manageUnitsBtn->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #16a34a;"
+        "  border: none;"
+        "  border-radius: 4px;"
+        "  padding: 3px 10px;"
+        "  font-size: 11px;"
+        "  font-weight: 600;"
+        "  color: #ffffff;"
+        "}"
+        "QPushButton:hover { background-color: #15803d; }"
+        "QPushButton:pressed { background-color: #166534; }"
+    );
+    connect(manageUnitsBtn, &QPushButton::clicked, [this]() { onManageUnitsClicked(); });
+
     updateLogisticsBtn = new QPushButton("✏️ Cập nhật đợt", rightUpperContainer);
     updateLogisticsBtn->setCursor(Qt::PointingHandCursor);
     updateLogisticsBtn->setStyleSheet(
@@ -616,6 +652,7 @@ void TransactionHubWidget::setupSplitterUI(QVBoxLayout* mainLayout)
     );
     connect(inspectLogisticsBtn, &QPushButton::clicked, [this]() { onInspectLogisticsClicked(); });
 
+    rightUpperHeaderLayout->addWidget(manageUnitsBtn);
     rightUpperHeaderLayout->addWidget(updateLogisticsBtn);
     rightUpperHeaderLayout->addWidget(inspectLogisticsBtn);
     rightUpperHeaderLayout->addWidget(btnMaxRightUpper);
@@ -1705,4 +1742,94 @@ QString TransactionHubWidget::formatValue(const Value& val)
     if (holds_alternative<string>(val)) return QString::fromStdString(get<string>(val));
     if (holds_alternative<bool>(val)) return get<bool>(val) ? "TRUE" : "FALSE";
     return "-";
+}
+
+void TransactionHubWidget::onAddLogisticsBatchClicked()
+{
+    const Record* rec = getSelectedMasterRecord(true);
+    if (!rec) return;
+
+    int txnId = -1;
+    QString orderCode;
+    QString orderDate;
+
+    if (hubType == HubType::INBOUND) {
+        if (rec->has("inbound_transaction_id") && holds_alternative<int>(rec->get("inbound_transaction_id")))
+            txnId = get<int>(rec->get("inbound_transaction_id"));
+        if (rec->has("inbound_code") && holds_alternative<string>(rec->get("inbound_code")))
+            orderCode = QString::fromStdString(get<string>(rec->get("inbound_code")));
+        if (rec->has("order_at") && holds_alternative<string>(rec->get("order_at")))
+            orderDate = QString::fromStdString(get<string>(rec->get("order_at")));
+    } else {
+        if (rec->has("outbound_trainsaction_id") && holds_alternative<int>(rec->get("outbound_trainsaction_id")))
+            txnId = get<int>(rec->get("outbound_trainsaction_id"));
+        else if (rec->has("outbound_transaction_id") && holds_alternative<int>(rec->get("outbound_transaction_id")))
+            txnId = get<int>(rec->get("outbound_transaction_id"));
+        if (rec->has("outbound_code") && holds_alternative<string>(rec->get("outbound_code")))
+            orderCode = QString::fromStdString(get<string>(rec->get("outbound_code")));
+        if (rec->has("order_at") && holds_alternative<string>(rec->get("order_at")))
+            orderDate = QString::fromStdString(get<string>(rec->get("order_at")));
+    }
+
+    if (txnId <= 0) {
+        QMessageBox::critical(this, "Lỗi dữ liệu", "Không xác định được khóa chính nội bộ của đơn hàng.");
+        return;
+    }
+
+    LogisticsBatchDialog dlg(hubType, db, txnId, orderCode, orderDate, this);
+    if (dlg.exec() == QDialog::Accepted) {
+        if (onDataChanged) {
+            onDataChanged(QString("Đã thêm đợt giao nhận mới cho đơn %1").arg(orderCode));
+        } else if (onRefresh) {
+            onRefresh();
+        }
+        loadLogisticsBatches(orderCode.toStdString());
+    }
+}
+
+void TransactionHubWidget::onManageUnitsClicked()
+{
+    const Record* rec = getSelectedLogisticsRecord(true);
+    if (!rec) return;
+
+    int logId = -1;
+    QString batchCode, parentCode;
+
+    if (hubType == HubType::INBOUND) {
+        if (rec->has("delivery_id") && holds_alternative<int>(rec->get("delivery_id")))
+            logId = get<int>(rec->get("delivery_id"));
+        if (rec->has("delivery.delivery_code") && holds_alternative<string>(rec->get("delivery.delivery_code")))
+            batchCode = QString::fromStdString(get<string>(rec->get("delivery.delivery_code")));
+        if (rec->has("inbound_transaction.inbound_code") && holds_alternative<string>(rec->get("inbound_transaction.inbound_code")))
+            parentCode = QString::fromStdString(get<string>(rec->get("inbound_transaction.inbound_code")));
+    } else {
+        if (rec->has("shipment_id") && holds_alternative<int>(rec->get("shipment_id")))
+            logId = get<int>(rec->get("shipment_id"));
+        if (rec->has("shipment.shipment_code") && holds_alternative<string>(rec->get("shipment.shipment_code")))
+            batchCode = QString::fromStdString(get<string>(rec->get("shipment.shipment_code")));
+        if (rec->has("outbound_transaction.outbound_code") && holds_alternative<string>(rec->get("outbound_transaction.outbound_code")))
+            parentCode = QString::fromStdString(get<string>(rec->get("outbound_transaction.outbound_code")));
+    }
+
+    if (parentCode.isEmpty()) parentCode = QString::fromStdString(currentOrderCode);
+    if (logId <= 0) {
+        QMessageBox::critical(this, "Lỗi dữ liệu", "Không xác định được khóa chính nội bộ của đợt giao nhận.");
+        return;
+    }
+
+    UnitEntryDialog dlg(hubType, db, logId, batchCode, parentCode, this);
+    if (dlg.exec() == QDialog::Accepted || true) {
+        if (!currentOrderCode.empty()) {
+            loadOrderDetails(currentOrderCode);
+            loadLogisticsBatches(currentOrderCode);
+        }
+        if (!currentLogisticsCode.empty()) {
+            loadLogisticsDetails(currentLogisticsCode);
+        }
+        if (onDataChanged) {
+            onDataChanged(QString("Cập nhật linh kiện đợt %1 thành công").arg(batchCode));
+        } else if (onRefresh) {
+            onRefresh();
+        }
+    }
 }

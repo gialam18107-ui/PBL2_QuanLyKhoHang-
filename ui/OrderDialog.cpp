@@ -5,6 +5,7 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
+#include <QFormLayout>
 #include <QGroupBox>
 #include <QHeaderView>
 #include <QCompleter>
@@ -1032,4 +1033,627 @@ DetailInspectionDialog::DetailInspectionDialog(
     bottomLayout->addWidget(closeBtn);
 
     mainLayout->addLayout(bottomLayout);
+}
+
+// ============================================================================
+// 5. LogisticsBatchDialog (Create Additional Delivery/Shipment Batch - Rule 4.3)
+// ============================================================================
+
+LogisticsBatchDialog::LogisticsBatchDialog(
+    HubType type,
+    Database* database,
+    int transactionId,
+    const QString& orderCode,
+    const QString& orderDate,
+    QWidget* parent)
+    : QDialog(parent), hubType(type), db(database), txnId(transactionId),
+      orderCodeStr(orderCode), orderDateStr(orderDate),
+      expectedDateEdit(nullptr), itemsTable(nullptr)
+{
+    setWindowTitle(hubType == HubType::INBOUND
+        ? "Tạo Đợt Nhận Hàng Mới (Delivery Batch)"
+        : "Tạo Đợt Xuất Hàng Mới (Shipment Batch)");
+    resize(760, 480);
+    setStyleSheet(commonDialogStyleSheet());
+
+    setupUI();
+    loadOrderProducts();
+    renderItems();
+}
+
+void LogisticsBatchDialog::setupUI()
+{
+    auto* mainLayout = new QVBoxLayout(this);
+    mainLayout->setContentsMargins(18, 16, 18, 16);
+    mainLayout->setSpacing(12);
+
+    auto* titleLbl = new QLabel(
+        hubType == HubType::INBOUND
+            ? "➕ Thêm Đợt Giao Nhận Bổ Sung Cho Đơn Nhập: " + orderCodeStr
+            : "➕ Thêm Đợt Xuất Kiện Bổ Sung Cho Đơn Xuất: " + orderCodeStr,
+        this
+    );
+    titleLbl->setStyleSheet("font-size: 16px; font-weight: 700; color: #0f172a;");
+    mainLayout->addWidget(titleLbl);
+
+    auto* topGroup = new QGroupBox("Thiết lập đợt giao nhận (Rule 4.3: sum(received_quantity) <= ordered_quantity)", this);
+    auto* topForm = new QFormLayout(topGroup);
+    topForm->setSpacing(10);
+
+    auto* orderDateLbl = new QLabel(orderDateStr, this);
+    orderDateLbl->setStyleSheet("font-weight: 600; color: #0f172a;");
+    topForm->addRow("Ngày đặt hàng gốc:", orderDateLbl);
+
+    expectedDateEdit = new QDateEdit(QDate::currentDate().addDays(2), this);
+    expectedDateEdit->setCalendarPopup(true);
+    expectedDateEdit->setDisplayFormat("yyyy-MM-dd");
+    if (!orderDateStr.isEmpty()) {
+        QDate od = QDate::fromString(orderDateStr, "yyyy-MM-dd");
+        if (od.isValid()) expectedDateEdit->setMinimumDate(od);
+    }
+    topForm->addRow("Ngày dự kiến giao/xuất (*):", expectedDateEdit);
+
+    mainLayout->addWidget(topGroup);
+
+    itemsTable = new QTableWidget(this);
+    itemsTable->setColumnCount(6);
+    itemsTable->setHorizontalHeaderLabels({
+        "Mã SP", "Tên sản phẩm", "SL Đặt hàng", "Đã ấn định", "Còn lại chưa giao", "SL Đợt này (*)"
+    });
+    itemsTable->setAlternatingRowColors(true);
+    itemsTable->verticalHeader()->setVisible(false);
+    itemsTable->horizontalHeader()->setStretchLastSection(true);
+    itemsTable->setStyleSheet(
+        "QTableWidget { background-color: #ffffff; alternate-background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; }"
+        "QHeaderView::section { background-color: #f1f5f9; color: #334155; font-weight: 600; padding: 7px 10px; border: none; border-bottom: 2px solid #cbd5e1; }"
+    );
+    mainLayout->addWidget(itemsTable, 1);
+
+    auto* bottomLayout = new QHBoxLayout();
+    bottomLayout->addStretch();
+    auto* cancelBtn = new QPushButton("Hủy bỏ", this);
+    cancelBtn->setObjectName("cancelBtn");
+    connect(cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
+
+    auto* saveBtn = new QPushButton("💾 Tạo đợt giao nhận", this);
+    saveBtn->setObjectName("saveBtn");
+    connect(saveBtn, &QPushButton::clicked, this, &LogisticsBatchDialog::onSave);
+
+    bottomLayout->addWidget(cancelBtn);
+    bottomLayout->addWidget(saveBtn);
+    mainLayout->addLayout(bottomLayout);
+}
+
+void LogisticsBatchDialog::loadOrderProducts()
+{
+    if (!db) return;
+    lineItems.clear();
+
+    Table* prodTable = db->getTable("product");
+    if (!prodTable) return;
+
+    if (hubType == HubType::INBOUND) {
+        Table* inDetTable = db->getTable("inbound_detail");
+        Table* delTable = db->getTable("delivery");
+        Table* delDetTable = db->getTable("delivery_detail");
+        if (!inDetTable || !delTable || !delDetTable) return;
+
+        // Find existing allocations
+        HashMap<int, int> allocatedMap;
+        for (const auto& del : delTable->getRows()) {
+            if (del.has("inbound_transaction_id") && std::holds_alternative<int>(del.get("inbound_transaction_id")) &&
+                std::get<int>(del.get("inbound_transaction_id")) == txnId) {
+                int delId = std::get<int>(del.get("delivery_id"));
+                for (const auto& dd : delDetTable->getRows()) {
+                    if (dd.has("delivery_id") && std::holds_alternative<int>(dd.get("delivery_id")) &&
+                        std::get<int>(dd.get("delivery_id")) == delId) {
+                        int pid = std::get<int>(dd.get("product_id"));
+                        int rq = std::get<int>(dd.get("received_quantity"));
+                        allocatedMap[pid] = (allocatedMap.contains(pid) ? allocatedMap[pid] : 0) + rq;
+                    }
+                }
+            }
+        }
+
+        for (const auto& idet : inDetTable->getRows()) {
+            if (idet.has("inbound_transaction_id") && std::holds_alternative<int>(idet.get("inbound_transaction_id")) &&
+                std::get<int>(idet.get("inbound_transaction_id")) == txnId) {
+                int pid = std::get<int>(idet.get("product_id"));
+                int ordQty = std::get<int>(idet.get("ordered_quantity"));
+                int allocated = allocatedMap.contains(pid) ? allocatedMap[pid] : 0;
+                int remaining = std::max(0, ordQty - allocated);
+
+                QString pCode = QString::number(pid);
+                QString pName = "Sản phẩm " + QString::number(pid);
+                const Record* pRec = prodTable->getRecordById(pid);
+                if (pRec) {
+                    if (pRec->has("product_code") && std::holds_alternative<std::string>(pRec->get("product_code")))
+                        pCode = QString::fromStdString(std::get<std::string>(pRec->get("product_code")));
+                    if (pRec->has("product_name") && std::holds_alternative<std::string>(pRec->get("product_name")))
+                        pName = QString::fromStdString(std::get<std::string>(pRec->get("product_name")));
+                }
+
+                BatchLineItem item;
+                item.productId = pid;
+                item.productCode = pCode;
+                item.productName = pName;
+                item.orderedQty = ordQty;
+                item.alreadyAllocatedQty = allocated;
+                item.remainingToAllocate = remaining;
+                item.thisBatchQty = remaining; // Default to remaining
+                lineItems.push_back(item);
+            }
+        }
+    } else {
+        Table* outDetTable = db->getTable("outbound_detail");
+        Table* shipTable = db->getTable("shipment");
+        Table* shipDetTable = db->getTable("shipment_detail");
+        if (!outDetTable || !shipTable || !shipDetTable) return;
+
+        HashMap<int, int> allocatedMap;
+        for (const auto& ship : shipTable->getRows()) {
+            if (ship.has("sell_id") && std::holds_alternative<int>(ship.get("sell_id")) &&
+                std::get<int>(ship.get("sell_id")) == txnId) {
+                int shipId = std::get<int>(ship.get("shipment_id"));
+                for (const auto& sd : shipDetTable->getRows()) {
+                    if (sd.has("shipment_id") && std::holds_alternative<int>(sd.get("shipment_id")) &&
+                        std::get<int>(sd.get("shipment_id")) == shipId) {
+                        int pid = std::get<int>(sd.get("product_id"));
+                        int rq = std::get<int>(sd.get("received_quantity"));
+                        allocatedMap[pid] = (allocatedMap.contains(pid) ? allocatedMap[pid] : 0) + rq;
+                    }
+                }
+            }
+        }
+
+        for (const auto& odet : outDetTable->getRows()) {
+            if (odet.has("outbound_transaction_id") && std::holds_alternative<int>(odet.get("outbound_transaction_id")) &&
+                std::get<int>(odet.get("outbound_transaction_id")) == txnId) {
+                int pid = std::get<int>(odet.get("product_id"));
+                int ordQty = std::get<int>(odet.get("ordered_quantity"));
+                int allocated = allocatedMap.contains(pid) ? allocatedMap[pid] : 0;
+                int remaining = std::max(0, ordQty - allocated);
+
+                QString pCode = QString::number(pid);
+                QString pName = "Sản phẩm " + QString::number(pid);
+                const Record* pRec = prodTable->getRecordById(pid);
+                if (pRec) {
+                    if (pRec->has("product_code") && std::holds_alternative<std::string>(pRec->get("product_code")))
+                        pCode = QString::fromStdString(std::get<std::string>(pRec->get("product_code")));
+                    if (pRec->has("product_name") && std::holds_alternative<std::string>(pRec->get("product_name")))
+                        pName = QString::fromStdString(std::get<std::string>(pRec->get("product_name")));
+                }
+
+                BatchLineItem item;
+                item.productId = pid;
+                item.productCode = pCode;
+                item.productName = pName;
+                item.orderedQty = ordQty;
+                item.alreadyAllocatedQty = allocated;
+                item.remainingToAllocate = remaining;
+                item.thisBatchQty = remaining;
+                lineItems.push_back(item);
+            }
+        }
+    }
+}
+
+void LogisticsBatchDialog::renderItems()
+{
+    itemsTable->setRowCount(static_cast<int>(lineItems.size()));
+    for (int r = 0; r < static_cast<int>(lineItems.size()); ++r) {
+        const auto& item = lineItems[r];
+        auto* itCode = new QTableWidgetItem(item.productCode);
+        auto* itName = new QTableWidgetItem(item.productName);
+        auto* itOrd = new QTableWidgetItem(QString::number(item.orderedQty));
+        itOrd->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        auto* itAlloc = new QTableWidgetItem(QString::number(item.alreadyAllocatedQty));
+        itAlloc->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        auto* itRem = new QTableWidgetItem(QString::number(item.remainingToAllocate));
+        itRem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        itRem->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
+
+        itemsTable->setItem(r, 0, itCode);
+        itemsTable->setItem(r, 1, itName);
+        itemsTable->setItem(r, 2, itOrd);
+        itemsTable->setItem(r, 3, itAlloc);
+        itemsTable->setItem(r, 4, itRem);
+
+        auto* spin = new QSpinBox(itemsTable);
+        spin->setRange(0, item.remainingToAllocate);
+        spin->setValue(item.thisBatchQty);
+        connect(spin, QOverload<int>::of(&QSpinBox::valueChanged), [this, r](int val) {
+            lineItems[r].thisBatchQty = val;
+        });
+        itemsTable->setCellWidget(r, 5, spin);
+    }
+    itemsTable->resizeColumnsToContents();
+}
+
+void LogisticsBatchDialog::onSave()
+{
+    QString expDate = expectedDateEdit->date().toString("yyyy-MM-dd");
+    if (!orderDateStr.isEmpty() && expDate < orderDateStr) {
+        QMessageBox::critical(this, "Lỗi ngày giao nhận", "Ngày dự kiến (" + expDate + ") không được sớm hơn ngày đặt hàng (" + orderDateStr + ").");
+        return;
+    }
+
+    Vector<Pair<int, int>> batchItems;
+    for (const auto& it : lineItems) {
+        if (it.thisBatchQty > 0) {
+            batchItems.push_back(Pair<int, int>(it.productId, it.thisBatchQty));
+        }
+    }
+
+    if (batchItems.empty()) {
+        QMessageBox::warning(this, "Chưa chọn số lượng", "Vui lòng nhập số lượng ấn định (> 0) cho ít nhất một mặt hàng trong đợt này.");
+        return;
+    }
+
+    OperationResult res = (hubType == HubType::INBOUND)
+        ? user_create::createDeliveryBatch(db, txnId, expDate.toStdString(), batchItems)
+        : user_create::createShipmentBatch(db, txnId, expDate.toStdString(), batchItems);
+
+    if (!res.success) {
+        QMessageBox::critical(this, "Không thể tạo đợt giao nhận", QString::fromStdString(res.message));
+        return;
+    }
+
+    QMessageBox::information(this, "Thành công", QString::fromStdString(res.message));
+    accept();
+}
+
+// ============================================================================
+// 6. UnitEntryDialog (Input / Attach Units for Delivery & Shipment - Rule 4.4, 7.2)
+// ============================================================================
+
+UnitEntryDialog::UnitEntryDialog(
+    HubType type,
+    Database* database,
+    int logisticsId,
+    const QString& batchCode,
+    const QString& parentOrderCode,
+    QWidget* parent)
+    : QDialog(parent), hubType(type), db(database), logId(logisticsId),
+      batchCodeStr(batchCode), parentOrderCodeStr(parentOrderCode),
+      productCombo(nullptr), progressLabel(nullptr), targetStatusCombo(nullptr),
+      quantitySpin(nullptr), serialInput(nullptr), autoGenSerialBtn(nullptr),
+      executeBtn(nullptr), existingUnitsTable(nullptr)
+{
+    setWindowTitle(hubType == HubType::INBOUND
+        ? "Quản Lý Linh Kiện (Unit) - Đợt Nhận: " + batchCodeStr
+        : "Quản Lý Linh Kiện (Unit) - Đợt Xuất: " + batchCodeStr);
+    resize(820, 560);
+    setStyleSheet(commonDialogStyleSheet());
+
+    // Resolve transaction type
+    if (db) {
+        std::string tbl = (hubType == HubType::INBOUND) ? "inbound_transaction" : "outbound_transaction";
+        std::string codeCol = (hubType == HubType::INBOUND) ? "inbound_code" : "outbound_code";
+        Table* t = db->getTable(tbl);
+        if (t) {
+            for (const auto& r : t->getRows()) {
+                if (r.has(codeCol) && std::holds_alternative<std::string>(r.get(codeCol)) &&
+                    QString::fromStdString(std::get<std::string>(r.get(codeCol))) == parentOrderCodeStr) {
+                    if (r.has("type") && std::holds_alternative<std::string>(r.get("type"))) {
+                        transactionType = std::get<std::string>(r.get("type"));
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    setupUI();
+    loadLogisticsItems();
+}
+
+void UnitEntryDialog::setupUI()
+{
+    auto* mainLayout = new QVBoxLayout(this);
+    mainLayout->setContentsMargins(18, 16, 18, 16);
+    mainLayout->setSpacing(12);
+
+    auto* titleLbl = new QLabel(
+        hubType == HubType::INBOUND
+            ? "📦 Nhận Linh Kiện Vào Kho (Delivery Batch: " + batchCodeStr + ")"
+            : "📦 Xuất Linh Kiện Khỏi Kho (Shipment Batch: " + batchCodeStr + ")",
+        this
+    );
+    titleLbl->setStyleSheet("font-size: 16px; font-weight: 700; color: #0f172a;");
+    mainLayout->addWidget(titleLbl);
+
+    auto* opGroup = new QGroupBox(hubType == HubType::INBOUND
+        ? "Thao tác Nhận Hàng (Tạo mới hoặc chuyển trạng thái linh kiện - Rule 4.4.2)"
+        : "Thao tác Xuất Hàng (Chuyển linh kiện sang trạng thái OUT - Rule 4.4.1)", this);
+    auto* form = new QFormLayout(opGroup);
+    form->setSpacing(10);
+
+    productCombo = new QComboBox(this);
+    connect(productCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &UnitEntryDialog::onProductChanged);
+    form->addRow("Chọn mặt hàng (*):", productCombo);
+
+    progressLabel = new QLabel("-", this);
+    progressLabel->setStyleSheet("font-weight: 600; color: #0369a1;");
+    form->addRow("Tiến độ đợt:", progressLabel);
+
+    if (hubType == HubType::INBOUND) {
+        targetStatusCombo = new QComboBox(this);
+        if (transactionType == "PURCHASING" || transactionType == "PUR") {
+            targetStatusCombo->addItem("Khả dụng (AVAILABLE)", "AVAILABLE");
+            targetStatusCombo->addItem("Lỗi / Phế phẩm (SCRAPPED)", "SCRAPPED");
+        } else if (transactionType == "WARRANTY_REPLACEMENT" || transactionType == "WRP" ||
+                   transactionType == "WARRANTY_CHECKING" || transactionType == "WCK") {
+            targetStatusCombo->addItem("Bảo hành (WARRANTY)", "WARRANTY");
+        } else if (transactionType == "CUSTOMER_RETURN" || transactionType == "CRT") {
+            targetStatusCombo->addItem("Khả dụng (AVAILABLE)", "AVAILABLE");
+            targetStatusCombo->addItem("Bảo hành (WARRANTY)", "WARRANTY");
+            targetStatusCombo->addItem("Lỗi / Phế phẩm (SCRAPPED)", "SCRAPPED");
+        } else {
+            targetStatusCombo->addItem("Khả dụng (AVAILABLE)", "AVAILABLE");
+            targetStatusCombo->addItem("Bảo hành (WARRANTY)", "WARRANTY");
+            targetStatusCombo->addItem("Lỗi / Phế phẩm (SCRAPPED)", "SCRAPPED");
+        }
+        form->addRow("Trạng thái nhận vào (*):", targetStatusCombo);
+    }
+
+    quantitySpin = new QSpinBox(this);
+    quantitySpin->setRange(1, 100);
+    quantitySpin->setValue(1);
+    form->addRow("Số lượng linh kiện (*):", quantitySpin);
+
+    auto* snLayout = new QHBoxLayout();
+    serialInput = new QLineEdit(this);
+    serialInput->setPlaceholderText(hubType == HubType::INBOUND
+        ? "Để trống để tự động sinh SN-XXXXXXX, hoặc nhập serial quét được"
+        : "Chọn serial từ danh sách bên dưới hoặc nhập serial cần xuất");
+    autoGenSerialBtn = new QPushButton("🎲 Tự sinh mã Serial", this);
+    connect(autoGenSerialBtn, &QPushButton::clicked, this, &UnitEntryDialog::onAutoGenerateSerial);
+    snLayout->addWidget(serialInput, 1);
+    snLayout->addWidget(autoGenSerialBtn);
+    form->addRow("Mã Serial linh kiện:", snLayout);
+
+    executeBtn = new QPushButton(hubType == HubType::INBOUND ? "📥 Nhận Linh Kiện Vào Kho" : "📤 Xuất Linh Kiện Khỏi Kho", this);
+    executeBtn->setObjectName("saveBtn");
+    executeBtn->setMinimumHeight(34);
+    connect(executeBtn, &QPushButton::clicked, this, &UnitEntryDialog::onExecuteUnitOperation);
+    form->addRow("", executeBtn);
+
+    mainLayout->addWidget(opGroup);
+
+    auto* previewLbl = new QLabel(hubType == HubType::INBOUND
+        ? "📋 Danh sách các linh kiện hiện có trong kho của sản phẩm này:"
+        : "📋 Danh sách linh kiện khả dụng để xuất (Click đúp để chọn serial):", this);
+    previewLbl->setStyleSheet("font-weight: 600; color: #334155;");
+    mainLayout->addWidget(previewLbl);
+
+    existingUnitsTable = new QTableWidget(this);
+    existingUnitsTable->setColumnCount(4);
+    existingUnitsTable->setHorizontalHeaderLabels({"Unit ID", "Mã Serial", "Trạng thái", "Sản phẩm"});
+    existingUnitsTable->setAlternatingRowColors(true);
+    existingUnitsTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    existingUnitsTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    existingUnitsTable->verticalHeader()->setVisible(false);
+    existingUnitsTable->horizontalHeader()->setStretchLastSection(true);
+    existingUnitsTable->setStyleSheet(
+        "QTableWidget { background-color: #ffffff; alternate-background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; }"
+        "QHeaderView::section { background-color: #f1f5f9; color: #334155; font-weight: 600; padding: 7px 10px; border: none; border-bottom: 2px solid #cbd5e1; }"
+    );
+    connect(existingUnitsTable, &QTableWidget::cellDoubleClicked, [this](int row, int) {
+        if (row >= 0 && row < existingUnitsTable->rowCount()) {
+            serialInput->setText(existingUnitsTable->item(row, 1)->text());
+        }
+    });
+    mainLayout->addWidget(existingUnitsTable, 1);
+
+    auto* bottomLayout = new QHBoxLayout();
+    bottomLayout->addStretch();
+    auto* closeBtn = new QPushButton("Đóng cửa sổ", this);
+    closeBtn->setObjectName("cancelBtn");
+    connect(closeBtn, &QPushButton::clicked, this, &QDialog::accept);
+    bottomLayout->addWidget(closeBtn);
+    mainLayout->addLayout(bottomLayout);
+}
+
+void UnitEntryDialog::loadLogisticsItems()
+{
+    if (!db) return;
+    items.clear();
+    productCombo->clear();
+
+    Table* prodTable = db->getTable("product");
+    if (!prodTable) return;
+
+    if (hubType == HubType::INBOUND) {
+        Table* delDetTable = db->getTable("delivery_detail");
+        if (!delDetTable) return;
+        for (const auto& r : delDetTable->getRows()) {
+            if (r.has("delivery_id") && std::holds_alternative<int>(r.get("delivery_id")) &&
+                std::get<int>(r.get("delivery_id")) == logId) {
+                int pid = std::get<int>(r.get("product_id"));
+                int recQty = std::get<int>(r.get("received_quantity"));
+                int actQty = std::get<int>(r.get("actual_quantity"));
+
+                QString pCode = QString::number(pid);
+                QString pName = "Sản phẩm " + QString::number(pid);
+                const Record* pRec = prodTable->getRecordById(pid);
+                if (pRec) {
+                    if (pRec->has("product_code") && std::holds_alternative<std::string>(pRec->get("product_code")))
+                        pCode = QString::fromStdString(std::get<std::string>(pRec->get("product_code")));
+                    if (pRec->has("product_name") && std::holds_alternative<std::string>(pRec->get("product_name")))
+                        pName = QString::fromStdString(std::get<std::string>(pRec->get("product_name")));
+                }
+
+                LogisticsItemInfo info;
+                info.productId = pid;
+                info.productCode = pCode;
+                info.productName = pName;
+                info.receivedQty = recQty;
+                info.actualQty = actQty;
+                info.remainingQty = std::max(0, recQty - actQty);
+                items.push_back(info);
+
+                productCombo->addItem(QString("%1 — %2 (Đã nhận %3/%4)").arg(pCode, pName).arg(actQty).arg(recQty), pid);
+            }
+        }
+    } else {
+        Table* shipDetTable = db->getTable("shipment_detail");
+        if (!shipDetTable) return;
+        for (const auto& r : shipDetTable->getRows()) {
+            if (r.has("shipment_id") && std::holds_alternative<int>(r.get("shipment_id")) &&
+                std::get<int>(r.get("shipment_id")) == logId) {
+                int pid = std::get<int>(r.get("product_id"));
+                int recQty = std::get<int>(r.get("received_quantity"));
+                int actQty = std::get<int>(r.get("actual_quantity"));
+
+                QString pCode = QString::number(pid);
+                QString pName = "Sản phẩm " + QString::number(pid);
+                const Record* pRec = prodTable->getRecordById(pid);
+                if (pRec) {
+                    if (pRec->has("product_code") && std::holds_alternative<std::string>(pRec->get("product_code")))
+                        pCode = QString::fromStdString(std::get<std::string>(pRec->get("product_code")));
+                    if (pRec->has("product_name") && std::holds_alternative<std::string>(pRec->get("product_name")))
+                        pName = QString::fromStdString(std::get<std::string>(pRec->get("product_name")));
+                }
+
+                LogisticsItemInfo info;
+                info.productId = pid;
+                info.productCode = pCode;
+                info.productName = pName;
+                info.receivedQty = recQty;
+                info.actualQty = actQty;
+                info.remainingQty = std::max(0, recQty - actQty);
+                items.push_back(info);
+
+                productCombo->addItem(QString("%1 — %2 (Đã xuất %3/%4)").arg(pCode, pName).arg(actQty).arg(recQty), pid);
+            }
+        }
+    }
+
+    if (!items.empty()) {
+        onProductChanged(0);
+    }
+}
+
+void UnitEntryDialog::onProductChanged(int index)
+{
+    if (index < 0 || index >= static_cast<int>(items.size())) return;
+    const auto& it = items[index];
+
+    progressLabel->setText(
+        QString("Đã thực hiện: %1 / %2 đơn vị (Còn lại cần nhận/xuất: %3 đơn vị)").arg(it.actualQty).arg(it.receivedQty).arg(it.remainingQty)
+    );
+
+    quantitySpin->setMaximum(std::max(1, it.remainingQty));
+    quantitySpin->setValue(std::min(1, it.remainingQty));
+
+    loadExistingUnitsForCurrentProduct();
+}
+
+void UnitEntryDialog::onAutoGenerateSerial()
+{
+    if (!db) return;
+    std::string sn = user_create::generateUniqueSerial(db);
+    serialInput->setText(QString::fromStdString(sn));
+}
+
+void UnitEntryDialog::loadExistingUnitsForCurrentProduct()
+{
+    if (!db || productCombo->currentIndex() < 0) return;
+    int pid = productCombo->currentData().toInt();
+
+    Table* unitTable = db->getTable("unit_inventory");
+    if (!unitTable) return;
+
+    std::vector<Record> matchingUnits;
+    for (const auto& r : unitTable->getRows()) {
+        if (r.has("product_id") && std::holds_alternative<int>(r.get("product_id")) &&
+            std::get<int>(r.get("product_id")) == pid) {
+            matchingUnits.push_back(r);
+        }
+    }
+
+    existingUnitsTable->setRowCount(static_cast<int>(matchingUnits.size()));
+    for (int r = 0; r < static_cast<int>(matchingUnits.size()); ++r) {
+        const auto& u = matchingUnits[r];
+        int uId = std::get<int>(u.get("unit_id"));
+        QString sn = QString::fromStdString(std::get<std::string>(u.get("serial")));
+        QString st = QString::fromStdString(std::get<std::string>(u.get("status")));
+
+        auto* itId = new QTableWidgetItem(QString::number(uId));
+        auto* itSn = new QTableWidgetItem(sn);
+        itSn->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
+        auto* itSt = new QTableWidgetItem(st);
+        if (st == "AVAILABLE") itSt->setForeground(QBrush(QColor("#16a34a")));
+        else if (st == "WARRANTY") itSt->setForeground(QBrush(QColor("#d97706")));
+        else if (st == "OUT") itSt->setForeground(QBrush(QColor("#dc2626")));
+
+        auto* itPid = new QTableWidgetItem(QString::number(pid));
+
+        existingUnitsTable->setItem(r, 0, itId);
+        existingUnitsTable->setItem(r, 1, itSn);
+        existingUnitsTable->setItem(r, 2, itSt);
+        existingUnitsTable->setItem(r, 3, itPid);
+    }
+    existingUnitsTable->resizeColumnsToContents();
+}
+
+void UnitEntryDialog::onExecuteUnitOperation()
+{
+    if (!db || productCombo->currentIndex() < 0) return;
+    int curIdx = productCombo->currentIndex();
+    int pid = items[curIdx].productId;
+    int qty = quantitySpin->value();
+
+    if (qty <= 0) {
+        QMessageBox::warning(this, "Số lượng không hợp lệ", "Số lượng linh kiện thao tác phải lớn hơn 0.");
+        return;
+    }
+
+    if (qty > items[curIdx].remainingQty) {
+        QMessageBox::warning(this, "Vượt quá số lượng đợt",
+            QString("Số lượng (%1) vượt quá số lượng còn lại cần xử lý của đợt (%2).").arg(qty).arg(items[curIdx].remainingQty));
+        return;
+    }
+
+    QString inputSn = serialInput->text().trimmed();
+
+    if (hubType == HubType::INBOUND) {
+        QString targetSt = targetStatusCombo->currentData().toString();
+        Vector<std::string> serials;
+        if (!inputSn.isEmpty()) {
+            serials.push_back(inputSn.toStdString());
+        }
+
+        OperationResult res = user_create::receiveUnitsForDelivery(
+            db, logId, pid, targetSt.toStdString(), qty, serials
+        );
+
+        if (!res.success) {
+            QMessageBox::critical(this, "Lỗi nhận linh kiện", QString::fromStdString(res.message));
+            return;
+        }
+
+        QMessageBox::information(this, "Thành công", QString::fromStdString(res.message));
+    } else {
+        if (inputSn.isEmpty()) {
+            QMessageBox::warning(this, "Thiếu mã Serial", "Vui lòng chọn hoặc nhập mã serial của linh kiện cần xuất kho (click đúp vào bảng bên dưới).");
+            return;
+        }
+
+        Vector<std::string> serials;
+        serials.push_back(inputSn.toStdString());
+
+        OperationResult res = user_update::dispatchUnitsForShipment(db, logId, pid, serials);
+        if (!res.success) {
+            QMessageBox::critical(this, "Lỗi xuất linh kiện", QString::fromStdString(res.message));
+            return;
+        }
+
+        QMessageBox::information(this, "Thành công", QString::fromStdString(res.message));
+    }
+
+    serialInput->clear();
+    loadLogisticsItems();
+    productCombo->setCurrentIndex(curIdx);
 }
