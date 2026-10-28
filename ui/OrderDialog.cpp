@@ -1,4 +1,4 @@
-﻿#include "OrderDialog.h"
+#include "OrderDialog.h"
 #include "CustomerDialog.h"
 #include "TableClipboardHelper.h"
 
@@ -16,6 +16,7 @@
 #include "schema/UserCreate.h"
 #include "schema/UserUpdate.h"
 #include "schema/UserQuery.h"
+#include "query/Query.h"
 
 
 #include <QStackedWidget>
@@ -276,9 +277,9 @@ QWidget* OrderDialog::createStep1Widget()
     customerCombo = new QComboBox(headerGroup);
     customerCombo->setEditable(true);
     customerCombo->setInsertPolicy(QComboBox::NoInsert);
-    if (customerCombo->completer()) {
-        customerCombo->completer()->setFilterMode(Qt::MatchContains);
-        customerCombo->completer()->setCaseSensitivity(Qt::CaseInsensitive);
+    if (customerCombo->lineEdit()) {
+        customerCombo->lineEdit()->setPlaceholderText("Gõ mã hoặc tên khách hàng/đối tác để tìm...");
+        customerCombo->lineEdit()->setClearButtonEnabled(true);
     }
 
     addCustomerBtn = new QPushButton("➕ Thêm KH mới", headerGroup);
@@ -347,9 +348,12 @@ QWidget* OrderDialog::createStep2Widget()
     productCombo = new QComboBox(itemsGroup);
     productCombo->setEditable(true);
     productCombo->setInsertPolicy(QComboBox::NoInsert);
-    if (productCombo->completer()) {
-        productCombo->completer()->setFilterMode(Qt::MatchContains);
-        productCombo->completer()->setCaseSensitivity(Qt::CaseInsensitive);
+    if (productCombo->lineEdit()) {
+        productCombo->lineEdit()->setPlaceholderText("Gõ mã SP, tên SP, Barcode hoặc SKU để tìm kiếm...");
+        productCombo->lineEdit()->setClearButtonEnabled(true);
+        connect(productCombo->lineEdit(), &QLineEdit::returnPressed, [this]() {
+            onAddLineItem();
+        });
     }
 
     quantitySpin = new QSpinBox(itemsGroup);
@@ -841,6 +845,21 @@ void OrderDialog::populateCustomers(const QString& selectCode)
     if (targetIdx >= 0) {
         customerCombo->setCurrentIndex(targetIdx);
     }
+
+    // Configure QCompleter AFTER items are inserted so MatchContains works reliably in Qt
+    auto* custCompleter = new QCompleter(customerCombo->model(), customerCombo);
+    custCompleter->setFilterMode(Qt::MatchContains);
+    custCompleter->setCaseSensitivity(Qt::CaseInsensitive);
+    custCompleter->setCompletionMode(QCompleter::PopupCompletion);
+    custCompleter->setMaxVisibleItems(10);
+    customerCombo->setCompleter(custCompleter);
+
+    connect(custCompleter, QOverload<const QModelIndex&>::of(&QCompleter::activated),
+            [this](const QModelIndex& index) {
+        if (index.isValid()) {
+            customerCombo->setCurrentIndex(index.row());
+        }
+    });
 }
 
 void OrderDialog::populateActiveProducts()
@@ -871,6 +890,8 @@ void OrderDialog::populateActiveProducts()
             ? QString::fromStdString(get<std::string>(r.get("product_code"))) : "";
         QString name = (r.has("product_name") && holds_alternative<std::string>(r.get("product_name")))
             ? QString::fromStdString(get<std::string>(r.get("product_name"))) : "";
+        QString sku = (r.has("sku") && holds_alternative<std::string>(r.get("sku")))
+            ? QString::fromStdString(get<std::string>(r.get("sku"))) : "";
 
         int avail = 0, wrt = 0, scr = 0;
         if (qtyTable) {
@@ -885,11 +906,28 @@ void OrderDialog::populateActiveProducts()
             }
         }
 
-        QString display = QString("[%1] %2  (Khả dụng: %3 | BH: %4 | Lỗi: %5)")
-                              .arg(code, name)
-                              .arg(avail).arg(wrt).arg(scr);
+        QString display = QString("[%1] %2").arg(code, name);
+        if (!sku.isEmpty()) {
+            display += QString(" | SKU: %1").arg(sku);
+        }
+        display += QString("  (Khả dụng: %1 | BH: %2 | Lỗi: %3)").arg(avail).arg(wrt).arg(scr);
         productCombo->addItem(display, pid);
     }
+
+    // Re-configure QCompleter AFTER items are inserted so MatchContains works reliably in Qt
+    auto* prodCompleter = new QCompleter(productCombo->model(), productCombo);
+    prodCompleter->setFilterMode(Qt::MatchContains);
+    prodCompleter->setCaseSensitivity(Qt::CaseInsensitive);
+    prodCompleter->setCompletionMode(QCompleter::PopupCompletion);
+    prodCompleter->setMaxVisibleItems(12);
+    productCombo->setCompleter(prodCompleter);
+
+    connect(prodCompleter, QOverload<const QModelIndex&>::of(&QCompleter::activated),
+            [this](const QModelIndex& index) {
+        if (index.isValid()) {
+            productCombo->setCurrentIndex(index.row());
+        }
+    });
 }
 
 void OrderDialog::onQuickAddCustomer()
@@ -914,21 +952,147 @@ void OrderDialog::onAddLineItem()
 
     int idx = productCombo->currentIndex();
     QString currentText = productCombo->currentText().trimmed();
-    if (idx < 0 || productCombo->itemText(idx) != currentText) {
+    bool isExactSelection = (idx >= 0 && productCombo->itemText(idx) == currentText);
+
+    if (!isExactSelection && !currentText.isEmpty()) {
         idx = -1;
-        for (int i = 0; i < productCombo->count(); ++i) {
-            if (productCombo->itemText(i).compare(currentText, Qt::CaseInsensitive) == 0 ||
-                productCombo->itemText(i).contains(currentText, Qt::CaseInsensitive)) {
-                idx = i;
-                break;
+        Table* prodTable = db->getTable("product");
+        int matchedPid = -1;
+        bool isSoldOut = false;
+
+        if (prodTable) {
+            std::string key = currentText.toStdString();
+
+            // 1. Tìm kiếm siêu tốc qua 3 Index băm (Hash Index) bằng Query::filterRecords (O(1))
+            // 1.1 Index trên product_code (uq_product_code)
+            Vector<Record> recs = Query::filterRecords(*prodTable, "product_code", Value(key));
+
+            // 1.2 Index trên barcode (uq_product_barcode)
+            if (recs.empty()) {
+                recs = Query::filterRecords(*prodTable, "barcode", Value(key));
+            }
+
+            // 1.3 Index trên sku (uq_product_sku)
+            if (recs.empty()) {
+                recs = Query::filterRecords(*prodTable, "sku", Value(key));
+            }
+
+            if (!recs.empty()) {
+                const Record& r = recs[0];
+                matchedPid = get<int>(r.get("product_id"));
+                if (r.has("is_sold") && holds_alternative<bool>(r.get("is_sold")) && !get<bool>(r.get("is_sold"))) {
+                    isSoldOut = true;
+                }
+            }
+
+            // 2. Nếu người dùng gõ chữ thường/hoa khác case, quét lại case-insensitive trên product_code / barcode / sku
+            const auto& rows = prodTable->getRows();
+            if (matchedPid <= 0) {
+                for (size_t i = 0; i < rows.size(); ++i) {
+                    if (prodTable->isRowDeleted(i)) continue;
+                    const Record& r = rows[i];
+                    if (r.has("product_code") && holds_alternative<std::string>(r.get("product_code"))) {
+                        if (QString::fromStdString(get<std::string>(r.get("product_code"))).compare(currentText, Qt::CaseInsensitive) == 0) {
+                            matchedPid = get<int>(r.get("product_id"));
+                            if (r.has("is_sold") && holds_alternative<bool>(r.get("is_sold")) && !get<bool>(r.get("is_sold"))) {
+                                isSoldOut = true;
+                            }
+                            break;
+                        }
+                    }
+                    if (r.has("barcode") && holds_alternative<std::string>(r.get("barcode"))) {
+                        if (QString::fromStdString(get<std::string>(r.get("barcode"))).compare(currentText, Qt::CaseInsensitive) == 0) {
+                            matchedPid = get<int>(r.get("product_id"));
+                            if (r.has("is_sold") && holds_alternative<bool>(r.get("is_sold")) && !get<bool>(r.get("is_sold"))) {
+                                isSoldOut = true;
+                            }
+                            break;
+                        }
+                    }
+                    if (r.has("sku") && holds_alternative<std::string>(r.get("sku"))) {
+                        if (QString::fromStdString(get<std::string>(r.get("sku"))).compare(currentText, Qt::CaseInsensitive) == 0) {
+                            matchedPid = get<int>(r.get("product_id"));
+                            if (r.has("is_sold") && holds_alternative<bool>(r.get("is_sold")) && !get<bool>(r.get("is_sold"))) {
+                                isSoldOut = true;
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // 3. Exact match on product_name (case-insensitive)
+            if (matchedPid <= 0) {
+                for (size_t i = 0; i < rows.size(); ++i) {
+                    if (prodTable->isRowDeleted(i)) continue;
+                    const Record& r = rows[i];
+                    if (r.has("product_name") && holds_alternative<std::string>(r.get("product_name"))) {
+                        if (QString::fromStdString(get<std::string>(r.get("product_name"))).compare(currentText, Qt::CaseInsensitive) == 0) {
+                            matchedPid = get<int>(r.get("product_id"));
+                            if (r.has("is_sold") && holds_alternative<bool>(r.get("is_sold")) && !get<bool>(r.get("is_sold"))) {
+                                isSoldOut = true;
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // 4. Substring match on product_code or product_name
+            if (matchedPid <= 0) {
+                for (size_t i = 0; i < rows.size(); ++i) {
+                    if (prodTable->isRowDeleted(i)) continue;
+                    const Record& r = rows[i];
+                    QString pCode = (r.has("product_code") && holds_alternative<std::string>(r.get("product_code")))
+                        ? QString::fromStdString(get<std::string>(r.get("product_code"))) : "";
+                    QString pName = (r.has("product_name") && holds_alternative<std::string>(r.get("product_name")))
+                        ? QString::fromStdString(get<std::string>(r.get("product_name"))) : "";
+                    if (pCode.contains(currentText, Qt::CaseInsensitive) || pName.contains(currentText, Qt::CaseInsensitive)) {
+                        matchedPid = get<int>(r.get("product_id"));
+                        if (r.has("is_sold") && holds_alternative<bool>(r.get("is_sold")) && !get<bool>(r.get("is_sold"))) {
+                            isSoldOut = true;
+                        }
+                        break;
+                    }
+                }
+            }
+
+            if (matchedPid > 0 && isSoldOut) {
+                QMessageBox::warning(this, "Sản phẩm ngừng kinh doanh",
+                    QString("Sản phẩm ID %1 đã ngừng kinh doanh (is_sold = false), không thể thêm vào đơn (Rule 4.2).").arg(matchedPid));
+                return;
+            }
+
+            if (matchedPid > 0) {
+                for (int i = 0; i < productCombo->count(); ++i) {
+                    if (productCombo->itemData(i).toInt() == matchedPid) {
+                        idx = i;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Fallback: search itemText in productCombo
+        if (idx < 0) {
+            for (int i = 0; i < productCombo->count(); ++i) {
+                if (productCombo->itemText(i).contains(currentText, Qt::CaseInsensitive)) {
+                    idx = i;
+                    break;
+                }
             }
         }
     }
 
     if (idx < 0) {
-        QMessageBox::warning(this, "Không tìm thấy sản phẩm", "Vui lòng chọn một sản phẩm hợp lệ từ danh sách sản phẩm đang kinh doanh.");
+        QMessageBox::warning(this, "Không tìm thấy sản phẩm",
+            QString("Không tìm thấy sản phẩm nào khớp với từ khóa: '%1'.\n"
+                    "Vui lòng nhập Mã sản phẩm, Tên sản phẩm, Mã vạch (Barcode) hoặc SKU hợp lệ.")
+                .arg(currentText));
         return;
     }
+
+    productCombo->setCurrentIndex(idx);
 
     int pid = productCombo->itemData(idx).toInt();
     int addQty = quantitySpin->value();
@@ -979,6 +1143,9 @@ void OrderDialog::onAddLineItem()
     quantitySpin->setValue(1);
     renderLineItems();
     renderMultiBatchTable();
+    if (productCombo->lineEdit()) {
+        productCombo->lineEdit()->selectAll();
+    }
 }
 
 void OrderDialog::removeLineItem(int row)

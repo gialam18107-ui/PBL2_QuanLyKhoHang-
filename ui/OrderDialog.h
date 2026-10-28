@@ -3,6 +3,7 @@
 
 #include <QDialog>
 #include <QComboBox>
+#include <QCompleter>
 #include <QDateEdit>
 #include <QLineEdit>
 #include <QSpinBox>
