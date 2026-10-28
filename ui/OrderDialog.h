@@ -30,6 +30,7 @@ public:
     ~OrderDialog() override = default;
 
     bool didCreateAuxCustomer() const { return auxCustomerCreated; }
+    QString getCreatedOrderCode() const { return createdOrderCode; }
 
 private:
     struct OrderLineItem {
@@ -91,6 +92,7 @@ private:
 
     std::vector<OrderLineItem> lineItems;
     std::vector<MultiBatchDef> scheduleBatches;
+    QString createdOrderCode;
 };
 
 /**
@@ -190,6 +192,8 @@ public:
     );
     ~LogisticsBatchDialog() override = default;
 
+    QString getCreatedBatchCode() const { return createdBatchCode; }
+
 private:
     struct BatchLineItem {
         int productId;
@@ -219,6 +223,7 @@ private:
     QDateEdit* expectedDateEdit;
     QTableWidget* itemsTable;
     std::vector<BatchLineItem> lineItems;
+    QString createdBatchCode;
 };
 
 /**
@@ -236,6 +241,8 @@ public:
         QWidget* parent = nullptr
     );
     ~UnitEntryDialog() override = default;
+
+    bool didModifyUnits() const { return hasModifiedUnits; }
 
 private:
     struct LogisticsItemInfo {
@@ -293,6 +300,7 @@ private:
 
     std::vector<LogisticsItemInfo> items;
     std::vector<UnitRowInfo> cachedUnits;
+    bool hasModifiedUnits = false;
 };
 
 #endif // ORDER_DIALOG_H

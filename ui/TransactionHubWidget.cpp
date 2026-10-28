@@ -4,6 +4,7 @@
 #include "ui/OrderDialog.h"
 
 #include <QHeaderView>
+#include <QScrollBar>
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QFile>
@@ -976,25 +977,69 @@ void TransactionHubWidget::setFilterCallback(FilterCallback callback)
 
 void TransactionHubWidget::setData(const Vector<Record>& records)
 {
-    cachedTransactions = records;
-    currentSortColumn = -1;
-    currentSortAscending = true;
-    masterTable->horizontalHeader()->setSortIndicator(-1, Qt::AscendingOrder);
+    // 1. Identify target order code to retain selection
+    std::string targetOrderCode = currentOrderCode;
+    if (targetOrderCode.empty() && masterTable && masterTable->currentRow() >= 0 && masterTable->item(masterTable->currentRow(), 0)) {
+        targetOrderCode = masterTable->item(masterTable->currentRow(), 0)->text().toStdString();
+    }
 
+    int savedVScroll = (masterTable && masterTable->verticalScrollBar()) ? masterTable->verticalScrollBar()->value() : 0;
+
+    // 2. Update cache and re-apply sort if active
+    cachedTransactions = records;
+    if (currentSortColumn >= 0 && currentSortColumn < static_cast<int>(masterKeys.size())) {
+        user_query::sort_query_results(cachedTransactions, masterKeys[currentSortColumn], currentSortAscending);
+        masterTable->horizontalHeader()->setSortIndicator(currentSortColumn, currentSortAscending ? Qt::AscendingOrder : Qt::DescendingOrder);
+    } else {
+        masterTable->horizontalHeader()->setSortIndicator(-1, Qt::AscendingOrder);
+    }
+
+    // 3. Render rows
     renderMasterRows();
 
-    // Auto-select first row if available
-    if (masterTable->rowCount() > 0) {
-        masterTable->selectRow(0);
-        onTransactionSelected(0);
+    // 4. Look for targetOrderCode in masterTable
+    int matchedRow = -1;
+    if (!targetOrderCode.empty()) {
+        for (int r = 0; r < masterTable->rowCount(); ++r) {
+            QTableWidgetItem* it = masterTable->item(r, 0);
+            if (it && it->text().toStdString() == targetOrderCode) {
+                matchedRow = r;
+                break;
+            }
+        }
+    }
+
+    // 5. Restore selection or fallback to first visible row
+    if (matchedRow >= 0) {
+        masterTable->selectRow(matchedRow);
+        if (masterTable->verticalScrollBar()) {
+            masterTable->verticalScrollBar()->setValue(savedVScroll);
+        }
+        masterTable->scrollToItem(masterTable->item(matchedRow, 0));
+        onTransactionSelected(matchedRow);
     } else {
-        detailBanner->setText("📌 Không có đơn hàng nào.");
-        cachedOrderDetails.clear();
-        cachedLogistics.clear();
-        cachedLogisticsDetails.clear();
-        renderOrderDetails();
-        renderLogisticsBatches();
-        renderLogisticsDetails();
+        int firstVisible = -1;
+        for (int r = 0; r < masterTable->rowCount(); ++r) {
+            if (!masterTable->isRowHidden(r)) {
+                firstVisible = r;
+                break;
+            }
+        }
+
+        if (firstVisible >= 0) {
+            masterTable->selectRow(firstVisible);
+            onTransactionSelected(firstVisible);
+        } else {
+            currentOrderCode.clear();
+            currentLogisticsCode.clear();
+            detailBanner->setText("📌 Không có đơn hàng nào.");
+            cachedOrderDetails.clear();
+            cachedLogistics.clear();
+            cachedLogisticsDetails.clear();
+            renderOrderDetails();
+            renderLogisticsBatches();
+            renderLogisticsDetails();
+        }
     }
 }
 
@@ -1209,6 +1254,12 @@ void TransactionHubWidget::loadOrderDetails(const std::string& orderCode)
         user_query::outbound_detail_query(db, cachedOrderDetails, "outbound_code", Value(orderCode));
     }
 
+    if (currentDetailSortCol >= 0 && currentDetailSortCol < 5) {
+        const string detailKeys[] = {"product.product_code", "product.product_name", "ordered_quantity", "actual_quantity", "actual_quantity"};
+        user_query::sort_query_results(cachedOrderDetails, detailKeys[currentDetailSortCol], currentDetailSortAsc);
+        orderDetailTable->horizontalHeader()->setSortIndicator(currentDetailSortCol, currentDetailSortAsc ? Qt::AscendingOrder : Qt::DescendingOrder);
+    }
+
     renderOrderDetails();
 }
 
@@ -1286,21 +1337,55 @@ void TransactionHubWidget::renderOrderDetails()
 void TransactionHubWidget::loadLogisticsBatches(const std::string& orderCode)
 {
     if (!db || orderCode.empty()) return;
-    cachedLogistics.clear();
 
+    std::string targetBatchCode = currentLogisticsCode;
+    int savedVScroll = (logisticsTable && logisticsTable->verticalScrollBar()) ? logisticsTable->verticalScrollBar()->value() : 0;
+
+    cachedLogistics.clear();
     if (hubType == HubType::INBOUND) {
         user_query::delivery_query(db, cachedLogistics, "inbound_code", Value(orderCode));
     } else {
         user_query::shipment_query(db, cachedLogistics, "outbound_code", Value(orderCode));
     }
 
+    if (currentLogisticsSortCol >= 0 && currentLogisticsSortCol < 4) {
+        string logKeys[4];
+        if (hubType == HubType::INBOUND) {
+            logKeys[0] = "delivery.delivery_code"; logKeys[1] = "delivery.expected_at";
+            logKeys[2] = "delivery.delivery_at"; logKeys[3] = "delivery.status";
+        } else {
+            logKeys[0] = "shipment.shipment_code"; logKeys[1] = "shipment.expected_at";
+            logKeys[2] = "shipment.ship_at"; logKeys[3] = "shipment.status";
+        }
+        user_query::sort_query_results(cachedLogistics, logKeys[currentLogisticsSortCol], currentLogisticsSortAsc);
+        logisticsTable->horizontalHeader()->setSortIndicator(currentLogisticsSortCol, currentLogisticsSortAsc ? Qt::AscendingOrder : Qt::DescendingOrder);
+    }
+
     renderLogisticsBatches();
 
-    // Auto-select first batch if available
-    if (logisticsTable->rowCount() > 0) {
+    int matchedBatchRow = -1;
+    if (!targetBatchCode.empty()) {
+        for (int r = 0; r < logisticsTable->rowCount(); ++r) {
+            QTableWidgetItem* it = logisticsTable->item(r, 0);
+            if (it && it->text().toStdString() == targetBatchCode) {
+                matchedBatchRow = r;
+                break;
+            }
+        }
+    }
+
+    if (matchedBatchRow >= 0) {
+        logisticsTable->selectRow(matchedBatchRow);
+        if (logisticsTable->verticalScrollBar()) {
+            logisticsTable->verticalScrollBar()->setValue(savedVScroll);
+        }
+        logisticsTable->scrollToItem(logisticsTable->item(matchedBatchRow, 0));
+        onLogisticsSelected(matchedBatchRow);
+    } else if (logisticsTable->rowCount() > 0) {
         logisticsTable->selectRow(0);
         onLogisticsSelected(0);
     } else {
+        currentLogisticsCode.clear();
         cachedLogisticsDetails.clear();
         renderLogisticsDetails();
     }
@@ -1399,6 +1484,12 @@ void TransactionHubWidget::loadLogisticsDetails(const std::string& logisticsCode
         user_query::delivery_detail_query(db, cachedLogisticsDetails, "delivery_code", Value(logisticsCode));
     } else {
         user_query::shipment_detail_query(db, cachedLogisticsDetails, "shipment_code", Value(logisticsCode));
+    }
+
+    if (currentLogisticsDetailSortCol >= 0 && currentLogisticsDetailSortCol < 4) {
+        const string logDetailKeys[] = {"product.product_code", "product.product_name", "received_quantity", "actual_quantity"};
+        user_query::sort_query_results(cachedLogisticsDetails, logDetailKeys[currentLogisticsDetailSortCol], currentLogisticsDetailSortAsc);
+        logisticsDetailTable->horizontalHeader()->setSortIndicator(currentLogisticsDetailSortCol, currentLogisticsDetailSortAsc ? Qt::AscendingOrder : Qt::DescendingOrder);
     }
 
     renderLogisticsDetails();
@@ -1547,6 +1638,9 @@ void TransactionHubWidget::onCreateOrderClicked()
     OrderDialog dlg(hubType, db, this);
     int rc = dlg.exec();
     if (rc == QDialog::Accepted) {
+        if (!dlg.getCreatedOrderCode().isEmpty()) {
+            currentOrderCode = dlg.getCreatedOrderCode().toStdString();
+        }
         if (onDataChanged) {
             onDataChanged(hubType == HubType::INBOUND
                 ? "Đã tạo mới đơn nhập kho kèm đợt nhận hàng đầu tiên"
@@ -1606,6 +1700,7 @@ void TransactionHubWidget::onUpdateOrderStatusClicked()
 
     TransactionStatusDialog dlg(hubType, db, txnId, orderCode, custCode, orderDate, status, this);
     if (dlg.exec() == QDialog::Accepted) {
+        currentOrderCode = orderCode.toStdString();
         if (onDataChanged) {
             onDataChanged(QString("Đã cập nhật trạng thái đơn %1").arg(orderCode));
         } else if (onRefresh) {
@@ -1691,6 +1786,8 @@ void TransactionHubWidget::onUpdateLogisticsClicked()
 
     LogisticsUpdateDialog dlg(hubType, db, logId, batchCode, parentCode, expDate, actDate, status, this);
     if (dlg.exec() == QDialog::Accepted) {
+        currentOrderCode = parentCode.toStdString();
+        currentLogisticsCode = batchCode.toStdString();
         if (onDataChanged) {
             onDataChanged(QString("Đã cập nhật tiến độ đợt vận chuyển %1").arg(batchCode));
         } else if (onRefresh) {
@@ -1803,12 +1900,15 @@ void TransactionHubWidget::onAddLogisticsBatchClicked()
 
     LogisticsBatchDialog dlg(hubType, db, txnId, orderCode, orderDate, this);
     if (dlg.exec() == QDialog::Accepted) {
+        currentOrderCode = orderCode.toStdString();
+        if (!dlg.getCreatedBatchCode().isEmpty()) {
+            currentLogisticsCode = dlg.getCreatedBatchCode().toStdString();
+        }
         if (onDataChanged) {
             onDataChanged(QString("Đã thêm đợt giao nhận mới cho đơn %1").arg(orderCode));
         } else if (onRefresh) {
             onRefresh();
         }
-        loadLogisticsBatches(orderCode.toStdString());
     }
 }
 
@@ -1859,14 +1959,10 @@ void TransactionHubWidget::onManageUnitsClicked()
     }
 
     UnitEntryDialog dlg(hubType, db, logId, batchCode, parentCode, this);
-    if (dlg.exec() == QDialog::Accepted || true) {
-        if (!currentOrderCode.empty()) {
-            loadOrderDetails(currentOrderCode);
-            loadLogisticsBatches(currentOrderCode);
-        }
-        if (!currentLogisticsCode.empty()) {
-            loadLogisticsDetails(currentLogisticsCode);
-        }
+    dlg.exec();
+    if (dlg.didModifyUnits()) {
+        currentOrderCode = parentCode.toStdString();
+        currentLogisticsCode = batchCode.toStdString();
         if (onDataChanged) {
             onDataChanged(QString("Cập nhật linh kiện đợt %1 thành công").arg(batchCode));
         } else if (onRefresh) {

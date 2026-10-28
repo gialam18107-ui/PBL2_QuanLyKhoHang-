@@ -820,6 +820,21 @@ void OrderDialog::onSaveOrder()
         return;
     }
 
+    size_t pos = res.message.rfind(": ");
+    if (pos != std::string::npos) {
+        createdOrderCode = QString::fromStdString(res.message.substr(pos + 2)).trimmed();
+    }
+    if (createdOrderCode.isEmpty() && db) {
+        Table* tbl = db->getTable(hubType == HubType::INBOUND ? "inbound_transaction" : "outbound_transaction");
+        if (tbl && !tbl->getRows().empty()) {
+            const Record& r = tbl->getRows().back();
+            std::string col = (hubType == HubType::INBOUND) ? "inbound_code" : "outbound_code";
+            if (r.has(col) && holds_alternative<std::string>(r.get(col))) {
+                createdOrderCode = QString::fromStdString(get<std::string>(r.get(col)));
+            }
+        }
+    }
+
     QMessageBox::information(this, "Thành công", QString::fromStdString(res.message));
     accept();
 }
@@ -1613,6 +1628,21 @@ void LogisticsBatchDialog::onSave()
         return;
     }
 
+    size_t pos = res.message.rfind(": ");
+    if (pos != std::string::npos) {
+        createdBatchCode = QString::fromStdString(res.message.substr(pos + 2)).trimmed();
+    }
+    if (createdBatchCode.isEmpty() && db) {
+        Table* tbl = db->getTable(hubType == HubType::INBOUND ? "delivery" : "shipment");
+        if (tbl && !tbl->getRows().empty()) {
+            const Record& r = tbl->getRows().back();
+            std::string col = (hubType == HubType::INBOUND) ? "delivery_code" : "shipment_code";
+            if (r.has(col) && holds_alternative<std::string>(r.get(col))) {
+                createdBatchCode = QString::fromStdString(get<std::string>(r.get(col)));
+            }
+        }
+    }
+
     QMessageBox::information(this, "Thành công", QString::fromStdString(res.message));
     accept();
 }
@@ -2223,6 +2253,7 @@ void UnitEntryDialog::onExecuteUnitOperation()
             return;
         }
 
+        hasModifiedUnits = true;
         QMessageBox::information(this, "Thành công", QString::fromStdString(res.message));
         if (serialInput) serialInput->clear();
     } else {
@@ -2304,6 +2335,7 @@ void UnitEntryDialog::onExecuteUnitOperation()
             return;
         }
 
+        hasModifiedUnits = true;
         QMessageBox::information(this, "Thành công", QString::fromStdString(res.message));
         if (serialInput) serialInput->clear();
     }

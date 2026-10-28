@@ -2,6 +2,7 @@
 #include "schema/UserQuery.h"
 
 #include <QHeaderView>
+#include <QScrollBar>
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QFile>
@@ -612,12 +613,47 @@ void QueryTableWidget::resetFilter()
 
 void QueryTableWidget::setData(const Vector<Record>& records)
 {
+    int prevRow = tableWidget ? tableWidget->currentRow() : -1;
+    QString savedKeyVal;
+    if (tableWidget && prevRow >= 0 && prevRow < tableWidget->rowCount() && tableWidget->item(prevRow, 0)) {
+        savedKeyVal = tableWidget->item(prevRow, 0)->text();
+    }
+    int savedVScroll = (tableWidget && tableWidget->verticalScrollBar()) ? tableWidget->verticalScrollBar()->value() : 0;
+
     cachedRecords = records;
-    currentSortColumn = -1;
-    currentSortAscending = true;
-    tableWidget->horizontalHeader()->setSortIndicator(-1, Qt::AscendingOrder);
+    if (currentSortColumn >= 0 && currentSortColumn < static_cast<int>(keys.size())) {
+        user_query::sort_query_results(cachedRecords, keys[currentSortColumn], currentSortAscending);
+        tableWidget->horizontalHeader()->setSortIndicator(currentSortColumn, currentSortAscending ? Qt::AscendingOrder : Qt::DescendingOrder);
+    } else {
+        tableWidget->horizontalHeader()->setSortIndicator(-1, Qt::AscendingOrder);
+    }
 
     renderRows();
+
+    int targetRow = -1;
+    if (!savedKeyVal.isEmpty()) {
+        for (int r = 0; r < tableWidget->rowCount(); ++r) {
+            QTableWidgetItem* it = tableWidget->item(r, 0);
+            if (it && it->text() == savedKeyVal) {
+                targetRow = r;
+                break;
+            }
+        }
+    }
+
+    if (targetRow >= 0) {
+        tableWidget->selectRow(targetRow);
+        if (tableWidget->verticalScrollBar()) {
+            tableWidget->verticalScrollBar()->setValue(savedVScroll);
+        }
+        tableWidget->scrollToItem(tableWidget->item(targetRow, 0));
+    } else if (prevRow >= 0 && prevRow < tableWidget->rowCount()) {
+        tableWidget->selectRow(prevRow);
+        if (tableWidget->verticalScrollBar()) {
+            tableWidget->verticalScrollBar()->setValue(savedVScroll);
+        }
+        tableWidget->scrollToItem(tableWidget->item(prevRow, 0));
+    }
 }
 
 void QueryTableWidget::renderRows()
