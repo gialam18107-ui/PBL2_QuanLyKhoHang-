@@ -183,24 +183,32 @@ namespace DataIO
 
         file << CSVHelper::formatLine(headerNames) << "\n";
 
-        for (const auto& record : table.getRows())
+        const auto& rows = table.getRows();
+        for (size_t i = 0; i < rows.size(); ++i)
         {
-            Vector<string> rowFields;
-            for (const auto& col : columns)
+            // Check if record is deleted before writing
+            if (table.isRowDeleted(i))
             {
-                if (record.has(col.getName()))
-                {
-                    Value val = record.get(col.getName());
-                    rowFields.push_back(valueToString(val));
-                }
-                else
-                {
-                    rowFields.push_back("");
-                }
+                continue;
             }
-            file << CSVHelper::formatLine(rowFields) << "\n";
+            file << CSVHelper::formatLine(rows[i], columns) << "\n";
         }
 
         return true;
+    }
+
+    string TableIO::formatLine(const Record& record, const Vector<string>& columns)
+    {
+        return CSVHelper::formatLine(record, columns);
+    }
+
+    string TableIO::formatLine(const Record& record, const Vector<Column>& columns)
+    {
+        return CSVHelper::formatLine(record, columns);
+    }
+
+    string TableIO::formatLine(const Record& record)
+    {
+        return CSVHelper::formatLine(record);
     }
 }
