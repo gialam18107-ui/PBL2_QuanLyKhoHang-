@@ -7,6 +7,8 @@
 #include <QLineEdit>
 #include <QSpinBox>
 #include <QCheckBox>
+#include <QRadioButton>
+#include <QStackedWidget>
 #include <QPushButton>
 #include <QTableWidget>
 #include <QLabel>
@@ -65,9 +67,27 @@ private:
     void onRemoveScheduleBatch();
     void renderMultiBatchTable();
 
+    // Wizard navigation helpers
+    void goToStep(int stepIndex);
+    bool validateCurrentStep();
+    void updateStepBar();
+    QWidget* createStep1Widget();
+    QWidget* createStep2Widget();
+    QWidget* createStep3Widget();
+
     HubType hubType;
     Database* db;
     bool auxCustomerCreated;
+
+    // Wizard navigation controls
+    QStackedWidget* stepStack;
+    QPushButton* step1Btn;
+    QPushButton* step2Btn;
+    QPushButton* step3Btn;
+    QPushButton* prevBtn;
+    QPushButton* nextBtn;
+    QPushButton* saveBtn;
+    QPushButton* cancelBtn;
 
     QComboBox* typeCombo;
     QComboBox* customerCombo;
@@ -82,8 +102,12 @@ private:
     QTableWidget* itemsTable;
     QLabel* itemsSummaryLabel;
 
-    // Multi-batch logistics allocation controls (Rule 4.3)
-    QCheckBox* multiBatchCheck;
+
+    // Logistics allocation controls (Rule 4.3)
+    QRadioButton* singleBatchRadio;
+    QRadioButton* multiBatchRadio;
+    QWidget* singleBatchContainer;
+    QLabel* singleBatchSummaryLabel;
     QWidget* multiBatchContainer;
     QTableWidget* multiBatchTable;
     QPushButton* addBatchBtn;

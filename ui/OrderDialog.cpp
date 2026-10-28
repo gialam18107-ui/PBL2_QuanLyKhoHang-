@@ -1,4 +1,4 @@
-#include "OrderDialog.h"
+﻿#include "OrderDialog.h"
 #include "CustomerDialog.h"
 #include "TableClipboardHelper.h"
 
@@ -17,6 +17,12 @@
 #include "schema/UserUpdate.h"
 #include "schema/UserQuery.h"
 
+
+#include <QStackedWidget>
+#include <QRadioButton>
+#include <QButtonGroup>
+#include <QStyle>
+
 static QString commonDialogStyleSheet()
 {
     return
@@ -28,7 +34,7 @@ static QString commonDialogStyleSheet()
         "  border: 1px solid #cbd5e1;"
         "  border-radius: 8px;"
         "  margin-top: 10px;"
-        "  padding: 14px 12px 10px 12px;"
+        "  padding: 14px 14px 12px 14px;"
         "  background-color: #ffffff;"
         "}"
         "QGroupBox::title {"
@@ -48,6 +54,16 @@ static QString commonDialogStyleSheet()
         "}"
         "QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDateEdit:focus { border: 1.5px solid #2563eb; }"
         "QPushButton#saveBtn {"
+        "  background-color: #16a34a;"
+        "  color: #ffffff;"
+        "  font-weight: 600;"
+        "  font-size: 13px;"
+        "  padding: 8px 22px;"
+        "  border: none;"
+        "  border-radius: 6px;"
+        "}"
+        "QPushButton#saveBtn:hover { background-color: #15803d; }"
+        "QPushButton#nextBtn {"
         "  background-color: #2563eb;"
         "  color: #ffffff;"
         "  font-weight: 600;"
@@ -56,16 +72,26 @@ static QString commonDialogStyleSheet()
         "  border: none;"
         "  border-radius: 6px;"
         "}"
-        "QPushButton#saveBtn:hover { background-color: #1d4ed8; }"
-        "QPushButton#cancelBtn {"
+        "QPushButton#nextBtn:hover { background-color: #1d4ed8; }"
+        "QPushButton#prevBtn {"
         "  background-color: #f1f5f9;"
-        "  color: #475569;"
+        "  color: #334155;"
+        "  font-weight: 600;"
         "  font-size: 13px;"
         "  padding: 8px 18px;"
         "  border: 1px solid #cbd5e1;"
         "  border-radius: 6px;"
         "}"
-        "QPushButton#cancelBtn:hover { background-color: #e2e8f0; }"
+        "QPushButton#prevBtn:hover { background-color: #e2e8f0; }"
+        "QPushButton#cancelBtn {"
+        "  background-color: #f1f5f9;"
+        "  color: #64748b;"
+        "  font-size: 13px;"
+        "  padding: 8px 18px;"
+        "  border: 1px solid #cbd5e1;"
+        "  border-radius: 6px;"
+        "}"
+        "QPushButton#cancelBtn:hover { background-color: #e2e8f0; color: #0f172a; }"
         "QPushButton#auxBtn {"
         "  background-color: #e0e7ff;"
         "  color: #3730a3;"
@@ -75,34 +101,60 @@ static QString commonDialogStyleSheet()
         "  border: 1px solid #c7d2fe;"
         "  border-radius: 6px;"
         "}"
-        "QPushButton#auxBtn:hover { background-color: #c7d2fe; }";
+        "QPushButton#auxBtn:hover { background-color: #c7d2fe; }"
+        "QPushButton#stepBtnActive {"
+        "  background-color: #2563eb;"
+        "  color: #ffffff;"
+        "  font-size: 12px;"
+        "  font-weight: 700;"
+        "  padding: 6px 16px;"
+        "  border: 1px solid #1d4ed8;"
+        "  border-radius: 16px;"
+        "}"
+        "QPushButton#stepBtnInactive {"
+        "  background-color: #f8fafc;"
+        "  color: #64748b;"
+        "  font-size: 12px;"
+        "  font-weight: 600;"
+        "  padding: 6px 16px;"
+        "  border: 1px solid #cbd5e1;"
+        "  border-radius: 16px;"
+        "}"
+        "QPushButton#stepBtnInactive:hover { background-color: #e2e8f0; color: #1e293b; }"
+        "QRadioButton { font-size: 13px; font-weight: 600; color: #1e293b; spacing: 8px; }"
+        "QRadioButton::indicator { width: 16px; height: 16px; }";
 }
 
 // ============================================================================
-// 1. OrderDialog (Coupled Inbound / Outbound Creation - Rule 4.3, 4.4, 6.3.1)
+// 1. OrderDialog (Wizard-based Coupled Creation - Rule 4.3, 4.4, 6.3.1)
 // ============================================================================
 
 OrderDialog::OrderDialog(HubType type, Database* database, QWidget* parent)
     : QDialog(parent), hubType(type), db(database), auxCustomerCreated(false),
+      stepStack(nullptr), step1Btn(nullptr), step2Btn(nullptr), step3Btn(nullptr),
+      prevBtn(nullptr), nextBtn(nullptr), saveBtn(nullptr), cancelBtn(nullptr),
       typeCombo(nullptr), customerCombo(nullptr), addCustomerBtn(nullptr),
       orderDateEdit(nullptr), expectedDateEdit(nullptr), noteEdit(nullptr),
       productCombo(nullptr), quantitySpin(nullptr), addItemBtn(nullptr),
       itemsTable(nullptr), itemsSummaryLabel(nullptr),
-      multiBatchCheck(nullptr), multiBatchContainer(nullptr),
-      multiBatchTable(nullptr), addBatchBtn(nullptr), removeBatchBtn(nullptr),
+      singleBatchRadio(nullptr), multiBatchRadio(nullptr),
+      singleBatchContainer(nullptr), singleBatchSummaryLabel(nullptr),
+      multiBatchContainer(nullptr), multiBatchTable(nullptr),
+      addBatchBtn(nullptr), removeBatchBtn(nullptr),
       multiBatchStatusLabel(nullptr)
 {
     setWindowTitle(hubType == HubType::INBOUND
-        ? "Tạo Đơn Nhập Kho & Đợt Giao Nhận Đầu Tiên (Coupled Inbound Order)"
-        : "Tạo Đơn Xuất Kho & Đợt Xuất Hàng Đầu Tiên (Coupled Outbound Order)");
-    resize(920, 720);
-    setMinimumSize(780, 600);
+        ? "Tạo Đơn Nhập Kho & Đợt Giao Nhận (Inbound Order Wizard)"
+        : "Tạo Đơn Xuất Kho & Đợt Xuất Hàng (Outbound Order Wizard)");
+    resize(880, 620);
+    setMinimumSize(780, 520);
 
     setupUI();
     populateOrderTypes();
     populateCustomers();
     populateActiveProducts();
     renderLineItems();
+    goToStep(0);
 }
 
 void OrderDialog::setupUI()
@@ -111,8 +163,9 @@ void OrderDialog::setupUI()
 
     auto* mainLayout = new QVBoxLayout(this);
     mainLayout->setContentsMargins(18, 16, 18, 16);
-    mainLayout->setSpacing(12);
+    mainLayout->setSpacing(10);
 
+    // 1. Header Title & Description
     auto* titleLbl = new QLabel(
         hubType == HubType::INBOUND
             ? "📥 Tạo Đơn Nhập Kho Kèm Đợt Giao Nhận (Inbound + Delivery)"
@@ -123,26 +176,102 @@ void OrderDialog::setupUI()
 
     auto* descLbl = new QLabel(
         hubType == HubType::INBOUND
-            ? "Khởi tạo đồng thời đơn nhập kho (PENDING) và đợt nhận hàng (EXPECTED). Chỉ hiển thị các sản phẩm đang kinh doanh (is_sold = TRUE)."
-            : "Khởi tạo đồng thời đơn xuất kho (PENDING) và đợt xuất hàng (PENDING). Kiểm tra tồn kho khả dụng tự động theo loại đơn (Rule 4.4).",
+            ? "Quy trình 3 bước: Thông tin đơn ➔ Chọn mặt hàng ➔ Lập đợt giao nhận (Rule 4.3). Đảm bảo tính toàn vẹn CSDL."
+            : "Quy trình 3 bước: Thông tin đơn ➔ Chọn mặt hàng (kiểm tra tồn khả dụng) ➔ Lập đợt xuất hàng (Rule 4.3 & 4.4).",
         this
     );
     descLbl->setStyleSheet("font-size: 12px; color: #64748b;");
     mainLayout->addWidget(titleLbl);
     mainLayout->addWidget(descLbl);
 
-    // Group 1: Order Header
-    auto* headerGroup = new QGroupBox("1. Thông tin chung của đơn giao dịch", this);
-    auto* grid = new QGridLayout(headerGroup);
-    grid->setContentsMargins(14, 16, 14, 12);
-    grid->setHorizontalSpacing(14);
-    grid->setVerticalSpacing(10);
+    // 2. Stepper Navigation Bar
+    auto* stepBarLayout = new QHBoxLayout();
+    stepBarLayout->setSpacing(10);
 
-    typeCombo = new QComboBox(this);
-    grid->addWidget(new QLabel("Loại giao dịch (*):", this), 0, 0);
+    step1Btn = new QPushButton("1. Thông tin chung", this);
+    step1Btn->setCursor(Qt::PointingHandCursor);
+    connect(step1Btn, &QPushButton::clicked, [this]() { goToStep(0); });
+
+    step2Btn = new QPushButton("2. Chọn mặt hàng", this);
+    step2Btn->setCursor(Qt::PointingHandCursor);
+    connect(step2Btn, &QPushButton::clicked, [this]() { goToStep(1); });
+
+    step3Btn = new QPushButton("3. Lịch giao nhận (Logistics)", this);
+    step3Btn->setCursor(Qt::PointingHandCursor);
+    connect(step3Btn, &QPushButton::clicked, [this]() { goToStep(2); });
+
+    stepBarLayout->addWidget(step1Btn);
+    stepBarLayout->addWidget(step2Btn);
+    stepBarLayout->addWidget(step3Btn);
+    mainLayout->addLayout(stepBarLayout);
+
+    // 3. Multi-page Stack
+    stepStack = new QStackedWidget(this);
+    stepStack->addWidget(createStep1Widget());
+    stepStack->addWidget(createStep2Widget());
+    stepStack->addWidget(createStep3Widget());
+    mainLayout->addWidget(stepStack, 1);
+
+    // 4. Bottom Action Bar
+    auto* btnLayout = new QHBoxLayout();
+    btnLayout->setSpacing(10);
+
+    cancelBtn = new QPushButton("Hủy bỏ", this);
+    cancelBtn->setObjectName("cancelBtn");
+    cancelBtn->setCursor(Qt::PointingHandCursor);
+    connect(cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
+    btnLayout->addWidget(cancelBtn);
+
+    btnLayout->addStretch();
+
+    prevBtn = new QPushButton("⬅ Quay lại", this);
+    prevBtn->setObjectName("prevBtn");
+    prevBtn->setCursor(Qt::PointingHandCursor);
+    connect(prevBtn, &QPushButton::clicked, [this]() {
+        goToStep(stepStack->currentIndex() - 1);
+    });
+    btnLayout->addWidget(prevBtn);
+
+    nextBtn = new QPushButton("Tiếp theo ➔", this);
+    nextBtn->setObjectName("nextBtn");
+    nextBtn->setCursor(Qt::PointingHandCursor);
+    connect(nextBtn, &QPushButton::clicked, [this]() {
+        goToStep(stepStack->currentIndex() + 1);
+    });
+    btnLayout->addWidget(nextBtn);
+
+    saveBtn = new QPushButton(
+        hubType == HubType::INBOUND ? "💾 Xác nhận tạo Đơn Nhập" : "💾 Xác nhận tạo Đơn Xuất",
+        this
+    );
+    saveBtn->setObjectName("saveBtn");
+    saveBtn->setCursor(Qt::PointingHandCursor);
+    connect(saveBtn, &QPushButton::clicked, [this]() {
+        onSaveOrder();
+    });
+    btnLayout->addWidget(saveBtn);
+
+    mainLayout->addLayout(btnLayout);
+}
+
+QWidget* OrderDialog::createStep1Widget()
+{
+    auto* page = new QWidget(this);
+    auto* pageLayout = new QVBoxLayout(page);
+    pageLayout->setContentsMargins(0, 4, 0, 0);
+    pageLayout->setSpacing(12);
+
+    auto* headerGroup = new QGroupBox("1. Thông tin chung của đơn giao dịch", page);
+    auto* grid = new QGridLayout(headerGroup);
+    grid->setContentsMargins(16, 18, 16, 16);
+    grid->setHorizontalSpacing(14);
+    grid->setVerticalSpacing(12);
+
+    typeCombo = new QComboBox(headerGroup);
+    grid->addWidget(new QLabel("Loại giao dịch (*):", headerGroup), 0, 0);
     grid->addWidget(typeCombo, 0, 1, 1, 3);
 
-    customerCombo = new QComboBox(this);
+    customerCombo = new QComboBox(headerGroup);
     customerCombo->setEditable(true);
     customerCombo->setInsertPolicy(QComboBox::NoInsert);
     if (customerCombo->completer()) {
@@ -150,8 +279,9 @@ void OrderDialog::setupUI()
         customerCombo->completer()->setCaseSensitivity(Qt::CaseInsensitive);
     }
 
-    addCustomerBtn = new QPushButton("➕ Thêm KH mới", this);
+    addCustomerBtn = new QPushButton("➕ Thêm KH mới", headerGroup);
     addCustomerBtn->setObjectName("auxBtn");
+    addCustomerBtn->setCursor(Qt::PointingHandCursor);
     connect(addCustomerBtn, &QPushButton::clicked, [this]() {
         onQuickAddCustomer();
     });
@@ -162,38 +292,49 @@ void OrderDialog::setupUI()
     custLayout->addWidget(customerCombo, 1);
     custLayout->addWidget(addCustomerBtn);
 
-    grid->addWidget(new QLabel(hubType == HubType::INBOUND ? "Đối tác / KH (*):" : "Khách hàng (*):", this), 1, 0);
+    grid->addWidget(new QLabel(hubType == HubType::INBOUND ? "Đối tác / KH (*):" : "Khách hàng (*):", headerGroup), 1, 0);
     grid->addLayout(custLayout, 1, 1, 1, 3);
 
     QDate today = QDate::currentDate();
-    orderDateEdit = new QDateEdit(today, this);
+    orderDateEdit = new QDateEdit(today, headerGroup);
     orderDateEdit->setCalendarPopup(true);
     orderDateEdit->setDisplayFormat("yyyy-MM-dd");
 
-    expectedDateEdit = new QDateEdit(today.addDays(2), this);
-    expectedDateEdit->setCalendarPopup(true);
-    expectedDateEdit->setDisplayFormat("yyyy-MM-dd");
+    grid->addWidget(new QLabel("Ngày đặt đơn (order_at *):", headerGroup), 2, 0);
+    grid->addWidget(orderDateEdit, 2, 1, 1, 3);
 
-    connect(orderDateEdit, &QDateEdit::dateChanged, [this](const QDate& d) {
-        if (expectedDateEdit->date() < d) {
-            expectedDateEdit->setDate(d);
-        }
-    });
-
-    grid->addWidget(new QLabel("Ngày đặt đơn (order_at *):", this), 2, 0);
-    grid->addWidget(orderDateEdit, 2, 1);
-    grid->addWidget(new QLabel(hubType == HubType::INBOUND ? "Dự kiến nhận (expected_at *):" : "Dự kiến xuất (expected_at *):", this), 2, 2);
-    grid->addWidget(expectedDateEdit, 2, 3);
-
-    noteEdit = new QLineEdit(this);
+    noteEdit = new QLineEdit(headerGroup);
     noteEdit->setPlaceholderText("Nhập ghi chú chứng từ / lý do nhập xuất (không bắt buộc)...");
-    grid->addWidget(new QLabel("Ghi chú đơn:", this), 3, 0);
+    grid->addWidget(new QLabel("Ghi chú đơn:", headerGroup), 3, 0);
     grid->addWidget(noteEdit, 3, 1, 1, 3);
 
-    mainLayout->addWidget(headerGroup);
+    pageLayout->addWidget(headerGroup);
 
-    // Group 2: Line Items Builder
-    auto* itemsGroup = new QGroupBox("2. Danh sách mặt hàng trong đơn (Chỉ sản phẩm đang mở bán: is_sold = TRUE)", this);
+    // Helpful rule banner
+    auto* noteBox = new QLabel(
+        hubType == HubType::INBOUND
+            ? "ℹ️ <b>Quy tắc nhập kho:</b> Đơn nhập kho sẽ được tạo ở trạng thái <code>PENDING</code>. Đợt giao nhận đầu tiên sẽ được thiết lập tự động hoặc chia nhiều đợt ở Bước 3."
+            : "ℹ️ <b>Quy tắc xuất kho:</b> Đơn xuất kho sẽ được tạo ở trạng thái <code>PENDING</code>. Hệ thống sẽ tự động kiểm tra tồn kho khả dụng của từng sản phẩm ở Bước 2.",
+        page
+    );
+    noteBox->setStyleSheet(
+        "background-color: #eff6ff; border: 1px solid #bfdbfe; border-left: 4px solid #2563eb; border-radius: 6px; padding: 10px 14px; font-size: 12px; color: #1e40af;"
+    );
+    noteBox->setWordWrap(true);
+    pageLayout->addWidget(noteBox);
+
+    pageLayout->addStretch();
+    return page;
+}
+
+QWidget* OrderDialog::createStep2Widget()
+{
+    auto* page = new QWidget(this);
+    auto* pageLayout = new QVBoxLayout(page);
+    pageLayout->setContentsMargins(0, 4, 0, 0);
+    pageLayout->setSpacing(10);
+
+    auto* itemsGroup = new QGroupBox("2. Danh sách mặt hàng trong đơn (Chỉ sản phẩm đang mở bán: is_sold = TRUE)", page);
     auto* itemsLayout = new QVBoxLayout(itemsGroup);
     itemsLayout->setContentsMargins(14, 16, 14, 12);
     itemsLayout->setSpacing(10);
@@ -201,7 +342,7 @@ void OrderDialog::setupUI()
     auto* addBar = new QHBoxLayout();
     addBar->setSpacing(8);
 
-    productCombo = new QComboBox(this);
+    productCombo = new QComboBox(itemsGroup);
     productCombo->setEditable(true);
     productCombo->setInsertPolicy(QComboBox::NoInsert);
     if (productCombo->completer()) {
@@ -209,38 +350,39 @@ void OrderDialog::setupUI()
         productCombo->completer()->setCaseSensitivity(Qt::CaseInsensitive);
     }
 
-    quantitySpin = new QSpinBox(this);
+    quantitySpin = new QSpinBox(itemsGroup);
     quantitySpin->setRange(1, 99999);
     quantitySpin->setValue(1);
     quantitySpin->setMinimumWidth(90);
 
-    addItemBtn = new QPushButton("➕ Thêm vào đơn", this);
+    addItemBtn = new QPushButton("➕ Thêm vào đơn", itemsGroup);
     addItemBtn->setObjectName("auxBtn");
+    addItemBtn->setCursor(Qt::PointingHandCursor);
     connect(addItemBtn, &QPushButton::clicked, [this]() {
         onAddLineItem();
     });
 
-    addBar->addWidget(new QLabel("Sản phẩm:", this));
+    addBar->addWidget(new QLabel("Chọn sản phẩm:", itemsGroup));
     addBar->addWidget(productCombo, 1);
-    addBar->addWidget(new QLabel("Số lượng:", this));
+    addBar->addWidget(new QLabel("Số lượng:", itemsGroup));
     addBar->addWidget(quantitySpin);
     addBar->addWidget(addItemBtn);
     itemsLayout->addLayout(addBar);
 
-    itemsTable = new QTableWidget(this);
+    itemsTable = new QTableWidget(itemsGroup);
     itemsTable->setColumnCount(5);
     itemsTable->setHorizontalHeaderLabels({
-        "Mã sản phẩm", "Tên sản phẩm", "Tồn kho hiện tại", "Số lượng đặt", "Xóa"
+        "Mã sản phẩm", "Tên sản phẩm", "Tồn kho hiện tại", "Số lượng đặt", "Thao tác"
     });
     itemsTable->setAlternatingRowColors(true);
     itemsTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
     itemsTable->verticalHeader()->setVisible(false);
     itemsTable->horizontalHeader()->setStretchLastSection(false);
     itemsTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
-    itemsTable->setColumnWidth(0, 175);
+    itemsTable->setColumnWidth(0, 160);
     itemsTable->setColumnWidth(2, 180);
-    itemsTable->setColumnWidth(3, 105);
-    itemsTable->setColumnWidth(4, 75);
+    itemsTable->setColumnWidth(3, 110);
+    itemsTable->setColumnWidth(4, 80);
     itemsTable->setStyleSheet(
         "QTableWidget {"
         "  background-color: #ffffff;"
@@ -260,48 +402,207 @@ void OrderDialog::setupUI()
     );
     itemsLayout->addWidget(itemsTable, 1);
 
-    itemsSummaryLabel = new QLabel("Tổng cộng: 0 mặt hàng | 0 đơn vị sản phẩm", this);
-    itemsSummaryLabel->setStyleSheet("font-weight: 600; color: #1d4ed8; font-size: 12px;");
+    itemsSummaryLabel = new QLabel("Tổng cộng: 0 mặt hàng | 0 đơn vị sản phẩm", itemsGroup);
+    itemsSummaryLabel->setStyleSheet("font-weight: 600; color: #1d4ed8; font-size: 13px;");
     itemsLayout->addWidget(itemsSummaryLabel);
 
-    mainLayout->addWidget(itemsGroup, 1);
+    pageLayout->addWidget(itemsGroup, 1);
+    return page;
+}
 
-    // Group 3: Multi-batch Logistics Allocation (Rule 4.3)
-    setupMultiBatchUI(mainLayout);
+QWidget* OrderDialog::createStep3Widget()
+{
+    auto* page = new QWidget(this);
+    auto* pageLayout = new QVBoxLayout(page);
+    pageLayout->setContentsMargins(0, 4, 0, 0);
+    pageLayout->setSpacing(10);
 
-    // Bottom buttons
-    auto* btnLayout = new QHBoxLayout();
-    btnLayout->addStretch();
+    auto* logisticsGroup = new QGroupBox("3. Kế hoạch đợt vận chuyển liên kết (Rule 4.3 - Coupled Logistics)", page);
+    auto* logisticsLayout = new QVBoxLayout(logisticsGroup);
+    logisticsLayout->setContentsMargins(14, 16, 14, 12);
+    logisticsLayout->setSpacing(10);
 
-    auto* cancelBtn = new QPushButton("Hủy bỏ", this);
-    cancelBtn->setObjectName("cancelBtn");
-    connect(cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
-    btnLayout->addWidget(cancelBtn);
-
-    auto* saveBtn = new QPushButton(
-        hubType == HubType::INBOUND ? "💾 Xác nhận tạo Đơn Nhập" : "💾 Xác nhận tạo Đơn Xuất",
-        this
+    auto* explainLbl = new QLabel(
+        "Quy tắc hệ thống: Mỗi đơn giao dịch bắt buộc phải có ít nhất một đợt vận chuyển (delivery/shipment). Tổng số lượng vận chuyển không vượt quá số lượng đặt.",
+        logisticsGroup
     );
-    saveBtn->setObjectName("saveBtn");
-    connect(saveBtn, &QPushButton::clicked, [this]() {
-        onSaveOrder();
-    });
-    btnLayout->addWidget(saveBtn);
+    explainLbl->setStyleSheet("color: #64748b; font-size: 12px;");
+    logisticsLayout->addWidget(explainLbl);
 
-    mainLayout->addLayout(btnLayout);
+    // Radio choice: Single batch vs Multi-batch
+    auto* radioLayout = new QHBoxLayout();
+    radioLayout->setSpacing(24);
+
+    singleBatchRadio = new QRadioButton("⚡ Giao nhận trọn gói 1 đợt duy nhất (Mặc định)", logisticsGroup);
+    singleBatchRadio->setChecked(true);
+    singleBatchRadio->setCursor(Qt::PointingHandCursor);
+
+    multiBatchRadio = new QRadioButton("📋 Lập kế hoạch chia làm nhiều đợt giao nhận", logisticsGroup);
+    multiBatchRadio->setCursor(Qt::PointingHandCursor);
+
+    radioLayout->addWidget(singleBatchRadio);
+    radioLayout->addWidget(multiBatchRadio);
+    radioLayout->addStretch();
+    logisticsLayout->addLayout(radioLayout);
+
+    // Container 1: Single Batch
+    singleBatchContainer = new QWidget(logisticsGroup);
+    auto* sbLayout = new QVBoxLayout(singleBatchContainer);
+    sbLayout->setContentsMargins(0, 8, 0, 0);
+    sbLayout->setSpacing(10);
+
+    auto* dateRow = new QHBoxLayout();
+    dateRow->setSpacing(10);
+    dateRow->addWidget(new QLabel(hubType == HubType::INBOUND ? "Ngày dự kiến nhận hàng (expected_at *):" : "Ngày dự kiến xuất hàng (expected_at *):", singleBatchContainer));
+
+    expectedDateEdit = new QDateEdit(QDate::currentDate().addDays(2), singleBatchContainer);
+    expectedDateEdit->setCalendarPopup(true);
+    expectedDateEdit->setDisplayFormat("yyyy-MM-dd");
+    dateRow->addWidget(expectedDateEdit);
+    dateRow->addStretch();
+    sbLayout->addLayout(dateRow);
+
+    singleBatchSummaryLabel = new QLabel(singleBatchContainer);
+    singleBatchSummaryLabel->setStyleSheet(
+        "background-color: #ecfdf5; border: 1px solid #a7f3d0; border-left: 4px solid #10b981; border-radius: 6px; padding: 10px 14px; font-size: 13px; color: #065f46; font-weight: 500;"
+    );
+    singleBatchSummaryLabel->setWordWrap(true);
+    sbLayout->addWidget(singleBatchSummaryLabel);
+    sbLayout->addStretch();
+
+    logisticsLayout->addWidget(singleBatchContainer);
+
+    // Container 2: Multi-Batch Table
+    setupMultiBatchUI(logisticsLayout);
+
+    connect(singleBatchRadio, &QRadioButton::toggled, [this](bool checked) {
+        onToggleMultiBatch(!checked);
+    });
+    connect(multiBatchRadio, &QRadioButton::toggled, [this](bool checked) {
+        onToggleMultiBatch(checked);
+    });
+
+    connect(expectedDateEdit, &QDateEdit::dateChanged, [this](const QDate& d) {
+        int totalUnits = 0;
+        for (const auto& item : lineItems) totalUnits += item.orderedQty;
+        singleBatchSummaryLabel->setText(
+            QString("📦 Toàn bộ %1 mặt hàng (tổng cộng %2 đơn vị sản phẩm) sẽ được tự động tạo trong Đợt giao nhận đầu tiên (%3) dự kiến vào ngày %4.")
+                .arg(lineItems.size())
+                .arg(totalUnits)
+                .arg(hubType == HubType::INBOUND ? "Delivery D01" : "Shipment S01")
+                .arg(d.toString("yyyy-MM-dd"))
+        );
+    });
+
+    pageLayout->addWidget(logisticsGroup, 1);
+    return page;
+}
+
+void OrderDialog::goToStep(int stepIndex)
+{
+    if (stepIndex < 0 || stepIndex > 2) return;
+    int current = stepStack->currentIndex();
+
+    if (stepIndex > current) {
+        for (int s = current; s < stepIndex; ++s) {
+            stepStack->setCurrentIndex(s);
+            if (!validateCurrentStep()) {
+                updateStepBar();
+                return;
+            }
+        }
+    }
+
+    stepStack->setCurrentIndex(stepIndex);
+
+    if (stepIndex == 2) {
+        int totalUnits = 0;
+        for (const auto& item : lineItems) {
+            totalUnits += item.orderedQty;
+        }
+        singleBatchSummaryLabel->setText(
+            QString("📦 Toàn bộ %1 mặt hàng (tổng cộng %2 đơn vị sản phẩm) sẽ được tự động tạo trong Đợt giao nhận đầu tiên (%3) dự kiến vào ngày %4.")
+                .arg(lineItems.size())
+                .arg(totalUnits)
+                .arg(hubType == HubType::INBOUND ? "Delivery D01" : "Shipment S01")
+                .arg(expectedDateEdit->date().toString("yyyy-MM-dd"))
+        );
+
+        if (multiBatchRadio->isChecked()) {
+            renderMultiBatchTable();
+        }
+    }
+
+    updateStepBar();
+}
+
+bool OrderDialog::validateCurrentStep()
+{
+    int current = stepStack->currentIndex();
+    if (current == 0) {
+        QString custCode;
+        int custIdx = customerCombo->currentIndex();
+        QString custText = customerCombo->currentText().trimmed();
+        if (custIdx >= 0 && customerCombo->itemText(custIdx) == custText) {
+            custCode = customerCombo->itemData(custIdx).toString();
+        } else if (!custText.isEmpty()) {
+            int sepIdx = custText.indexOf(" — ");
+            custCode = (sepIdx > 0) ? custText.left(sepIdx).trimmed() : custText;
+        }
+
+        if (custCode.isEmpty()) {
+            QMessageBox::warning(this, "Thiếu thông tin đối tác/khách hàng",
+                "Vui lòng chọn hoặc tạo mới khách hàng / đối tác cho đơn giao dịch.");
+            customerCombo->setFocus();
+            return false;
+        }
+        return true;
+    } else if (current == 1) {
+        if (lineItems.empty()) {
+            QMessageBox::warning(this, "Đơn hàng trống",
+                "Vui lòng thêm ít nhất một mặt hàng vào danh sách đơn giao dịch trước khi tiếp tục.");
+            productCombo->setFocus();
+            return false;
+        }
+        return true;
+    }
+    return true;
+}
+
+void OrderDialog::updateStepBar()
+{
+    int cur = stepStack->currentIndex();
+    step1Btn->setObjectName(cur == 0 ? "stepBtnActive" : "stepBtnInactive");
+    step2Btn->setObjectName(cur == 1 ? "stepBtnActive" : "stepBtnInactive");
+    step3Btn->setObjectName(cur == 2 ? "stepBtnActive" : "stepBtnInactive");
+
+    step1Btn->style()->unpolish(step1Btn);
+    step1Btn->style()->polish(step1Btn);
+    step2Btn->style()->unpolish(step2Btn);
+    step2Btn->style()->polish(step2Btn);
+    step3Btn->style()->unpolish(step3Btn);
+    step3Btn->style()->polish(step3Btn);
+
+    prevBtn->setVisible(cur > 0);
+    nextBtn->setVisible(cur < 2);
+    saveBtn->setVisible(cur == 2);
+
+    if (cur == 0) {
+        nextBtn->setText("Tiếp theo: Chọn mặt hàng ➔");
+    } else if (cur == 1) {
+        prevBtn->setText("⬅ Quay lại Bước 1");
+        nextBtn->setText("Tiếp theo: Lịch giao nhận ➔");
+    } else if (cur == 2) {
+        prevBtn->setText("⬅ Quay lại: Chọn hàng");
+    }
 }
 
 void OrderDialog::setupMultiBatchUI(QVBoxLayout* parentLayout)
 {
-    multiBatchCheck = new QCheckBox("📋 Lập kế hoạch chia nhiều đợt giao nhận ngay khi tạo đơn (Multi-batch Logistics - Rule 4.3)", this);
-    multiBatchCheck->setStyleSheet("font-weight: 600; color: #0284c7; font-size: 13px; margin-top: 4px;");
-    connect(multiBatchCheck, &QCheckBox::toggled, this, &OrderDialog::onToggleMultiBatch);
-    parentLayout->addWidget(multiBatchCheck);
-
     multiBatchContainer = new QWidget(this);
     auto* mbLayout = new QVBoxLayout(multiBatchContainer);
-    mbLayout->setContentsMargins(0, 0, 0, 0);
-    mbLayout->setSpacing(6);
+    mbLayout->setContentsMargins(0, 8, 0, 0);
+    mbLayout->setSpacing(8);
 
     auto* mbHeaderLayout = new QHBoxLayout();
     auto* mbTip = new QLabel("Thiết lập ngày dự kiến và số lượng phân bổ cho từng đợt (tổng SL phân bổ <= tổng SL đặt hàng):", multiBatchContainer);
@@ -311,10 +612,12 @@ void OrderDialog::setupMultiBatchUI(QVBoxLayout* parentLayout)
 
     addBatchBtn = new QPushButton("➕ Thêm đợt", multiBatchContainer);
     addBatchBtn->setObjectName("auxBtn");
+    addBatchBtn->setCursor(Qt::PointingHandCursor);
     connect(addBatchBtn, &QPushButton::clicked, this, &OrderDialog::onAddScheduleBatch);
 
     removeBatchBtn = new QPushButton("✖ Xóa đợt cuối", multiBatchContainer);
     removeBatchBtn->setObjectName("cancelBtn");
+    removeBatchBtn->setCursor(Qt::PointingHandCursor);
     connect(removeBatchBtn, &QPushButton::clicked, this, &OrderDialog::onRemoveScheduleBatch);
 
     mbHeaderLayout->addWidget(addBatchBtn);
@@ -322,29 +625,27 @@ void OrderDialog::setupMultiBatchUI(QVBoxLayout* parentLayout)
     mbLayout->addLayout(mbHeaderLayout);
 
     multiBatchTable = new QTableWidget(multiBatchContainer);
-    multiBatchTable->setMaximumHeight(160);
     multiBatchTable->setAlternatingRowColors(true);
     multiBatchTable->setStyleSheet(
         "QTableWidget { background-color: #ffffff; alternate-background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 12px; }"
-        "QHeaderView::section { background-color: #f1f5f9; color: #334155; font-weight: 600; padding: 4px 6px; border: none; border-bottom: 1px solid #cbd5e1; }"
+        "QHeaderView::section { background-color: #f1f5f9; color: #334155; font-weight: 600; padding: 5px 8px; border: none; border-bottom: 1px solid #cbd5e1; }"
     );
-    mbLayout->addWidget(multiBatchTable);
+    mbLayout->addWidget(multiBatchTable, 1);
 
     multiBatchStatusLabel = new QLabel(multiBatchContainer);
     multiBatchStatusLabel->setStyleSheet("font-size: 12px; font-weight: 500; color: #0369a1;");
     mbLayout->addWidget(multiBatchStatusLabel);
 
     multiBatchContainer->hide();
-    parentLayout->addWidget(multiBatchContainer);
+    parentLayout->addWidget(multiBatchContainer, 1);
 }
 
 void OrderDialog::onToggleMultiBatch(bool checked)
 {
+    singleBatchContainer->setVisible(!checked);
     multiBatchContainer->setVisible(checked);
-    expectedDateEdit->setEnabled(!checked);
 
     if (checked && scheduleBatches.empty()) {
-        // Initialize with 2 default batches
         MultiBatchDef b1;
         b1.expectedDate = expectedDateEdit->date().toString("yyyy-MM-dd");
         b1.allocatedQuantities.resize(lineItems.size(), 0);
@@ -361,7 +662,9 @@ void OrderDialog::onToggleMultiBatch(bool checked)
         }
         scheduleBatches.push_back(b2);
     }
-    renderMultiBatchTable();
+    if (checked) {
+        renderMultiBatchTable();
+    }
 }
 
 void OrderDialog::onAddScheduleBatch()
@@ -523,7 +826,6 @@ void OrderDialog::populateActiveProducts()
         if (r.has("is_sold") && holds_alternative<bool>(r.get("is_sold"))) {
             isSold = get<bool>(r.get("is_sold"));
         }
-        // Rule 4.2: Strictly exclude discontinued products (is_sold == FALSE)
         if (!isSold) continue;
 
         int pid = (r.has("product_id") && holds_alternative<int>(r.get("product_id")))
@@ -730,12 +1032,14 @@ void OrderDialog::onSaveOrder()
 
     if (custCode.isEmpty()) {
         QMessageBox::critical(this, "Thiếu thông tin đối tác/khách hàng", "Vui lòng chọn hoặc tạo mới khách hàng / đối tác cho đơn giao dịch.");
+        goToStep(0);
         customerCombo->setFocus();
         return;
     }
 
     if (lineItems.empty()) {
         QMessageBox::critical(this, "Đơn hàng trống", "Vui lòng thêm ít nhất một mặt hàng vào danh sách đơn giao dịch.");
+        goToStep(1);
         productCombo->setFocus();
         return;
     }
@@ -751,8 +1055,8 @@ void OrderDialog::onSaveOrder()
 
     OperationResult res;
 
-    // Check if user enabled multi-batch scheduling (Rule 4.3)
-    if (multiBatchCheck && multiBatchCheck->isChecked()) {
+    // Check if user selected multi-batch scheduling (Rule 4.3)
+    if (multiBatchRadio && multiBatchRadio->isChecked()) {
         if (scheduleBatches.empty()) {
             QMessageBox::warning(this, "Chưa thiết lập đợt giao nhận", "Vui lòng thêm ít nhất một đợt giao nhận trong lịch trình phân bổ.");
             return;
@@ -815,7 +1119,6 @@ void OrderDialog::onSaveOrder()
     }
 
     if (!res.success) {
-        // Rule 6.3.1: Display error and keep dialog open
         QMessageBox::critical(this, "Không thể tạo đơn giao dịch", QString::fromStdString(res.message));
         return;
     }
@@ -838,6 +1141,7 @@ void OrderDialog::onSaveOrder()
     QMessageBox::information(this, "Thành công", QString::fromStdString(res.message));
     accept();
 }
+
 
 // ============================================================================
 // 2. TransactionStatusDialog (Update Order Status - Rule 5.3)
