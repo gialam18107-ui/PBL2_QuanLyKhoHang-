@@ -164,11 +164,13 @@ namespace Schema
     {
         auto table = new Table("individual_info");
         table->addColumn(Column("customer_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("phone_number", DataType::VARCHAR, 50, false, false, true));
-        table->addColumn(Column("email", DataType::VARCHAR, 100, false, false, true));
+        table->addColumn(Column("phone_number", DataType::VARCHAR, 50, false, true, true));
+        table->addColumn(Column("email", DataType::VARCHAR, 100, false, true, true));
         table->addColumn(Column("next_code_no", DataType::INTEGER, 0, false, false, true, true));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_individual_info", "customer_id"));
+        table->addConstraint(new UniqueConstraint("uq_individual_phone", "phone_number"));
+        table->addConstraint(new UniqueConstraint("uq_individual_email", "email"));
         table->addConstraint(new ForeignKeyConstraint("fk_individual_customer", "customer_id", "customer", "customer_id"));
         return table;
     }
@@ -180,12 +182,15 @@ namespace Schema
     {
         auto table = new Table("business_info");
         table->addColumn(Column("customer_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("phone_number", DataType::VARCHAR, 50, false, false, true));
-        table->addColumn(Column("email", DataType::VARCHAR, 100, false, false, true));
-        table->addColumn(Column("tax_code", DataType::VARCHAR, 50, false, false, true));
+        table->addColumn(Column("phone_number", DataType::VARCHAR, 50, false, true, true));
+        table->addColumn(Column("email", DataType::VARCHAR, 100, false, true, true));
+        table->addColumn(Column("tax_code", DataType::VARCHAR, 50, false, true, true));
         table->addColumn(Column("next_code_no", DataType::INTEGER, 0, false, false, true, true));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_business_info", "customer_id"));
+        table->addConstraint(new UniqueConstraint("uq_business_phone", "phone_number"));
+        table->addConstraint(new UniqueConstraint("uq_business_email", "email"));
+        table->addConstraint(new UniqueConstraint("uq_business_tax_code", "tax_code"));
         table->addConstraint(new ForeignKeyConstraint("fk_business_customer", "customer_id", "customer", "customer_id"));
         return table;
     }
