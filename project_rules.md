@@ -60,9 +60,11 @@ The main program uses a **single normal user role** (no `ADMIN` role or account 
 
 ### 4.1 Customer Precondition & Master Reference
 - **Customer Precondition**: A customer record must exist before creating an Outbound Transaction (or any transaction requiring a partner). If the customer does not exist in the database, the user must add the customer first.
+- **Inventory Adjustment Default Customer**: For warehouse inventory adjustment transactions (`ADJUSTMENT_IN` / `ADJUSTMENT_OUT`, code prefix `ADJ`), since this is an internal warehouse reconciliation operation rather than an external commercial partner transaction, the customer must default to **`BS-0000000`** (`customer_id = 0`, name = `None`). The user is not required to select or create an external partner.
 - **Customer Code Auto-Generation**: Customer code is automatically generated based on customer type and sequential number (`next_code_no`, 7 digits) as specified in `QuanLyKhoHang_schema.json`:
   - Individual: `IN-xxxxxxx` (e.g., `IN-0002340`)
   - Business: `BS-xxxxxxx` (e.g., `BS-0002314`)
+  - Default Internal Business Partner: `BS-0000000` (ID `0`, name `None`, reserved system customer for internal inventory adjustments).
 - **Direct Creation Allowed**:
   - `Customer` (along with `individual_infor` or `business_info`).
   - `Brand`.
@@ -83,9 +85,9 @@ The main program uses a **single normal user role** (no `ADMIN` role or account 
 ### 4.3 Coupled Creation Only (Transactions, Delivery, Shipment)
 Users may manually input transactions and logistics records, strictly under atomic pairwise constraints:
 - **Inbound Pair**: Creating an Inbound Transaction requires simultaneously creating its paired `Delivery` records. Both must initialize their containing products and quantities. Total product quantity across all deliveries must not exceed the quantity in the `Inbound Transaction`.
-- **Outbound Pair (Stock Availability Required)**:
+- **Outbound Pair & Quantity Flexibility**:
   - Creating an Outbound Transaction requires simultaneously creating its paired `Shipment` records.
-  - **Stock Precondition**: A product must exist in the warehouse with units currently in the required status for the outbound transaction type (e.g., `AVAILABLE` for `SEL`, `SCRAPPED` or `WARRANTY` for `WRT`, `AVAILABLE` or `WARRANTY` for `WRC`). If eligible units are not present in stock, units cannot be selected for export!
+  - **Permitted Outbound Quantity Exceeding Stock (Đơn xuất được phép vượt tồn kho)**: Outbound transaction order quantities (`outbound_detail.ordered_quantity` and shipment planned quantities) are **permitted to exceed current warehouse stock** (allowing backorders, pre-orders, and order creation ahead of inventory intake). Physical unit dispatching (`actual_quantity`) during shipment fulfillment remains bound to attaching currently available eligible units in the warehouse.
   - Total product quantity across all shipments must not exceed the quantity in the `Outbound Transaction`.
 - **Active Product Eligibility Constraint**:
   - Both Inbound and Outbound transactions are strictly restricted to products with `product.is_sold == TRUE`. If a product has `is_sold == FALSE`, the system and UI must reject or disable adding that product to transaction order details (`inbound_detail`, `outbound_detail`).
@@ -114,6 +116,10 @@ Unit status transitions must adhere strictly to the business rules of each trans
   - **`WRC` (Warranty Replacement to Customer - Xuất trả hàng đổi bảo hành cho khách hàng)**:
     - Precondition: Selected units must have current status `AVAILABLE` or `WARRANTY`.
     - Transition: `AVAILABLE / WARRANTY` -> `OUT`.
+  - **`ADJ` (Adjustment Out - Xuất điều chỉnh / kiểm kê giảm kho)**:
+    - Precondition: Selected units must currently exist in warehouse (status `AVAILABLE`, `WARRANTY`, or `SCRAPPED`).
+    - Transition: `AVAILABLE / WARRANTY / SCRAPPED` -> `OUT`.
+    - Customer partner: Defaults to **`BS-0000000`** (internal warehouse adjustment).
 
 #### 4.4.2 Inbound Transactions (Đơn nhập)
 - **General Rule**: The new/target status of **all units** in an inbound transaction **must never be `OUT`** (must transition into an internal warehouse status: `AVAILABLE`, `WARRANTY`, or `SCRAPPED`).
@@ -132,6 +138,12 @@ Unit status transitions must adhere strictly to the business rules of each trans
   - **`CRT` (Customer Return - Khách hàng trả lại hàng)**:
     - Precondition: Unit was previously sold/dispatched and currently has status `OUT`.
     - Transition: `OUT` -> `AVAILABLE`, `WARRANTY`, or `SCRAPPED` (depending on returned unit condition; new status must never remain `OUT`).
+  - **`ADJ` (Adjustment In - Nhập điều chỉnh kho)**:
+    - Precondition: Unit can be in **any** previous status (including `NULL` / uncreated, `OUT` / previously dispatched, or internal warehouse status `AVAILABLE`, `WARRANTY`, `SCRAPPED`).
+    - Transition: Permitted to transition from **any status to any internal warehouse status** (`AVAILABLE`, `WARRANTY`, or `SCRAPPED`).
+    - Target Constraint: Transition from any status to `OUT` (`* -> OUT`) is **strictly prohibited** (target status of inbound units must never be `OUT`).
+    - Serial Handling: If the unit is newly created (old status is `NULL` / `std::monostate`), automatically generates a unique Serial (`SN-` + 7 alphanumeric characters) and registers the unit into `unit_inventory`. If the unit already exists in the system, its status is updated and recorded into `status_history`.
+    - Customer partner: Defaults to **`BS-0000000`** (internal warehouse adjustment).
 
 #### 4.4.3 Quantity Constraints, Auto-Update Actual Quantity, and History Logging
 - **Auto-Update `actual_quantity`**:
@@ -167,13 +179,14 @@ All auto-generated codes and user inputs must strictly conform to the specificat
 
 1. **Transaction Codes (User Input with Format Validation)**:
    - `inbound_code`: Typed manually by user. Must follow format `IN-<type_code>-<next_code_no>` (6 digits, e.g., `IN-PUR-000032`, `IN-ADJ-003223`, `IN-WCK-002313`), must match the selected inbound type, and must be verified unique in the database.
-   - `outbound_code`: Typed manually by user. Must follow format `OUT-<type_code>-<next_code_no>` (6 digits, e.g., `OUT-SEL-000999`, `OUT-RTS-999999`, `OUT-WRC-000001`), must match the selected outbound type, and must be verified unique in the database.
+   - `outbound_code`: Typed manually by user. Must follow format `OUT-<type_code>-<next_code_no>` (6 digits, e.g., `OUT-SEL-000999`, `OUT-ADJ-000001`, `OUT-RTS-999999`, `OUT-WRC-000001`), must match the selected outbound type, and must be verified unique in the database.
 2. **Logistics Codes (Auto-Generated)**:
    - `delivery_code`: Automatically generated from `inbound_code`: `<inbound_code>-D<XX>` (2 digits, e.g., `IN-PUR-000032-D01`, `IN-WCK-002313-D02`).
    - `shipment_code`: Automatically generated from `outbound_code`: `<outbound_code>-S<XX>` (2 digits, e.g., `OUT-SEL-000999-S01`).
 3. **Customer Codes (Auto-Generated)**:
    - Individual: `IN-xxxxxxx` (7 digits, e.g., `IN-0002340`).
    - Business: `BS-xxxxxxx` (7 digits, e.g., `BS-0002314`).
+   - Default Adjustment Customer: `BS-0000000` (ID `0`, name `None`, reserved as default customer for inventory adjustment transactions).
 4. **Product Code (Auto-Generated)**:
    - `<producer_code>-<category_code>-<next_code_no(producer)>-<next_code_no(category)>` (e.g., `INTEL-CPU-0001-0001`).
 5. **Unit Serial (Auto-Generated / Scanned)**:
@@ -236,7 +249,7 @@ All auto-generated codes and user inputs must strictly conform to the specificat
      - **Discontinued Product Restriction**: Block adding any product with `product.is_sold == FALSE` to inbound or outbound transactions.
      - **Logistics Product Scope**: Reject any delivery or shipment detail that contains products not present in the parent transaction's details.
      - **Chronological Date Validation**: Reject dates where `delivery_at < order_at` or `ship_at < order_at`.
-     - **Stock Availability**: For outbound transactions, verify that sufficient eligible stock exists.
+     - **Outbound Quantity Flexibility**: Outbound transaction quantities (`ordered_quantity`) are **permitted to exceed current warehouse stock** (no error/rejection if ordered quantity > current inventory). Actual unit dispatch is validated when assigning physical serial units to shipments.
      - **Immutable Fields Protection (`UserUpdate`)**: Reject modification of frozen fields (e.g., quantities, order items, transaction codes, customer IDs). Only `status`, `delivery_at`, and `ship_at` are updatable on orders/logistics.
 - **UI Integration & Error Consumption**:
   - The UI calls `UserCreate` / `UserUpdate` / `UserDelete` and evaluates `result.success`:
@@ -259,13 +272,13 @@ All auto-generated codes and user inputs must strictly conform to the specificat
 - **Insert Windows (Dedicated Dialogs)**:
   - **Product Insertion**: A dedicated dialog providing dropdowns to select `Category` and `Brand`, and dynamic specification selectors populated from the respective `<category>_specs` sub-tables. `product_code` is automatically generated.
   - **Transaction & Logistics Insertion (Inbound / Outbound)**:
-    - Precondition check: prompts or allows quick creation of `Customer` if not present (with auto-generated customer code).
+    - Precondition check: prompts or allows quick creation of `Customer` if not present (with auto-generated customer code). For inventory adjustment transactions (`ADJUSTMENT_IN` / `ADJUSTMENT_OUT`), the customer field automatically defaults to `BS-0000000`.
     - Pairs `Inbound Transaction` with `Delivery`, or `Outbound Transaction` with `Shipment`.
     - Includes a sub-form to add containing products and their quantities.
     - **Active Product Enforcement**: Dropdowns and selectors for product items must strictly filter out discontinued products (`product.is_sold == FALSE`), ensuring users can only select products currently active on sale.
     - **Logistics Product Scope**: Delivery and shipment records must only allow products defined in the parent transaction's product list.
     - **Date Pickers Validation**: Ensure `delivery_at >= order_at` and `ship_at >= order_at` (actual date can be before expected date, but not before order date).
-    - Outbound check: prevents selecting products or quantities exceeding available stock.
+    - Outbound check: Allows inputting order quantities exceeding current warehouse stock. Physical unit attachment is constrained to available units during unit dispatch.
     - **CRUD Error Handling**: Consume `OperationResult` from `UserCreate` to display explicit error alerts (`QMessageBox::critical`) if validation fails, preventing form submission.
   - **Unit Entry Window for Delivery & Shipment**:
     - Clicking the designated action button on a Delivery or Shipment record opens a dedicated dialog to input/attach units (serial numbers and target statuses) for each product in that delivery or shipment.
@@ -310,18 +323,22 @@ All auto-generated codes and user inputs must strictly conform to the specificat
     - Every Inbound Transaction must be paired with one or more `Delivery` records (`inbound_transaction` + `inbound_detail` with `delivery` + `delivery_detail`). Total received quantity across deliveries must not exceed the inbound order quantity.
     - Every Outbound Transaction must be paired with one or more `Shipment` records (`outbound_transaction` + `outbound_detail` with `shipment` + `shipment_detail`). Total shipped quantity across shipments must not exceed the outbound order quantity.
     - **Product Eligibility & Scope**: The generator must only choose products where `product.is_sold == TRUE` for generating transactions. Furthermore, `delivery_detail` and `shipment_detail` must strictly contain only products that are part of the parent transaction's details (`inbound_detail` / `outbound_detail`).
-    - **Chronological Date Generation**: `delivery_at` and `ship_at` may be generated earlier than, equal to, or later than `expected_at`, but must strictly satisfy `delivery_at >= order_at` and `ship_at >= order_at`.
+    - **Chronological & Historical Date Generation (Quy tắc ngày sinh dữ liệu)**:
+      - **Strictly Earlier Than Generation Date (Ngày sinh ra phải nhỏ hơn ngày bấm nút gen)**: All generated dates (`order_at`, `expected_at`, `delivery_at`, `ship_at`, and `date` in `status_history`) must strictly precede / be smaller than the date when the generator is executed/triggered (`generated_date < generation_trigger_date`). Generating transactions with dates on or after the trigger date is strictly prohibited.
+      - **Internal Chronological Constraints**: Logistics dates may be generated earlier than, equal to, or later than expected dates, but must strictly satisfy `delivery_at >= order_at` and `ship_at >= order_at`.
   - **Unit Status Lifecycle & Precondition Enforcement (Vòng đời và điều kiện chuyển trạng thái - Section 4.4)**:
     - **Outbound Types** (Target status of all units **must be `OUT`**):
       - `SEL` (Selling - Bán hàng): Precondition requires selected units to currently have status `AVAILABLE` (`AVAILABLE -> OUT`).
       - `WRT` (Warranty Return - Xuất trả bảo hành/lỗi): Precondition requires units with status `SCRAPPED` or `WARRANTY` (`SCRAPPED / WARRANTY -> OUT`).
       - `WRC` (Warranty Replacement to Customer - Xuất trả đổi bảo hành): Precondition requires units with status `AVAILABLE` or `WARRANTY` (`AVAILABLE / WARRANTY -> OUT`).
-      - **Stock Precondition**: The generator must verify available stock before creating outbound transactions. If stock lacks eligible units in the required status, the export operation must be rejected.
+      - `ADJ` (Adjustment Out - Xuất điều chỉnh / kiểm kê giảm kho): Precondition requires units currently in warehouse (`AVAILABLE / WARRANTY / SCRAPPED -> OUT`). Customer defaults to `BS-0000000`.
+      - **Outbound Stock Quantity Rule**: Outbound transaction quantities (`ordered_quantity`) are permitted to exceed current warehouse stock. For physical unit dispatch in shipments, only currently eligible units in stock are transitioned.
     - **Inbound Types** (Target status **must never be `OUT`**; must transition into `AVAILABLE`, `WARRANTY`, or `SCRAPPED`):
       - `PUR` (Purchasing - Mua hàng/nhập mới): Precondition is uncreated/new units (`NULL -> AVAILABLE` for normal stock, or `NULL -> SCRAPPED` for items defective upon receiving). Automatically generates unique serial `SN-` + 7 alphanumeric characters and registers new units into `unit_inventory`.
       - `WRP` (Warranty Replacement - Nhập hàng đổi bảo hành từ NCC): Precondition is new replacement units (`NULL -> WARRANTY`). Generates unique serial into `unit_inventory`.
       - `WCK` (Warranty Checking - Nhận hàng bảo hành từ khách): Precondition requires previously dispatched units (`OUT -> WARRANTY`).
       - `CRT` (Customer Return - Khách trả lại hàng): Precondition requires previously dispatched units (`OUT -> AVAILABLE`, `WARRANTY`, or `SCRAPPED`).
+      - `ADJ` (Adjustment In - Nhập điều chỉnh kho): Precondition allows units from any previous status (`NULL`, `OUT`, `AVAILABLE`, `WARRANTY`, `SCRAPPED`). Permitted to transition from any status to any internal warehouse status (`AVAILABLE`, `WARRANTY`, `SCRAPPED`), strictly prohibiting transitions where target status is `OUT` (`* -> OUT` is invalid). If uncreated (`NULL`), automatically generates unique serial into `unit_inventory`. Customer defaults to `BS-0000000`.
   - **Quantity Synchronization & Inventory Consistency (Đồng bộ số lượng tồn kho - Section 4.2 & 4.4.3)**:
     - The number of unit status transitions must strictly match and not exceed `Delivery.received_quantity` or `Shipment.shipped_quantity`.
     - Every unit status transition must atomically update `product_quantity` (`available_quan`, `warranty_quan`, `scrapped_quan`, `total_quantity`).
@@ -329,7 +346,7 @@ All auto-generated codes and user inputs must strictly conform to the specificat
     - Every unit transition automatically creates an immutable record in `status_history` logging `serial`, `old_status`, `curr_status`, `transaction` (delivery/shipment code), `type` (`INBOUND` / `OUTBOUND`), and `date` in strict chronological order.
   - **Code Formatting & Customer Linkage (Định dạng mã và liên kết đối tác - Section 4.1 & Section 5)**:
     - Generates valid transaction and logistics codes conforming strictly to schema format: `inbound_code` (`IN-<type_code>-<next_code_no>`, 6 digits), `outbound_code` (`OUT-<type_code>-<next_code_no>`, 6 digits), `delivery_code` (`<inbound_code>-D<XX>`, 2 digits), `shipment_code` (`<outbound_code>-S<XX>`, 2 digits), and `serial` (`SN-` + 7 alphanumeric characters).
-    - Every transaction must reference an existing valid customer (`customer_id`) conforming to customer code rules (`IN-xxxxxxx` for individuals, `BS-xxxxxxx` for businesses).
+    - Every transaction must reference an existing valid customer (`customer_id`) conforming to customer code rules (`IN-xxxxxxx` for individuals, `BS-xxxxxxx` for businesses). For inventory adjustment transactions (`ADJUSTMENT_IN` / `ADJUSTMENT_OUT`), the customer must default to **`BS-0000000`** (`customer_id = 0`).
 - **Console Workflow**: Provides an interactive console UI allowing the user to select transaction types (Inbound / Outbound), products, quantities, and delivery/shipment batch splits, as well as an automated batch mode for test data generation.
 
 ### 8.2 Data Crawler
