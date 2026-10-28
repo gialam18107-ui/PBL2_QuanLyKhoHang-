@@ -42,6 +42,12 @@ public:
     void setFilterCallback(FilterCallback callback);
     void setDataChangedCallback(DataChangedCallback callback);
 
+    using MarkDirtyCallback = std::function<void(const QString&)>;
+    void setMarkDirtyCallback(MarkDirtyCallback callback) { onMarkDirty = callback; }
+
+    void updateMasterRowInPlace(int row, const std::string& fieldKey, const Value& newValue);
+    void updateLogisticsRowInPlace(int row, const std::string& fieldKey, const Value& newValue);
+
     void resetFilter();
     QTableWidget* getMasterTable() const { return masterTable; }
 
@@ -180,6 +186,7 @@ private:
     std::function<void()> onRefresh;
     FilterCallback onFilter;
     DataChangedCallback onDataChanged;
+    MarkDirtyCallback onMarkDirty;
 };
 
 #endif // TRANSACTION_HUB_WIDGET_H

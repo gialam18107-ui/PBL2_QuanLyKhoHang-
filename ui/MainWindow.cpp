@@ -2337,6 +2337,28 @@ void MainWindow::notifyDataChanged(const QString& summary)
     }
 }
 
+void MainWindow::markDirty(const QString& summary)
+{
+    hasUnsavedChanges = true;
+    if (saveDbBtn) {
+        saveDbBtn->setText("💾 Lưu dữ liệu ra CSV *");
+    }
+
+    reportDataCached = false;
+    cachedReportRecords.clear();
+    cachedGrandTotal = Record();
+    if (reportTable) {
+        reportTable->setRowCount(0);
+    }
+    if (reportSummaryLabel) {
+        reportSummaryLabel->setText("Trạng thái: Dữ liệu CSDL vừa được cập nhật. Vui lòng chọn Tháng, Năm và bấm 'Xem báo cáo' để tính toán lại.");
+    }
+
+    if (!summary.isEmpty()) {
+        statusLabel->setText(QString("✅ %1 | Có thay đổi chưa lưu CSV (Nhấn Ctrl+S để lưu)").arg(summary));
+    }
+}
+
 int MainWindow::resolveProductId(const Record& rec, const std::string& catTable) const
 {
     if (!db) return -1;
@@ -2511,7 +2533,7 @@ void MainWindow::setupCrudWiring()
         );
 
         // Quick Toggle Selling Status (Rule 4.2: product.is_sold)
-        widget->setExtraAction("🔄 Đổi TT Bán", [this, catTable](const Record& rec) {
+        widget->setExtraAction("🔄 Đổi TT Bán", [this, catTable, widget](const Record& rec) {
             int pid = resolveProductId(rec, catTable);
             if (pid <= 0 || !db) return;
             Table* prodTable = db->getTable("product");
@@ -2541,7 +2563,13 @@ void MainWindow::setupCrudWiring()
                 QMessageBox::critical(this, "Không thể đổi trạng thái bán", QString::fromStdString(res.message));
                 return;
             }
-            notifyDataChanged(QString("Đã đổi trạng thái bán [%1] -> %2").arg(pCode, nextSold ? "TRUE" : "FALSE"));
+
+            int curRow = widget->getTableWidget() ? widget->getTableWidget()->currentRow() : -1;
+            if (curRow >= 0) {
+                widget->updateRecordInPlace(curRow, "is_sold", Value(nextSold));
+                widget->updateRecordInPlace(curRow, "product.is_sold", Value(nextSold));
+            }
+            markDirty(QString("Đã đổi trạng thái bán [%1] -> %2").arg(pCode, nextSold ? "TRUE" : "FALSE"));
         });
     };
 
@@ -2641,10 +2669,16 @@ void MainWindow::setupCrudWiring()
         inboundTxnWidget->setDataChangedCallback([this](const QString& summary) {
             notifyDataChanged(summary);
         });
+        inboundTxnWidget->setMarkDirtyCallback([this](const QString& summary) {
+            markDirty(summary);
+        });
     }
     if (outboundTxnWidget) {
         outboundTxnWidget->setDataChangedCallback([this](const QString& summary) {
             notifyDataChanged(summary);
+        });
+        outboundTxnWidget->setMarkDirtyCallback([this](const QString& summary) {
+            markDirty(summary);
         });
     }
 

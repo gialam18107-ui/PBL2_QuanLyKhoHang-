@@ -47,6 +47,7 @@ public:
     void setRefreshCallback(std::function<void()> callback);
     void setFilterCallback(FilterCallback callback);
     void addExtraControl(QWidget* widget);
+    void updateRecordInPlace(int row, const std::string& fieldKey, const Value& newValue);
 
     // CRUD & Action callbacks (Rule 6.3, 7.1, 7.2)
     void setCrudCallbacks(

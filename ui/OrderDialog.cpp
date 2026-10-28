@@ -944,6 +944,11 @@ void TransactionStatusDialog::onSave()
     accept();
 }
 
+std::string TransactionStatusDialog::getSelectedStatus() const
+{
+    return statusCombo ? statusCombo->currentText().trimmed().toStdString() : "";
+}
+
 // ============================================================================
 // 3. LogisticsUpdateDialog (Update Delivery / Shipment Batch - Rule 5.3)
 // ============================================================================
@@ -1128,6 +1133,19 @@ void LogisticsUpdateDialog::onSave()
 
     QMessageBox::information(this, "Thành công", "Đã cập nhật thông tin đợt vận chuyển thành công.");
     accept();
+}
+
+std::string LogisticsUpdateDialog::getSelectedStatus() const
+{
+    return statusCombo ? statusCombo->currentText().trimmed().toStdString() : "";
+}
+
+std::string LogisticsUpdateDialog::getSelectedActualDate() const
+{
+    if (hasActualDateCheck && hasActualDateCheck->isChecked() && actualDateEdit) {
+        return actualDateEdit->date().toString("yyyy-MM-dd").toStdString();
+    }
+    return "";
 }
 
 // ============================================================================

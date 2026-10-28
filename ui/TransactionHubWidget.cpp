@@ -1593,6 +1593,87 @@ void TransactionHubWidget::setDataChangedCallback(DataChangedCallback callback)
     onDataChanged = callback;
 }
 
+void TransactionHubWidget::updateMasterRowInPlace(int row, const std::string& fieldKey, const Value& newValue)
+{
+    if (row < 0 || row >= static_cast<int>(cachedTransactions.size())) return;
+
+    cachedTransactions[row].set(fieldKey, newValue);
+
+    size_t dot = fieldKey.find('.');
+    if (dot != std::string::npos) {
+        cachedTransactions[row].set(fieldKey.substr(dot + 1), newValue);
+    }
+
+    for (size_t c = 0; c < masterKeys.size(); ++c) {
+        bool match = (masterKeys[c] == fieldKey);
+        if (!match) {
+            size_t reqDot = masterKeys[c].find('.');
+            std::string reqCol = (reqDot == std::string::npos) ? masterKeys[c] : masterKeys[c].substr(reqDot + 1);
+            std::string curCol = (dot == std::string::npos) ? fieldKey : fieldKey.substr(dot + 1);
+            match = (reqCol == curCol);
+        }
+        if (match) {
+            QTableWidgetItem* it = masterTable->item(row, static_cast<int>(c));
+            if (it) {
+                QString valStr = formatValue(newValue);
+                it->setText(valStr);
+                if (valStr == "COMPLETED") {
+                    it->setForeground(QColor(16, 185, 129));
+                    it->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
+                } else if (valStr == "PROCESSING" || valStr == "IN_PROGRESS" || valStr == "CONFIRMED") {
+                    it->setForeground(QColor(37, 99, 235));
+                } else if (valStr == "CANCELLED") {
+                    it->setForeground(QColor(220, 38, 38));
+                } else {
+                    it->setForeground(QColor(234, 88, 12));
+                }
+            }
+            break;
+        }
+    }
+}
+
+void TransactionHubWidget::updateLogisticsRowInPlace(int row, const std::string& fieldKey, const Value& newValue)
+{
+    if (row < 0 || row >= static_cast<int>(cachedLogistics.size())) return;
+
+    cachedLogistics[row].set(fieldKey, newValue);
+
+    size_t dot = fieldKey.find('.');
+    if (dot != std::string::npos) {
+        cachedLogistics[row].set(fieldKey.substr(dot + 1), newValue);
+    }
+
+    int targetCol = -1;
+    if (fieldKey.find("status") != std::string::npos) {
+        targetCol = 3;
+    } else if (fieldKey.find("at") != std::string::npos || fieldKey.find("date") != std::string::npos) {
+        if (fieldKey.find("actual") != std::string::npos || fieldKey.find("delivery_at") != std::string::npos || fieldKey.find("ship_at") != std::string::npos) {
+            targetCol = 2;
+        } else {
+            targetCol = 1;
+        }
+    }
+
+    if (targetCol >= 0 && targetCol < logisticsTable->columnCount()) {
+        QTableWidgetItem* it = logisticsTable->item(row, targetCol);
+        if (it) {
+            QString valStr = formatValue(newValue);
+            it->setText(valStr);
+            if (targetCol == 3) {
+                if (valStr == "COMPLETED") {
+                    it->setForeground(QColor(16, 185, 129));
+                    it->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
+                } else if (valStr == "IN_PROGRESS" || valStr == "RECEIVING") {
+                    it->setForeground(QColor(37, 99, 235));
+                } else {
+                    it->setForeground(QColor(234, 88, 12));
+                }
+            }
+        }
+    }
+}
+
 const Record* TransactionHubWidget::getSelectedMasterRecord(bool warnIfNone)
 {
     int row = masterTable->currentRow();
@@ -1701,10 +1782,21 @@ void TransactionHubWidget::onUpdateOrderStatusClicked()
     TransactionStatusDialog dlg(hubType, db, txnId, orderCode, custCode, orderDate, status, this);
     if (dlg.exec() == QDialog::Accepted) {
         currentOrderCode = orderCode.toStdString();
-        if (onDataChanged) {
-            onDataChanged(QString("Đã cập nhật trạng thái đơn %1").arg(orderCode));
-        } else if (onRefresh) {
-            onRefresh();
+        std::string newStatus = dlg.getSelectedStatus();
+        std::string statusCol = (hubType == HubType::INBOUND) ? "inbound_transaction.status" : "outbound_transaction.status";
+
+        int row = masterTable->currentRow();
+        updateMasterRowInPlace(row, statusCol, Value(newStatus));
+        updateMasterRowInPlace(row, "status", Value(newStatus));
+
+        detailBanner->setText(QString("📌 Chi tiết đối chiếu theo đơn: %1 | Đối tác: %2 | Ngày đặt: %3")
+            .arg(orderCode, custCode, orderDate));
+
+        QString summary = QString("Đã cập nhật trạng thái đơn %1 thành %2").arg(orderCode, QString::fromStdString(newStatus));
+        if (onMarkDirty) {
+            onMarkDirty(summary);
+        } else if (onDataChanged) {
+            onDataChanged(summary);
         }
     }
 }
@@ -1788,10 +1880,26 @@ void TransactionHubWidget::onUpdateLogisticsClicked()
     if (dlg.exec() == QDialog::Accepted) {
         currentOrderCode = parentCode.toStdString();
         currentLogisticsCode = batchCode.toStdString();
-        if (onDataChanged) {
-            onDataChanged(QString("Đã cập nhật tiến độ đợt vận chuyển %1").arg(batchCode));
-        } else if (onRefresh) {
-            onRefresh();
+
+        int row = logisticsTable->currentRow();
+        std::string newStatus = dlg.getSelectedStatus();
+        std::string newDate = dlg.getSelectedActualDate();
+
+        std::string statusCol = (hubType == HubType::INBOUND) ? "delivery.status" : "shipment.status";
+        std::string dateCol = (hubType == HubType::INBOUND) ? "delivery.delivery_at" : "shipment.ship_at";
+
+        updateLogisticsRowInPlace(row, statusCol, Value(newStatus));
+        updateLogisticsRowInPlace(row, "status", Value(newStatus));
+        if (!newDate.empty()) {
+            updateLogisticsRowInPlace(row, dateCol, Value(newDate));
+            updateLogisticsRowInPlace(row, (hubType == HubType::INBOUND) ? "delivery_at" : "ship_at", Value(newDate));
+        }
+
+        QString summary = QString("Đã cập nhật tiến độ đợt vận chuyển %1").arg(batchCode);
+        if (onMarkDirty) {
+            onMarkDirty(summary);
+        } else if (onDataChanged) {
+            onDataChanged(summary);
         }
     }
 }

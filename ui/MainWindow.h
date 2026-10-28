@@ -39,6 +39,7 @@ private:
     void reloadDatabase();
     bool saveDatabase(bool showSuccessPopup = true);
     void notifyDataChanged(const QString& summary = "");
+    void markDirty(const QString& summary = "");
     void loadAuxSpecData(const QString& tableName);
     QStringList loadSpecOptions(const QString& specTableName);
     QStringList loadColumnOptions(const QString& tableName, const QString& colName);

@@ -113,6 +113,8 @@ public:
     );
     ~TransactionStatusDialog() override = default;
 
+    std::string getSelectedStatus() const;
+
 private:
     void onSave();
 
@@ -140,6 +142,9 @@ public:
         QWidget* parent = nullptr
     );
     ~LogisticsUpdateDialog() override = default;
+
+    std::string getSelectedStatus() const;
+    std::string getSelectedActualDate() const;
 
 private:
     void onSave();

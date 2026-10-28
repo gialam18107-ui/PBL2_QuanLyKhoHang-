@@ -734,6 +734,35 @@ void QueryTableWidget::addExtraControl(QWidget* widget)
     controlsLayout->insertWidget(2, widget);
 }
 
+void QueryTableWidget::updateRecordInPlace(int row, const std::string& fieldKey, const Value& newValue)
+{
+    if (row < 0 || row >= static_cast<int>(cachedRecords.size())) return;
+
+    cachedRecords[row].set(fieldKey, newValue);
+
+    size_t dot = fieldKey.find('.');
+    if (dot != std::string::npos) {
+        cachedRecords[row].set(fieldKey.substr(dot + 1), newValue);
+    }
+
+    for (size_t c = 0; c < keys.size(); ++c) {
+        bool match = (keys[c] == fieldKey);
+        if (!match) {
+            size_t reqDot = keys[c].find('.');
+            std::string reqCol = (reqDot == std::string::npos) ? keys[c] : keys[c].substr(reqDot + 1);
+            std::string curCol = (dot == std::string::npos) ? fieldKey : fieldKey.substr(dot + 1);
+            match = (reqCol == curCol);
+        }
+        if (match) {
+            QTableWidgetItem* it = tableWidget->item(row, static_cast<int>(c));
+            if (it) {
+                it->setText(formatValue(newValue));
+            }
+            break;
+        }
+    }
+}
+
 void QueryTableWidget::setCrudCallbacks(
     std::function<void()> onAddCallback,
     RecordActionCallback onEditCallback,
