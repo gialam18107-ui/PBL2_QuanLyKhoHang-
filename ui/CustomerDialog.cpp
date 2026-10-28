@@ -37,7 +37,7 @@ CustomerDialog::CustomerDialog(Database* database, CustomerKind initialKind, boo
       kindCombo(nullptr), codePreviewEdit(nullptr),
       nameFieldLabel(nullptr), nameEdit(nullptr),
       taxFieldLabel(nullptr), taxCodeEdit(nullptr),
-      phoneEdit(nullptr), emailEdit(nullptr)
+      phoneEdit(nullptr), emailEdit(nullptr), saveBtn(nullptr)
 {
     setWindowTitle("Thêm Mới Khách Hàng / Đối Tác");
     resize(540, 400);
@@ -53,7 +53,7 @@ CustomerDialog::CustomerDialog(Database* database, int editCustomerId, QWidget* 
       kindCombo(nullptr), codePreviewEdit(nullptr),
       nameFieldLabel(nullptr), nameEdit(nullptr),
       taxFieldLabel(nullptr), taxCodeEdit(nullptr),
-      phoneEdit(nullptr), emailEdit(nullptr)
+      phoneEdit(nullptr), emailEdit(nullptr), saveBtn(nullptr)
 {
     setWindowTitle("Cập Nhật Thông Tin Liên Hệ Khách Hàng");
     resize(540, 400);
@@ -199,7 +199,7 @@ void CustomerDialog::setupUI(bool allowSwitchKind)
     connect(cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
     btnLayout->addWidget(cancelBtn);
 
-    auto* saveBtn = new QPushButton(isEditMode ? "💾 Lưu cập nhật" : "💾 Tạo khách hàng", this);
+    saveBtn = new QPushButton(isEditMode ? "💾 Lưu cập nhật" : "💾 Tạo khách hàng", this);
     saveBtn->setObjectName("saveBtn");
     connect(saveBtn, &QPushButton::clicked, [this]() {
         onSaveClicked();
@@ -216,6 +216,11 @@ void CustomerDialog::onKindChanged(int index)
     nameEdit->setPlaceholderText(isBus ? "VD: Công ty TNHH Tin Học Phong Vũ..." : "VD: Nguyễn Văn An...");
     taxFieldLabel->setVisible(isBus);
     taxCodeEdit->setVisible(isBus);
+
+    if (isEditMode && customerId == 0) {
+        QMessageBox::critical(this, "Không thể cập nhật", "Không thể sửa thông tin của khách hàng hệ thống mặc định (BS-0000000).");
+        return;
+    }
 
     if (!isEditMode) {
         updatePreviewCode();
@@ -236,7 +241,7 @@ void CustomerDialog::updatePreviewCode()
 
 void CustomerDialog::loadExistingCustomer()
 {
-    if (!db || customerId <= 0) return;
+    if (!db || customerId < 0) return;
     Table* custTable = db->getTable("customer");
     if (!custTable) return;
 
@@ -286,6 +291,17 @@ void CustomerDialog::loadExistingCustomer()
             }
         }
     }
+
+    if (customerId == 0) {
+        nameEdit->setReadOnly(true);
+        if (taxCodeEdit) taxCodeEdit->setReadOnly(true);
+        phoneEdit->setReadOnly(true);
+        emailEdit->setReadOnly(true);
+        if (saveBtn) {
+            saveBtn->setEnabled(false);
+            saveBtn->setToolTip("Khách hàng hệ thống mặc định (BS-0000000) được bảo vệ, không thể sửa đổi.");
+        }
+    }
 }
 
 void CustomerDialog::onSaveClicked()
@@ -315,6 +331,11 @@ void CustomerDialog::onSaveClicked()
     if (email.isEmpty()) {
         QMessageBox::critical(this, "Lỗi nhập liệu", "Địa chỉ Email không được để trống.");
         emailEdit->setFocus();
+        return;
+    }
+
+    if (isEditMode && customerId == 0) {
+        QMessageBox::critical(this, "Không thể cập nhật", "Không thể sửa thông tin của khách hàng hệ thống mặc định (BS-0000000).");
         return;
     }
 

@@ -2598,8 +2598,12 @@ void MainWindow::setupCrudWiring()
             },
             [this](const Record& rec) {
                 int cid = resolveCustomerId(rec);
-                if (cid <= 0) {
+                if (cid < 0) {
                     QMessageBox::critical(this, "Lỗi dữ liệu", "Không xác định được ID khách hàng cần chỉnh sửa.");
+                    return;
+                }
+                if (cid == 0) {
+                    QMessageBox::warning(this, "Khách hàng hệ thống", "Không thể sửa thông tin của khách hàng hệ thống mặc định (BS-0000000).");
                     return;
                 }
                 CustomerDialog dlg(db, cid, this);
@@ -2609,8 +2613,12 @@ void MainWindow::setupCrudWiring()
             },
             [this](const Record& rec) {
                 int cid = resolveCustomerId(rec);
-                if (cid <= 0) {
+                if (cid < 0) {
                     QMessageBox::critical(this, "Lỗi dữ liệu", "Không xác định được ID khách hàng cần xóa.");
+                    return;
+                }
+                if (cid == 0) {
+                    QMessageBox::warning(this, "Khách hàng hệ thống", "Không thể xóa khách hàng hệ thống mặc định (BS-0000000).");
                     return;
                 }
                 Table* custTable = db ? db->getTable("customer") : nullptr;

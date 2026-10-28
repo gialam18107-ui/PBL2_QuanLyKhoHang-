@@ -54,6 +54,7 @@ private:
     void populateOrderTypes();
     void populateCustomers(const QString& selectCode = "");
     void populateActiveProducts();
+    void onOrderTypeChanged(int index);
     void onQuickAddCustomer();
     void onAddLineItem();
     void removeLineItem(int row);

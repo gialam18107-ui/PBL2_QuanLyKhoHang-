@@ -152,6 +152,7 @@ OrderDialog::OrderDialog(HubType type, Database* database, QWidget* parent)
     setupUI();
     populateOrderTypes();
     populateCustomers();
+    onOrderTypeChanged(typeCombo->currentIndex());
     populateActiveProducts();
     renderLineItems();
     goToStep(0);
@@ -268,6 +269,7 @@ QWidget* OrderDialog::createStep1Widget()
     grid->setVerticalSpacing(12);
 
     typeCombo = new QComboBox(headerGroup);
+    connect(typeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &OrderDialog::onOrderTypeChanged);
     grid->addWidget(new QLabel("Loại giao dịch (*):", headerGroup), 0, 0);
     grid->addWidget(typeCombo, 0, 1, 1, 3);
 
@@ -550,6 +552,13 @@ bool OrderDialog::validateCurrentStep()
             custCode = (sepIdx > 0) ? custText.left(sepIdx).trimmed() : custText;
         }
 
+        QString txnType = typeCombo ? typeCombo->currentData().toString() : "";
+        if (txnType == "ADJUSTMENT_IN" || txnType == "ADJUSTMENT_OUT") {
+            if (custCode.isEmpty()) {
+                custCode = "BS-0000000";
+            }
+        }
+
         if (custCode.isEmpty()) {
             QMessageBox::warning(this, "Thiếu thông tin đối tác/khách hàng",
                 "Vui lòng chọn hoặc tạo mới khách hàng / đối tác cho đơn giao dịch.");
@@ -756,6 +765,31 @@ void OrderDialog::renderMultiBatchTable()
     multiBatchTable->resizeColumnsToContents();
 }
 
+void OrderDialog::onOrderTypeChanged(int)
+{
+    if (!typeCombo || !customerCombo) return;
+    QString t = typeCombo->currentData().toString();
+    if (t == "ADJUSTMENT_IN" || t == "ADJUSTMENT_OUT") {
+        for (int i = 0; i < customerCombo->count(); ++i) {
+            if (customerCombo->itemData(i).toString() == "BS-0000000") {
+                customerCombo->setCurrentIndex(i);
+                break;
+            }
+        }
+        if (addCustomerBtn) addCustomerBtn->setEnabled(false);
+    } else {
+        if (addCustomerBtn) addCustomerBtn->setEnabled(true);
+        if (customerCombo->currentData().toString() == "BS-0000000") {
+            for (int i = 0; i < customerCombo->count(); ++i) {
+                if (customerCombo->itemData(i).toString() != "BS-0000000") {
+                    customerCombo->setCurrentIndex(i);
+                    break;
+                }
+            }
+        }
+    }
+}
+
 void OrderDialog::populateOrderTypes()
 {
     typeCombo->clear();
@@ -796,6 +830,7 @@ void OrderDialog::populateCustomers(const QString& selectCode)
 
         if (code.isEmpty()) continue;
         QString typeTag = (type == "business") ? "Doanh nghiệp" : "Cá nhân";
+        if (code == "BS-0000000") typeTag = "Đối tác kiểm kê nội bộ";
         QString label = QString("%1 — %2 (%3)").arg(code, name, typeTag);
         customerCombo->addItem(label, code);
         if (!selectCode.isEmpty() && code == selectCode) {
@@ -932,22 +967,8 @@ void OrderDialog::onAddLineItem()
 
     int newTotalQty = addQty + (existingIdx >= 0 ? lineItems[existingIdx].orderedQty : 0);
 
-    // Pre-check stock on Outbound for immediate feedback (Rule 4.4)
-    if (hubType == HubType::OUTBOUND) {
-        QString outType = typeCombo->currentData().toString();
-        if (outType == "SELLING" && newTotalQty > avail) {
-            QMessageBox::warning(this, "Không đủ tồn kho khả dụng",
-                QString("Sản phẩm [%1] chỉ còn %2 đơn vị khả dụng, không đủ để đặt xuất %3 đơn vị!")
-                    .arg(pCode).arg(avail).arg(newTotalQty));
-            return;
-        }
-        if (outType == "WARRANTY_RETURN" && newTotalQty > (wrt + scr)) {
-            QMessageBox::warning(this, "Không đủ tồn bảo hành / lỗi",
-                QString("Sản phẩm [%1] hiện chỉ có %2 hàng bảo hành/lỗi, không đủ để xuất trả %3 đơn vị!")
-                    .arg(pCode).arg(wrt + scr).arg(newTotalQty));
-            return;
-        }
-    }
+    // Rule 4.3: Outbound order quantity is permitted to exceed current stock (backorders / pre-orders).
+    // Physical availability is enforced when attaching serials in shipments.
 
     if (existingIdx >= 0) {
         lineItems[existingIdx].orderedQty = newTotalQty;
@@ -1047,6 +1068,12 @@ void OrderDialog::onSaveOrder()
     QString orderDate = orderDateEdit->date().toString("yyyy-MM-dd");
     QString txnType = typeCombo->currentData().toString();
     QString note = noteEdit->text().trimmed();
+
+    if (txnType == "ADJUSTMENT_IN" || txnType == "ADJUSTMENT_OUT") {
+        if (custCode.isEmpty()) {
+            custCode = "BS-0000000";
+        }
+    }
 
     Vector<Pair<int, int>> items;
     for (const auto& li : lineItems) {
@@ -1914,24 +1941,8 @@ void LogisticsBatchDialog::onSave()
     Vector<Pair<int, int>> batchItems;
     for (const auto& it : lineItems) {
         if (it.thisBatchQty > 0) {
-            // Stock precondition verification for Outbound
-            if (hubType == HubType::OUTBOUND) {
-                if (transactionType == "SELLING" || transactionType == "SEL") {
-                    if (it.currentStockAvail < it.thisBatchQty) {
-                        QMessageBox::warning(this, "Không đủ tồn khả dụng",
-                            QString("Sản phẩm [%1] chỉ còn %2 đơn vị khả dụng, không đủ để phân bổ %3 đơn vị vào đợt xuất!")
-                                .arg(it.productCode).arg(it.currentStockAvail).arg(it.thisBatchQty));
-                        return;
-                    }
-                } else if (transactionType == "WARRANTY_RETURN" || transactionType == "WRT") {
-                    if (it.currentStockWrt + it.currentStockScrap < it.thisBatchQty) {
-                        QMessageBox::warning(this, "Không đủ hàng bảo hành/lỗi",
-                            QString("Sản phẩm [%1] chỉ có %2 đơn vị bảo hành/lỗi, không đủ để phân bổ %3 đơn vị vào đợt xuất!")
-                                .arg(it.productCode).arg(it.currentStockWrt + it.currentStockScrap).arg(it.thisBatchQty));
-                        return;
-                    }
-                }
-            }
+            // Rule 4.3: Outbound shipment batch quantity is permitted to exceed current stock.
+            // Physical eligibility is verified when dispatching units with serials.
             batchItems.push_back(Pair<int, int>(it.productId, it.thisBatchQty));
         }
     }
@@ -2037,9 +2048,12 @@ bool UnitEntryDialog::isUnitEligibleForCurrentOp(const std::string& status) cons
         return (status != "OUT");
     } else {
         // Rule 4.4.2 Inbound Transitions
+        if (transactionType == "ADJUSTMENT_IN" || transactionType == "ADJ") {
+            // Rule 4.4.2: ADJ Inbound allows transition from ANY status to ANY internal warehouse status
+            return true;
+        }
         bool isNew = (transactionType == "PURCHASING" || transactionType == "PUR" ||
-                      transactionType == "WARRANTY_REPLACEMENT" || transactionType == "WRP" ||
-                      transactionType == "ADJUSTMENT_IN" || transactionType == "ADJ");
+                      transactionType == "WARRANTY_REPLACEMENT" || transactionType == "WRP");
         if (isNew) {
             // New units are not in warehouse yet; existing units cannot be re-received
             return false;
@@ -2063,11 +2077,16 @@ QString UnitEntryDialog::getEligibilityReason(const std::string& status) const
         if (transactionType == "WARRANTY_REPLACEMENT_TO_CUSTOMER" || transactionType == "WRC") {
             return (status == "AVAILABLE" || status == "WARRANTY") ? "✅ Hợp lệ để xuất đổi cho khách" : "❌ Cần trạng thái AVAILABLE/WARRANTY";
         }
+        if (transactionType == "ADJUSTMENT_OUT" || transactionType == "ADJ") {
+            return (status != "OUT") ? "✅ Hợp lệ để xuất điều chỉnh giảm kho" : "❌ Không thể xuất: Đã ở trạng thái OUT";
+        }
         return "✅ Hợp lệ để xuất kho";
     } else {
+        if (transactionType == "ADJUSTMENT_IN" || transactionType == "ADJ") {
+            return "✅ Hợp lệ để chuyển trạng thái kho (hoặc nhập serial mới)";
+        }
         bool isNew = (transactionType == "PURCHASING" || transactionType == "PUR" ||
-                      transactionType == "WARRANTY_REPLACEMENT" || transactionType == "WRP" ||
-                      transactionType == "ADJUSTMENT_IN" || transactionType == "ADJ");
+                      transactionType == "WARRANTY_REPLACEMENT" || transactionType == "WRP");
         if (isNew) {
             return "ℹ️ Tồn kho hiện có (Đơn này sẽ tạo mới linh kiện SN-XXXXXXX)";
         } else {
@@ -2127,6 +2146,8 @@ void UnitEntryDialog::setupUI()
             ruleDesc = "🛡️ <b>Quy định 4.4.2 (Nhận hàng bảo hành từ khách)</b>: Nhận lại linh kiện khách mang bảo hành (hiện đang <b>OUT</b>). Trạng thái chuyển từ <b>OUT ➔ WARRANTY</b>.";
         } else if (transactionType == "CUSTOMER_RETURN" || transactionType == "CRT") {
             ruleDesc = "🛡️ <b>Quy định 4.4.2 (Khách hàng trả hàng)</b>: Nhận lại linh kiện khách trả lại (hiện đang <b>OUT</b>). Chọn trạng thái nhận vào: <b>AVAILABLE</b>, <b>WARRANTY</b> hoặc <b>SCRAPPED</b>.";
+        } else if (transactionType == "ADJUSTMENT_IN" || transactionType == "ADJ") {
+            ruleDesc = "🛡️ <b>Quy định 4.4.2 (Nhập điều chỉnh kho - ADJ)</b>: Cho phép chuyển từ bất kỳ trạng thái nào sang bất kỳ trạng thái nội bộ kho (<b>AVAILABLE</b>, <b>WARRANTY</b>, <b>SCRAPPED</b>), nghiêm cấm chuyển sang <b>OUT</b>. Có thể chọn linh kiện hiện có để đổi trạng thái hoặc nhập mã serial mới.";
         } else {
             ruleDesc = "🛡️ <b>Quy định 4.4.2 (Nhập kho)</b>: Linh kiện nhập kho tuyệt đối không được mang trạng thái OUT.";
         }
@@ -2466,12 +2487,11 @@ void UnitEntryDialog::filterUnitsTable()
 
 void UnitEntryDialog::onUnitTableSelectionChanged()
 {
-    bool isNewAcquisition = (hubType == HubType::INBOUND) &&
-                            (transactionType == "PURCHASING" || transactionType == "PUR" ||
-                             transactionType == "WARRANTY_REPLACEMENT" || transactionType == "WRP" ||
-                             transactionType == "ADJUSTMENT_IN" || transactionType == "ADJ");
+    bool isPureNewAcquisition = (hubType == HubType::INBOUND) &&
+                                (transactionType == "PURCHASING" || transactionType == "PUR" ||
+                                 transactionType == "WARRANTY_REPLACEMENT" || transactionType == "WRP");
 
-    if (isNewAcquisition) return;
+    if (isPureNewAcquisition) return;
 
     int curIdx = productCombo->currentIndex();
     if (curIdx < 0 || curIdx >= static_cast<int>(items.size())) return;
@@ -2532,14 +2552,56 @@ void UnitEntryDialog::onExecuteUnitOperation()
         return;
     }
 
-    bool isNewAcquisition = (hubType == HubType::INBOUND) &&
-                            (transactionType == "PURCHASING" || transactionType == "PUR" ||
-                             transactionType == "WARRANTY_REPLACEMENT" || transactionType == "WRP" ||
-                             transactionType == "ADJUSTMENT_IN" || transactionType == "ADJ");
+    bool isPureNewAcquisition = (hubType == HubType::INBOUND) &&
+                                (transactionType == "PURCHASING" || transactionType == "PUR" ||
+                                 transactionType == "WARRANTY_REPLACEMENT" || transactionType == "WRP");
+    bool isAdjustmentIn = (hubType == HubType::INBOUND) &&
+                          (transactionType == "ADJUSTMENT_IN" || transactionType == "ADJ");
 
     QString inputSn = serialInput ? serialInput->text().trimmed() : "";
 
-    if (isNewAcquisition) {
+    // For Inbound ADJ: if user has selected rows in the table, adjust their status
+    if (isAdjustmentIn && existingUnitsTable) {
+        auto selectedItems = existingUnitsTable->selectedItems();
+        std::vector<int> selectedRows;
+        for (const auto* item : selectedItems) {
+            if (item->column() == 0) selectedRows.push_back(item->row());
+        }
+        Vector<std::string> serialsToProcess;
+        for (int r : selectedRows) {
+            QString sn = existingUnitsTable->item(r, 1)->text();
+            for (const auto& u : cachedUnits) {
+                if (QString::fromStdString(u.serial) == sn && u.isEligible) {
+                    serialsToProcess.push_back(u.serial);
+                    break;
+                }
+            }
+        }
+        if (!serialsToProcess.empty()) {
+            if (static_cast<int>(serialsToProcess.size()) > remQty) {
+                QMessageBox::warning(this, "Vượt quá số lượng đợt",
+                    QString("Số lượng linh kiện đã chọn (%1) vượt quá số lượng còn lại cần xử lý của đợt (%2).")
+                        .arg(serialsToProcess.size()).arg(remQty));
+                return;
+            }
+            QString targetSt = targetStatusCombo ? targetStatusCombo->currentData().toString() : "AVAILABLE";
+            OperationResult res = user_create::receiveUnitsForDelivery(
+                db, logId, pid, targetSt.toStdString(), static_cast<int>(serialsToProcess.size()), serialsToProcess
+            );
+            if (!res.success) {
+                QMessageBox::critical(this, "Lỗi điều chỉnh linh kiện", QString::fromStdString(res.message));
+                return;
+            }
+            hasModifiedUnits = true;
+            QMessageBox::information(this, "Thành công", QString::fromStdString(res.message));
+            if (serialInput) serialInput->clear();
+            loadLogisticsItems();
+            loadExistingUnitsForCurrentProduct();
+            return;
+        }
+    }
+
+    if (isPureNewAcquisition || isAdjustmentIn) {
         // Mode A: New physical units created into warehouse
         int qty = quantitySpin ? quantitySpin->value() : 1;
         if (qty <= 0 || qty > remQty) {

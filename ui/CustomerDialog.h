@@ -51,6 +51,7 @@ private:
     QLineEdit* taxCodeEdit;
     QLineEdit* phoneEdit;
     QLineEdit* emailEdit;
+    QPushButton* saveBtn;
 };
 
 #endif // CUSTOMER_DIALOG_H
