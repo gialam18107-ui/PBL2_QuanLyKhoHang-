@@ -101,8 +101,8 @@ namespace user_delete
                         return specRes;
                     }
                 }
-                Condition cond("product_id", CompareOperator::EQUAL, Value(productId));
-                sTab->remove(cond);
+                // Spec records are removed by primary key above
+
             }
         }
 

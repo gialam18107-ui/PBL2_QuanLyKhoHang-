@@ -13,7 +13,6 @@ Database::Database(const string& name)
 Database::Database(Database&& other) noexcept
     : databaseName(std::move(other.databaseName)),
       tables(std::move(other.tables)),
-      users(std::move(other.users)),
       inTransaction(other.inTransaction),
       transactionDepth(other.transactionDepth),
       transactionSnapshot(std::move(other.transactionSnapshot))
@@ -28,12 +27,9 @@ Database& Database::operator=(Database&& other) noexcept
     {
         clear();
         clearTransactionSnapshot();
-        for (const auto& item : users) delete item.second;
-        users.clear();
 
         databaseName = std::move(other.databaseName);
         tables = std::move(other.tables);
-        users = std::move(other.users);
         inTransaction = other.inTransaction;
         transactionDepth = other.transactionDepth;
         transactionSnapshot = std::move(other.transactionSnapshot);
@@ -48,8 +44,6 @@ Database::~Database()
 {
     clear();
     clearTransactionSnapshot();
-    for (const auto& item : users) delete item.second;
-    users.clear();
 }
 
 string Database::getName() const { return databaseName; }
@@ -218,32 +212,6 @@ static bool validateForeignKeyUpdates(
     return true;
 }
 
-bool Database::update(const string& tableName, const Condition& condition, const Record& newValues)
-{
-    Table* table = getTable(tableName);
-    if (table == nullptr) return false;
-    for (size_t index = 0; index < table->getRows().size(); ++index)
-    {
-        if (table->isRowDeleted(index)) continue;
-        const Record& row = table->getRows()[index];
-        if (condition.evaluate(row) && !validateForeignKeyUpdates(*this, *table, row, newValues)) return false;
-    }
-    return table->update(condition, newValues);
-}
-
-bool Database::update(const string& tableName, const ConditionGroup& group, const Record& newValues)
-{
-    Table* table = getTable(tableName);
-    if (table == nullptr) return false;
-    for (size_t index = 0; index < table->getRows().size(); ++index)
-    {
-        if (table->isRowDeleted(index)) continue;
-        const Record& row = table->getRows()[index];
-        if (group.evaluate(row) && !validateForeignKeyUpdates(*this, *table, row, newValues)) return false;
-    }
-    return table->update(group, newValues);
-}
-
 static bool isReferenced(Database& database, const string& tableName, const Vector<Record>& removedRows)
 {
     Vector<string> names = database.getTableNames();
@@ -265,28 +233,6 @@ static bool isReferenced(Database& database, const string& tableName, const Vect
         }
     }
     return false;
-}
-
-bool Database::remove(const string& tableName, const Condition& condition)
-{
-    Table* table = getTable(tableName);
-    if (table == nullptr) return false;
-    Vector<Record> removed;
-    for (size_t index = 0; index < table->getRows().size(); ++index)
-        if (!table->isRowDeleted(index) && condition.evaluate(table->getRows()[index]))
-            removed.push_back(table->getRows()[index]);
-    return !isReferenced(*this, tableName, removed) && table->remove(condition);
-}
-
-bool Database::remove(const string& tableName, const ConditionGroup& group)
-{
-    Table* table = getTable(tableName);
-    if (table == nullptr) return false;
-    Vector<Record> removed;
-    for (size_t index = 0; index < table->getRows().size(); ++index)
-        if (!table->isRowDeleted(index) && group.evaluate(table->getRows()[index]))
-            removed.push_back(table->getRows()[index]);
-    return !isReferenced(*this, tableName, removed) && table->remove(group);
 }
 
 OperationResult Database::insertRecord(const string& tableName, const Record& record)
@@ -415,55 +361,3 @@ bool Database::rollback()
 bool Database::isInTransaction() const { return inTransaction; }
 
 int Database::getTransactionDepth() const { return transactionDepth; }
-
-bool Database::createUser(const string& username, const string& password)
-{
-    if (users.find(username) != users.end()) return false;
-    users[username] = new User(username, password);
-    return true;
-}
-
-bool Database::dropUser(const string& username)
-{
-    auto it = users.find(username);
-    if (it == users.end()) return false;
-    delete it->second;
-    users.erase(username);
-    return true;
-}
-
-bool Database::authenticate(const string& username, const string& password) const
-{
-    auto it = users.find(username);
-    return it != users.end() && it->second->verifyPassword(password);
-}
-
-bool Database::grantPermission(const string& username, const string& tableName, Permission permission)
-{
-    auto it = users.find(username);
-    if (it == users.end()) return false;
-    if (tableName.empty() || tableName == "*") it->second->grantGlobal(permission);
-    else it->second->grant(tableName, permission);
-    return true;
-}
-
-bool Database::revokePermission(const string& username, const string& tableName, Permission permission)
-{
-    auto it = users.find(username);
-    if (it == users.end()) return false;
-    if (tableName.empty() || tableName == "*") it->second->revokeGlobal(permission);
-    else it->second->revoke(tableName, permission);
-    return true;
-}
-
-bool Database::hasPermission(const string& username, const string& tableName, Permission permission) const
-{
-    auto it = users.find(username);
-    return it != users.end() && it->second->hasPermission(tableName, permission);
-}
-
-User* Database::getUser(const string& username)
-{
-    auto it = users.find(username);
-    return it == users.end() ? nullptr : it->second;
-}

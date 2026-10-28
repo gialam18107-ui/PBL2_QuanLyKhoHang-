@@ -190,23 +190,3 @@ bool DefaultConstraint::validate(const Record&, const Vector<Record>&, const Vec
 {
     return true;
 }
-
-CheckConstraint::CheckConstraint(
-    const string& name,
-    const Condition& condition
-)
-    : Constraint(name, ConstraintType::CHECK), condition(condition)
-{
-}
-
-Constraint* CheckConstraint::clone() const { return new CheckConstraint(*this); }
-const Condition& CheckConstraint::getCondition() const { return condition; }
-
-bool CheckConstraint::validate(
-    const Record& record,
-    const Vector<Record>&,
-    const Vector<Record>&
-) const
-{
-    return condition.evaluate(record);
-}

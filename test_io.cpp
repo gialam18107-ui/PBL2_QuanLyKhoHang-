@@ -4,7 +4,7 @@
 #include <iostream>
 #include <filesystem>
 
-#include "database/Condition.h"
+
 #include "database/Database.h"
 #include "database/Table.h"
 

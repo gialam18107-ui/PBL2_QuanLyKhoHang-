@@ -1,4 +1,4 @@
-﻿#ifndef TABLE_H
+#ifndef TABLE_H
 #define TABLE_H
 
 #include <string>
@@ -8,8 +8,6 @@
 #include "Column.h"
 #include "Record.h"
 #include "Constraint.h"
-#include "Condition.h"
-#include "ConditionGroup.h"
 #include "Index.h"
 
 using namespace std;
@@ -104,31 +102,6 @@ public:
      * @return true if inserted, false if validation failed.
      */
     bool insert(const Record& record);
-
-    /**
-     * @brief Update records matching a Condition with newValues.
-     * @param condition Matching condition for rows to modify.
-     * @param newValues Record containing columns and updated values.
-     * @return true if at least one row matched and updated without constraint violation.
-     */
-    bool update(const Condition& condition, const Record& newValues);
-
-    /**
-     * @brief Update records matching a ConditionGroup.
-     */
-    bool update(const ConditionGroup& group, const Record& newValues);
-
-    /**
-     * @brief Remove records matching a Condition from the table.
-     * @param condition Matching filter for deletion.
-     * @return true if matching rows were deleted.
-     */
-    bool remove(const Condition& condition);
-
-    /**
-     * @brief Remove records matching a compound ConditionGroup.
-     */
-    bool remove(const ConditionGroup& group);
 
     /// Get the primary key column name of this table.
     string getPrimaryKeyColumn() const;

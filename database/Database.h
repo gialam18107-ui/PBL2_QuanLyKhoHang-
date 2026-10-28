@@ -1,19 +1,16 @@
-﻿#ifndef DATABASE_H
+#ifndef DATABASE_H
 #define DATABASE_H
 
 #include <string>
 #include "datastructure/vector/Vector.h"
 #include "datastructure/hashmap/HashMap.h"
 #include "Table.h"
-#include "Condition.h"
-#include "ConditionGroup.h"
-#include "User.h"
 #include "OperationResult.h"
 
 using namespace std;
 
 /**
- * @brief Represents a relational database containing tables, user access controls, and transaction state.
+ * @brief Represents a relational database containing tables and transaction state.
  * Implements full manual memory management without smart pointers or STL containers.
  */
 class Database
@@ -21,7 +18,6 @@ class Database
 private:
     string databaseName;
     HashMap<string, Table*> tables;
-    HashMap<string, User*> users;
 
     // Transaction management
     bool inTransaction;
@@ -118,38 +114,6 @@ public:
     Vector<Record> selectAll(const string& tableName) const;
 
     /**
-     * @brief Update rows in a table matching a single condition.
-     * @param tableName Target table name.
-     * @param condition Filter condition to match rows to update.
-     * @param newValues Record containing new column values to set.
-     * @return true if update succeeded, false if foreign key or table error.
-     */
-    bool update(const string& tableName, const Condition& condition, const Record& newValues);
-
-    /**
-     * @brief Update rows in a table matching a compound ConditionGroup.
-     * @param tableName Target table name.
-     * @param group Logical group of conditions (AND/OR).
-     * @param newValues Record containing new column values to set.
-     */
-    bool update(const string& tableName, const ConditionGroup& group, const Record& newValues);
-
-    /**
-     * @brief Delete rows matching condition. Enforces referential integrity (Rule 2 & 4).
-     * @param tableName Target table name.
-     * @param condition Filter condition for rows to remove.
-     * @return true if deleted, false if rows are referenced by other tables (FK protection).
-     */
-    bool remove(const string& tableName, const Condition& condition);
-
-    /**
-     * @brief Delete rows matching ConditionGroup with referential integrity protection.
-     * @param tableName Target table name.
-     * @param group Compound filter condition.
-     */
-    bool remove(const string& tableName, const ConditionGroup& group);
-
-    /**
      * @brief Insert a record and return OperationResult with detailed status.
      */
     OperationResult insertRecord(const string& tableName, const Record& record);
@@ -202,53 +166,6 @@ public:
 
     /// Get current transaction nesting depth.
     int getTransactionDepth() const;
-
-    // ========================================================
-    // USER & PERMISSION MANAGEMENT
-    // ========================================================
-
-    /**
-     * @brief Create a new user with username and password.
-     * @param username Login username.
-     * @param password Raw password (will be hashed internally).
-     * @return true if created, false if username already exists.
-     */
-    bool createUser(const string& username, const string& password);
-
-    /**
-     * @brief Drop an existing user by username.
-     * @param username Username to remove.
-     */
-    bool dropUser(const string& username);
-
-    /**
-     * @brief Authenticate user credentials.
-     * @param username User's login name.
-     * @param password Password to verify.
-     * @return true if credentials match, false otherwise.
-     */
-    bool authenticate(const string& username, const string& password) const;
-
-    /**
-     * @brief Grant a permission to a user for a table (or "*" for global).
-     * @param username Target username.
-     * @param tableName Table name or "*" for all tables.
-     * @param permission Permission enum (SELECT, INSERT, UPDATE, DELETE, etc.).
-     */
-    bool grantPermission(const string& username, const string& tableName, Permission permission);
-
-    /**
-     * @brief Revoke a previously granted permission from a user.
-     */
-    bool revokePermission(const string& username, const string& tableName, Permission permission);
-
-    /**
-     * @brief Check if user has specific permission on table.
-     */
-    bool hasPermission(const string& username, const string& tableName, Permission permission) const;
-
-    /// Get user pointer by username.
-    User* getUser(const string& username);
 };
 
 #endif // DATABASE_H
