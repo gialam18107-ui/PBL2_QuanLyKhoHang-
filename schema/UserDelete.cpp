@@ -1,4 +1,5 @@
 #include "UserDelete.h"
+#include "query/Query.h"
 #include <iostream>
 #include <cctype>
 
@@ -22,12 +23,27 @@ namespace user_delete
     static bool hasMatchingRecord(Table* table, const std::string& colName, int value)
     {
         if (!table) return false;
-        const auto& rows = table->getRows();
-        for (size_t i = 0; i < rows.size(); ++i) {
-            if (table->isRowDeleted(i)) continue;
-            const Record& r = rows[i];
-            if (r.has(colName) && std::holds_alternative<int>(r.get(colName)) && std::get<int>(r.get(colName)) == value) {
-                return true;
+        Vector<Record> matches = Query::filterRecords(*table, colName, Value(value));
+        if (!matches.empty()) return true;
+
+        // Defensive fallback only if no index exists on colName
+        bool hasIndex = (table->getIndex(colName) != nullptr);
+        if (!hasIndex) {
+            for (const Index* idx : table->getIndexes()) {
+                if (idx != nullptr && idx->getColumnName() == colName) {
+                    hasIndex = true;
+                    break;
+                }
+            }
+        }
+        if (!hasIndex) {
+            const auto& rows = table->getRows();
+            for (size_t i = 0; i < rows.size(); ++i) {
+                if (table->isRowDeleted(i)) continue;
+                const Record& r = rows[i];
+                if (r.has(colName) && std::holds_alternative<int>(r.get(colName)) && std::get<int>(r.get(colName)) == value) {
+                    return true;
+                }
             }
         }
         return false;
@@ -85,13 +101,11 @@ namespace user_delete
             if (sTab) {
                 std::string pkCol = sTab->getPrimaryKeyColumn();
                 Vector<int> specIds;
-                for (size_t i = 0; i < sTab->getRows().size(); ++i) {
-                    if (sTab->isRowDeleted(i)) continue;
-                    const Record& r = sTab->getRows()[i];
-                    if (r.has("product_id") && std::holds_alternative<int>(r.get("product_id")) && std::get<int>(r.get("product_id")) == productId) {
-                        if (!pkCol.empty() && r.has(pkCol) && std::holds_alternative<int>(r.get(pkCol))) {
-                            specIds.push_back(std::get<int>(r.get(pkCol)));
-                        }
+                Vector<Record> specRecs = Query::filterRecords(*sTab, "product_id", Value(productId));
+                for (size_t i = 0; i < specRecs.size(); ++i) {
+                    const Record& r = specRecs[i];
+                    if (!pkCol.empty() && r.has(pkCol) && std::holds_alternative<int>(r.get(pkCol))) {
+                        specIds.push_back(std::get<int>(r.get(pkCol)));
                     }
                 }
                 for (size_t i = 0; i < specIds.size(); ++i) {
@@ -135,6 +149,10 @@ namespace user_delete
         const Record* cRec = custTable->getRecordById(customerId);
         if (!cRec) {
             return OperationResult{false, "Không tìm thấy khách hàng với ID " + std::to_string(customerId) + ".", 0};
+        }
+
+        if (customerId == 0 || (cRec->has("customer_code") && std::holds_alternative<std::string>(cRec->get("customer_code")) && std::get<std::string>(cRec->get("customer_code")) == "BS-0000000")) {
+            return OperationResult{false, "Không thể xóa khách hàng hệ thống mặc định (BS-0000000).", 0};
         }
 
         // 1. Transaction History Precondition Check (Accounting / Economic Rule)
@@ -191,14 +209,9 @@ namespace user_delete
         // Check if referenced by product
         Table* prodTable = db->getTable("product");
         if (prodTable && !brandName.empty()) {
-            for (size_t i = 0; i < prodTable->getRows().size(); ++i) {
-                if (prodTable->isRowDeleted(i)) continue;
-                const Record& r = prodTable->getRows()[i];
-                if (r.has("brand") && std::holds_alternative<std::string>(r.get("brand"))) {
-                    if (std::get<std::string>(r.get("brand")) == brandName) {
-                        return OperationResult{false, "Không thể xóa thương hiệu '" + brandName + "': Đang có sản phẩm trong danh mục thuộc thương hiệu này.", 0};
-                    }
-                }
+            Vector<Record> matchedProds = Query::filterRecords(*prodTable, "brand", Value(brandName));
+            if (!matchedProds.empty()) {
+                return OperationResult{false, "Không thể xóa thương hiệu '" + brandName + "': Đang có sản phẩm trong danh mục thuộc thương hiệu này.", 0};
             }
         }
 

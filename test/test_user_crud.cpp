@@ -139,12 +139,12 @@ int main()
     std::cout << "Non-existent customer_code check: success=" << cInBadCust.success << " (expected false), msg: " << cInBadCust.message << std::endl;
     assert(cInBadCust.success == false);
 
-    // 4.2 Outbound Order Stock Precondition Check (requesting 99999 units must fail) using customer_code
+    // 4.2 Outbound Order Stock Precondition Check: Rule 4.3 allows ordered_quantity > current stock
     Vector<Pair<int, int>> badOutItems;
     badOutItems.push_back(Pair<int, int>(1, 999999));
     OperationResult cOutFail = user_create::createOutboundOrder(&db, "SELLING", "IN-0000001", badOutItems, "2026-10-25", "2026-10-28", "Excessive order");
-    std::cout << "Stock Availability Precondition check (excessive qty): success=" << cOutFail.success << " (expected false), msg: " << cOutFail.message << std::endl;
-    assert(cOutFail.success == false);
+    std::cout << "Outbound order with quantity exceeding stock (permitted per Rule 4.3): success=" << cOutFail.success << " (expected true), msg: " << cOutFail.message << std::endl;
+    assert(cOutFail.success == true);
 
     // 4.3 Create Outbound Order with available stock using customer_code (1 unit of product 1)
     Vector<Pair<int, int>> goodOutItems;
@@ -375,6 +375,58 @@ int main()
     OperationResult rReDispatch = user_update::dispatchUnitForShipment(&db, latestShipId, 2, unitToDispatch);
     std::cout << "Re-dispatching OUT unit rejection: success=" << rReDispatch.success << " (expected false), msg: " << rReDispatch.message << std::endl;
     assert(rReDispatch.success == false);
+
+    // ========================================================
+    // 8. TESTS FOR ADJUSTMENT TRANSACTIONS & DEFAULT CUSTOMER BS-0000000
+    // ========================================================
+    std::cout << "\n--- 8. ADJUSTMENT TRANSACTIONS & DEFAULT CUSTOMER BS-0000000 ---\n";
+
+    // 8.1 Inbound Adjustment with empty customer code -> defaults to BS-0000000 (customer_id = 0)
+    Vector<Pair<int, int>> adjInItems;
+    adjInItems.push_back(Pair<int, int>(2, 2)); // Product 2, qty 2
+    OperationResult rAdjIn = user_create::createInboundOrder(&db, "ADJUSTMENT_IN", "", adjInItems, "2026-10-28", "2026-10-28", "Stock adjustment intake");
+    std::cout << "ADJUSTMENT_IN default customer BS-0000000: success=" << rAdjIn.success << ", msg: " << rAdjIn.message << std::endl;
+    assert(rAdjIn.success == true);
+
+    // Verify inbound_transaction customer_id is 0
+    Table* inTxnTbl = db.getTable("inbound_transaction");
+    const Record& latestInTxn = inTxnTbl->getRows().back();
+    assert(std::get<int>(latestInTxn.get("customer_id")) == 0);
+    std::cout << "Inbound transaction linked customer_id is 0 (verified)" << std::endl;
+
+    // 8.2 Outbound Adjustment with empty customer code -> defaults to BS-0000000 (customer_id = 0)
+    Vector<Pair<int, int>> adjOutItems;
+    adjOutItems.push_back(Pair<int, int>(2, 1));
+    OperationResult rAdjOut = user_create::createOutboundOrder(&db, "ADJUSTMENT_OUT", "", adjOutItems, "2026-10-28", "2026-10-28", "Stock adjustment reduction");
+    std::cout << "ADJUSTMENT_OUT default customer BS-0000000: success=" << rAdjOut.success << ", msg: " << rAdjOut.message << std::endl;
+    assert(rAdjOut.success == true);
+
+    Table* outTxnTbl = db.getTable("outbound_transaction");
+    const Record& latestOutTxn = outTxnTbl->getRows().back();
+    assert(std::get<int>(latestOutTxn.get("customer_id")) == 0);
+    std::cout << "Outbound transaction linked customer_id is 0 (verified)" << std::endl;
+
+    // 8.3 Inbound Adjustment unit receiving: reject target status OUT
+    int adjDelId = user_create::getNextTableId(&db, "delivery") - 1;
+    OperationResult rAdjBadTarget = user_create::receiveUnitsForDelivery(&db, adjDelId, 2, "OUT", 1);
+    std::cout << "ADJUSTMENT_IN reject target status 'OUT': success=" << rAdjBadTarget.success << " (expected false), msg: " << rAdjBadTarget.message << std::endl;
+    assert(rAdjBadTarget.success == false);
+
+    // 8.4 Inbound Adjustment unit receiving: new unit -> AVAILABLE
+    int prevAvail = std::get<int>(pqTbl->getRecordById(2)->get("available_quan"));
+    OperationResult rAdjGood = user_create::receiveUnitsForDelivery(&db, adjDelId, 2, "AVAILABLE", 1);
+    std::cout << "ADJUSTMENT_IN receive new unit into AVAILABLE: success=" << rAdjGood.success << ", msg: " << rAdjGood.message << std::endl;
+    assert(rAdjGood.success == true);
+    assert(std::get<int>(pqTbl->getRecordById(2)->get("available_quan")) == prevAvail + 1);
+
+    // 8.5 Protected System Default Customer BS-0000000 from deletion & contact update
+    OperationResult rDelSysCust = user_delete::deleteCustomer(&db, 0);
+    std::cout << "Protected deleteCustomer(0): success=" << rDelSysCust.success << " (expected false), msg: " << rDelSysCust.message << std::endl;
+    assert(rDelSysCust.success == false);
+
+    OperationResult rUpSysCust = user_update::updateCustomerContact(&db, 0, "Hacker Name", "0123456789", "test@test.com");
+    std::cout << "Protected updateCustomerContact(0): success=" << rUpSysCust.success << " (expected false), msg: " << rUpSysCust.message << std::endl;
+    assert(rUpSysCust.success == false);
 
     std::cout << "\n>>> ALL ENHANCED CRUD TESTS PASSED SUCCESSFULLY! <<<" << std::endl;
     return 0;

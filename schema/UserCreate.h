@@ -70,7 +70,7 @@ namespace user_create
      * @brief Create an Inbound Transaction coupled with its primary Delivery.
      * Enforces active product check (is_sold == TRUE).
      * @param inboundType PURCHASING, ADJUSTMENT_IN, WARRANTY_CHECKING, WARRANTY_REPLACEMENT, CUSTOMER_RETURN
-     * @param customerCode Code of supplier or customer (e.g. "BS-0000001", "IN-0000001")
+     * @param customerCode Code of supplier or customer (e.g. "BS-0000001", "IN-0000001"). Defaults to "BS-0000000" if empty for ADJUSTMENT_IN.
      * @param items List of Pairs (productId, orderedQuantity)
      * @param orderDate Order date (YYYY-MM-DD)
      * @param expectedDeliveryDate Expected delivery date (YYYY-MM-DD >= orderDate)
@@ -88,9 +88,9 @@ namespace user_create
 
     /**
      * @brief Create an Outbound Transaction coupled with its primary Shipment.
-     * Enforces active product check and Stock Availability Precondition.
+     * Enforces active product check. Ordered quantity is permitted to exceed current stock (Rule 4.3).
      * @param outboundType SELLING, ADJUSTMENT_OUT, RETURN_TO_SUPPLIER, WARRANTY_RETURN, WARRANTY_REPLACEMENT_TO_CUSTOMER
-     * @param customerCode Code of customer or partner (e.g. "IN-0000001", "BS-0000001")
+     * @param customerCode Code of customer or partner (e.g. "IN-0000001", "BS-0000001"). Defaults to "BS-0000000" if empty for ADJUSTMENT_OUT.
      * @param items List of Pairs (productId, orderedQuantity)
      * @param orderDate Order date (YYYY-MM-DD)
      * @param expectedShipDate Expected shipment date (YYYY-MM-DD >= orderDate)
@@ -185,6 +185,7 @@ namespace user_create
      * @brief Receive physical units into warehouse for a Delivery batch (Rule 4.4.2).
      * For PUR/WRP: creates new physical units in unit_inventory.
      * For WCK/CRT: updates existing OUT units back to target status (AVAILABLE, WARRANTY, SCRAPPED).
+     * For ADJ: allows transition from any status to any internal status (AVAILABLE, WARRANTY, SCRAPPED), target cannot be OUT.
      * Automatically increments actual_quantity in delivery_detail and inbound_detail.
      * Updates product_quantity buckets and logs immutable records into status_history.
      */

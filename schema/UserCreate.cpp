@@ -533,7 +533,13 @@ namespace user_create
         const std::string& note
     ) {
         if (!db) return OperationResult{false, "Cơ sở dữ liệu chưa được khởi tạo.", 0};
-        if (customerCode.empty()) {
+        std::string effectiveCustomerCode = customerCode;
+        if (inboundType == "ADJUSTMENT_IN" || inboundType == "ADJ") {
+            if (effectiveCustomerCode.empty()) {
+                effectiveCustomerCode = "BS-0000000";
+            }
+        }
+        if (effectiveCustomerCode.empty()) {
             return OperationResult{false, "Mã đối tác / khách hàng không được để trống.", 0};
         }
         if (items.empty()) return OperationResult{false, "Đơn nhập kho phải có ít nhất một mặt hàng.", 0};
@@ -547,9 +553,9 @@ namespace user_create
         Table* custTable = db->getTable("customer");
         if (!custTable) return OperationResult{false, "Bảng 'customer' không tồn tại.", 0};
 
-        int customerId = findCustomerIdByCode(custTable, customerCode);
+        int customerId = findCustomerIdByCode(custTable, effectiveCustomerCode);
         if (customerId < 0) {
-            return OperationResult{false, "Không tìm thấy đối tác/khách hàng với mã: '" + customerCode + "'.", 0};
+            return OperationResult{false, "Không tìm thấy đối tác/khách hàng với mã: '" + effectiveCustomerCode + "'.", 0};
         }
 
         Table* prodTable = db->getTable("product");
@@ -654,7 +660,13 @@ namespace user_create
         const std::string& note
     ) {
         if (!db) return OperationResult{false, "Cơ sở dữ liệu chưa được khởi tạo.", 0};
-        if (customerCode.empty()) {
+        std::string effectiveCustomerCode = customerCode;
+        if (outboundType == "ADJUSTMENT_OUT" || outboundType == "ADJ") {
+            if (effectiveCustomerCode.empty()) {
+                effectiveCustomerCode = "BS-0000000";
+            }
+        }
+        if (effectiveCustomerCode.empty()) {
             return OperationResult{false, "Mã khách hàng / đối tác không được để trống.", 0};
         }
         if (items.empty()) return OperationResult{false, "Đơn xuất kho phải có ít nhất một mặt hàng.", 0};
@@ -668,9 +680,9 @@ namespace user_create
         Table* custTable = db->getTable("customer");
         if (!custTable) return OperationResult{false, "Bảng 'customer' không tồn tại.", 0};
 
-        int customerId = findCustomerIdByCode(custTable, customerCode);
+        int customerId = findCustomerIdByCode(custTable, effectiveCustomerCode);
         if (customerId < 0) {
-            return OperationResult{false, "Không tìm thấy khách hàng/đối tác với mã: '" + customerCode + "'.", 0};
+            return OperationResult{false, "Không tìm thấy khách hàng/đối tác với mã: '" + effectiveCustomerCode + "'.", 0};
         }
 
         Table* prodTable = db->getTable("product");
@@ -693,26 +705,8 @@ namespace user_create
                 return OperationResult{false, "Sản phẩm ID " + std::to_string(pid) + " đã ngừng kinh doanh (is_sold = FALSE), không thể xuất kho (Rule 4.2).", 0};
             }
 
-            const Record* qRec = qtyTable->getRecordById(pid);
-            int avail = 0, wrt = 0, scr = 0;
-            if (qRec) {
-                if (qRec->has("available_quan") && std::holds_alternative<int>(qRec->get("available_quan")))
-                    avail = std::get<int>(qRec->get("available_quan"));
-                if (qRec->has("warranty_quan") && std::holds_alternative<int>(qRec->get("warranty_quan")))
-                    wrt = std::get<int>(qRec->get("warranty_quan"));
-                if (qRec->has("scrapped_quan") && std::holds_alternative<int>(qRec->get("scrapped_quan")))
-                    scr = std::get<int>(qRec->get("scrapped_quan"));
-            }
-
-            if (outboundType == "SELLING" || outboundType == "SEL") {
-                if (avail < qty) {
-                    return OperationResult{false, "Không đủ tồn kho khả dụng cho sản phẩm ID " + std::to_string(pid) + " (Yêu cầu: " + std::to_string(qty) + ", Khả dụng: " + std::to_string(avail) + ").", 0};
-                }
-            } else if (outboundType == "WARRANTY_RETURN" || outboundType == "WRT") {
-                if (wrt + scr < qty) {
-                    return OperationResult{false, "Không đủ hàng bảo hành/phế phẩm để xuất trả cho sản phẩm ID " + std::to_string(pid) + " (Yêu cầu: " + std::to_string(qty) + ", Hiện có: " + std::to_string(wrt + scr) + ").", 0};
-                }
-            }
+            // Rule 4.3: Outbound order quantity is permitted to exceed current stock (allowing backorder/pre-order).
+            // Physical availability is enforced when dispatching units with serials.
         }
 
         std::string typeCode = "SEL";
@@ -1067,27 +1061,7 @@ namespace user_create
                     ") vượt quá số lượng đặt hàng (" + std::to_string(ordQty) + ") cho sản phẩm ID " + std::to_string(pid) + ".", 0};
             }
 
-            // Stock Availability Precondition check
-            const Record* qRec = qtyTable->getRecordById(pid);
-            int avail = 0, wrt = 0, scr = 0;
-            if (qRec) {
-                if (qRec->has("available_quan") && std::holds_alternative<int>(qRec->get("available_quan")))
-                    avail = std::get<int>(qRec->get("available_quan"));
-                if (qRec->has("warranty_quan") && std::holds_alternative<int>(qRec->get("warranty_quan")))
-                    wrt = std::get<int>(qRec->get("warranty_quan"));
-                if (qRec->has("scrapped_quan") && std::holds_alternative<int>(qRec->get("scrapped_quan")))
-                    scr = std::get<int>(qRec->get("scrapped_quan"));
-            }
-
-            if (outType == "SELLING" || outType == "SEL") {
-                if (avail < qty) {
-                    return OperationResult{false, "Không đủ tồn kho khả dụng cho sản phẩm ID " + std::to_string(pid) + " (Yêu cầu: " + std::to_string(qty) + ", Khả dụng: " + std::to_string(avail) + ").", 0};
-                }
-            } else if (outType == "WARRANTY_RETURN" || outType == "WRT") {
-                if (wrt + scr < qty) {
-                    return OperationResult{false, "Không đủ hàng bảo hành/phế phẩm để xuất trả cho sản phẩm ID " + std::to_string(pid) + " (Yêu cầu: " + std::to_string(qty) + ", Hiện có: " + std::to_string(wrt + scr) + ").", 0};
-                }
-            }
+            // Rule 4.3: Outbound shipment batch quantity is permitted to exceed current stock.
         }
 
         // 4. Generate shipment_code using next_ship_no
@@ -1157,15 +1131,21 @@ namespace user_create
         const std::string& note
     ) {
         if (!db) return OperationResult{false, "Cơ sở dữ liệu chưa được khởi tạo.", 0};
-        if (customerCode.empty()) return OperationResult{false, "Mã đối tác / khách hàng không được để trống.", 0};
+        std::string effectiveCustomerCode = customerCode;
+        if (inboundType == "ADJUSTMENT_IN" || inboundType == "ADJ") {
+            if (effectiveCustomerCode.empty()) {
+                effectiveCustomerCode = "BS-0000000";
+            }
+        }
+        if (effectiveCustomerCode.empty()) return OperationResult{false, "Mã đối tác / khách hàng không được để trống.", 0};
         if (totalOrderedItems.empty()) return OperationResult{false, "Đơn nhập kho phải có ít nhất một mặt hàng.", 0};
         if (deliveryBatches.empty()) return OperationResult{false, "Phải ấn định ít nhất một đợt nhận hàng.", 0};
         if (orderDate.empty()) return OperationResult{false, "Ngày đặt hàng không được để trống.", 0};
 
         Table* custTable = db->getTable("customer");
         if (!custTable) return OperationResult{false, "Bảng 'customer' không tồn tại.", 0};
-        int customerId = findCustomerIdByCode(custTable, customerCode);
-        if (customerId < 0) return OperationResult{false, "Không tìm thấy đối tác/khách hàng với mã: '" + customerCode + "'.", 0};
+        int customerId = findCustomerIdByCode(custTable, effectiveCustomerCode);
+        if (customerId < 0) return OperationResult{false, "Không tìm thấy đối tác/khách hàng với mã: '" + effectiveCustomerCode + "'.", 0};
 
         Table* prodTable = db->getTable("product");
         if (!prodTable) return OperationResult{false, "Bảng 'product' không tồn tại.", 0};
@@ -1299,15 +1279,21 @@ namespace user_create
         const std::string& note
     ) {
         if (!db) return OperationResult{false, "Cơ sở dữ liệu chưa được khởi tạo.", 0};
-        if (customerCode.empty()) return OperationResult{false, "Mã khách hàng / đối tác không được để trống.", 0};
+        std::string effectiveCustomerCode = customerCode;
+        if (outboundType == "ADJUSTMENT_OUT" || outboundType == "ADJ") {
+            if (effectiveCustomerCode.empty()) {
+                effectiveCustomerCode = "BS-0000000";
+            }
+        }
+        if (effectiveCustomerCode.empty()) return OperationResult{false, "Mã khách hàng / đối tác không được để trống.", 0};
         if (totalOrderedItems.empty()) return OperationResult{false, "Đơn xuất kho phải có ít nhất một mặt hàng.", 0};
         if (shipmentBatches.empty()) return OperationResult{false, "Phải ấn định ít nhất một đợt xuất hàng.", 0};
         if (orderDate.empty()) return OperationResult{false, "Ngày đặt hàng không được để trống.", 0};
 
         Table* custTable = db->getTable("customer");
         if (!custTable) return OperationResult{false, "Bảng 'customer' không tồn tại.", 0};
-        int customerId = findCustomerIdByCode(custTable, customerCode);
-        if (customerId < 0) return OperationResult{false, "Không tìm thấy khách hàng/đối tác với mã: '" + customerCode + "'.", 0};
+        int customerId = findCustomerIdByCode(custTable, effectiveCustomerCode);
+        if (customerId < 0) return OperationResult{false, "Không tìm thấy khách hàng/đối tác với mã: '" + effectiveCustomerCode + "'.", 0};
 
         Table* prodTable = db->getTable("product");
         Table* qtyTable = db->getTable("product_quantity");
@@ -1324,26 +1310,7 @@ namespace user_create
                 return OperationResult{false, "Sản phẩm ID " + std::to_string(pid) + " đã ngừng kinh doanh (Rule 4.2).", 0};
             }
 
-            const Record* qRec = qtyTable->getRecordById(pid);
-            int avail = 0, wrt = 0, scr = 0;
-            if (qRec) {
-                if (qRec->has("available_quan") && std::holds_alternative<int>(qRec->get("available_quan")))
-                    avail = std::get<int>(qRec->get("available_quan"));
-                if (qRec->has("warranty_quan") && std::holds_alternative<int>(qRec->get("warranty_quan")))
-                    wrt = std::get<int>(qRec->get("warranty_quan"));
-                if (qRec->has("scrapped_quan") && std::holds_alternative<int>(qRec->get("scrapped_quan")))
-                    scr = std::get<int>(qRec->get("scrapped_quan"));
-            }
-
-            if (outboundType == "SELLING" || outboundType == "SEL") {
-                if (avail < qty) {
-                    return OperationResult{false, "Không đủ tồn kho khả dụng cho sản phẩm ID " + std::to_string(pid) + " (Yêu cầu: " + std::to_string(qty) + ", Khả dụng: " + std::to_string(avail) + ").", 0};
-                }
-            } else if (outboundType == "WARRANTY_RETURN" || outboundType == "WRT") {
-                if (wrt + scr < qty) {
-                    return OperationResult{false, "Không đủ hàng bảo hành/phế phẩm để xuất trả cho sản phẩm ID " + std::to_string(pid) + " (Yêu cầu: " + std::to_string(qty) + ", Hiện có: " + std::to_string(wrt + scr) + ").", 0};
-                }
-            }
+            // Rule 4.3: Outbound order quantity is permitted to exceed current stock.
             orderedMap[pid] = qty;
         }
 
@@ -1543,9 +1510,9 @@ namespace user_create
 
         // Determine effective target status & validate transitions (Rule 4.4.2)
         std::string effTarget = targetStatus;
+        bool isAdjustmentIn = (inType == "ADJUSTMENT_IN" || inType == "ADJ");
         bool isNewAcquisition = (inType == "PURCHASING" || inType == "PUR" ||
-                                 inType == "WARRANTY_REPLACEMENT" || inType == "WRP" ||
-                                 inType == "ADJUSTMENT_IN" || inType == "ADJ");
+                                 inType == "WARRANTY_REPLACEMENT" || inType == "WRP");
 
         if (inType == "PURCHASING" || inType == "PUR") {
             if (effTarget.empty()) effTarget = "AVAILABLE";
@@ -1567,6 +1534,12 @@ namespace user_create
             if (effTarget != "AVAILABLE" && effTarget != "WARRANTY" && effTarget != "SCRAPPED") {
                 return OperationResult{false, "Đơn khách hàng trả hàng (CRT) chỉ được nhận linh kiện với trạng thái AVAILABLE, WARRANTY, hoặc SCRAPPED (Rule 4.4.2).", 0};
             }
+        } else if (isAdjustmentIn) {
+            // Rule 4.4.2: ADJ Inbound allows transition from ANY status to ANY internal warehouse status (target cannot be OUT)
+            if (effTarget.empty()) effTarget = "AVAILABLE";
+            if (effTarget != "AVAILABLE" && effTarget != "WARRANTY" && effTarget != "SCRAPPED") {
+                return OperationResult{false, "Đơn nhập điều chỉnh kho (ADJ) chỉ được nhận linh kiện với trạng thái AVAILABLE, WARRANTY, hoặc SCRAPPED (Rule 4.4.2).", 0};
+            }
         } else {
             if (effTarget.empty()) effTarget = "AVAILABLE";
         }
@@ -1575,8 +1548,20 @@ namespace user_create
             return OperationResult{false, "Trạng thái nhận của đơn nhập kho tuyệt đối không được là 'OUT' (Rule 4.4.2).", 0};
         }
 
-        if (!isNewAcquisition && customSerials.size() < static_cast<size_t>(quantity)) {
+        if (!isNewAcquisition && !isAdjustmentIn && customSerials.size() < static_cast<size_t>(quantity)) {
             return OperationResult{false, "Đơn nhận lại hàng (" + inType + ") yêu cầu cung cấp danh sách serial tương ứng cho từng linh kiện.", 0};
+        }
+
+        // Preload current inventory bucket counts
+        const Record* pqRec = qtyTable->getRecordById(productId);
+        int curAvail = 0, curWarr = 0, curScrap = 0;
+        if (pqRec) {
+            if (pqRec->has("available_quan") && std::holds_alternative<int>(pqRec->get("available_quan")))
+                curAvail = std::get<int>(pqRec->get("available_quan"));
+            if (pqRec->has("warranty_quan") && std::holds_alternative<int>(pqRec->get("warranty_quan")))
+                curWarr = std::get<int>(pqRec->get("warranty_quan"));
+            if (pqRec->has("scrapped_quan") && std::holds_alternative<int>(pqRec->get("scrapped_quan")))
+                curScrap = std::get<int>(pqRec->get("scrapped_quan"));
         }
 
         if (!db->beginTransaction()) {
@@ -1586,7 +1571,101 @@ namespace user_create
         int totalAffected = 0;
 
         // Process units
-        if (isNewAcquisition) {
+        if (isAdjustmentIn) {
+            // Inbound ADJ: From ANY status to ANY status (except OUT)
+            for (int k = 0; k < quantity; ++k) {
+                std::string sn = (k < static_cast<int>(customSerials.size())) ? customSerials[k] : "";
+                int targetUnitId = -1;
+                std::string currentUnitStatus = "";
+
+                if (!sn.empty()) {
+                    for (const auto& uRow : unitTable->getRows()) {
+                        if (uRow.has("serial") && std::holds_alternative<std::string>(uRow.get("serial")) &&
+                            std::get<std::string>(uRow.get("serial")) == sn &&
+                            uRow.has("product_id") && std::holds_alternative<int>(uRow.get("product_id")) &&
+                            std::get<int>(uRow.get("product_id")) == productId) {
+                            targetUnitId = std::get<int>(uRow.get("unit_id"));
+                            currentUnitStatus = std::get<std::string>(uRow.get("status"));
+                            break;
+                        }
+                    }
+                }
+
+                if (targetUnitId != -1) {
+                    // Existing unit transition: any status -> effTarget
+                    Record uUp;
+                    uUp.set("status", effTarget);
+                    OperationResult rU = db->update("unit_inventory", targetUnitId, uUp);
+                    if (!rU) { db->rollback(); return rU; }
+                    totalAffected++;
+
+                    int histId = getNextTableId(db, "status_history");
+                    Record hRec;
+                    hRec.set("history_id", histId);
+                    hRec.set("unit_id", targetUnitId);
+                    hRec.set("old_status", currentUnitStatus);
+                    hRec.set("curr_status", effTarget);
+                    hRec.set("transaction", deliveryId);
+                    hRec.set("type", std::string("INBOUND"));
+
+                    OperationResult rH = db->insertRecord("status_history", hRec);
+                    if (!rH) { db->rollback(); return rH; }
+                    totalAffected++;
+
+                    // Adjust bucket: decrement previous bucket if it was internal
+                    if (currentUnitStatus == "AVAILABLE") curAvail--;
+                    else if (currentUnitStatus == "WARRANTY") curWarr--;
+                    else if (currentUnitStatus == "SCRAPPED") curScrap--;
+
+                    // Increment new bucket
+                    if (effTarget == "AVAILABLE") curAvail++;
+                    else if (effTarget == "WARRANTY") curWarr++;
+                    else if (effTarget == "SCRAPPED") curScrap++;
+                } else {
+                    // New unit registration: NULL -> effTarget
+                    if (!sn.empty()) {
+                        if (!isValidSerialFormat(sn)) {
+                            db->rollback();
+                            return OperationResult{false, "Mã serial '" + sn + "' không đúng định dạng SN-XXXXXXX (Rule 5.5).", 0};
+                        }
+                        if (!isSerialUnique(db, sn)) {
+                            db->rollback();
+                            return OperationResult{false, "Mã serial '" + sn + "' đã tồn tại trong kho linh kiện.", 0};
+                        }
+                    } else {
+                        sn = generateUniqueSerial(db);
+                    }
+
+                    int unitId = getNextTableId(db, "unit_inventory");
+                    Record uRec;
+                    uRec.set("unit_id", unitId);
+                    uRec.set("product_id", productId);
+                    uRec.set("serial", sn);
+                    uRec.set("status", effTarget);
+
+                    OperationResult rU = db->insertRecord("unit_inventory", uRec);
+                    if (!rU) { db->rollback(); return rU; }
+                    totalAffected++;
+
+                    int histId = getNextTableId(db, "status_history");
+                    Record hRec;
+                    hRec.set("history_id", histId);
+                    hRec.set("unit_id", unitId);
+                    hRec.set("old_status", Value{}); // NULL on new registration
+                    hRec.set("curr_status", effTarget);
+                    hRec.set("transaction", deliveryId);
+                    hRec.set("type", std::string("INBOUND"));
+
+                    OperationResult rH = db->insertRecord("status_history", hRec);
+                    if (!rH) { db->rollback(); return rH; }
+                    totalAffected++;
+
+                    if (effTarget == "AVAILABLE") curAvail++;
+                    else if (effTarget == "WARRANTY") curWarr++;
+                    else if (effTarget == "SCRAPPED") curScrap++;
+                }
+            }
+        } else if (isNewAcquisition) {
             // Create new physical units
             for (int k = 0; k < quantity; ++k) {
                 std::string sn;
@@ -1627,6 +1706,10 @@ namespace user_create
                 OperationResult rH = db->insertRecord("status_history", hRec);
                 if (!rH) { db->rollback(); return rH; }
                 totalAffected++;
+
+                if (effTarget == "AVAILABLE") curAvail++;
+                else if (effTarget == "WARRANTY") curWarr++;
+                else if (effTarget == "SCRAPPED") curScrap++;
             }
         } else {
             // Update existing units from OUT -> effTarget
@@ -1673,24 +1756,18 @@ namespace user_create
                 OperationResult rH = db->insertRecord("status_history", hRec);
                 if (!rH) { db->rollback(); return rH; }
                 totalAffected++;
+
+                if (effTarget == "AVAILABLE") curAvail++;
+                else if (effTarget == "WARRANTY") curWarr++;
+                else if (effTarget == "SCRAPPED") curScrap++;
             }
         }
 
         // Update product_quantity bucket
-        const Record* pqRec = qtyTable->getRecordById(productId);
-        int curAvail = 0, curWarr = 0, curScrap = 0;
-        if (pqRec) {
-            if (pqRec->has("available_quan") && std::holds_alternative<int>(pqRec->get("available_quan")))
-                curAvail = std::get<int>(pqRec->get("available_quan"));
-            if (pqRec->has("warranty_quan") && std::holds_alternative<int>(pqRec->get("warranty_quan")))
-                curWarr = std::get<int>(pqRec->get("warranty_quan"));
-            if (pqRec->has("scrapped_quan") && std::holds_alternative<int>(pqRec->get("scrapped_quan")))
-                curScrap = std::get<int>(pqRec->get("scrapped_quan"));
-        }
         Record pqUp;
-        if (effTarget == "AVAILABLE") pqUp.set("available_quan", curAvail + quantity);
-        else if (effTarget == "WARRANTY") pqUp.set("warranty_quan", curWarr + quantity);
-        else if (effTarget == "SCRAPPED") pqUp.set("scrapped_quan", curScrap + quantity);
+        pqUp.set("available_quan", curAvail);
+        pqUp.set("warranty_quan", curWarr);
+        pqUp.set("scrapped_quan", curScrap);
 
         OperationResult rPq = db->update("product_quantity", productId, pqUp);
         if (!rPq) { db->rollback(); return rPq; }

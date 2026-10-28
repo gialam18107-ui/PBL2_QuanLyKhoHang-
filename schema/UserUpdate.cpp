@@ -248,6 +248,10 @@ namespace user_update
             return OperationResult{false, "Không tìm thấy khách hàng với ID " + std::to_string(customerId) + ".", 0};
         }
 
+        if (customerId == 0 || (cRec->has("customer_code") && std::holds_alternative<std::string>(cRec->get("customer_code")) && std::get<std::string>(cRec->get("customer_code")) == "BS-0000000")) {
+            return OperationResult{false, "Không thể sửa thông tin của khách hàng hệ thống mặc định (BS-0000000).", 0};
+        }
+
         std::string custType = cRec->has("type") && std::holds_alternative<std::string>(cRec->get("type"))
                              ? std::get<std::string>(cRec->get("type")) : "";
 
