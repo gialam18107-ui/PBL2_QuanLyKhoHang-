@@ -276,10 +276,11 @@ int main()
     assert(user_create::isSerialUnique(&db, testSerial) == true);
 
     // 7.2 Inbound Receiving: Create new physical units for Delivery (receiveUnitsForDelivery)
-    // Find delivery ID that has Product 2 received_quantity = 12
+    // Find delivery ID that has Product 2 received_quantity = 12 (search from end to get newly created batch)
     Table* delDetTbl = db.getTable("delivery_detail");
     int targetDelId = -1;
-    for (const auto& r : delDetTbl->getRows()) {
+    for (int i = static_cast<int>(delDetTbl->getRowCount()) - 1; i >= 0; --i) {
+        const auto& r = delDetTbl->getRows()[i];
         if (r.has("product_id") && std::get<int>(r.get("product_id")) == 2 &&
             r.has("received_quantity") && std::get<int>(r.get("received_quantity")) == 12) {
             targetDelId = std::get<int>(r.get("delivery_id"));

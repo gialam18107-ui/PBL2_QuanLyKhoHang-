@@ -2693,6 +2693,48 @@ void MainWindow::setupCrudWiring()
             );
             dlg.exec();
         });
+
+        auto* manageUnitsDeliveryBtn = new QPushButton("📦 Nhận linh kiện (Unit)", this);
+        manageUnitsDeliveryBtn->setStyleSheet(
+            "QPushButton {"
+            "  background-color: #16a34a;"
+            "  border: none;"
+            "  border-radius: 6px;"
+            "  padding: 5px 12px;"
+            "  font-size: 13px;"
+            "  font-weight: 600;"
+            "  color: #ffffff;"
+            "}"
+            "QPushButton:hover { background-color: #15803d; }"
+        );
+        connect(manageUnitsDeliveryBtn, &QPushButton::clicked, [this]() {
+            const Record* rec = deliveryWidget->getSelectedRecord(true);
+            if (!rec) return;
+
+            int delId = (rec->has("delivery_id") && holds_alternative<int>(rec->get("delivery_id")))
+                ? get<int>(rec->get("delivery_id"))
+                : ((rec->has("delivery.delivery_id") && holds_alternative<int>(rec->get("delivery.delivery_id")))
+                    ? get<int>(rec->get("delivery.delivery_id")) : -1);
+            if (delId <= 0) {
+                QMessageBox::critical(this, "Lỗi dữ liệu", "Không xác định được ID đợt nhận hàng.");
+                return;
+            }
+
+            QString dCode = (rec->has("delivery.delivery_code") && holds_alternative<std::string>(rec->get("delivery.delivery_code")))
+                ? QString::fromStdString(get<std::string>(rec->get("delivery.delivery_code")))
+                : ((rec->has("delivery_code") && holds_alternative<std::string>(rec->get("delivery_code")))
+                    ? QString::fromStdString(get<std::string>(rec->get("delivery_code"))) : "");
+
+            QString inCode = (rec->has("inbound_transaction.inbound_code") && holds_alternative<std::string>(rec->get("inbound_transaction.inbound_code")))
+                ? QString::fromStdString(get<std::string>(rec->get("inbound_transaction.inbound_code")))
+                : ((rec->has("inbound_code") && holds_alternative<std::string>(rec->get("inbound_code")))
+                    ? QString::fromStdString(get<std::string>(rec->get("inbound_code"))) : "");
+
+            UnitEntryDialog dlg(HubType::INBOUND, db, delId, dCode, inCode, this);
+            dlg.exec();
+            notifyDataChanged(QString("Cập nhật linh kiện đợt nhận %1").arg(dCode));
+        });
+        deliveryWidget->addExtraControl(manageUnitsDeliveryBtn);
     }
 
     if (shipmentWidget) {
@@ -2740,6 +2782,48 @@ void MainWindow::setupCrudWiring()
             );
             dlg.exec();
         });
+
+        auto* manageUnitsShipmentBtn = new QPushButton("📦 Xuất linh kiện (Unit)", this);
+        manageUnitsShipmentBtn->setStyleSheet(
+            "QPushButton {"
+            "  background-color: #16a34a;"
+            "  border: none;"
+            "  border-radius: 6px;"
+            "  padding: 5px 12px;"
+            "  font-size: 13px;"
+            "  font-weight: 600;"
+            "  color: #ffffff;"
+            "}"
+            "QPushButton:hover { background-color: #15803d; }"
+        );
+        connect(manageUnitsShipmentBtn, &QPushButton::clicked, [this]() {
+            const Record* rec = shipmentWidget->getSelectedRecord(true);
+            if (!rec) return;
+
+            int shipId = (rec->has("shipment_id") && holds_alternative<int>(rec->get("shipment_id")))
+                ? get<int>(rec->get("shipment_id"))
+                : ((rec->has("shipment.shipment_id") && holds_alternative<int>(rec->get("shipment.shipment_id")))
+                    ? get<int>(rec->get("shipment.shipment_id")) : -1);
+            if (shipId <= 0) {
+                QMessageBox::critical(this, "Lỗi dữ liệu", "Không xác định được ID đợt xuất hàng.");
+                return;
+            }
+
+            QString sCode = (rec->has("shipment.shipment_code") && holds_alternative<std::string>(rec->get("shipment.shipment_code")))
+                ? QString::fromStdString(get<std::string>(rec->get("shipment.shipment_code")))
+                : ((rec->has("shipment_code") && holds_alternative<std::string>(rec->get("shipment_code")))
+                    ? QString::fromStdString(get<std::string>(rec->get("shipment_code"))) : "");
+
+            QString outCode = (rec->has("outbound_transaction.outbound_code") && holds_alternative<std::string>(rec->get("outbound_transaction.outbound_code")))
+                ? QString::fromStdString(get<std::string>(rec->get("outbound_transaction.outbound_code")))
+                : ((rec->has("outbound_code") && holds_alternative<std::string>(rec->get("outbound_code")))
+                    ? QString::fromStdString(get<std::string>(rec->get("outbound_code"))) : "");
+
+            UnitEntryDialog dlg(HubType::OUTBOUND, db, shipId, sCode, outCode, this);
+            dlg.exec();
+            notifyDataChanged(QString("Cập nhật linh kiện đợt xuất %1").arg(sCode));
+        });
+        shipmentWidget->addExtraControl(manageUnitsShipmentBtn);
     }
 }
 

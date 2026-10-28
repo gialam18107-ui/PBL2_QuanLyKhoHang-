@@ -740,12 +740,19 @@ void TransactionHubWidget::setupSplitterUI(QVBoxLayout* mainLayout)
     mainSplitter->setSizes({320, 480});
     mainLayout->addWidget(mainSplitter, 1);
 
-    // Signal connections for row selection
+    // Signal connections for row selection and double-clicks
     connect(masterTable, &QTableWidget::itemSelectionChanged, [this]() {
         onTransactionSelected(masterTable->currentRow());
     });
+    connect(masterTable, &QTableWidget::cellDoubleClicked, [this](int, int) {
+        onInspectOrderClicked();
+    });
+
     connect(logisticsTable, &QTableWidget::itemSelectionChanged, [this]() {
         onLogisticsSelected(logisticsTable->currentRow());
+    });
+    connect(logisticsTable, &QTableWidget::cellDoubleClicked, [this](int, int) {
+        onManageUnitsClicked();
     });
 
     // Sorting connections for all 4 tables
@@ -1756,19 +1763,37 @@ void TransactionHubWidget::onAddLogisticsBatchClicked()
     if (hubType == HubType::INBOUND) {
         if (rec->has("inbound_transaction_id") && holds_alternative<int>(rec->get("inbound_transaction_id")))
             txnId = get<int>(rec->get("inbound_transaction_id"));
+        else if (rec->has("inbound_transaction.inbound_transaction_id") && holds_alternative<int>(rec->get("inbound_transaction.inbound_transaction_id")))
+            txnId = get<int>(rec->get("inbound_transaction.inbound_transaction_id"));
+
         if (rec->has("inbound_code") && holds_alternative<string>(rec->get("inbound_code")))
             orderCode = QString::fromStdString(get<string>(rec->get("inbound_code")));
+        else if (rec->has("inbound_transaction.inbound_code") && holds_alternative<string>(rec->get("inbound_transaction.inbound_code")))
+            orderCode = QString::fromStdString(get<string>(rec->get("inbound_transaction.inbound_code")));
+
         if (rec->has("order_at") && holds_alternative<string>(rec->get("order_at")))
             orderDate = QString::fromStdString(get<string>(rec->get("order_at")));
+        else if (rec->has("inbound_transaction.order_at") && holds_alternative<string>(rec->get("inbound_transaction.order_at")))
+            orderDate = QString::fromStdString(get<string>(rec->get("inbound_transaction.order_at")));
     } else {
         if (rec->has("outbound_trainsaction_id") && holds_alternative<int>(rec->get("outbound_trainsaction_id")))
             txnId = get<int>(rec->get("outbound_trainsaction_id"));
         else if (rec->has("outbound_transaction_id") && holds_alternative<int>(rec->get("outbound_transaction_id")))
             txnId = get<int>(rec->get("outbound_transaction_id"));
+        else if (rec->has("outbound_transaction.outbound_transaction_id") && holds_alternative<int>(rec->get("outbound_transaction.outbound_transaction_id")))
+            txnId = get<int>(rec->get("outbound_transaction.outbound_transaction_id"));
+        else if (rec->has("outbound_id") && holds_alternative<int>(rec->get("outbound_id")))
+            txnId = get<int>(rec->get("outbound_id"));
+
         if (rec->has("outbound_code") && holds_alternative<string>(rec->get("outbound_code")))
             orderCode = QString::fromStdString(get<string>(rec->get("outbound_code")));
+        else if (rec->has("outbound_transaction.outbound_code") && holds_alternative<string>(rec->get("outbound_transaction.outbound_code")))
+            orderCode = QString::fromStdString(get<string>(rec->get("outbound_transaction.outbound_code")));
+
         if (rec->has("order_at") && holds_alternative<string>(rec->get("order_at")))
             orderDate = QString::fromStdString(get<string>(rec->get("order_at")));
+        else if (rec->has("outbound_transaction.order_at") && holds_alternative<string>(rec->get("outbound_transaction.order_at")))
+            orderDate = QString::fromStdString(get<string>(rec->get("outbound_transaction.order_at")));
     }
 
     if (txnId <= 0) {
@@ -1798,17 +1823,33 @@ void TransactionHubWidget::onManageUnitsClicked()
     if (hubType == HubType::INBOUND) {
         if (rec->has("delivery_id") && holds_alternative<int>(rec->get("delivery_id")))
             logId = get<int>(rec->get("delivery_id"));
+        else if (rec->has("delivery.delivery_id") && holds_alternative<int>(rec->get("delivery.delivery_id")))
+            logId = get<int>(rec->get("delivery.delivery_id"));
+
         if (rec->has("delivery.delivery_code") && holds_alternative<string>(rec->get("delivery.delivery_code")))
             batchCode = QString::fromStdString(get<string>(rec->get("delivery.delivery_code")));
+        else if (rec->has("delivery_code") && holds_alternative<string>(rec->get("delivery_code")))
+            batchCode = QString::fromStdString(get<string>(rec->get("delivery_code")));
+
         if (rec->has("inbound_transaction.inbound_code") && holds_alternative<string>(rec->get("inbound_transaction.inbound_code")))
             parentCode = QString::fromStdString(get<string>(rec->get("inbound_transaction.inbound_code")));
+        else if (rec->has("inbound_code") && holds_alternative<string>(rec->get("inbound_code")))
+            parentCode = QString::fromStdString(get<string>(rec->get("inbound_code")));
     } else {
         if (rec->has("shipment_id") && holds_alternative<int>(rec->get("shipment_id")))
             logId = get<int>(rec->get("shipment_id"));
+        else if (rec->has("shipment.shipment_id") && holds_alternative<int>(rec->get("shipment.shipment_id")))
+            logId = get<int>(rec->get("shipment.shipment_id"));
+
         if (rec->has("shipment.shipment_code") && holds_alternative<string>(rec->get("shipment.shipment_code")))
             batchCode = QString::fromStdString(get<string>(rec->get("shipment.shipment_code")));
+        else if (rec->has("shipment_code") && holds_alternative<string>(rec->get("shipment_code")))
+            batchCode = QString::fromStdString(get<string>(rec->get("shipment_code")));
+
         if (rec->has("outbound_transaction.outbound_code") && holds_alternative<string>(rec->get("outbound_transaction.outbound_code")))
             parentCode = QString::fromStdString(get<string>(rec->get("outbound_transaction.outbound_code")));
+        else if (rec->has("outbound_code") && holds_alternative<string>(rec->get("outbound_code")))
+            parentCode = QString::fromStdString(get<string>(rec->get("outbound_code")));
     }
 
     if (parentCode.isEmpty()) parentCode = QString::fromStdString(currentOrderCode);
