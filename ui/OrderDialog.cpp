@@ -1087,15 +1087,15 @@ void OrderDialog::onSaveOrder()
             batchInputs.push_back(bi);
         }
 
-        // Validate sum of allocated quantities <= ordered_quantity
+        // Validate sum of allocated quantities == ordered_quantity (Rule 4.3)
         for (size_t i = 0; i < lineItems.size(); ++i) {
             int totAlloc = 0;
             for (const auto& b : scheduleBatches) {
                 if (i < b.allocatedQuantities.size()) totAlloc += b.allocatedQuantities[i];
             }
-            if (totAlloc > lineItems[i].orderedQty) {
-                QMessageBox::critical(this, "Vượt quá số lượng đặt hàng",
-                    QString("Tổng số lượng phân bổ (%1) vượt quá số lượng đặt (%2) cho sản phẩm [%3] (Rule 4.3).")
+            if (totAlloc != lineItems[i].orderedQty) {
+                QMessageBox::critical(this, "Số lượng phân bổ không khớp",
+                    QString("Tổng số lượng của từng đợt giao/xuất (%1) phải bằng đúng số lượng của đơn transaction (%2) cho sản phẩm [%3] (Rule 4.3).")
                         .arg(totAlloc).arg(lineItems[i].orderedQty).arg(lineItems[i].productCode));
                 return;
             }

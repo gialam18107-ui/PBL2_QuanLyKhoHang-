@@ -332,6 +332,7 @@ void TransactionHubWidget::setupToolbarUI(QVBoxLayout* mainLayout)
 
     addLogisticsBatchBtn = new QPushButton(hubType == HubType::INBOUND ? "➕ Thêm Đợt Giao" : "➕ Thêm Đợt Xuất", this);
     addLogisticsBatchBtn->setCursor(Qt::PointingHandCursor);
+    addLogisticsBatchBtn->setVisible(false); // Rule 4.3: Không được phép tạo thêm delivery/shipment sau khi xác nhận đơn
     addLogisticsBatchBtn->setStyleSheet(
         "QPushButton {"
         "  background-color: #0284c7;"
@@ -1958,6 +1959,11 @@ QString TransactionHubWidget::formatValue(const Value& val)
 
 void TransactionHubWidget::onAddLogisticsBatchClicked()
 {
+    QMessageBox::warning(this, "Không được phép thực hiện",
+        "Hệ thống không cho phép tạo thêm đợt giao/xuất hàng sau khi đã xác nhận đơn transaction.\n"
+        "Toàn bộ đợt giao nhận phải được ấn định và tạo đồng thời lúc tạo đơn transaction (Rule 4.3).");
+    return;
+
     const Record* rec = getSelectedMasterRecord(true);
     if (!rec) return;
 
