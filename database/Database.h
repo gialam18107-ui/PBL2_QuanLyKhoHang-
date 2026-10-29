@@ -22,9 +22,25 @@ private:
     // Transaction management
     bool inTransaction;
     int transactionDepth = 0;
-    HashMap<string, Table*> transactionSnapshot;
+    enum class UndoType
+    {
+        INSERT,
+        UPDATE,
+        REMOVE
+    };
 
-    void clearTransactionSnapshot();
+    struct UndoEntry
+    {
+        UndoType type;
+        Table* table = nullptr;
+        size_t rowIndex = 0;
+        Record oldRecord;
+        HashMap<string, int> oldAutoIncrement;
+    };
+
+    Vector<UndoEntry> undoLog;
+
+
 
 public:
     /**
