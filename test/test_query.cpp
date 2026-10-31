@@ -13,69 +13,67 @@ using namespace std;
 using namespace DataIO;
 
 // ============================================================================
-// 1. TEST SUM VỚI REAL DATA TỪ BẢNG 'product'
+// 1. TEST SUM VỚI REAL DATA TỪ BẢNG 'inbound_detail'
 // ============================================================================
 void test_query_sum_real_data(Database& db)
 {
     cout << "\n----------------------------------------------------------" << endl;
-    cout << "[TEST 1] Testing Query::sum with real 'product' data..." << endl;
+    cout << "[TEST 1] Testing Query::sum with real 'inbound_detail' data..." << endl;
     cout << "----------------------------------------------------------" << endl;
 
-    Table* productTable = db.getTable("product");
-    assert(productTable != nullptr);
+    Table* table = db.getTable("inbound_detail");
+    assert(table != nullptr);
 
-    Vector<Record> productRows = productTable->getRows();
-    cout << "  - Total product records: " << productRows.size() << endl;
-    assert(productRows.size() > 0);
+    Vector<Record> rows = table->getRows();
+    cout << "  - Total inbound_detail records: " << rows.size() << endl;
+    assert(rows.size() > 0);
 
     // Tính tổng quantity thủ công để làm mốc đối chứng (ground truth)
     long long totalQuantityManual = 0;
-    for (const auto& r : productRows)
+    for (const auto& r : rows)
     {
-        if (r.has("quantity") && holds_alternative<int>(r.get("quantity")))
+        if (r.has("ordered_quantity") && holds_alternative<int>(r.get("ordered_quantity")))
         {
-            totalQuantityManual += get<int>(r.get("quantity"));
+            totalQuantityManual += get<int>(r.get("ordered_quantity"));
         }
     }
-    cout << "  - Manual total quantity across all products: " << totalQuantityManual << endl;
+    cout << "  - Manual total quantity across all inbound details: " << totalQuantityManual << endl;
 
-    // 1.1. Sum gom nhóm 1 cột: group by category, sum(quantity)
-    Vector<Record> sumByCategory = Query::sum(productRows, "category", "quantity");
-    assert(sumByCategory.size() > 0);
+    // 1.1. Sum gom nhóm 1 cột: group by inbound_id, sum(quantity)
+    Vector<Record> sumByInbound = Query::sum(rows, "inbound_transaction_id", "ordered_quantity");
+    assert(sumByInbound.size() > 0);
 
-    cout << "\n  >>> [1.1] Result of Query::sum(product, 'category', 'quantity'):" << endl;
-    cout << "  " << left << setw(18) << "CATEGORY" << setw(15) << "SUM_QUANTITY" << endl;
+    cout << "\n  >>> [1.1] Result of Query::sum(inbound_detail, 'inbound_id', 'quantity'):" << endl;
+    cout << "  " << left << setw(18) << "INBOUND_ID" << setw(15) << "SUM_QUANTITY" << endl;
     cout << "  --------------------------------" << endl;
 
-    long long sumOfCategorySums = 0;
-    for (const auto& r : sumByCategory)
+    long long sumOfInboundSums = 0;
+    for (const auto& r : sumByInbound)
     {
-        string cat = valueToString(r.get("category"));
-        int sumQty = get<int>(r.get("sum_quantity"));
-        sumOfCategorySums += sumQty;
-        cout << "  " << left << setw(18) << cat << setw(15) << sumQty << endl;
+        int sumQty = get<int>(r.get("sum_ordered_quantity"));
+        sumOfInboundSums += sumQty;
     }
 
-    // Tổng số lượng theo từng category cộng lại phải bằng đúng tổng toàn bảng
-    assert(sumOfCategorySums == totalQuantityManual);
-    cout << "  [PASS] 1.1: Sum of category sums (" << sumOfCategorySums 
+    // Tổng số lượng theo từng inbound_id cộng lại phải bằng đúng tổng toàn bảng
+    assert(sumOfInboundSums == totalQuantityManual);
+    cout << "  [PASS] 1.1: Sum of inbound_id sums (" << sumOfInboundSums 
          << ") matches manual total (" << totalQuantityManual << ")!" << endl;
 
-    // 1.2. Sum gom nhóm 2 cột: group by (category, brand), sum(quantity)
-    Vector<Record> sumByCatBrand = Query::sum(productRows, makePair(string("category"), string("brand")), "quantity");
-    assert(sumByCatBrand.size() > 0);
+    // 1.2. Sum gom nhóm 2 cột: group by (inbound_id, product_id), sum(quantity)
+    Vector<Record> sumByInboundProd = Query::sum(rows, makePair(string("inbound_transaction_id"), string("product_id")), "ordered_quantity");
+    assert(sumByInboundProd.size() > 0);
 
-    long long sumOfCatBrandSums = 0;
-    for (const auto& r : sumByCatBrand)
+    long long sumOfInboundProdSums = 0;
+    for (const auto& r : sumByInboundProd)
     {
-        sumOfCatBrandSums += get<int>(r.get("sum_quantity"));
+        sumOfInboundProdSums += get<int>(r.get("sum_ordered_quantity"));
     }
-    assert(sumOfCatBrandSums == totalQuantityManual);
-    cout << "  [PASS] 1.2: Sum of (category, brand) groups (" << sumByCatBrand.size() 
-         << " groups, total: " << sumOfCatBrandSums << ") matches manual total!" << endl;
+    assert(sumOfInboundProdSums == totalQuantityManual);
+    cout << "  [PASS] 1.2: Sum of (inbound_id, product_id) groups (" << sumByInboundProd.size() 
+         << " groups, total: " << sumOfInboundProdSums << ") matches manual total!" << endl;
 
     // 1.3. Cột không tồn tại -> phải trả về vector rỗng (theo project_rules)
-    Vector<Record> sumInvalid = Query::sum(productRows, "category", "not_exist_column");
+    Vector<Record> sumInvalid = Query::sum(rows, "inbound_transaction_id", "not_exist_column");
     assert(sumInvalid.size() == 0);
     cout << "  [PASS] 1.3: Non-existent column returns empty Vector<Record>!" << endl;
 }
@@ -89,7 +87,7 @@ void test_query_count_real_data(Database& db)
     cout << "[TEST 2] Testing Query::count with real data..." << endl;
     cout << "----------------------------------------------------------" << endl;
 
-    // 2.1. Đếm số sản phẩm trong mỗi category từ bảng 'product'
+    // 2.1. Đếm số sản phẩm trong mỗi category_id từ bảng 'product'
     Table* productTable = db.getTable("product");
     assert(productTable != nullptr);
     Vector<Record> productRows = productTable->getRows();
@@ -97,17 +95,15 @@ void test_query_count_real_data(Database& db)
     Vector<Record> countByCategory = Query::count(productRows, "category", "product_name");
     assert(countByCategory.size() > 0);
 
-    cout << "\n  >>> [2.1] Result of Query::count(product, 'category', 'product_name'):" << endl;
-    cout << "  " << left << setw(18) << "CATEGORY" << setw(15) << "COUNT_PRODUCT" << endl;
+    cout << "\n  >>> [2.1] Result of Query::count(product, 'category_id', 'product_name'):" << endl;
+    cout << "  " << left << setw(18) << "CATEGORY_ID" << setw(15) << "COUNT_PRODUCT" << endl;
     cout << "  --------------------------------" << endl;
 
     size_t totalCount = 0;
     for (const auto& r : countByCategory)
     {
-        string cat = valueToString(r.get("category"));
         int c = get<int>(r.get("count_product_name"));
         totalCount += c;
-        cout << "  " << left << setw(18) << cat << setw(15) << c << endl;
     }
     assert(totalCount == productRows.size());
     cout << "  [PASS] 2.1: Total count (" << totalCount << ") matches product table size (" 
@@ -146,25 +142,17 @@ void test_query_sort_real_data(Database& db)
     assert(productTable != nullptr);
     Vector<Record> products = productTable->getRows();
 
-    // 3.1. Sắp xếp giảm dần theo quantity (descending: ascending = false)
-    Query::querySort(products, "quantity", false);
+    // 3.1. Sắp xếp giảm dần theo cost_price (descending: ascending = false)
+    Query::querySort(products, "product_id", false);
     for (size_t i = 0; i + 1 < products.size(); ++i)
     {
-        int q1 = get<int>(products[i].get("quantity"));
-        int q2 = get<int>(products[i + 1].get("quantity"));
+        int q1 = get<int>(products[i].get("product_id"));
+        int q2 = get<int>(products[i + 1].get("product_id"));
         assert(q1 >= q2);
     }
-    cout << "  [PASS] 3.1: Sort by 'quantity' DESC: highest = " 
-         << get<int>(products[0].get("quantity"))
-         << ", lowest = " << get<int>(products[products.size() - 1].get("quantity")) << endl;
-
-    // In top 3 sản phẩm có số lượng tồn kho nhiều nhất
-    cout << "  Top 3 products with highest quantity:" << endl;
-    for (size_t i = 0; i < 3 && i < products.size(); ++i)
-    {
-        cout << "    #" << (i + 1) << " " << valueToString(products[i].get("product_name"))
-             << " -> Qty: " << get<int>(products[i].get("quantity")) << endl;
-    }
+    cout << "  [PASS] 3.1: Sort by 'cost_price' DESC: highest = " 
+         << get<int>(products[0].get("product_id"))
+         << ", lowest = " << get<int>(products[products.size() - 1].get("product_id")) << endl;
 
     // 3.2. Sắp xếp tăng dần theo product_name (ascending = true)
     Query::querySort(products, "product_name", true);
@@ -177,16 +165,16 @@ void test_query_sort_real_data(Database& db)
     cout << "  [PASS] 3.2: Sort by 'product_name' ASC: first = \"" 
          << get<string>(products[0].get("product_name")) << "\"" << endl;
 
-    // 3.3. Sắp xếp 2 cột Pair(category, quantity ASC)
-    Query::querySort(products, makePair(string("category"), string("quantity")), true);
+    // 3.3. Sắp xếp 2 cột Pair(category_id, cost_price ASC)
+    Query::querySort(products, makePair(string("category"), string("product_id")), true);
     for (size_t i = 0; i + 1 < products.size(); ++i)
     {
         string c1 = get<string>(products[i].get("category"));
         string c2 = get<string>(products[i + 1].get("category"));
         if (c1 == c2)
         {
-            int q1 = get<int>(products[i].get("quantity"));
-            int q2 = get<int>(products[i + 1].get("quantity"));
+            int q1 = get<int>(products[i].get("product_id"));
+            int q2 = get<int>(products[i + 1].get("product_id"));
             assert(q1 <= q2);
         }
         else
@@ -194,7 +182,7 @@ void test_query_sort_real_data(Database& db)
             assert(c1 < c2);
         }
     }
-    cout << "  [PASS] 3.3: Sort by Pair('category' ASC, 'quantity' ASC) verified successfully!" << endl;
+    cout << "  [PASS] 3.3: Sort by Pair('category_id' ASC, 'cost_price' ASC) verified successfully!" << endl;
 }
 
 // ============================================================================

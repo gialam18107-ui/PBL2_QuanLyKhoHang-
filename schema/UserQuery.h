@@ -177,6 +177,25 @@ namespace user_query {
 		int currentStockScrap = 0;
 	};
 	void get_logistics_batch_allocation_info(Database* db, int txnId, bool isInbound, Vector<LogisticsBatchItemInfo>& items);
+
+	// Tổng kết số lượng theo từng trạng thái của từng sản phẩm trong một đợt giao nhận
+	struct ProductLogisticsStatusSummary {
+		int productId = 0;
+		string productCode;
+		string productName;
+		int batchQty = 0;
+		int actualQty = 0;
+		int availableQty = 0;
+		int warrantyQty = 0;
+		int scrappedQty = 0;
+		int outQty = 0;
+	};
+	void logistics_product_status_summary(
+		Database* db,
+		const string& logisticsCode,
+		bool isInbound,
+		Vector<ProductLogisticsStatusSummary>& summary
+	);
 }
 
 #endif // USERQUERY_H

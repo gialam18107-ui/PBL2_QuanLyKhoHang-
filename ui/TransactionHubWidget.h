@@ -69,15 +69,12 @@ private:
     void loadOrderDetails(const std::string& orderCode);
     void loadLogisticsBatches(const std::string& orderCode);
     void loadLogisticsDetails(const std::string& logisticsCode);
-    void loadLogisticsUnits(const std::string& logisticsCode);
 
     void renderOrderDetails();
     void renderLogisticsBatches();
     void renderLogisticsDetails();
-    void renderLogisticsUnits();
 
-    void onStatusSummaryClicked();
-    void onChangeLogisticsUnitStatus();
+    void onLogisticsProductSummaryClicked();
 
     const Record* getSelectedMasterRecord(bool warnIfNone = true);
     const Record* getSelectedLogisticsRecord(bool warnIfNone = true);
@@ -164,18 +161,8 @@ private:
     QTableWidget* logisticsDetailTable;
     QLabel* logisticsDetailCountLabel;
 
-    // Right Lower Tab & Logistics Units components
-    QTabWidget* rightLowerTabWidget;
-    QWidget* logisticsUnitsTab;
-    QWidget* logisticsDetailTab;
-    QTableWidget* logisticsUnitsTable;
-    QLabel* logisticsUnitsCountLabel;
-    QPushButton* btnStatusSummary;
-    QPushButton* btnChangeUnitStatus;
-
-    Vector<Record> cachedLogisticsUnits;
-    int currentUnitsSortCol = -1;
-    bool currentUnitsSortAsc = true;
+    // Lower Right Batch Items components
+    QPushButton* btnLogisticsProductSummary;
 
     // Maximize/Restore support
     void toggleMaximizePanel(int panelIndex);

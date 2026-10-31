@@ -76,17 +76,33 @@ namespace user_update
 
         // 3. Domain Business Rules & Immutable Fields Validation (Rule 5.3 & 6.3.1)
         if (tableName == "inbound_transaction" || tableName == "outbound_transaction") {
+            std::string oldTxnSt = oldRecord.has("status") && std::holds_alternative<std::string>(oldRecord.get("status"))
+                                 ? std::get<std::string>(oldRecord.get("status")) : "";
             for (size_t i = 0; i < modifiedColumns.size(); ++i) {
                 if (modifiedColumns[i] != "status") {
                     return OperationResult{false, "Chỉ được phép cập nhật trạng thái (status) của đơn giao dịch đã xác nhận.", 0};
                 }
+                std::string newTxnSt = std::holds_alternative<std::string>(modifyingValues[i])
+                                     ? std::get<std::string>(modifyingValues[i]) : "";
+                if ((oldTxnSt == "COMPLETED" || oldTxnSt == "completed") && newTxnSt != "COMPLETED") {
+                    return OperationResult{false, "Đơn giao dịch đã ở trạng thái HOÀN THÀNH (COMPLETED), không thể chuyển ngược trạng thái (Rule 4.5).", 0};
+                }
             }
         }
         else if (tableName == "delivery") {
+            std::string oldDelSt = oldRecord.has("status") && std::holds_alternative<std::string>(oldRecord.get("status"))
+                                 ? std::get<std::string>(oldRecord.get("status")) : "";
             for (size_t i = 0; i < modifiedColumns.size(); ++i) {
                 const std::string& colName = modifiedColumns[i];
                 if (colName != "status" && colName != "delivery_at") {
                     return OperationResult{false, "Chỉ được phép chỉnh sửa 'status' và 'delivery_at' của đợt nhận hàng.", 0};
+                }
+                if (colName == "status") {
+                    std::string newDelSt = std::holds_alternative<std::string>(modifyingValues[i])
+                                         ? std::get<std::string>(modifyingValues[i]) : "";
+                    if ((oldDelSt == "COMPLETED" || oldDelSt == "completed") && newDelSt != "COMPLETED") {
+                        return OperationResult{false, "Đợt giao nhận đã ở trạng thái HOÀN THÀNH (COMPLETED), không thể chuyển ngược trạng thái (Rule 4.5).", 0};
+                    }
                 }
 
                 // Chronological Date Validation: delivery_at >= inbound_transaction.order_at
@@ -115,10 +131,19 @@ namespace user_update
             }
         }
         else if (tableName == "shipment") {
+            std::string oldShipSt = oldRecord.has("status") && std::holds_alternative<std::string>(oldRecord.get("status"))
+                                  ? std::get<std::string>(oldRecord.get("status")) : "";
             for (size_t i = 0; i < modifiedColumns.size(); ++i) {
                 const std::string& colName = modifiedColumns[i];
                 if (colName != "status" && colName != "ship_at") {
                     return OperationResult{false, "Chỉ được phép chỉnh sửa 'status' và 'ship_at' của đợt xuất hàng.", 0};
+                }
+                if (colName == "status") {
+                    std::string newShipSt = std::holds_alternative<std::string>(modifyingValues[i])
+                                          ? std::get<std::string>(modifyingValues[i]) : "";
+                    if ((oldShipSt == "COMPLETED" || oldShipSt == "completed") && newShipSt != "COMPLETED") {
+                        return OperationResult{false, "Đợt xuất hàng đã ở trạng thái HOÀN THÀNH (COMPLETED), không thể chuyển ngược trạng thái (Rule 4.5).", 0};
+                    }
                 }
 
                 // Chronological Date Validation: ship_at >= outbound_transaction.order_at
@@ -349,6 +374,12 @@ namespace user_update
         const Record* shipRec = shipTable->getRecordById(shipmentId);
         if (!shipRec) {
             return OperationResult{false, "Không tìm thấy đợt xuất hàng với ID " + std::to_string(shipmentId) + ".", 0};
+        }
+
+        std::string shipStatus = shipRec->has("status") && std::holds_alternative<std::string>(shipRec->get("status"))
+                               ? std::get<std::string>(shipRec->get("status")) : "";
+        if (shipStatus == "COMPLETED" || shipStatus == "completed") {
+            return OperationResult{false, "Đợt xuất hàng này đã ở trạng thái HOÀN THÀNH (COMPLETED), không thể xuất thêm linh kiện.", 0};
         }
 
         int outTxnId = -1;
@@ -749,41 +780,62 @@ namespace user_update
         OperationResult rPq = db->update("product_quantity", productId, pqUp);
         if (!rPq) { db->rollback(); return rPq; }
 
-        // Insert new record into status_history
-        int histId = 1;
+        // Update existing record in status_history if present, else insert new
+        int existingHistId = -1;
         std::string pkHist = histTable->getPrimaryKeyColumn();
-        for (const auto& hRow : histTable->getRows()) {
+        int maxHistId = 0;
+        int logPk = isInbound ? std::get<int>(logRec.get("delivery_id")) : std::get<int>(logRec.get("shipment_id"));
+
+        const auto& hRows = histTable->getRows();
+        for (size_t i = 0; i < hRows.size(); ++i) {
+            if (histTable->isRowDeleted(i)) continue;
+            const auto& hRow = hRows[i];
             if (hRow.has(pkHist) && std::holds_alternative<int>(hRow.get(pkHist))) {
                 int hid = std::get<int>(hRow.get(pkHist));
-                if (hid >= histId) histId = hid + 1;
+                if (hid > maxHistId) maxHistId = hid;
+            }
+            if (hRow.has("transaction") && hRow.has("unit_id")) {
+                int tx = std::holds_alternative<int>(hRow.get("transaction")) ? std::get<int>(hRow.get("transaction")) : -1;
+                int uId = std::holds_alternative<int>(hRow.get("unit_id")) ? std::get<int>(hRow.get("unit_id")) : -1;
+                if (tx == logPk && uId == unitId) {
+                    existingHistId = (hRow.has("history_id") && std::holds_alternative<int>(hRow.get("history_id")))
+                                   ? std::get<int>(hRow.get("history_id")) : -1;
+                }
             }
         }
 
-        int logPk = isInbound ? std::get<int>(logRec.get("delivery_id")) : std::get<int>(logRec.get("shipment_id"));
-        std::time_t tNow = std::time(nullptr);
-        std::tm tmNow;
+        if (existingHistId > 0) {
+            Record hUp;
+            hUp.set("curr_status", newStatus);
+            OperationResult rH = db->update("status_history", existingHistId, hUp);
+            if (!rH) { db->rollback(); return rH; }
+        } else {
+            int histId = maxHistId + 1;
+            std::time_t tNow = std::time(nullptr);
+            std::tm tmNow;
 #if defined(_WIN32) || defined(_WIN64)
-        localtime_s(&tmNow, &tNow);
+            localtime_s(&tmNow, &tNow);
 #else
-        localtime_r(&tNow, &tmNow);
+            localtime_r(&tNow, &tmNow);
 #endif
-        std::ostringstream dtOss;
-        dtOss << std::setfill('0')
-              << (tmNow.tm_year + 1900) << "-"
-              << std::setw(2) << (tmNow.tm_mon + 1) << "-"
-              << std::setw(2) << tmNow.tm_mday;
+            std::ostringstream dtOss;
+            dtOss << std::setfill('0')
+                  << (tmNow.tm_year + 1900) << "-"
+                  << std::setw(2) << (tmNow.tm_mon + 1) << "-"
+                  << std::setw(2) << tmNow.tm_mday;
 
-        Record hRec;
-        hRec.set("history_id", histId);
-        hRec.set("unit_id", unitId);
-        hRec.set("old_status", oldStatus);
-        hRec.set("curr_status", newStatus);
-        hRec.set("transaction", logPk);
-        hRec.set("type", std::string(isInbound ? "INBOUND" : "OUTBOUND"));
-        hRec.set("date", dtOss.str());
+            Record hRec;
+            hRec.set("history_id", histId);
+            hRec.set("unit_id", unitId);
+            hRec.set("old_status", oldStatus);
+            hRec.set("curr_status", newStatus);
+            hRec.set("transaction", logPk);
+            hRec.set("type", std::string(isInbound ? "INBOUND" : "OUTBOUND"));
+            hRec.set("date", dtOss.str());
 
-        OperationResult rH = db->insertRecord("status_history", hRec);
-        if (!rH) { db->rollback(); return rH; }
+            OperationResult rH = db->insertRecord("status_history", hRec);
+            if (!rH) { db->rollback(); return rH; }
+        }
 
         db->commit();
         return OperationResult{true, "Đã cập nhật trạng thái linh kiện " + serial + " từ '" + oldStatus + "' sang '" + newStatus + "' thành công!", 3};

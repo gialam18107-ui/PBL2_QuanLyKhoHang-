@@ -200,9 +200,36 @@ private:
     int logId;
     QString batchCodeStr;
     QString orderDateStr;
+    QString initialStatusStr;
     QComboBox* statusCombo;
     QCheckBox* hasActualDateCheck;
     QDateEdit* actualDateEdit;
+    QPushButton* saveBtn;
+};
+
+/**
+ * @brief Modal dialog displaying status breakdown per product for a delivery/shipment batch.
+ */
+class LogisticsProductStatusSummaryDialog : public QDialog
+{
+public:
+    LogisticsProductStatusSummaryDialog(
+        HubType type,
+        Database* database,
+        const QString& batchCode,
+        QWidget* parent = nullptr
+    );
+    ~LogisticsProductStatusSummaryDialog() override = default;
+
+private:
+    void setupUI();
+    void loadData();
+
+    HubType hubType;
+    Database* db;
+    QString batchCodeStr;
+    QTableWidget* summaryTable;
+    QLabel* totalCountLabel;
 };
 
 /**
@@ -353,38 +380,42 @@ public:
     bool didModifyUnits() const { return hasModifiedUnits; }
 
 private:
-    struct LogisticsItemInfo {
-        int productId;
+    struct StagedUnit {
+        int unitId = 0;
+        std::string serial;
+        int productId = 0;
         QString productCode;
         QString productName;
-        int receivedQty;
-        int actualQty;
-        int remainingQty;
+        std::string originalStatus;
+        std::string currentStatus;
+        int historyId = 0;
+        bool isModified = false;
     };
 
-    struct UnitRowInfo {
-        int unitId;
-        std::string serial;
-        std::string status;
-        int productId;
-        bool isEligible;
-        QString reasonText;
+    struct BatchItemOverview {
+        int productId = 0;
+        QString productCode;
+        QString productName;
+        int batchQty = 0;
+        int actualQty = 0;
+        int stockAvail = 0;
+        int stockWrt = 0;
+        int stockScrap = 0;
     };
 
     void setupUI();
-    void loadLogisticsItems();
-    void onProductChanged(int index);
-    void onAutoGenerateSerial();
-    void onExecuteUnitOperation();
+    void loadBatchData();
+    void loadAllUnitsData();
+    void refreshAllUnitsTable();
+    void refreshRecentUnitsTable();
+    void refreshBatchOverviewTable();
+
     void onDirectSerialEntered();
     void onOpenUnitSelectionDialog();
-    void onChangeUnitStatusClicked();
-    void loadExistingUnitsForCurrentProduct();
-    void filterUnitsTable();
-    void onUnitTableSelectionChanged();
+    void onUnitStatusChanged(int unitId, const QString& newStatus);
+    void onSaveChanges();
 
-    bool isUnitEligibleForCurrentOp(const std::string& status) const;
-    QString getEligibilityReason(const std::string& status) const;
+    QStringList getAllowedStatusOptions() const;
 
     HubType hubType;
     Database* db;
@@ -393,31 +424,35 @@ private:
     QString parentOrderCodeStr;
     std::string transactionType;
     bool isLogisticsCompleted = false;
+    bool hasModifiedUnits = false;
 
-    QLabel* ruleTipLabel;
+    // 2-Tab Structure
+    QTabWidget* mainTabWidget;
+    QWidget* tabAllUnits;
+    QWidget* tabBatchOverview;
+
+    // Tab 1 controls
+    QLineEdit* serialSearchInput;
+    QComboBox* productFilterCombo;
+    QTableWidget* allUnitsTable;
+    QLabel* allUnitsCountLabel;
+
+    // Tab 2 controls
     QLineEdit* unifiedSerialInput;
     QPushButton* recordDirectSerialBtn;
     QPushButton* openUnitSelectionBtn;
-    QPushButton* changeUnitStatusBtn;
+    QTableWidget* batchOverviewTable;
+    QTableWidget* recentUnitsTable;
+    QLabel* recentUnitsLabel;
 
-    QComboBox* productCombo;
-    QLabel* progressLabel;
-    QComboBox* targetStatusCombo;
-    QLabel* targetStatusFixedLabel;
-    QSpinBox* quantitySpin;
-    QLineEdit* serialInput;
-    QPushButton* autoGenSerialBtn;
-    QPushButton* executeBtn;
+    // Bottom action controls
+    QLabel* statusSummaryLabel;
+    QPushButton* saveChangesBtn;
+    QPushButton* closeBtn;
 
-    // Table & filter controls
-    QLineEdit* serialSearchInput;
-    QCheckBox* filterEligibleCheck;
-    QLabel* selectionSummaryLabel;
-    QTableWidget* existingUnitsTable;
-
-    std::vector<LogisticsItemInfo> items;
-    std::vector<UnitRowInfo> cachedUnits;
-    bool hasModifiedUnits = false;
+    std::vector<StagedUnit> stagedUnits;
+    std::vector<int> recentUnitIds; // Up to 3 most recently entered/updated units
+    std::vector<BatchItemOverview> batchItems;
 };
 
 #endif // ORDER_DIALOG_H

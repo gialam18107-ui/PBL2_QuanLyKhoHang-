@@ -1196,6 +1196,12 @@ namespace user_create
             return OperationResult{false, "Không tìm thấy đợt nhận hàng với ID " + std::to_string(deliveryId) + ".", 0};
         }
 
+        std::string delStatus = delRec->has("status") && std::holds_alternative<std::string>(delRec->get("status"))
+                              ? std::get<std::string>(delRec->get("status")) : "";
+        if (delStatus == "COMPLETED" || delStatus == "completed") {
+            return OperationResult{false, "Đợt nhận hàng này đã ở trạng thái HOÀN THÀNH (COMPLETED), không thể nhận thêm linh kiện.", 0};
+        }
+
         int inTxnId = -1;
         if (delRec->has("inbound_transaction_id") && std::holds_alternative<int>(delRec->get("inbound_transaction_id"))) {
             inTxnId = std::get<int>(delRec->get("inbound_transaction_id"));

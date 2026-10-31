@@ -2403,4 +2403,63 @@ void get_logistics_batch_allocation_info(Database* db, int txnId, bool isInbound
 	}
 }
 
+void logistics_product_status_summary(
+	Database* db,
+	const string& logisticsCode,
+	bool isInbound,
+	Vector<ProductLogisticsStatusSummary>& summary
+) {
+	summary.clear();
+	if (!db || logisticsCode.empty()) return;
+
+	Vector<Record> batchDetails;
+	if (isInbound) {
+		delivery_detail_query(db, batchDetails, "delivery_code", Value(logisticsCode));
+	} else {
+		shipment_detail_query(db, batchDetails, "shipment_code", Value(logisticsCode));
+	}
+
+	HashMap<int, size_t> pidToIndex;
+	for (size_t i = 0; i < batchDetails.size(); ++i) {
+		const auto& r = batchDetails[i];
+		int pid = safeGetInt(r, "product_id", 0);
+		if (pid <= 0) continue;
+
+		ProductLogisticsStatusSummary item;
+		item.productId = pid;
+		item.productCode = safeGetString(r, "product.product_code");
+		if (item.productCode.empty()) item.productCode = safeGetString(r, "product_code");
+		item.productName = safeGetString(r, "product.product_name");
+		if (item.productName.empty()) item.productName = safeGetString(r, "product_name");
+
+		if (isInbound) {
+			item.batchQty = safeGetInt(r, "delivery_detail.received_quantity", safeGetInt(r, "received_quantity", 0));
+			item.actualQty = safeGetInt(r, "delivery_detail.actual_quantity", safeGetInt(r, "actual_quantity", 0));
+		} else {
+			item.batchQty = safeGetInt(r, "shipment_detail.received_quantity", safeGetInt(r, "received_quantity", 0));
+			item.actualQty = safeGetInt(r, "shipment_detail.actual_quantity", safeGetInt(r, "actual_quantity", 0));
+		}
+
+		pidToIndex[pid] = summary.size();
+		summary.push_back(std::move(item));
+	}
+
+	Vector<Record> unitHistories;
+	logistics_units_history_query(db, logisticsCode, unitHistories);
+
+	for (size_t i = 0; i < unitHistories.size(); ++i) {
+		const auto& uRec = unitHistories[i];
+		int pid = safeGetInt(uRec, "product_id", 0);
+		string st = safeGetString(uRec, "curr_status");
+
+		if (pidToIndex.contains(pid)) {
+			size_t idx = pidToIndex[pid];
+			if (st == "AVAILABLE") summary[idx].availableQty++;
+			else if (st == "WARRANTY") summary[idx].warrantyQty++;
+			else if (st == "SCRAPPED") summary[idx].scrappedQty++;
+			else if (st == "OUT") summary[idx].outQty++;
+		}
+	}
+}
+
 } // namespace user_query
