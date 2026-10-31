@@ -816,120 +816,16 @@ namespace user_create
         const std::string& expectedDate,
         const Vector<Pair<int, int>>& items
     ) {
+        (void)expectedDate;
+        (void)items;
         if (!db) return OperationResult{false, "Cơ sở dữ liệu chưa được khởi tạo.", 0};
-        if (items.empty()) return OperationResult{false, "Đợt nhận hàng phải có ít nhất một mặt hàng.", 0};
-        if (expectedDate.empty()) return OperationResult{false, "Ngày dự kiến nhận hàng không được để trống.", 0};
-
         Table* inTxnTable = db->getTable("inbound_transaction");
-        Table* inDetTable = db->getTable("inbound_detail");
-        Table* delTable = db->getTable("delivery");
-        Table* delDetTable = db->getTable("delivery_detail");
-        if (!inTxnTable || !inDetTable || !delTable || !delDetTable) {
-            return OperationResult{false, "Các bảng đơn nhập hoặc đợt giao không tồn tại trong CSDL.", 0};
-        }
-
+        if (!inTxnTable) return OperationResult{false, "Bảng đơn nhập kho không tồn tại trong CSDL.", 0};
         const Record* inTxnRec = inTxnTable->getRecordById(inboundTransactionId);
         if (!inTxnRec) {
             return OperationResult{false, "Không tìm thấy đơn nhập kho với ID " + std::to_string(inboundTransactionId) + ".", 0};
         }
-
-        std::string orderAt = inTxnRec->has("order_at") && std::holds_alternative<std::string>(inTxnRec->get("order_at"))
-                            ? std::get<std::string>(inTxnRec->get("order_at")) : "";
-        if (!orderAt.empty() && expectedDate < orderAt) {
-            return OperationResult{false, "Ngày dự kiến nhận hàng (" + expectedDate + ") không được sớm hơn ngày đặt hàng (" + orderAt + ").", 0};
-        }
-
-        std::string inCode = inTxnRec->has("inbound_code") && std::holds_alternative<std::string>(inTxnRec->get("inbound_code"))
-                           ? std::get<std::string>(inTxnRec->get("inbound_code")) : "";
-
-        // 1. Gather original ordered quantity per product
-        HashMap<int, int> orderedQuantities;
-        Vector<Record> inDetRows = Query::filterRecords(*inDetTable, "inbound_transaction_id", Value(inboundTransactionId));
-        for (const auto& row : inDetRows) {
-            int pid = std::get<int>(row.get("product_id"));
-            int ordQty = std::get<int>(row.get("ordered_quantity"));
-            orderedQuantities[pid] = ordQty;
-        }
-
-        // 2. Gather existing received_quantity across prior deliveries
-        HashMap<int, int> totalPriorReceived;
-        Vector<Record> delRows = Query::filterRecords(*delTable, "inbound_transaction_id", Value(inboundTransactionId));
-        for (const auto& delRow : delRows) {
-            int delId = std::get<int>(delRow.get("delivery_id"));
-            Vector<Record> ddRows = Query::filterRecords(*delDetTable, "delivery_id", Value(delId));
-            for (const auto& ddRow : ddRows) {
-                int pid = std::get<int>(ddRow.get("product_id"));
-                int recQty = std::get<int>(ddRow.get("received_quantity"));
-                totalPriorReceived[pid] = (totalPriorReceived.contains(pid) ? totalPriorReceived[pid] : 0) + recQty;
-            }
-        }
-
-        // 3. Validate Logistics Product Scope & Sum Quantity Constraint
-        for (size_t i = 0; i < items.size(); ++i) {
-            int pid = items[i].first;
-            int qty = items[i].second;
-            if (qty <= 0) {
-                return OperationResult{false, "Số lượng nhận của sản phẩm ID " + std::to_string(pid) + " phải lớn hơn 0.", 0};
-            }
-            if (!orderedQuantities.contains(pid)) {
-                return OperationResult{false, "Sản phẩm ID " + std::to_string(pid) + " không nằm trong danh mục đặt hàng của đơn nhập (Logistics Product Scope Constraint).", 0};
-            }
-            int ordQty = orderedQuantities[pid];
-            int prior = totalPriorReceived.contains(pid) ? totalPriorReceived[pid] : 0;
-            if (prior + qty > ordQty) {
-                return OperationResult{false, "Tổng số lượng ấn định nhận hàng (" + std::to_string(prior + qty) +
-                    ") vượt quá số lượng đặt hàng (" + std::to_string(ordQty) + ") cho sản phẩm ID " + std::to_string(pid) + ".", 0};
-            }
-        }
-
-        // 4. Generate delivery_code using next_delivery_no
-        int nextDelNo = 1;
-        if (inTxnRec->has("next_delivery_no") && std::holds_alternative<int>(inTxnRec->get("next_delivery_no"))) {
-            nextDelNo = std::get<int>(inTxnRec->get("next_delivery_no"));
-            if (nextDelNo <= 0) nextDelNo = 1;
-        } else {
-            nextDelNo = static_cast<int>(delRows.size()) + 1;
-        }
-
-        std::ostringstream delOss;
-        delOss << inCode << "-D" << std::setfill('0') << std::setw(2) << nextDelNo;
-        std::string delCode = delOss.str();
-
-        if (!db->beginTransaction()) {
-            return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
-        }
-
-        int delId = getNextTableId(db, "delivery");
-        Record del;
-        del.set("delivery_id", delId);
-        del.set("delivery_code", delCode);
-        del.set("inbound_transaction_id", inboundTransactionId);
-        del.set("expected_at", expectedDate);
-        del.set("delivery_at", Value{});
-        del.set("status", std::string("EXPECTED"));
-
-        OperationResult rDel = db->insertRecord("delivery", del);
-        if (!rDel) { db->rollback(); return rDel; }
-
-        for (size_t i = 0; i < items.size(); ++i) {
-            int delDetId = getNextTableId(db, "delivery_detail");
-            Record delDet;
-            delDet.set("delivery_detail_id", delDetId);
-            delDet.set("delivery_id", delId);
-            delDet.set("product_id", items[i].first);
-            delDet.set("received_quantity", items[i].second);
-            delDet.set("actual_quantity", 0);
-
-            OperationResult rDet = db->insertRecord("delivery_detail", delDet);
-            if (!rDet) { db->rollback(); return rDet; }
-        }
-
-        Record inTxnUp;
-        inTxnUp.set("next_delivery_no", nextDelNo + 1);
-        db->update("inbound_transaction", inboundTransactionId, inTxnUp);
-
-        db->commit();
-        return OperationResult{true, "Tạo đợt nhận hàng bổ sung thành công! Mã: " + delCode, static_cast<int>(1 + items.size())};
+        return OperationResult{false, "Không được phép tạo thêm đợt giao hàng (delivery) sau khi đã xác nhận đơn transaction (Rule 4.3).", 0};
     }
 
     OperationResult createShipmentBatch(
@@ -938,125 +834,16 @@ namespace user_create
         const std::string& expectedDate,
         const Vector<Pair<int, int>>& items
     ) {
+        (void)expectedDate;
+        (void)items;
         if (!db) return OperationResult{false, "Cơ sở dữ liệu chưa được khởi tạo.", 0};
-        if (items.empty()) return OperationResult{false, "Đợt xuất hàng phải có ít nhất một mặt hàng.", 0};
-        if (expectedDate.empty()) return OperationResult{false, "Ngày dự kiến xuất hàng không được để trống.", 0};
-
         Table* outTxnTable = db->getTable("outbound_transaction");
-        Table* outDetTable = db->getTable("outbound_detail");
-        Table* shipTable = db->getTable("shipment");
-        Table* shipDetTable = db->getTable("shipment_detail");
-        Table* qtyTable = db->getTable("product_quantity");
-        if (!outTxnTable || !outDetTable || !shipTable || !shipDetTable || !qtyTable) {
-            return OperationResult{false, "Các bảng đơn xuất hoặc đợt xuất không tồn tại trong CSDL.", 0};
-        }
-
+        if (!outTxnTable) return OperationResult{false, "Bảng đơn xuất kho không tồn tại trong CSDL.", 0};
         const Record* outTxnRec = outTxnTable->getRecordById(outboundTransactionId);
         if (!outTxnRec) {
             return OperationResult{false, "Không tìm thấy đơn xuất kho với ID " + std::to_string(outboundTransactionId) + ".", 0};
         }
-
-        std::string orderAt = outTxnRec->has("order_at") && std::holds_alternative<std::string>(outTxnRec->get("order_at"))
-                            ? std::get<std::string>(outTxnRec->get("order_at")) : "";
-        if (!orderAt.empty() && expectedDate < orderAt) {
-            return OperationResult{false, "Ngày dự kiến xuất hàng (" + expectedDate + ") không được sớm hơn ngày đặt hàng (" + orderAt + ").", 0};
-        }
-
-        std::string outCode = outTxnRec->has("outbound_code") && std::holds_alternative<std::string>(outTxnRec->get("outbound_code"))
-                            ? std::get<std::string>(outTxnRec->get("outbound_code")) : "";
-        std::string outType = outTxnRec->has("type") && std::holds_alternative<std::string>(outTxnRec->get("type"))
-                            ? std::get<std::string>(outTxnRec->get("type")) : "SELLING";
-
-        // 1. Gather original ordered quantity per product
-        HashMap<int, int> orderedQuantities;
-        Vector<Record> outDetRows = Query::filterRecords(*outDetTable, "outbound_transaction_id", Value(outboundTransactionId));
-        for (const auto& row : outDetRows) {
-            int pid = std::get<int>(row.get("product_id"));
-            int ordQty = std::get<int>(row.get("ordered_quantity"));
-            orderedQuantities[pid] = ordQty;
-        }
-
-        // 2. Gather existing received_quantity across prior shipments
-        HashMap<int, int> totalPriorReceived;
-        Vector<Record> shipRows = Query::filterRecords(*shipTable, "sell_id", Value(outboundTransactionId));
-        for (const auto& shipRow : shipRows) {
-            int sId = std::get<int>(shipRow.get("shipment_id"));
-            Vector<Record> sdRows = Query::filterRecords(*shipDetTable, "shipment_id", Value(sId));
-            for (const auto& sdRow : sdRows) {
-                int pid = std::get<int>(sdRow.get("product_id"));
-                int recQty = std::get<int>(sdRow.get("received_quantity"));
-                totalPriorReceived[pid] = (totalPriorReceived.contains(pid) ? totalPriorReceived[pid] : 0) + recQty;
-            }
-        }
-
-        // 3. Validate Logistics Product Scope, Sum Quantity Constraint & Stock Availability
-        for (size_t i = 0; i < items.size(); ++i) {
-            int pid = items[i].first;
-            int qty = items[i].second;
-            if (qty <= 0) {
-                return OperationResult{false, "Số lượng xuất của sản phẩm ID " + std::to_string(pid) + " phải lớn hơn 0.", 0};
-            }
-            if (!orderedQuantities.contains(pid)) {
-                return OperationResult{false, "Sản phẩm ID " + std::to_string(pid) + " không nằm trong danh mục đặt hàng của đơn xuất (Logistics Product Scope Constraint).", 0};
-            }
-            int ordQty = orderedQuantities[pid];
-            int prior = totalPriorReceived.contains(pid) ? totalPriorReceived[pid] : 0;
-            if (prior + qty > ordQty) {
-                return OperationResult{false, "Tổng số lượng ấn định xuất hàng (" + std::to_string(prior + qty) +
-                    ") vượt quá số lượng đặt hàng (" + std::to_string(ordQty) + ") cho sản phẩm ID " + std::to_string(pid) + ".", 0};
-            }
-
-            // Rule 4.3: Outbound shipment batch quantity is permitted to exceed current stock.
-        }
-
-        // 4. Generate shipment_code using next_ship_no
-        int nextShipNo = 1;
-        if (outTxnRec->has("next_ship_no") && std::holds_alternative<int>(outTxnRec->get("next_ship_no"))) {
-            nextShipNo = std::get<int>(outTxnRec->get("next_ship_no"));
-            if (nextShipNo <= 0) nextShipNo = 1;
-        } else {
-            nextShipNo = static_cast<int>(shipRows.size()) + 1;
-        }
-
-        std::ostringstream shipOss;
-        shipOss << outCode << "-S" << std::setfill('0') << std::setw(2) << nextShipNo;
-        std::string shipCode = shipOss.str();
-
-        if (!db->beginTransaction()) {
-            return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
-        }
-
-        int shipId = getNextTableId(db, "shipment");
-        Record ship;
-        ship.set("shipment_id", shipId);
-        ship.set("shipment_code", shipCode);
-        ship.set("sell_id", outboundTransactionId);
-        ship.set("expected_at", expectedDate);
-        ship.set("ship_at", Value{});
-        ship.set("status", std::string("PENDING"));
-
-        OperationResult rShip = db->insertRecord("shipment", ship);
-        if (!rShip) { db->rollback(); return rShip; }
-
-        for (size_t i = 0; i < items.size(); ++i) {
-            int shipDetId = getNextTableId(db, "shipment_detail");
-            Record shipDet;
-            shipDet.set("shipment_detail_id", shipDetId);
-            shipDet.set("shipment_id", shipId);
-            shipDet.set("product_id", items[i].first);
-            shipDet.set("received_quantity", items[i].second);
-            shipDet.set("actual_quantity", 0);
-
-            OperationResult rsd = db->insertRecord("shipment_detail", shipDet);
-            if (!rsd) { db->rollback(); return rsd; }
-        }
-
-        Record outTxnUp;
-        outTxnUp.set("next_ship_no", nextShipNo + 1);
-        db->update("outbound_transaction", outboundTransactionId, outTxnUp);
-
-        db->commit();
-        return OperationResult{true, "Tạo đợt xuất hàng bổ sung thành công! Mã: " + shipCode, static_cast<int>(1 + items.size())};
+        return OperationResult{false, "Không được phép tạo thêm đợt xuất hàng (shipment) sau khi đã xác nhận đơn transaction (Rule 4.3).", 0};
     }
 
     OperationResult createInboundOrderWithDeliveries(
@@ -1121,6 +908,17 @@ namespace user_create
                     return OperationResult{false, "Tổng số lượng ấn định qua các đợt giao (" + std::to_string(totalAllocated[pid]) +
                         ") vượt quá số lượng đặt (" + std::to_string(orderedMap[pid]) + ") cho sản phẩm ID " + std::to_string(pid) + ".", 0};
                 }
+            }
+        }
+
+        // Rule 4.3: Total quantity across all deliveries must strictly equal the transaction's ordered quantity
+        for (size_t i = 0; i < totalOrderedItems.size(); ++i) {
+            int pid = totalOrderedItems[i].first;
+            int ordQty = totalOrderedItems[i].second;
+            int allocQty = totalAllocated.contains(pid) ? totalAllocated[pid] : 0;
+            if (allocQty != ordQty) {
+                return OperationResult{false, "Tổng số lượng của từng đợt nhận hàng (" + std::to_string(allocQty) +
+                    ") phải bằng đúng số lượng của đơn transaction (" + std::to_string(ordQty) + ") cho sản phẩm ID " + std::to_string(pid) + " (Rule 4.3).", 0};
             }
         }
 
@@ -1272,6 +1070,17 @@ namespace user_create
                     return OperationResult{false, "Tổng số lượng ấn định qua các đợt xuất (" + std::to_string(totalAllocated[pid]) +
                         ") vượt quá số lượng đặt (" + std::to_string(orderedMap[pid]) + ") cho sản phẩm ID " + std::to_string(pid) + ".", 0};
                 }
+            }
+        }
+
+        // Rule 4.3: Total quantity across all shipments must strictly equal the transaction's ordered quantity
+        for (size_t i = 0; i < totalOrderedItems.size(); ++i) {
+            int pid = totalOrderedItems[i].first;
+            int ordQty = totalOrderedItems[i].second;
+            int allocQty = totalAllocated.contains(pid) ? totalAllocated[pid] : 0;
+            if (allocQty != ordQty) {
+                return OperationResult{false, "Tổng số lượng của từng đợt xuất hàng (" + std::to_string(allocQty) +
+                    ") phải bằng đúng số lượng của đơn transaction (" + std::to_string(ordQty) + ") cho sản phẩm ID " + std::to_string(pid) + " (Rule 4.3).", 0};
             }
         }
 

@@ -125,7 +125,22 @@ public:
      * @param id Value of the primary key.
      * @return true if found and removed.
      */
-    bool removeById(int id);
+    bool removeById(int id, bool allowCompact = true);
+
+    /// Compact deleted rows and rebuild indexes if deleted rows reach half the table size.
+    void compactIfNeeded();
+
+    /// Get current auto-increment counters of the table.
+    const HashMap<string, int>& getAutoIncrementCounters() const;
+
+    /// Undo an insert operation at the given row index without constraint re-validation.
+    void undoInsert(size_t rowIndex, const HashMap<string, int>& oldAutoIncrement);
+
+    /// Undo an update operation at the given row index without constraint re-validation.
+    void undoUpdate(size_t rowIndex, const Record& oldRecord);
+
+    /// Undo a remove operation at the given row index without constraint re-validation.
+    void undoRemove(size_t rowIndex);
 
     /// Get total number of rows in the table.
     int getRowCount() const;

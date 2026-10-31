@@ -84,11 +84,16 @@ The main program uses a **single normal user role** (no `ADMIN` role or account 
 
 ### 4.3 Coupled Creation Only (Transactions, Delivery, Shipment)
 Users may manually input transactions and logistics records, strictly under atomic pairwise constraints:
-- **Inbound Pair**: Creating an Inbound Transaction requires simultaneously creating its paired `Delivery` records. Both must initialize their containing products and quantities. Total product quantity across all deliveries must not exceed the quantity in the `Inbound Transaction`.
-- **Outbound Pair & Quantity Flexibility**:
-  - Creating an Outbound Transaction requires simultaneously creating its paired `Shipment` records.
+- **Inbound Pair & Total Quantity Equality**:
+  - Creating an Inbound Transaction requires simultaneously creating its paired `Delivery` records (either a single delivery or multiple delivery batches). Both must initialize their containing products and quantities.
+  - **Strict Quantity Equality Invariant**: For every product in the transaction, the total allocated quantity across all delivery records/batches must be **strictly equal** to the ordered quantity in the Inbound Transaction ($\sum \text{delivery\_detail.received\_quantity} == \text{inbound\_detail.ordered\_quantity}$ for each product). Under-allocation ($\sum < \text{ordered\_quantity}$) and over-allocation ($\sum > \text{ordered\_quantity}$) are strictly prohibited.
+- **Outbound Pair & Total Quantity Equality**:
+  - Creating an Outbound Transaction requires simultaneously creating its paired `Shipment` records (either a single shipment or multiple shipment batches).
   - **Permitted Outbound Quantity Exceeding Stock (Đơn xuất được phép vượt tồn kho)**: Outbound transaction order quantities (`outbound_detail.ordered_quantity` and shipment planned quantities) are **permitted to exceed current warehouse stock** (allowing backorders, pre-orders, and order creation ahead of inventory intake). Physical unit dispatching (`actual_quantity`) during shipment fulfillment remains bound to attaching currently available eligible units in the warehouse.
-  - Total product quantity across all shipments must not exceed the quantity in the `Outbound Transaction`.
+  - **Strict Quantity Equality Invariant**: For every product in the transaction, the total allocated quantity across all shipment records/batches must be **strictly equal** to the ordered quantity in the Outbound Transaction ($\sum \text{shipment\_detail.received\_quantity} == \text{outbound\_detail.ordered\_quantity}$ for each product). Under-allocation and over-allocation are strictly prohibited.
+- **Strict Post-Confirmation Lock (Không được phép tạo thêm delivery/shipment sau khi bấm xác nhận đơn transaction)**:
+  - All deliveries/shipments associated with a transaction must be declared, allocated, and created atomically at the time of transaction creation.
+  - Once the transaction order is confirmed and committed to the database ("bấm xác nhận đơn transaction"), **it is strictly prohibited to create additional `Delivery` or `Shipment` records for that transaction**. Any subsequent attempt to add delivery or shipment batches to an existing/confirmed transaction must be rejected by the system.
 - **Active Product Eligibility Constraint**:
   - Both Inbound and Outbound transactions are strictly restricted to products with `product.is_sold == TRUE`. If a product has `is_sold == FALSE`, the system and UI must reject or disable adding that product to transaction order details (`inbound_detail`, `outbound_detail`).
 - **Product Scope Constraint for Logistics**:
@@ -154,6 +159,7 @@ Unit status transitions must adhere strictly to the business rules of each trans
     - `shipment_detail.actual_quantity` for the corresponding product in that shipment must automatically increment (+1 for each unit dispatched in this shipment).
     - `outbound_detail.actual_quantity` for the corresponding product in that outbound transaction must also automatically increment accordingly (reflecting the cumulative total units actually dispatched for that transaction).
 - **Quantity Constraints**:
+  - Total planned received quantity across all deliveries/shipments must be strictly equal to the original order quantity of the transaction ($\sum \text{received\_quantity} == \text{ordered\_quantity}$ for each product).
   - The number of unit status transitions (`actual_quantity`) in each delivery/shipment batch must not exceed the batch expected quantity (`delivery_detail.received_quantity` for Inbound or `shipment_detail.received_quantity` for Outbound).
   - Total `actual_quantity` across all deliveries/shipments must not exceed the original order quantity of the transaction (`inbound_detail.ordered_quantity` or `outbound_detail.ordered_quantity`).
 - **History Logging**: Every unit transition automatically creates an immutable record in `status_history` logging `serial`, `old_status`, `curr_status` (new status), `transaction` (delivery/shipment code), `type` (`INBOUND` / `OUTBOUND`), and `date`.
@@ -165,6 +171,7 @@ Once a Transaction + `Delivery`/`Shipment` pair (along with its attached `Unit` 
   - **`status`**: Users may modify the `status` field of Transactions (`inbound_transaction`, `outbound_transaction`), `Delivery`, and `Shipment` during order lifecycle processing.
   - **`delivery_at` & `ship_at`**: Users are permitted to edit/update the actual delivery date (`delivery.delivery_at`) and actual shipment date (`shipment.ship_at`) when goods are actually delivered/dispatched or when adjustments to actual logistics dates are required. The updated dates must strictly obey the chronological constraint: `delivery.delivery_at >= inbound_transaction.order_at` and `shipment.ship_at >= outbound_transaction.order_at` (actual date can be earlier than expected date, but never earlier than order date).
 - **Frozen Business Data**: Planned order quantities (`ordered_quantity`, `received_quantity`), product references, transaction types, customer/partner details, and attached serial numbers are locked and cannot be edited arbitrarily.
+- **Logistics Batch Immutability**: No additional `Delivery` or `Shipment` records may be added to a transaction after confirmation.
 
 ### 4.6 Read-Only Master Data & Direct Unit Restrictions
 Users must **never** directly edit:
@@ -251,6 +258,8 @@ All auto-generated codes and user inputs must strictly conform to the specificat
      - **Chronological Date Validation**: Reject dates where `delivery_at < order_at` or `ship_at < order_at`.
      - **Outbound Quantity Flexibility**: Outbound transaction quantities (`ordered_quantity`) are **permitted to exceed current warehouse stock** (no error/rejection if ordered quantity > current inventory). Actual unit dispatch is validated when assigning physical serial units to shipments.
      - **Immutable Fields Protection (`UserUpdate`)**: Reject modification of frozen fields (e.g., quantities, order items, transaction codes, customer IDs). Only `status`, `delivery_at`, and `ship_at` are updatable on orders/logistics.
+     - **Strict Logistics Allocation Equality**: In transaction creation, validate that for each product, the sum of quantities across all deliveries/shipments equals the ordered quantity of the transaction ($\sum \text{received\_quantity} == \text{ordered\_quantity}$).
+     - **Post-Confirmation Logistics Lock**: Reject any attempt to create additional delivery or shipment records after a transaction has been confirmed/created.
 - **UI Integration & Error Consumption**:
   - The UI calls `UserCreate` / `UserUpdate` / `UserDelete` and evaluates `result.success`:
     - **On Failure (`result.success == false`)**: The UI displays a clear modal warning or error dialog (`QMessageBox::warning` or `QMessageBox::critical`) showing `result.message`, keeping the dialog open so the user can correct their input. The query cache flag remains untouched.
@@ -279,6 +288,9 @@ All auto-generated codes and user inputs must strictly conform to the specificat
     - **Logistics Product Scope**: Delivery and shipment records must only allow products defined in the parent transaction's product list.
     - **Date Pickers Validation**: Ensure `delivery_at >= order_at` and `ship_at >= order_at` (actual date can be before expected date, but not before order date).
     - Outbound check: Allows inputting order quantities exceeding current warehouse stock. Physical unit attachment is constrained to available units during unit dispatch.
+    - **Strict Multi-Batch Allocation & Post-Confirmation Lock**:
+      - When creating a transaction with multiple delivery/shipment batches, the total allocated quantity for each product across batches must equal the transaction's ordered quantity before the transaction can be confirmed.
+      - Once the transaction is confirmed, no additional deliveries or shipments can be added.
     - **CRUD Error Handling**: Consume `OperationResult` from `UserCreate` to display explicit error alerts (`QMessageBox::critical`) if validation fails, preventing form submission.
   - **Unit Entry Window for Delivery & Shipment**:
     - Clicking the designated action button on a Delivery or Shipment record opens a dedicated dialog to input/attach units (serial numbers and target statuses) for each product in that delivery or shipment.
@@ -320,8 +332,9 @@ All auto-generated codes and user inputs must strictly conform to the specificat
 - **Independence**: Generator logic must remain decoupled from internal database/table/query classes.
 - **Strict Business Logic Compliance (Tuân thủ nghiệp vụ hệ thống)**:
   - **Pairwise Logistics Association (Quy tắc cặp giao dịch - Section 4.3)**:
-    - Every Inbound Transaction must be paired with one or more `Delivery` records (`inbound_transaction` + `inbound_detail` with `delivery` + `delivery_detail`). Total received quantity across deliveries must not exceed the inbound order quantity.
-    - Every Outbound Transaction must be paired with one or more `Shipment` records (`outbound_transaction` + `outbound_detail` with `shipment` + `shipment_detail`). Total shipped quantity across shipments must not exceed the outbound order quantity.
+    - Every Inbound Transaction must be paired with one or more `Delivery` records (`inbound_transaction` + `inbound_detail` with `delivery` + `delivery_detail`). Total received quantity across deliveries must strictly equal the inbound order quantity for every product.
+    - Every Outbound Transaction must be paired with one or more `Shipment` records (`outbound_transaction` + `outbound_detail` with `shipment` + `shipment_detail`). Total shipped quantity across shipments must strictly equal the outbound order quantity for every product.
+    - All delivery/shipment records are established exclusively during transaction creation; creating additional deliveries or shipments for an already confirmed transaction is strictly prohibited.
     - **Product Eligibility & Scope**: The generator must only choose products where `product.is_sold == TRUE` for generating transactions. Furthermore, `delivery_detail` and `shipment_detail` must strictly contain only products that are part of the parent transaction's details (`inbound_detail` / `outbound_detail`).
     - **Chronological & Historical Date Generation (Quy tắc ngày sinh dữ liệu)**:
       - **Strictly Earlier Than Generation Date (Ngày sinh ra phải nhỏ hơn ngày bấm nút gen)**: All generated dates (`order_at`, `expected_at`, `delivery_at`, `ship_at`, and `date` in `status_history`) must strictly precede / be smaller than the date when the generator is executed/triggered (`generated_date < generation_trigger_date`). Generating transactions with dates on or after the trigger date is strictly prohibited.

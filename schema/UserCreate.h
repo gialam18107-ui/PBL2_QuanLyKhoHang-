@@ -120,7 +120,8 @@ namespace user_create
 
     /**
      * @brief Create an Inbound Transaction with explicitly allocated delivery batches.
-     * Enforces active product check and sum(received_quantity) <= ordered_quantity.
+     * Enforces active product check and strict quantity equality:
+     * sum(delivery.received_quantity) == ordered_quantity for every product (Rule 4.3).
      */
     OperationResult createInboundOrderWithDeliveries(
         Database* db,
@@ -134,7 +135,8 @@ namespace user_create
 
     /**
      * @brief Create an Outbound Transaction with explicitly allocated shipment batches.
-     * Enforces active product check, stock availability, and sum(received_quantity) <= ordered_quantity.
+     * Enforces active product check, stock availability, and strict quantity equality:
+     * sum(shipment.received_quantity) == ordered_quantity for every product (Rule 4.3).
      */
     OperationResult createOutboundOrderWithShipments(
         Database* db,
@@ -147,8 +149,8 @@ namespace user_create
     );
 
     /**
-     * @brief Create an additional delivery batch for an existing Inbound Transaction (Rule 4.3).
-     * Enforces Logistics Product Scope and sum(received_quantity) <= ordered_quantity.
+     * @brief Attempt to create an additional delivery batch for an existing Inbound Transaction (Rule 4.3).
+     * NOTE: Strictly prohibited after confirming transaction; always returns false OperationResult.
      */
     OperationResult createDeliveryBatch(
         Database* db,
@@ -158,8 +160,8 @@ namespace user_create
     );
 
     /**
-     * @brief Create an additional shipment batch for an existing Outbound Transaction (Rule 4.3).
-     * Enforces Logistics Product Scope, stock availability, and sum(received_quantity) <= ordered_quantity.
+     * @brief Attempt to create an additional shipment batch for an existing Outbound Transaction (Rule 4.3).
+     * NOTE: Strictly prohibited after confirming transaction; always returns false OperationResult.
      */
     OperationResult createShipmentBatch(
         Database* db,

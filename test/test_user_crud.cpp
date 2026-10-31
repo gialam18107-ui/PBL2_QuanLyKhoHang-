@@ -211,7 +211,7 @@ int main()
     std::cout << "createInboundOrderWithDeliveries (12 + 8 = 20): success=" << cMultiIn.success << ", msg: " << cMultiIn.message << std::endl;
     assert(cMultiIn.success == true);
 
-    // 6.2 Reject batch allocation exceeding ordered quantity (e.g. 15 + 10 = 25 > 20)
+    // 6.2a Reject batch allocation exceeding ordered quantity (e.g. 15 + 10 = 25 > 20)
     Vector<user_create::LogisticsBatchInput> badDelivBatches;
     user_create::LogisticsBatchInput bb1;
     bb1.expectedDate = "2026-11-01";
@@ -228,19 +228,36 @@ int main()
     std::cout << "createInboundOrderWithDeliveries excess rejection: success=" << cMultiInExcess.success << " (expected false), msg: " << cMultiInExcess.message << std::endl;
     assert(cMultiInExcess.success == false);
 
-    // 6.3 Add an additional delivery batch to an existing order (createDeliveryBatch)
+    // 6.2b Reject batch allocation under-allocating ordered quantity (e.g. 10 + 5 = 15 < 20) - Rule 4.3 Total Equality
+    Vector<user_create::LogisticsBatchInput> underDelivBatches;
+    user_create::LogisticsBatchInput ub1;
+    ub1.expectedDate = "2026-11-01";
+    ub1.items.push_back(Pair<int, int>(2, 10));
+    underDelivBatches.push_back(ub1);
+    user_create::LogisticsBatchInput ub2;
+    ub2.expectedDate = "2026-11-05";
+    ub2.items.push_back(Pair<int, int>(2, 5)); // Total 15 < 20
+    underDelivBatches.push_back(ub2);
+
+    OperationResult cMultiInUnder = user_create::createInboundOrderWithDeliveries(
+        &db, "PURCHASING", "BS-0000001", totalInItems, underDelivBatches, "2026-10-28", "Under-allocated multi-batch"
+    );
+    std::cout << "createInboundOrderWithDeliveries under-allocation rejection: success=" << cMultiInUnder.success << " (expected false), msg: " << cMultiInUnder.message << std::endl;
+    assert(cMultiInUnder.success == false);
+
+    // 6.3 Reject adding delivery batch to confirmed transaction (createDeliveryBatch) - Rule 4.3 Post-Confirmation Lock
     int latestInTxnId = user_create::getNextTableId(&db, "inbound_transaction") - 1;
     Vector<Pair<int, int>> extraDelivItems;
-    extraDelivItems.push_back(Pair<int, int>(2, 1)); // Already allocated 12+8=20, adding 1 must fail
+    extraDelivItems.push_back(Pair<int, int>(2, 1));
     OperationResult cAddDelivFail = user_create::createDeliveryBatch(&db, latestInTxnId, "2026-11-10", extraDelivItems);
-    std::cout << "createDeliveryBatch exceeding ordered quantity: success=" << cAddDelivFail.success << " (expected false), msg: " << cAddDelivFail.message << std::endl;
+    std::cout << "createDeliveryBatch after confirmation rejection: success=" << cAddDelivFail.success << " (expected false), msg: " << cAddDelivFail.message << std::endl;
     assert(cAddDelivFail.success == false);
 
-    // 6.4 Reject delivery batch containing product not in original order (Logistics Product Scope Constraint)
+    // 6.4 Reject delivery batch containing product not in original order
     Vector<Pair<int, int>> alienDelivItems;
-    alienDelivItems.push_back(Pair<int, int>(3, 1)); // Product 3 not in order for Product 2
+    alienDelivItems.push_back(Pair<int, int>(3, 1));
     OperationResult cAlienDeliv = user_create::createDeliveryBatch(&db, latestInTxnId, "2026-11-10", alienDelivItems);
-    std::cout << "Logistics Product Scope Constraint check (alien product): success=" << cAlienDeliv.success << " (expected false), msg: " << cAlienDeliv.message << std::endl;
+    std::cout << "createDeliveryBatch check: success=" << cAlienDeliv.success << " (expected false), msg: " << cAlienDeliv.message << std::endl;
     assert(cAlienDeliv.success == false);
 
     // 6.5 Create Outbound Order with multi-batches (createOutboundOrderWithShipments)
@@ -263,6 +280,27 @@ int main()
     );
     std::cout << "createOutboundOrderWithShipments (1 + 1 = 2): success=" << cMultiOut.success << ", msg: " << cMultiOut.message << std::endl;
     assert(cMultiOut.success == true);
+
+    // 6.6 Reject outbound multi-batch with under-allocation (1 < 2) - Rule 4.3 Total Equality
+    Vector<user_create::LogisticsBatchInput> underShipBatches;
+    user_create::LogisticsBatchInput usb1;
+    usb1.expectedDate = "2026-11-02";
+    usb1.items.push_back(Pair<int, int>(1, 1)); // Only 1 unit allocated out of 2 ordered
+    underShipBatches.push_back(usb1);
+
+    OperationResult cMultiOutUnder = user_create::createOutboundOrderWithShipments(
+        &db, "SELLING", "IN-0000001", totalOutItems, underShipBatches, "2026-10-28", "Under-allocated sale"
+    );
+    std::cout << "createOutboundOrderWithShipments under-allocation rejection: success=" << cMultiOutUnder.success << " (expected false), msg: " << cMultiOutUnder.message << std::endl;
+    assert(cMultiOutUnder.success == false);
+
+    // 6.7 Reject adding shipment batch to confirmed transaction (createShipmentBatch) - Rule 4.3 Post-Confirmation Lock
+    int latestOutTxnId = user_create::getNextTableId(&db, "outbound_transaction") - 1;
+    Vector<Pair<int, int>> extraShipItems;
+    extraShipItems.push_back(Pair<int, int>(1, 1));
+    OperationResult cAddShipFail = user_create::createShipmentBatch(&db, latestOutTxnId, "2026-11-10", extraShipItems);
+    std::cout << "createShipmentBatch after confirmation rejection: success=" << cAddShipFail.success << " (expected false), msg: " << cAddShipFail.message << std::endl;
+    assert(cAddShipFail.success == false);
 
     // ==========================================
     // 7. TEST Physical Unit Lifecycle & State Transitions (Rule 4.4, 5.5)

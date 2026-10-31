@@ -15,7 +15,7 @@ Database::Database(Database&& other) noexcept
       tables(std::move(other.tables)),
       inTransaction(other.inTransaction),
       transactionDepth(other.transactionDepth),
-      transactionSnapshot(std::move(other.transactionSnapshot))
+      undoLog(std::move(other.undoLog))
 {
     other.inTransaction = false;
     other.transactionDepth = 0;
@@ -26,13 +26,13 @@ Database& Database::operator=(Database&& other) noexcept
     if (this != &other)
     {
         clear();
-        clearTransactionSnapshot();
+        undoLog.clear();
 
         databaseName = std::move(other.databaseName);
         tables = std::move(other.tables);
         inTransaction = other.inTransaction;
         transactionDepth = other.transactionDepth;
-        transactionSnapshot = std::move(other.transactionSnapshot);
+        undoLog = std::move(other.undoLog);
 
         other.inTransaction = false;
         other.transactionDepth = 0;
@@ -43,17 +43,11 @@ Database& Database::operator=(Database&& other) noexcept
 Database::~Database()
 {
     clear();
-    clearTransactionSnapshot();
+    undoLog.clear();
 }
 
 string Database::getName() const { return databaseName; }
 void Database::setName(const string& name) { databaseName = name; }
-
-void Database::clearTransactionSnapshot()
-{
-    for (const auto& item : transactionSnapshot) delete item.second;
-    transactionSnapshot.clear();
-}
 
 Table* Database::createTable(const string& tableName)
 {
@@ -67,7 +61,12 @@ bool Database::dropTable(const string& tableName)
 {
     auto it = tables.find(tableName);
     if (it == tables.end()) return false;
-    delete it->second;
+    Table* dropped = it->second;
+    for (size_t i = 0; i < undoLog.size(); ++i)
+    {
+        if (undoLog[i].table == dropped) undoLog[i].table = nullptr;
+    }
+    delete dropped;
     tables.erase(tableName);
     return true;
 }
@@ -166,7 +165,29 @@ bool Database::insert(const string& tableName, const Record& record)
             return false;
         }
     }
-    return table->insert(record);
+
+    size_t newRowIndex = table->getRows().size();
+    HashMap<string, int> oldAutoInc;
+    if (inTransaction)
+    {
+        oldAutoInc = table->getAutoIncrementCounters();
+    }
+
+    if (!table->insert(record))
+    {
+        return false;
+    }
+
+    if (inTransaction)
+    {
+        UndoEntry entry;
+        entry.type = UndoType::INSERT;
+        entry.table = table;
+        entry.rowIndex = newRowIndex;
+        entry.oldAutoIncrement = std::move(oldAutoInc);
+        undoLog.push_back(std::move(entry));
+    }
+    return true;
 }
 
 Vector<Record> Database::selectAll(const string& tableName) const
@@ -256,18 +277,33 @@ OperationResult Database::update(const string& tableName, int recordId, const Re
     {
         return OperationResult(false, "Bảng '" + tableName + "' không tồn tại trong CSDL.", 0);
     }
-    const Record* current = table->getRecordById(recordId);
-    if (current == nullptr)
+    int rowIndex = table->findRowIndexById(recordId);
+    if (rowIndex < 0)
     {
         return OperationResult(false, "Không tìm thấy bản ghi với ID " + to_string(recordId) + " trong bảng '" + tableName + "'.", 0);
     }
-    if (!validateForeignKeyUpdates(*this, *table, *current, newValues))
+    const Record& current = table->getRows()[static_cast<size_t>(rowIndex)];
+    if (!validateForeignKeyUpdates(*this, *table, current, newValues))
     {
         return OperationResult(false, "Vi phạm ràng buộc khóa ngoại khi cập nhật bảng '" + tableName + "'.", 0);
+    }
+    Record oldRecord;
+    if (inTransaction)
+    {
+        oldRecord = current;
     }
     if (!table->updateById(recordId, newValues))
     {
         return OperationResult(false, "Cập nhật dữ liệu thất bại do vi phạm ràng buộc bảng.", 0);
+    }
+    if (inTransaction)
+    {
+        UndoEntry entry;
+        entry.type = UndoType::UPDATE;
+        entry.table = table;
+        entry.rowIndex = static_cast<size_t>(rowIndex);
+        entry.oldRecord = std::move(oldRecord);
+        undoLog.push_back(std::move(entry));
     }
     return OperationResult(true, "Cập nhật bản ghi thành công.", 1);
 }
@@ -284,20 +320,29 @@ OperationResult Database::remove(const string& tableName, int recordId)
     {
         return OperationResult(false, "Không tìm thấy khóa chính của bảng '" + tableName + "'.", 0);
     }
-    const Record* record = table->getRecordById(recordId);
-    if (record == nullptr)
+    int rowIndex = table->findRowIndexById(recordId);
+    if (rowIndex < 0)
     {
         return OperationResult(false, "Không tìm thấy bản ghi với ID " + to_string(recordId) + " trong bảng '" + tableName + "'.", 0);
     }
+    const Record& record = table->getRows()[static_cast<size_t>(rowIndex)];
     Vector<Record> removedRows;
-    removedRows.push_back(*record);
+    removedRows.push_back(record);
     if (isReferenced(*this, tableName, removedRows))
     {
         return OperationResult(false, "Không thể xóa bản ghi: Đang có dữ liệu ở các bảng khác tham chiếu đến bản ghi này (vi phạm toàn vẹn tham chiếu).", 0);
     }
-    if (!table->removeById(recordId))
+    if (!table->removeById(recordId, !inTransaction))
     {
         return OperationResult(false, "Lỗi khi xóa bản ghi khỏi bảng '" + tableName + "'.", 0);
+    }
+    if (inTransaction)
+    {
+        UndoEntry entry;
+        entry.type = UndoType::REMOVE;
+        entry.table = table;
+        entry.rowIndex = static_cast<size_t>(rowIndex);
+        undoLog.push_back(std::move(entry));
     }
     return OperationResult(true, "Xóa bản ghi thành công.", 1);
 }
@@ -306,6 +351,7 @@ void Database::clear()
 {
     for (const auto& item : tables) delete item.second;
     tables.clear();
+    undoLog.clear();
 }
 
 bool Database::beginTransaction()
@@ -315,8 +361,8 @@ bool Database::beginTransaction()
         ++transactionDepth;
         return true;
     }
-    clearTransactionSnapshot();
-    for (const auto& item : tables) transactionSnapshot[item.first] = new Table(*item.second);
+    undoLog.clear();
+    undoLog.reserve(100);
     inTransaction = true;
     transactionDepth = 1;
     return true;
@@ -330,7 +376,14 @@ bool Database::commit()
         --transactionDepth;
         return true;
     }
-    clearTransactionSnapshot();
+    for (const auto& item : tables)
+    {
+        if (item.second != nullptr)
+        {
+            item.second->compactIfNeeded();
+        }
+    }
+    undoLog.clear();
     inTransaction = false;
     transactionDepth = 0;
     return true;
@@ -339,20 +392,24 @@ bool Database::commit()
 bool Database::rollback()
 {
     if (!inTransaction) return false;
-    // Restore state while preserving Table pointers
-    for (const auto& item : transactionSnapshot)
+    for (int i = static_cast<int>(undoLog.size()) - 1; i >= 0; --i)
     {
-        Table* current = getTable(item.first);
-        if (current != nullptr)
+        const UndoEntry& entry = undoLog[static_cast<size_t>(i)];
+        if (entry.table == nullptr) continue;
+        switch (entry.type)
         {
-            *current = *item.second;
-        }
-        else
-        {
-            tables[item.first] = new Table(*item.second);
+        case UndoType::INSERT:
+            entry.table->undoInsert(entry.rowIndex, entry.oldAutoIncrement);
+            break;
+        case UndoType::UPDATE:
+            entry.table->undoUpdate(entry.rowIndex, entry.oldRecord);
+            break;
+        case UndoType::REMOVE:
+            entry.table->undoRemove(entry.rowIndex);
+            break;
         }
     }
-    clearTransactionSnapshot();
+    undoLog.clear();
     inTransaction = false;
     transactionDepth = 0;
     return true;

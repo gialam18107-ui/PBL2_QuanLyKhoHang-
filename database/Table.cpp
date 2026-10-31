@@ -632,7 +632,7 @@ const Record* Table::getRecordById(int id) const
     return &rows[idx];
 }
 
-bool Table::removeById(int id)
+bool Table::removeById(int id, bool allowCompact)
 {
     int idx = findRowIndexById(id);
     if (idx < 0) return false;
@@ -650,7 +650,7 @@ bool Table::removeById(int id)
     deletedRows[idx] = 1;
     ++deletedRowCount;
 
-    if (deletedRowCount >= rows.size() / 2)
+    if (allowCompact && deletedRowCount >= rows.size() / 2)
     {
         compactRows();
     }
@@ -750,6 +750,95 @@ void Table::compactRows()
     }
     deletedRowCount = 0;
     rebuildIndexes();
+}
+
+void Table::compactIfNeeded()
+{
+    if (!rows.empty() && deletedRowCount >= rows.size() / 2)
+    {
+        compactRows();
+    }
+}
+
+const HashMap<string, int>& Table::getAutoIncrementCounters() const
+{
+    return autoIncrementCounters;
+}
+
+void Table::undoInsert(size_t rowIndex, const HashMap<string, int>& oldAutoIncrement)
+{
+    if (rowIndex >= rows.size()) return;
+
+    const Record& insertedRecord = rows[rowIndex];
+    for (size_t i = 0; i < indexes.size(); i++)
+    {
+        const string& colName = indexes[i]->getColumnName();
+        if (insertedRecord.has(colName))
+        {
+            indexes[i]->remove(insertedRecord.get(colName), rowIndex);
+        }
+    }
+
+    if (rowIndex + 1 == rows.size())
+    {
+        rows.pop_back();
+        deletedRows.pop_back();
+    }
+    else if (!isRowDeleted(rowIndex))
+    {
+        deletedRows[rowIndex] = 1;
+        ++deletedRowCount;
+    }
+
+    autoIncrementCounters = oldAutoIncrement;
+}
+
+void Table::undoUpdate(size_t rowIndex, const Record& oldRecord)
+{
+    if (rowIndex >= rows.size()) return;
+
+    const Record& currentRecord = rows[rowIndex];
+    for (size_t j = 0; j < indexes.size(); ++j)
+    {
+        const string& colName = indexes[j]->getColumnName();
+        bool hasCurr = currentRecord.has(colName);
+        bool hasOld = oldRecord.has(colName);
+        if (hasCurr && hasOld && currentRecord.get(colName) == oldRecord.get(colName))
+        {
+            continue;
+        }
+        if (hasCurr)
+        {
+            indexes[j]->remove(currentRecord.get(colName), rowIndex);
+        }
+        if (hasOld)
+        {
+            indexes[j]->insert(oldRecord.get(colName), rowIndex);
+        }
+    }
+
+    rows[rowIndex] = oldRecord;
+}
+
+void Table::undoRemove(size_t rowIndex)
+{
+    if (rowIndex >= rows.size() || !isRowDeleted(rowIndex)) return;
+
+    deletedRows[rowIndex] = 0;
+    if (deletedRowCount > 0)
+    {
+        --deletedRowCount;
+    }
+
+    const Record& restoredRecord = rows[rowIndex];
+    for (size_t j = 0; j < indexes.size(); ++j)
+    {
+        const string& colName = indexes[j]->getColumnName();
+        if (restoredRecord.has(colName))
+        {
+            indexes[j]->insert(restoredRecord.get(colName), rowIndex);
+        }
+    }
 }
 
 void Table::rebuildIndexes()
