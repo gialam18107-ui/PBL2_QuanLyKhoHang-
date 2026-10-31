@@ -118,6 +118,24 @@ namespace user_update
         int productId,
         const std::string& serial
     );
+
+    // ========================================================
+    // LOGISTICS UNIT STATUS MODIFICATION (Rule 4.4, 4.5)
+    // ========================================================
+
+    /**
+     * @brief Thay đổi trạng thái tự do một phần cho linh kiện trong đợt delivery/shipment (Rule 4.5).
+     * Nghiêm cấm thay đổi nếu đợt đã hoàn thành (COMPLETED).
+     * Kiểm tra trạng thái mới có hợp lệ theo loại giao dịch (ví dụ PUR chỉ được đổi giữa AVAILABLE và SCRAPPED).
+     * Cập nhật unit_inventory, product_quantity và ghi nhật ký status_history.
+     */
+    OperationResult changeUnitStatusInLogistics(
+        Database* db,
+        const std::string& logisticsCode,
+        bool isInbound,
+        const std::string& serial,
+        const std::string& newStatus
+    );
 }
 
 #endif // USER_UPDATE_H

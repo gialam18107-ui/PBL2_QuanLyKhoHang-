@@ -1938,4 +1938,469 @@ void periodic_inventory_report(Database *db, int month, int year,
 	grandTotal.set("scrapped_quan", Value(sumScrap));
 }
 
+// ============================================================
+// 16. TRUY VẤN VÀ TỔNG KẾT LINH KIỆN GIAO VẬN (DELIVERY / SHIPMENT UNITS & LOGISTICS QUERIES)
+// ============================================================
+
+void logistics_units_history_query(Database *db, const string& logisticsCode, Vector<Record> &results) {
+	results.clear();
+	if (!db || logisticsCode.empty())
+		return;
+
+	Table *shTable = db->getTable("status_history");
+	Table *uTable = db->getTable("unit_inventory");
+	Table *pTable = db->getTable("product");
+	Table *dTable = db->getTable("delivery");
+	Table *sTable = db->getTable("shipment");
+	if (!shTable || !uTable || !pTable)
+		return;
+
+	// Resolve logistics ID and type
+	int targetLogisticsId = -1;
+	string expectedType = "";
+
+	if (dTable) {
+		Vector<Record> matchedD = Query::filterRecords(*dTable, "delivery_code", Value(logisticsCode));
+		if (!matchedD.empty() && matchedD[0].has("delivery_id")) {
+			targetLogisticsId = safeGetInt(matchedD[0], "delivery_id", -1);
+			expectedType = "INBOUND";
+		}
+	}
+	if (targetLogisticsId <= 0 && sTable) {
+		Vector<Record> matchedS = Query::filterRecords(*sTable, "shipment_code", Value(logisticsCode));
+		if (!matchedS.empty() && matchedS[0].has("shipment_id")) {
+			targetLogisticsId = safeGetInt(matchedS[0], "shipment_id", -1);
+			expectedType = "OUTBOUND";
+		}
+	}
+
+	// Maps for fast lookups
+	HashMap<Value, const Record*> unitMap;
+	const auto &uRows = uTable->getRows();
+	for (size_t i = 0; i < uRows.size(); ++i) {
+		if (!uTable->isRowDeleted(i) && uRows[i].has("unit_id")) {
+			unitMap[uRows[i].get("unit_id")] = &uRows[i];
+		}
+	}
+
+	HashMap<Value, const Record*> prodMap;
+	const auto &pRows = pTable->getRows();
+	for (size_t i = 0; i < pRows.size(); ++i) {
+		if (!pTable->isRowDeleted(i) && pRows[i].has("product_id")) {
+			prodMap[pRows[i].get("product_id")] = &pRows[i];
+		}
+	}
+
+	struct UnitHistoryTrack {
+		int unitId = 0;
+		string serial;
+		string initialOldStatus;
+		string latestCurrStatus;
+		string type;
+		string date;
+		int productId = 0;
+		string productName;
+		string productCode;
+	};
+
+	Vector<int> unitOrder;
+	HashMap<int, UnitHistoryTrack> unitTracker;
+
+	const auto &shRows = shTable->getRows();
+	for (size_t i = 0; i < shRows.size(); ++i) {
+		if (shTable->isRowDeleted(i)) continue;
+		const auto &r = shRows[i];
+
+		if (!r.has("transaction") || !r.has("unit_id")) continue;
+
+		bool match = false;
+		const auto &txVal = r.get("transaction");
+		if (holds_alternative<int>(txVal) && targetLogisticsId > 0 && get<int>(txVal) == targetLogisticsId) {
+			match = true;
+		} else if (holds_alternative<string>(txVal) && get<string>(txVal) == logisticsCode) {
+			match = true;
+		}
+
+		if (!match) continue;
+
+		if (!expectedType.empty() && r.has("type")) {
+			string t = safeGetString(r, "type");
+			if (!t.empty() && t != expectedType) continue;
+		}
+
+		int uid = safeGetInt(r, "unit_id", 0);
+		if (uid <= 0) continue;
+
+		string oldSt = safeGetString(r, "old_status", "");
+		string currSt = safeGetString(r, "curr_status", "");
+		string tType = safeGetString(r, "type", expectedType);
+		string tDate = safeGetString(r, "date", "");
+
+		if (!unitTracker.contains(uid)) {
+			UnitHistoryTrack tr;
+			tr.unitId = uid;
+			tr.initialOldStatus = oldSt;
+			tr.latestCurrStatus = currSt;
+			tr.type = tType;
+			tr.date = tDate;
+
+			if (unitMap.contains(Value(uid))) {
+				const Record *uRec = unitMap[Value(uid)];
+				tr.serial = safeGetString(*uRec, "serial");
+				tr.productId = safeGetInt(*uRec, "product_id", 0);
+				if (prodMap.contains(Value(tr.productId))) {
+					const Record *pRec = prodMap[Value(tr.productId)];
+					tr.productName = safeGetString(*pRec, "product_name");
+					tr.productCode = safeGetString(*pRec, "product_code");
+				}
+			}
+
+			unitOrder.push_back(uid);
+			unitTracker[uid] = std::move(tr);
+		} else {
+			// Update latest status resulting from subsequent in-batch transition
+			unitTracker[uid].latestCurrStatus = currSt;
+			if (!tDate.empty()) unitTracker[uid].date = tDate;
+		}
+	}
+
+	for (size_t i = 0; i < unitOrder.size(); ++i) {
+		int uid = unitOrder[i];
+		const auto &tr = unitTracker[uid];
+
+		Record rec;
+		rec.set("unit_id", Value(tr.unitId));
+		rec.set("serial", Value(tr.serial));
+		rec.set("product_id", Value(tr.productId));
+		rec.set("product_name", Value(tr.productName));
+		rec.set("product_code", Value(tr.productCode));
+		rec.set("old_status", tr.initialOldStatus.empty() ? Value{} : Value(tr.initialOldStatus));
+		rec.set("curr_status", Value(tr.latestCurrStatus));
+		rec.set("type", Value(tr.type));
+		rec.set("date", Value(tr.date));
+		results.push_back(std::move(rec));
+	}
+}
+
+void logistics_unit_status_summary(Database *db, const string& logisticsCode, Vector<Pair<string, int>> &summary) {
+	summary.clear();
+	if (!db || logisticsCode.empty()) return;
+
+	Vector<Record> records;
+	logistics_units_history_query(db, logisticsCode, records);
+
+	int avail = 0, warr = 0, scrap = 0, out = 0, other = 0;
+	for (size_t i = 0; i < records.size(); ++i) {
+		string st = safeGetString(records[i], "curr_status");
+		if (st == "AVAILABLE") avail++;
+		else if (st == "WARRANTY") warr++;
+		else if (st == "SCRAPPED") scrap++;
+		else if (st == "OUT") out++;
+		else other++;
+	}
+
+	summary.push_back(Pair<string, int>("AVAILABLE", avail));
+	summary.push_back(Pair<string, int>("WARRANTY", warr));
+	summary.push_back(Pair<string, int>("SCRAPPED", scrap));
+	summary.push_back(Pair<string, int>("OUT", out));
+	if (other > 0) {
+		summary.push_back(Pair<string, int>("OTHER", other));
+	}
+}
+
+string get_transaction_type_by_order_code(Database *db, const string& orderCode, bool isInbound) {
+	if (!db || orderCode.empty()) return "";
+	string tbl = isInbound ? "inbound_transaction" : "outbound_transaction";
+	string codeCol = isInbound ? "inbound_code" : "outbound_code";
+	Table *t = db->getTable(tbl);
+	if (!t) return "";
+
+	Vector<Record> matched = Query::filterRecords(*t, codeCol, Value(orderCode));
+	if (!matched.empty() && matched[0].has("type")) {
+		return safeGetString(matched[0], "type");
+	}
+	return "";
+}
+
+string get_logistics_status_by_code(Database *db, const string& logisticsCode, bool isInbound) {
+	if (!db || logisticsCode.empty()) return "";
+	string tbl = isInbound ? "delivery" : "shipment";
+	string codeCol = isInbound ? "delivery_code" : "shipment_code";
+	Table *t = db->getTable(tbl);
+	if (!t) return "";
+
+	Vector<Record> matched = Query::filterRecords(*t, codeCol, Value(logisticsCode));
+	if (!matched.empty() && matched[0].has("status")) {
+		return safeGetString(matched[0], "status");
+	}
+	return "";
+}
+
+bool is_logistics_completed(Database *db, const string& logisticsCode, bool isInbound) {
+	string st = get_logistics_status_by_code(db, logisticsCode, isInbound);
+	return (st == "COMPLETED" || st == "completed" || st == "Completed");
+}
+
+int get_product_id_by_serial(Database *db, const string& serial) {
+	if (!db || serial.empty()) return -1;
+	Table *uTable = db->getTable("unit_inventory");
+	if (!uTable) return -1;
+
+	Vector<Record> matched = Query::filterRecords(*uTable, "serial", Value(serial));
+	if (!matched.empty() && matched[0].has("product_id")) {
+		return safeGetInt(matched[0], "product_id", -1);
+	}
+	return -1;
+}
+
+string get_unit_status_by_serial(Database *db, const string& serial) {
+	if (!db || serial.empty()) return "";
+	Table *uTable = db->getTable("unit_inventory");
+	if (!uTable) return "";
+
+	Vector<Record> matched = Query::filterRecords(*uTable, "serial", Value(serial));
+	if (!matched.empty() && matched[0].has("status")) {
+		return safeGetString(matched[0], "status");
+	}
+	return "";
+}
+
+bool is_unit_in_inventory(Database *db, const string& serial) {
+	return get_product_id_by_serial(db, serial) > 0;
+}
+
+void get_candidate_units_for_order(Database *db, const Vector<int>& productIds, Vector<Record>& results) {
+	results.clear();
+	if (!db || productIds.empty()) return;
+
+	Table *uTable = db->getTable("unit_inventory");
+	Table *pTable = db->getTable("product");
+	if (!uTable || !pTable) return;
+
+	HashMap<Value, const Record*> pMap;
+	const auto &pRows = pTable->getRows();
+	for (size_t i = 0; i < pRows.size(); ++i) {
+		if (!pTable->isRowDeleted(i) && pRows[i].has("product_id")) {
+			pMap[pRows[i].get("product_id")] = &pRows[i];
+		}
+	}
+
+	HashMap<int, bool> allowedPids;
+	for (size_t i = 0; i < productIds.size(); ++i) {
+		allowedPids[productIds[i]] = true;
+	}
+
+	const auto &uRows = uTable->getRows();
+	for (size_t i = 0; i < uRows.size(); ++i) {
+		if (uTable->isRowDeleted(i)) continue;
+		const auto &uRow = uRows[i];
+		int pid = safeGetInt(uRow, "product_id", -1);
+		if (pid > 0 && allowedPids.contains(pid) && allowedPids[pid]) {
+			Record r;
+			r.set("unit_id", uRow.get("unit_id"));
+			r.set("serial", uRow.get("serial"));
+			r.set("product_id", Value(pid));
+			r.set("status", uRow.get("status"));
+			if (pMap.contains(Value(pid))) {
+				const Record *pRec = pMap[Value(pid)];
+				r.set("product_name", pRec->get("product_name"));
+				r.set("product_code", pRec->get("product_code"));
+			}
+			results.push_back(std::move(r));
+		}
+	}
+}
+
+void all_customers_query(Database *db, Vector<Record> &results) {
+	results.clear();
+	if (!db) return;
+	Table *custTable = db->getTable("customer");
+	if (!custTable) return;
+
+	const auto &rows = custTable->getRows();
+	for (size_t i = 0; i < rows.size(); ++i) {
+		if (custTable->isRowDeleted(i)) continue;
+		results.push_back(rows[i]);
+	}
+}
+
+void get_all_statuses_for_table(Database *db, const string& tableName, Vector<string> &statuses) {
+	statuses.clear();
+	if (!db || tableName.empty()) return;
+	Table *t = db->getTable(tableName);
+	if (!t) return;
+
+	const auto &rows = t->getRows();
+	for (size_t i = 0; i < rows.size(); ++i) {
+		if (t->isRowDeleted(i)) continue;
+		const Record &r = rows[i];
+		if (r.has("status") && holds_alternative<string>(r.get("status"))) {
+			statuses.push_back(get<string>(r.get("status")));
+		}
+	}
+}
+
+void get_logistics_batch_allocation_info(Database* db, int txnId, bool isInbound, Vector<LogisticsBatchItemInfo>& items) {
+	items.clear();
+	if (!db || txnId <= 0) return;
+
+	Table* prodTable = db->getTable("product");
+	Table* qtyTable = db->getTable("product_quantity");
+	if (!prodTable) return;
+
+	HashMap<Value, const Record*> prodMap;
+	const auto &pRows = prodTable->getRows();
+	for (size_t i = 0; i < pRows.size(); ++i) {
+		if (!prodTable->isRowDeleted(i) && pRows[i].has("product_id")) {
+			prodMap[pRows[i].get("product_id")] = &pRows[i];
+		}
+	}
+
+	HashMap<Value, const Record*> qtyMap;
+	if (qtyTable) {
+		const auto &qRows = qtyTable->getRows();
+		for (size_t i = 0; i < qRows.size(); ++i) {
+			if (!qtyTable->isRowDeleted(i) && qRows[i].has("product_id")) {
+				qtyMap[qRows[i].get("product_id")] = &qRows[i];
+			}
+		}
+	}
+
+	if (isInbound) {
+		Table* inDetTable = db->getTable("inbound_detail");
+		Table* delTable = db->getTable("delivery");
+		Table* delDetTable = db->getTable("delivery_detail");
+		if (!inDetTable || !delTable || !delDetTable) return;
+
+		HashMap<int, int> allocatedMap;
+		const auto& dRows = delTable->getRows();
+		const auto& ddRows = delDetTable->getRows();
+		for (size_t i = 0; i < dRows.size(); ++i) {
+			if (delTable->isRowDeleted(i)) continue;
+			const auto& del = dRows[i];
+			if (del.has("inbound_transaction_id") && holds_alternative<int>(del.get("inbound_transaction_id")) &&
+				get<int>(del.get("inbound_transaction_id")) == txnId) {
+				int delId = safeGetInt(del, "delivery_id", 0);
+				for (size_t j = 0; j < ddRows.size(); ++j) {
+					if (delDetTable->isRowDeleted(j)) continue;
+					const auto& dd = ddRows[j];
+					if (dd.has("delivery_id") && holds_alternative<int>(dd.get("delivery_id")) &&
+						get<int>(dd.get("delivery_id")) == delId) {
+						int pid = safeGetInt(dd, "product_id", 0);
+						int rq = safeGetInt(dd, "received_quantity", 0);
+						allocatedMap[pid] = (allocatedMap.contains(pid) ? allocatedMap[pid] : 0) + rq;
+					}
+				}
+			}
+		}
+
+		const auto& idRows = inDetTable->getRows();
+		for (size_t i = 0; i < idRows.size(); ++i) {
+			if (inDetTable->isRowDeleted(i)) continue;
+			const auto& idet = idRows[i];
+			if (idet.has("inbound_transaction_id") && holds_alternative<int>(idet.get("inbound_transaction_id")) &&
+				get<int>(idet.get("inbound_transaction_id")) == txnId) {
+				int pid = safeGetInt(idet, "product_id", 0);
+				int ordQty = safeGetInt(idet, "ordered_quantity", 0);
+				int allocated = allocatedMap.contains(pid) ? allocatedMap[pid] : 0;
+				int remaining = std::max(0, ordQty - allocated);
+
+				LogisticsBatchItemInfo info;
+				info.productId = pid;
+				info.orderedQty = ordQty;
+				info.alreadyAllocatedQty = allocated;
+				info.remainingToAllocate = remaining;
+
+				if (prodMap.contains(Value(pid))) {
+					const Record* p = prodMap[Value(pid)];
+					info.productCode = safeGetString(*p, "product_code");
+					info.productName = safeGetString(*p, "product_name");
+				} else {
+					info.productCode = to_string(pid);
+					info.productName = "Product " + to_string(pid);
+				}
+
+				if (qtyMap.contains(Value(pid))) {
+					const Record* q = qtyMap[Value(pid)];
+					info.currentStockAvail = safeGetInt(*q, "available_quan", 0);
+					info.currentStockWrt = safeGetInt(*q, "warranty_quan", 0);
+					info.currentStockScrap = safeGetInt(*q, "scrapped_quan", 0);
+				}
+
+				items.push_back(std::move(info));
+			}
+		}
+	} else {
+		Table* outDetTable = db->getTable("outbound_detail");
+		Table* shipTable = db->getTable("shipment");
+		Table* shipDetTable = db->getTable("shipment_detail");
+		if (!outDetTable || !shipTable || !shipDetTable) return;
+
+		HashMap<int, int> allocatedMap;
+		const auto& sRows = shipTable->getRows();
+		const auto& sdRows = shipDetTable->getRows();
+		for (size_t i = 0; i < sRows.size(); ++i) {
+			if (shipTable->isRowDeleted(i)) continue;
+			const auto& ship = sRows[i];
+			int sTxnId = 0;
+			if (ship.has("sell_id") && holds_alternative<int>(ship.get("sell_id"))) sTxnId = get<int>(ship.get("sell_id"));
+			else if (ship.has("outbound_transaction_id") && holds_alternative<int>(ship.get("outbound_transaction_id"))) sTxnId = get<int>(ship.get("outbound_transaction_id"));
+
+			if (sTxnId == txnId) {
+				int shipId = safeGetInt(ship, "shipment_id", 0);
+				for (size_t j = 0; j < sdRows.size(); ++j) {
+					if (shipDetTable->isRowDeleted(j)) continue;
+					const auto& sd = sdRows[j];
+					if (sd.has("shipment_id") && holds_alternative<int>(sd.get("shipment_id")) &&
+						get<int>(sd.get("shipment_id")) == shipId) {
+						int pid = safeGetInt(sd, "product_id", 0);
+						int rq = safeGetInt(sd, "received_quantity", 0);
+						allocatedMap[pid] = (allocatedMap.contains(pid) ? allocatedMap[pid] : 0) + rq;
+					}
+				}
+			}
+		}
+
+		const auto& odRows = outDetTable->getRows();
+		for (size_t i = 0; i < odRows.size(); ++i) {
+			if (outDetTable->isRowDeleted(i)) continue;
+			const auto& odet = odRows[i];
+			int oTxnId = 0;
+			if (odet.has("outbound_transaction_id") && holds_alternative<int>(odet.get("outbound_transaction_id"))) oTxnId = get<int>(odet.get("outbound_transaction_id"));
+			else if (odet.has("sell_id") && holds_alternative<int>(odet.get("sell_id"))) oTxnId = get<int>(odet.get("sell_id"));
+
+			if (oTxnId == txnId) {
+				int pid = safeGetInt(odet, "product_id", 0);
+				int ordQty = safeGetInt(odet, "ordered_quantity", 0);
+				int allocated = allocatedMap.contains(pid) ? allocatedMap[pid] : 0;
+				int remaining = std::max(0, ordQty - allocated);
+
+				LogisticsBatchItemInfo info;
+				info.productId = pid;
+				info.orderedQty = ordQty;
+				info.alreadyAllocatedQty = allocated;
+				info.remainingToAllocate = remaining;
+
+				if (prodMap.contains(Value(pid))) {
+					const Record* p = prodMap[Value(pid)];
+					info.productCode = safeGetString(*p, "product_code");
+					info.productName = safeGetString(*p, "product_name");
+				} else {
+					info.productCode = to_string(pid);
+					info.productName = "Product " + to_string(pid);
+				}
+
+				if (qtyMap.contains(Value(pid))) {
+					const Record* q = qtyMap[Value(pid)];
+					info.currentStockAvail = safeGetInt(*q, "available_quan", 0);
+					info.currentStockWrt = safeGetInt(*q, "warranty_quan", 0);
+					info.currentStockScrap = safeGetInt(*q, "scrapped_quan", 0);
+				}
+
+				items.push_back(std::move(info));
+			}
+		}
+	}
+}
+
 } // namespace user_query

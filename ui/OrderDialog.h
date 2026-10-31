@@ -151,6 +151,26 @@ private:
 };
 
 /**
+ * @brief Modal confirmation dialog required before transitioning an order or logistics batch to COMPLETED (Rule 4.5).
+ * Features explicit warning, a mandatory confirmation tick-box, and Confirm/Cancel buttons.
+ */
+class CompletionConfirmationDialog : public QDialog
+{
+public:
+    CompletionConfirmationDialog(
+        const QString& itemCode,
+        const QString& itemDescription = "đợt giao vận",
+        QWidget* parent = nullptr
+    );
+    ~CompletionConfirmationDialog() override = default;
+
+private:
+    QCheckBox* confirmCheck;
+    QPushButton* confirmBtn;
+    QPushButton* cancelBtn;
+};
+
+/**
  * @brief Modal dialog to update logistics batch status and actual date (delivery / shipment) (Rule 5.3).
  */
 class LogisticsUpdateDialog : public QDialog
@@ -178,6 +198,7 @@ private:
     HubType hubType;
     Database* db;
     int logId;
+    QString batchCodeStr;
     QString orderDateStr;
     QComboBox* statusCombo;
     QCheckBox* hasActualDateCheck;
@@ -258,6 +279,62 @@ private:
 };
 
 /**
+ * @brief Modal dialog to select warehouse units to attach to a delivery/shipment (Rule 7.2).
+ * Simulates hardware barcode scanning and unit inspection without physical products.
+ * Provides product filtering and precondition validation.
+ */
+class UnitSelectionDialog : public QDialog
+{
+public:
+    UnitSelectionDialog(
+        HubType type,
+        Database* database,
+        const std::string& txnType,
+        const std::vector<std::pair<int, QString>>& orderProducts, // pair<productId, displayName>
+        QWidget* parent = nullptr
+    );
+    ~UnitSelectionDialog() override = default;
+
+    Vector<std::string> getSelectedSerials() const { return selectedSerials; }
+
+private:
+    struct CandidateUnit {
+        int unitId;
+        std::string serial;
+        int productId;
+        std::string productName;
+        std::string productCode;
+        std::string status;
+        bool isEligible;
+        QString reason;
+    };
+
+    void setupUI();
+    void loadCandidateUnits();
+    void filterTable();
+    void onSelectionChanged();
+    void onConfirm();
+
+    bool isUnitEligible(const std::string& status) const;
+    QString getEligibilityReason(const std::string& status) const;
+
+    HubType hubType;
+    Database* db;
+    std::string transactionType;
+    std::vector<std::pair<int, QString>> products;
+
+    QComboBox* productFilterCombo;
+    QCheckBox* onlyEligibleCheck;
+    QLineEdit* searchSerialInput;
+    QTableWidget* unitsTable;
+    QLabel* selectionSummaryLabel;
+    QPushButton* confirmBtn;
+
+    std::vector<CandidateUnit> candidates;
+    Vector<std::string> selectedSerials;
+};
+
+/**
  * @brief Modal dialog for Unit Entry (receiving units into Delivery or dispatching units for Shipment) (Rule 4.4, 7.2).
  */
 class UnitEntryDialog : public QDialog
@@ -299,6 +376,9 @@ private:
     void onProductChanged(int index);
     void onAutoGenerateSerial();
     void onExecuteUnitOperation();
+    void onDirectSerialEntered();
+    void onOpenUnitSelectionDialog();
+    void onChangeUnitStatusClicked();
     void loadExistingUnitsForCurrentProduct();
     void filterUnitsTable();
     void onUnitTableSelectionChanged();
@@ -312,8 +392,14 @@ private:
     QString batchCodeStr;
     QString parentOrderCodeStr;
     std::string transactionType;
+    bool isLogisticsCompleted = false;
 
     QLabel* ruleTipLabel;
+    QLineEdit* unifiedSerialInput;
+    QPushButton* recordDirectSerialBtn;
+    QPushButton* openUnitSelectionBtn;
+    QPushButton* changeUnitStatusBtn;
+
     QComboBox* productCombo;
     QLabel* progressLabel;
     QComboBox* targetStatusCombo;

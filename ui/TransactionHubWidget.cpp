@@ -1,5 +1,6 @@
 #include "TransactionHubWidget.h"
 #include "schema/UserQuery.h"
+#include "schema/UserUpdate.h"
 #include "ui/TableClipboardHelper.h"
 #include "ui/OrderDialog.h"
 
@@ -7,6 +8,7 @@
 #include <QScrollBar>
 #include <QFileDialog>
 #include <QMessageBox>
+#include <QInputDialog>
 #include <QFile>
 #include <QTextStream>
 #include <QDate>
@@ -20,6 +22,9 @@ TransactionHubWidget::TransactionHubWidget(HubType type, Database* database, con
       orderDetailTable(nullptr), orderDetailCountLabel(nullptr),
       logisticsTable(nullptr), logisticsCountLabel(nullptr),
       logisticsDetailTable(nullptr), logisticsDetailCountLabel(nullptr),
+      rightLowerTabWidget(nullptr), logisticsUnitsTab(nullptr), logisticsDetailTab(nullptr),
+      logisticsUnitsTable(nullptr), logisticsUnitsCountLabel(nullptr),
+      btnStatusSummary(nullptr), btnChangeUnitStatus(nullptr),
       mainSplitter(nullptr), masterContainer(nullptr), bottomContainer(nullptr),
       horizontalSplitter(nullptr), leftContainer(nullptr), rightContainer(nullptr),
       rightVerticalSplitter(nullptr), rightUpperContainer(nullptr), rightLowerContainer(nullptr),
@@ -682,35 +687,130 @@ void TransactionHubWidget::setupSplitterUI(QVBoxLayout* mainLayout)
     rightUpperLayout->addWidget(logisticsTable);
     rightVerticalSplitter->addWidget(rightUpperContainer);
 
-    // Right Lower: Batch Line Items (delivery_detail / shipment_detail)
+    // Right Lower: Dual-Tab Detail (Tab 1: Changed Units | Tab 2: Batch Line Items)
     rightLowerContainer = new QWidget(rightVerticalSplitter);
     auto* rightLowerLayout = new QVBoxLayout(rightLowerContainer);
     rightLowerLayout->setContentsMargins(0, 0, 0, 0);
     rightLowerLayout->setSpacing(4);
 
-    auto* rightLowerHeaderLayout = new QHBoxLayout();
-    QString rightLowerTitle = (hubType == HubType::INBOUND)
-        ? "📦 Hàng của đợt nhận đang chọn (delivery_detail)"
-        : "📦 Hàng của đợt xuất đang chọn (shipment_detail)";
-    auto* rightLowerTitleLabel = new QLabel(rightLowerTitle, rightLowerContainer);
-    rightLowerTitleLabel->setStyleSheet("font-size: 13px; font-weight: bold; color: #1e293b;");
-    logisticsDetailCountLabel = new QLabel("(0 mục)", rightLowerContainer);
-    logisticsDetailCountLabel->setStyleSheet("font-size: 12px; color: #64748b;");
+    rightLowerTabWidget = new QTabWidget(rightLowerContainer);
+    rightLowerTabWidget->setStyleSheet(
+        "QTabWidget::pane { border: 1px solid #cbd5e1; border-radius: 6px; background-color: #ffffff; }"
+        "QTabBar::tab { background-color: #f1f5f9; color: #475569; font-weight: 600; font-size: 12px; padding: 5px 12px; border-top-left-radius: 6px; border-top-right-radius: 6px; margin-right: 2px; }"
+        "QTabBar::tab:selected { background-color: #ffffff; color: #2563eb; border-bottom: 2px solid #2563eb; }"
+    );
 
-    btnMaxRightLower = new QPushButton("⛶ Phóng to", rightLowerContainer);
+    // Tab 1: Linh kiện thay đổi trạng thái (Rule 6.2, Rule 6.3)
+    logisticsUnitsTab = new QWidget(rightLowerTabWidget);
+    auto* unitsTabLayout = new QVBoxLayout(logisticsUnitsTab);
+    unitsTabLayout->setContentsMargins(6, 6, 6, 6);
+    unitsTabLayout->setSpacing(4);
+
+    auto* unitsHeaderLayout = new QHBoxLayout();
+    logisticsUnitsCountLabel = new QLabel("(0 linh kiện)", logisticsUnitsTab);
+    logisticsUnitsCountLabel->setStyleSheet("font-size: 12px; color: #64748b; font-weight: 500;");
+
+    btnStatusSummary = new QPushButton("📊 Tổng kết trạng thái", logisticsUnitsTab);
+    btnStatusSummary->setCursor(Qt::PointingHandCursor);
+    btnStatusSummary->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #f0fdf4;"
+        "  border: 1px solid #86efac;"
+        "  border-radius: 4px;"
+        "  padding: 3px 8px;"
+        "  font-size: 11px;"
+        "  font-weight: 600;"
+        "  color: #166534;"
+        "}"
+        "QPushButton:hover { background-color: #dcfce7; }"
+    );
+    connect(btnStatusSummary, &QPushButton::clicked, this, &TransactionHubWidget::onStatusSummaryClicked);
+
+    btnChangeUnitStatus = new QPushButton("🔄 Đổi trạng thái unit", logisticsUnitsTab);
+    btnChangeUnitStatus->setCursor(Qt::PointingHandCursor);
+    btnChangeUnitStatus->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #faf5ff;"
+        "  border: 1px solid #d8b4fe;"
+        "  border-radius: 4px;"
+        "  padding: 3px 8px;"
+        "  font-size: 11px;"
+        "  font-weight: 600;"
+        "  color: #6b21a8;"
+        "}"
+        "QPushButton:hover { background-color: #f3e8ff; }"
+    );
+    connect(btnChangeUnitStatus, &QPushButton::clicked, this, &TransactionHubWidget::onChangeLogisticsUnitStatus);
+
+    btnMaxRightLower = new QPushButton("⛶ Phóng to", logisticsUnitsTab);
     btnMaxRightLower->setCursor(Qt::PointingHandCursor);
     btnMaxRightLower->setStyleSheet(btnMaxLeft->styleSheet());
     connect(btnMaxRightLower, &QPushButton::clicked, [this]() {
         toggleMaximizePanel(3);
     });
 
-    rightLowerHeaderLayout->addWidget(rightLowerTitleLabel);
-    rightLowerHeaderLayout->addWidget(logisticsDetailCountLabel);
-    rightLowerHeaderLayout->addStretch();
-    rightLowerHeaderLayout->addWidget(btnMaxRightLower);
-    rightLowerLayout->addLayout(rightLowerHeaderLayout);
+    unitsHeaderLayout->addWidget(logisticsUnitsCountLabel);
+    unitsHeaderLayout->addStretch();
+    unitsHeaderLayout->addWidget(btnStatusSummary);
+    unitsHeaderLayout->addWidget(btnChangeUnitStatus);
+    unitsHeaderLayout->addWidget(btnMaxRightLower);
+    unitsTabLayout->addLayout(unitsHeaderLayout);
 
-    logisticsDetailTable = new QTableWidget(rightLowerContainer);
+    logisticsUnitsTable = new QTableWidget(logisticsUnitsTab);
+    logisticsUnitsTable->setColumnCount(7);
+    logisticsUnitsTable->setHorizontalHeaderLabels({
+        "Mã Serial", "Tên sản phẩm", "Mã SP", "Trạng thái trước", "Trạng thái sau", "Loại giao dịch", "Thời gian"
+    });
+    logisticsUnitsTable->setAlternatingRowColors(true);
+    logisticsUnitsTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    logisticsUnitsTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    logisticsUnitsTable->setSelectionMode(QAbstractItemView::SingleSelection);
+    logisticsUnitsTable->verticalHeader()->setVisible(false);
+    logisticsUnitsTable->horizontalHeader()->setHighlightSections(false);
+    logisticsUnitsTable->horizontalHeader()->setSectionsClickable(true);
+    logisticsUnitsTable->horizontalHeader()->setSortIndicatorShown(true);
+    logisticsUnitsTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
+    logisticsUnitsTable->horizontalHeader()->setStretchLastSection(true);
+    logisticsUnitsTable->setStyleSheet(masterTable->styleSheet());
+    TableClipboardHelper::setupClipboardForTable(logisticsUnitsTable);
+
+    connect(logisticsUnitsTable, &QTableWidget::cellDoubleClicked, [this](int, int) {
+        onChangeLogisticsUnitStatus();
+    });
+
+    connect(logisticsUnitsTable->horizontalHeader(), &QHeaderView::sectionClicked, [this](int logicalIndex) {
+        const string unitKeys[] = {"serial", "product_name", "product_code", "old_status", "curr_status", "type", "date"};
+        if (logicalIndex < 0 || logicalIndex >= 7) return;
+        if (currentUnitsSortCol == logicalIndex) currentUnitsSortAsc = !currentUnitsSortAsc;
+        else { currentUnitsSortCol = logicalIndex; currentUnitsSortAsc = true; }
+        user_query::sort_query_results(cachedLogisticsUnits, unitKeys[currentUnitsSortCol], currentUnitsSortAsc);
+        renderLogisticsUnits();
+        logisticsUnitsTable->horizontalHeader()->setSortIndicator(currentUnitsSortCol, currentUnitsSortAsc ? Qt::AscendingOrder : Qt::DescendingOrder);
+    });
+
+    unitsTabLayout->addWidget(logisticsUnitsTable);
+    rightLowerTabWidget->addTab(logisticsUnitsTab, "🏷️ Linh kiện thay đổi trạng thái");
+
+    // Tab 2: Danh mục mặt hàng của đợt (delivery_detail / shipment_detail)
+    logisticsDetailTab = new QWidget(rightLowerTabWidget);
+    auto* detailTabLayout = new QVBoxLayout(logisticsDetailTab);
+    detailTabLayout->setContentsMargins(6, 6, 6, 6);
+    detailTabLayout->setSpacing(4);
+
+    auto* detailHeaderLayout = new QHBoxLayout();
+    QString rightLowerTitle = (hubType == HubType::INBOUND)
+        ? "📦 Hàng của đợt nhận (delivery_detail)"
+        : "📦 Hàng của đợt xuất (shipment_detail)";
+    auto* rightLowerTitleLabel = new QLabel(rightLowerTitle, logisticsDetailTab);
+    rightLowerTitleLabel->setStyleSheet("font-size: 13px; font-weight: bold; color: #1e293b;");
+    logisticsDetailCountLabel = new QLabel("(0 mục)", logisticsDetailTab);
+    logisticsDetailCountLabel->setStyleSheet("font-size: 12px; color: #64748b; font-weight: 500;");
+    detailHeaderLayout->addWidget(rightLowerTitleLabel);
+    detailHeaderLayout->addWidget(logisticsDetailCountLabel);
+    detailHeaderLayout->addStretch();
+    detailTabLayout->addLayout(detailHeaderLayout);
+
+    logisticsDetailTable = new QTableWidget(logisticsDetailTab);
     logisticsDetailTable->setColumnCount(4);
     logisticsDetailTable->setHorizontalHeaderLabels({
         "Mã sản phẩm", "Tên sản phẩm", "SL Đợt này", "Thực nhận/xuất"
@@ -726,7 +826,10 @@ void TransactionHubWidget::setupSplitterUI(QVBoxLayout* mainLayout)
     logisticsDetailTable->setStyleSheet(masterTable->styleSheet());
     TableClipboardHelper::setupClipboardForTable(logisticsDetailTable);
 
-    rightLowerLayout->addWidget(logisticsDetailTable);
+    detailTabLayout->addWidget(logisticsDetailTable);
+    rightLowerTabWidget->addTab(logisticsDetailTab, "📦 Danh mục sản phẩm của đợt");
+
+    rightLowerLayout->addWidget(rightLowerTabWidget);
     rightVerticalSplitter->addWidget(rightLowerContainer);
 
     rightLayout->addWidget(rightVerticalSplitter);
@@ -1389,6 +1492,8 @@ void TransactionHubWidget::loadLogisticsBatches(const std::string& orderCode)
         currentLogisticsCode.clear();
         cachedLogisticsDetails.clear();
         renderLogisticsDetails();
+        cachedLogisticsUnits.clear();
+        renderLogisticsUnits();
     }
 }
 
@@ -1474,6 +1579,7 @@ void TransactionHubWidget::onLogisticsSelected(int row)
 
     currentLogisticsCode = logisticsCode;
     loadLogisticsDetails(logisticsCode);
+    loadLogisticsUnits(logisticsCode);
 }
 
 void TransactionHubWidget::loadLogisticsDetails(const std::string& logisticsCode)
@@ -1550,6 +1656,220 @@ void TransactionHubWidget::renderLogisticsDetails()
 
     logisticsDetailTable->blockSignals(false);
     logisticsDetailTable->setUpdatesEnabled(true);
+}
+
+void TransactionHubWidget::loadLogisticsUnits(const std::string& logisticsCode)
+{
+    if (!db || logisticsCode.empty()) {
+        cachedLogisticsUnits.clear();
+        renderLogisticsUnits();
+        return;
+    }
+
+    cachedLogisticsUnits.clear();
+    user_query::logistics_units_history_query(db, logisticsCode, cachedLogisticsUnits);
+
+    if (currentUnitsSortCol >= 0 && currentUnitsSortCol < 7) {
+        const string unitKeys[] = {"serial", "product_name", "product_code", "old_status", "curr_status", "type", "date"};
+        user_query::sort_query_results(cachedLogisticsUnits, unitKeys[currentUnitsSortCol], currentUnitsSortAsc);
+        if (logisticsUnitsTable && logisticsUnitsTable->horizontalHeader()) {
+            logisticsUnitsTable->horizontalHeader()->setSortIndicator(
+                currentUnitsSortCol, currentUnitsSortAsc ? Qt::AscendingOrder : Qt::DescendingOrder);
+        }
+    }
+
+    renderLogisticsUnits();
+}
+
+void TransactionHubWidget::renderLogisticsUnits()
+{
+    if (!logisticsUnitsTable) return;
+
+    logisticsUnitsTable->setSortingEnabled(false);
+    logisticsUnitsTable->setUpdatesEnabled(false);
+    logisticsUnitsTable->blockSignals(true);
+
+    int count = static_cast<int>(cachedLogisticsUnits.size());
+    logisticsUnitsTable->setRowCount(count);
+    if (logisticsUnitsCountLabel) {
+        logisticsUnitsCountLabel->setText(QString("(%1 linh kiện)").arg(count));
+    }
+
+    for (int i = 0; i < count; ++i) {
+        const auto& r = cachedLogisticsUnits[i];
+        QString sn = (r.has("serial") && holds_alternative<string>(r.get("serial")))
+            ? QString::fromStdString(get<string>(r.get("serial"))) : "-";
+        QString pName = (r.has("product_name") && holds_alternative<string>(r.get("product_name")))
+            ? QString::fromStdString(get<string>(r.get("product_name"))) : "-";
+        QString pCode = (r.has("product_code") && holds_alternative<string>(r.get("product_code")))
+            ? QString::fromStdString(get<string>(r.get("product_code"))) : "-";
+        QString oldSt = (r.has("old_status") && holds_alternative<string>(r.get("old_status")))
+            ? QString::fromStdString(get<string>(r.get("old_status"))) : "(Tạo mới)";
+        QString currSt = (r.has("curr_status") && holds_alternative<string>(r.get("curr_status")))
+            ? QString::fromStdString(get<string>(r.get("curr_status"))) : "-";
+        QString tType = (r.has("type") && holds_alternative<string>(r.get("type")))
+            ? QString::fromStdString(get<string>(r.get("type"))) : "-";
+        QString date = (r.has("date") && holds_alternative<string>(r.get("date")))
+            ? QString::fromStdString(get<string>(r.get("date"))) : "-";
+
+        auto* it0 = new QTableWidgetItem(sn);
+        auto* it1 = new QTableWidgetItem(pName);
+        auto* it2 = new QTableWidgetItem(pCode);
+        auto* it3 = new QTableWidgetItem(oldSt);
+        auto* it4 = new QTableWidgetItem(currSt);
+        auto* it5 = new QTableWidgetItem(tType);
+        auto* it6 = new QTableWidgetItem(date);
+
+        it3->setForeground(QColor(100, 116, 139));
+        if (currSt == "AVAILABLE") {
+            it4->setForeground(QColor(22, 163, 74));
+            it4->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
+        } else if (currSt == "WARRANTY") {
+            it4->setForeground(QColor(37, 99, 235));
+            it4->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
+        } else if (currSt == "SCRAPPED") {
+            it4->setForeground(QColor(220, 38, 38));
+            it4->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
+        } else if (currSt == "OUT") {
+            it4->setForeground(QColor(234, 88, 12));
+            it4->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
+        }
+
+        it0->setFont(QFont("Consolas", font().pointSize()));
+
+        logisticsUnitsTable->setItem(i, 0, it0);
+        logisticsUnitsTable->setItem(i, 1, it1);
+        logisticsUnitsTable->setItem(i, 2, it2);
+        logisticsUnitsTable->setItem(i, 3, it3);
+        logisticsUnitsTable->setItem(i, 4, it4);
+        logisticsUnitsTable->setItem(i, 5, it5);
+        logisticsUnitsTable->setItem(i, 6, it6);
+    }
+
+    logisticsUnitsTable->setColumnWidth(0, 130);
+    logisticsUnitsTable->setColumnWidth(1, 180);
+    logisticsUnitsTable->setColumnWidth(2, 110);
+    logisticsUnitsTable->setColumnWidth(3, 110);
+    logisticsUnitsTable->setColumnWidth(4, 110);
+    logisticsUnitsTable->setColumnWidth(5, 110);
+    logisticsUnitsTable->setColumnWidth(6, 100);
+
+    logisticsUnitsTable->blockSignals(false);
+    logisticsUnitsTable->setUpdatesEnabled(true);
+}
+
+void TransactionHubWidget::onStatusSummaryClicked()
+{
+    if (currentLogisticsCode.empty()) {
+        QMessageBox::information(this, "Thông báo", "Vui lòng chọn một đợt giao nhận để xem tổng kết.");
+        return;
+    }
+
+    Vector<Pair<string, int>> summary;
+    user_query::logistics_unit_status_summary(db, currentLogisticsCode, summary);
+
+    QString text = QString("<b>📊 TỔNG KẾT TRẠNG THÁI LINH KIỆN - ĐỢT %1</b><br><br>")
+        .arg(QString::fromStdString(currentLogisticsCode));
+    int total = 0;
+    for (size_t i = 0; i < summary.size(); ++i) {
+        QString statusName = QString::fromStdString(summary[i].first);
+        QString color = "#64748b";
+        if (statusName == "AVAILABLE") color = "#16a34a";
+        else if (statusName == "WARRANTY") color = "#2563eb";
+        else if (statusName == "SCRAPPED") color = "#dc2626";
+        else if (statusName == "OUT") color = "#ea580c";
+
+        text += QString("• <span style='color:%1; font-weight:bold;'>%2</span>: <b>%3</b> linh kiện<br>")
+            .arg(color, statusName, QString::number(summary[i].second));
+        total += summary[i].second;
+    }
+    text += QString("<hr><b>Tổng cộng: %1 linh kiện đã ghi nhận.</b>").arg(total);
+
+    QMessageBox::information(this, "Tổng kết trạng thái linh kiện", text);
+}
+
+void TransactionHubWidget::onChangeLogisticsUnitStatus()
+{
+    if (currentLogisticsCode.empty()) {
+        QMessageBox::warning(this, "Thông báo", "Vui lòng chọn một đợt giao nhận.");
+        return;
+    }
+
+    // Rule 4.5: Completed orders are locked from unit status modifications
+    if (user_query::is_logistics_completed(db, currentLogisticsCode, hubType == HubType::INBOUND)) {
+        QMessageBox::warning(
+            this, "Đã khóa thay đổi",
+            "Đợt giao nhận này đã ở trạng thái HOÀN THÀNH (COMPLETED).\n"
+            "Không được phép thay đổi trạng thái linh kiện nữa (Rule 4.5)."
+        );
+        return;
+    }
+
+    int r = logisticsUnitsTable->currentRow();
+    if (r < 0 || r >= static_cast<int>(cachedLogisticsUnits.size())) {
+        QMessageBox::warning(this, "Chưa chọn linh kiện", "Vui lòng chọn một linh kiện trong bảng để đổi trạng thái.");
+        return;
+    }
+
+    const auto& rec = cachedLogisticsUnits[r];
+    string serial;
+    if (rec.has("serial") && holds_alternative<string>(rec.get("serial"))) {
+        serial = get<string>(rec.get("serial"));
+    }
+    if (serial.empty()) {
+        QMessageBox::critical(this, "Lỗi", "Không tìm thấy mã serial của linh kiện đã chọn.");
+        return;
+    }
+
+    string currentSt = user_query::get_unit_status_by_serial(db, serial);
+    if (currentSt.empty() && rec.has("curr_status") && holds_alternative<string>(rec.get("curr_status"))) {
+        currentSt = get<string>(rec.get("curr_status"));
+    }
+
+    string txnType = user_query::get_transaction_type_by_order_code(db, currentOrderCode, hubType == HubType::INBOUND);
+
+    // Permitted target statuses based on transaction type (Rule 4.4, 4.5)
+    QStringList statusOptions;
+    if (hubType == HubType::OUTBOUND) {
+        statusOptions = {"OUT"};
+    } else {
+        if (txnType == "PURCHASING" || txnType == "PUR") {
+            statusOptions = {"AVAILABLE", "SCRAPPED"};
+        } else if (txnType == "WARRANTY_REPLACEMENT" || txnType == "WRP" ||
+                   txnType == "WARRANTY_CHECKING" || txnType == "WCK") {
+            statusOptions = {"WARRANTY"};
+        } else {
+            statusOptions = {"AVAILABLE", "WARRANTY", "SCRAPPED"};
+        }
+    }
+
+    bool ok = false;
+    QString chosenStatus = QInputDialog::getItem(
+        this, "Chọn trạng thái mới (Rule 4.4, 4.5)",
+        QString("Linh kiện: %1\nTrạng thái hiện tại: %2\nChọn trạng thái đích:")
+            .arg(QString::fromStdString(serial), QString::fromStdString(currentSt)),
+        statusOptions, 0, false, &ok
+    );
+    if (!ok || chosenStatus.isEmpty()) return;
+
+    OperationResult res = user_update::changeUnitStatusInLogistics(
+        db, currentLogisticsCode, hubType == HubType::INBOUND, serial, chosenStatus.toStdString()
+    );
+    if (!res.success) {
+        QMessageBox::critical(this, "Lỗi chuyển trạng thái", QString::fromStdString(res.message));
+        return;
+    }
+
+    QMessageBox::information(this, "Thành công", QString::fromStdString(res.message));
+    loadLogisticsUnits(currentLogisticsCode);
+    loadLogisticsDetails(currentLogisticsCode);
+
+    QString summary = QString("Đã đổi trạng thái linh kiện %1 sang %2").arg(QString::fromStdString(serial), chosenStatus);
+    if (onMarkDirty) {
+        onMarkDirty(summary);
+    } else if (onDataChanged) {
+        onDataChanged(summary);
+    }
 }
 
 void TransactionHubWidget::exportMasterCsv()
@@ -2077,7 +2397,12 @@ void TransactionHubWidget::onManageUnitsClicked()
     if (dlg.didModifyUnits()) {
         currentOrderCode = parentCode.toStdString();
         currentLogisticsCode = batchCode.toStdString();
-        if (onDataChanged) {
+        loadLogisticsUnits(currentLogisticsCode);
+        loadLogisticsDetails(currentLogisticsCode);
+        loadOrderDetails(currentOrderCode);
+        if (onMarkDirty) {
+            onMarkDirty(QString("Cập nhật linh kiện đợt %1 thành công").arg(batchCode));
+        } else if (onDataChanged) {
             onDataChanged(QString("Cập nhật linh kiện đợt %1 thành công").arg(batchCode));
         } else if (onRefresh) {
             onRefresh();

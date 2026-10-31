@@ -608,4 +608,184 @@ namespace user_update
         serials.push_back(serial);
         return dispatchUnitsForShipment(db, shipmentId, productId, serials);
     }
+
+    OperationResult changeUnitStatusInLogistics(
+        Database* db,
+        const std::string& logisticsCode,
+        bool isInbound,
+        const std::string& serial,
+        const std::string& newStatus
+    ) {
+        if (!db) return OperationResult{false, "CSDL không hợp lệ.", 0};
+        if (logisticsCode.empty() || serial.empty() || newStatus.empty()) {
+            return OperationResult{false, "Thông tin mã đợt, serial hoặc trạng thái mới không được để trống.", 0};
+        }
+
+        std::string tbl = isInbound ? "delivery" : "shipment";
+        std::string codeCol = isInbound ? "delivery_code" : "shipment_code";
+        Table* logTable = db->getTable(tbl);
+        Table* unitTable = db->getTable("unit_inventory");
+        Table* histTable = db->getTable("status_history");
+        Table* qtyTable = db->getTable("product_quantity");
+        if (!logTable || !unitTable || !histTable || !qtyTable) {
+            return OperationResult{false, "Các bảng dữ liệu giao vận hoặc linh kiện không đầy đủ.", 0};
+        }
+
+        Vector<Record> logMatches = Query::filterRecords(*logTable, codeCol, Value(logisticsCode));
+        if (logMatches.empty()) {
+            return OperationResult{false, "Không tìm thấy đợt giao vận với mã " + logisticsCode, 0};
+        }
+        const Record& logRec = logMatches[0];
+
+        // 1. Completion Lock check (Rule 4.5)
+        std::string currentLogStatus = "";
+        if (logRec.has("status") && std::holds_alternative<std::string>(logRec.get("status"))) {
+            currentLogStatus = std::get<std::string>(logRec.get("status"));
+        }
+        if (currentLogStatus == "COMPLETED" || currentLogStatus == "completed") {
+            return OperationResult{false, "Đợt giao nhận này đã ở trạng thái HOÀN THÀNH (COMPLETED). Toàn bộ thao tác thay đổi trạng thái linh kiện đã bị khóa vĩnh viễn (Rule 4.5).", 0};
+        }
+
+        // 2. Resolve transaction type for business rule constraints
+        std::string txnType = "";
+        if (isInbound) {
+            int inTxnId = -1;
+            if (logRec.has("inbound_transaction_id") && std::holds_alternative<int>(logRec.get("inbound_transaction_id"))) {
+                inTxnId = std::get<int>(logRec.get("inbound_transaction_id"));
+            }
+            Table* inTxnTable = db->getTable("inbound_transaction");
+            if (inTxnTable && inTxnId > 0) {
+                const Record* inTxnRec = inTxnTable->getRecordById(inTxnId);
+                if (inTxnRec && inTxnRec->has("type") && std::holds_alternative<std::string>(inTxnRec->get("type"))) {
+                    txnType = std::get<std::string>(inTxnRec->get("type"));
+                }
+            }
+        } else {
+            int outTxnId = -1;
+            if (logRec.has("sell_id") && std::holds_alternative<int>(logRec.get("sell_id"))) {
+                outTxnId = std::get<int>(logRec.get("sell_id"));
+            }
+            Table* outTxnTable = db->getTable("outbound_transaction");
+            if (outTxnTable && outTxnId > 0) {
+                const Record* outTxnRec = outTxnTable->getRecordById(outTxnId);
+                if (outTxnRec && outTxnRec->has("type") && std::holds_alternative<std::string>(outTxnRec->get("type"))) {
+                    txnType = std::get<std::string>(outTxnRec->get("type"));
+                }
+            }
+        }
+
+        // 3. Validate permitted target statuses (Rule 4.4, 4.5)
+        if (!isInbound) {
+            if (newStatus != "OUT") {
+                return OperationResult{false, "Đơn xuất hàng chỉ cho phép trạng thái kết thúc là OUT (Rule 4.4.1).", 0};
+            }
+        } else {
+            if (newStatus == "OUT") {
+                return OperationResult{false, "Đơn nhập kho nghiêm cấm linh kiện có trạng thái OUT (Rule 4.4.2).", 0};
+            }
+            if (txnType == "PURCHASING" || txnType == "PUR") {
+                if (newStatus != "AVAILABLE" && newStatus != "SCRAPPED") {
+                    return OperationResult{false, "Đơn mua hàng mới (PUR) chỉ cho phép chuyển đổi giữa AVAILABLE và SCRAPPED (Rule 4.4.2, 4.5).", 0};
+                }
+            } else if (txnType == "WARRANTY_REPLACEMENT" || txnType == "WRP" ||
+                       txnType == "WARRANTY_CHECKING" || txnType == "WCK") {
+                if (newStatus != "WARRANTY") {
+                    return OperationResult{false, "Đơn bảo hành (" + txnType + ") chỉ cho phép trạng thái WARRANTY (Rule 4.4.2).", 0};
+                }
+            } else if (txnType == "CUSTOMER_RETURN" || txnType == "CRT" ||
+                       txnType == "ADJUSTMENT_IN" || txnType == "ADJ") {
+                if (newStatus != "AVAILABLE" && newStatus != "WARRANTY" && newStatus != "SCRAPPED") {
+                    return OperationResult{false, "Đơn " + txnType + " chỉ cho phép chọn trạng thái AVAILABLE, WARRANTY hoặc SCRAPPED (Rule 4.4.2).", 0};
+                }
+            }
+        }
+
+        // 4. Find unit record
+        Vector<Record> matchedUnits = Query::filterRecords(*unitTable, "serial", Value(serial));
+        if (matchedUnits.empty()) {
+            return OperationResult{false, "Không tìm thấy linh kiện với mã serial '" + serial + "' trong kho.", 0};
+        }
+        const Record& uRec = matchedUnits[0];
+        int unitId = std::get<int>(uRec.get("unit_id"));
+        int productId = std::get<int>(uRec.get("product_id"));
+        std::string oldStatus = std::get<std::string>(uRec.get("status"));
+
+        if (oldStatus == newStatus) {
+            return OperationResult{true, "Linh kiện " + serial + " hiện tại đã có trạng thái '" + newStatus + "'.", 0};
+        }
+
+        // 5. Atomic update transaction
+        db->beginTransaction();
+
+        Record uUp;
+        uUp.set("status", newStatus);
+        OperationResult rU = db->update("unit_inventory", unitId, uUp);
+        if (!rU) { db->rollback(); return rU; }
+
+        // Update product_quantity buckets
+        const Record* pqRec = qtyTable->getRecordById(productId);
+        int curAvail = 0, curWarr = 0, curScrap = 0;
+        if (pqRec) {
+            if (pqRec->has("available_quan") && std::holds_alternative<int>(pqRec->get("available_quan")))
+                curAvail = std::get<int>(pqRec->get("available_quan"));
+            if (pqRec->has("warranty_quan") && std::holds_alternative<int>(pqRec->get("warranty_quan")))
+                curWarr = std::get<int>(pqRec->get("warranty_quan"));
+            if (pqRec->has("scrapped_quan") && std::holds_alternative<int>(pqRec->get("scrapped_quan")))
+                curScrap = std::get<int>(pqRec->get("scrapped_quan"));
+        }
+
+        if (oldStatus == "AVAILABLE") curAvail = std::max(0, curAvail - 1);
+        else if (oldStatus == "WARRANTY") curWarr = std::max(0, curWarr - 1);
+        else if (oldStatus == "SCRAPPED") curScrap = std::max(0, curScrap - 1);
+
+        if (newStatus == "AVAILABLE") curAvail++;
+        else if (newStatus == "WARRANTY") curWarr++;
+        else if (newStatus == "SCRAPPED") curScrap++;
+
+        Record pqUp;
+        pqUp.set("available_quan", curAvail);
+        pqUp.set("warranty_quan", curWarr);
+        pqUp.set("scrapped_quan", curScrap);
+        OperationResult rPq = db->update("product_quantity", productId, pqUp);
+        if (!rPq) { db->rollback(); return rPq; }
+
+        // Insert new record into status_history
+        int histId = 1;
+        std::string pkHist = histTable->getPrimaryKeyColumn();
+        for (const auto& hRow : histTable->getRows()) {
+            if (hRow.has(pkHist) && std::holds_alternative<int>(hRow.get(pkHist))) {
+                int hid = std::get<int>(hRow.get(pkHist));
+                if (hid >= histId) histId = hid + 1;
+            }
+        }
+
+        int logPk = isInbound ? std::get<int>(logRec.get("delivery_id")) : std::get<int>(logRec.get("shipment_id"));
+        std::time_t tNow = std::time(nullptr);
+        std::tm tmNow;
+#if defined(_WIN32) || defined(_WIN64)
+        localtime_s(&tmNow, &tNow);
+#else
+        localtime_r(&tNow, &tmNow);
+#endif
+        std::ostringstream dtOss;
+        dtOss << std::setfill('0')
+              << (tmNow.tm_year + 1900) << "-"
+              << std::setw(2) << (tmNow.tm_mon + 1) << "-"
+              << std::setw(2) << tmNow.tm_mday;
+
+        Record hRec;
+        hRec.set("history_id", histId);
+        hRec.set("unit_id", unitId);
+        hRec.set("old_status", oldStatus);
+        hRec.set("curr_status", newStatus);
+        hRec.set("transaction", logPk);
+        hRec.set("type", std::string(isInbound ? "INBOUND" : "OUTBOUND"));
+        hRec.set("date", dtOss.str());
+
+        OperationResult rH = db->insertRecord("status_history", hRec);
+        if (!rH) { db->rollback(); return rH; }
+
+        db->commit();
+        return OperationResult{true, "Đã cập nhật trạng thái linh kiện " + serial + " từ '" + oldStatus + "' sang '" + newStatus + "' thành công!", 3};
+    }
 }

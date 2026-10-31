@@ -4,6 +4,7 @@
 #include "database/Database.h"
 #include "database/Record.h"
 #include "datastructure/vector/Vector.h"
+#include "datastructure/hashmap/Pair.h"
 #include "query/Query.h"
 #include <string>
 
@@ -123,6 +124,59 @@ namespace user_query {
 	// - Trả về danh sách kết quả sản phẩm và Record grandTotal chứa dòng tổng cộng
 	// ========================================================
 	void periodic_inventory_report(Database *db, int month, int year, Vector<Record> &results, Record &grandTotal);
+
+	// ========================================================
+	// 16. TRUY VẤN VÀ TỔNG KẾT LINH KIỆN GIAO VẬN (DELIVERY / SHIPMENT UNITS & LOGISTICS QUERIES)
+	// ========================================================
+	// Lấy danh sách các unit bị thay đổi trạng thái theo mã đợt giao nhận (delivery_code / shipment_code)
+	// Trả về Record chứa: serial, product_id, product_name, product_code, old_status, curr_status, type, date
+	void logistics_units_history_query(Database *db, const string& logisticsCode, Vector<Record> &results);
+
+	// Tổng kết số lượng linh kiện theo từng trạng thái cho một đợt giao nhận
+	// Trả về Vector các cặp (status_name, count)
+	void logistics_unit_status_summary(Database *db, const string& logisticsCode, Vector<Pair<string, int>> &summary);
+
+	// Lấy loại giao dịch (type) từ mã đơn (inbound_code / outbound_code)
+	string get_transaction_type_by_order_code(Database *db, const string& orderCode, bool isInbound);
+
+	// Lấy trạng thái của đợt giao nhận (delivery_code / shipment_code)
+	string get_logistics_status_by_code(Database *db, const string& logisticsCode, bool isInbound);
+
+	// Kiểm tra đợt giao nhận đã hoàn thành (COMPLETED) hay chưa
+	bool is_logistics_completed(Database *db, const string& logisticsCode, bool isInbound);
+
+	// Tra cứu product_id từ serial
+	int get_product_id_by_serial(Database *db, const string& serial);
+
+	// Tra cứu trạng thái hiện tại từ serial
+	string get_unit_status_by_serial(Database *db, const string& serial);
+
+	// Kiểm tra serial có tồn tại trong unit_inventory hay không
+	bool is_unit_in_inventory(Database *db, const string& serial);
+
+	// Lấy danh sách các unit ứng viên trong kho cho các sản phẩm của đợt giao nhận
+	// Record chứa: unit_id, serial, product_id, product_name, product_code, status
+	void get_candidate_units_for_order(Database *db, const Vector<int>& productIds, Vector<Record>& results);
+
+	// Lấy danh sách toàn bộ khách hàng (cá nhân và doanh nghiệp)
+	void all_customers_query(Database *db, Vector<Record> &results);
+
+	// Lấy danh sách các giá trị trạng thái từ một bảng status (vd: delivery_status, shipment_status, transaction_status)
+	void get_all_statuses_for_table(Database *db, const string& tableName, Vector<string> &statuses);
+
+	// Thông tin phân bổ hàng hóa cho các đợt giao nhận (delivery / shipment)
+	struct LogisticsBatchItemInfo {
+		int productId = 0;
+		string productCode;
+		string productName;
+		int orderedQty = 0;
+		int alreadyAllocatedQty = 0;
+		int remainingToAllocate = 0;
+		int currentStockAvail = 0;
+		int currentStockWrt = 0;
+		int currentStockScrap = 0;
+	};
+	void get_logistics_batch_allocation_info(Database* db, int txnId, bool isInbound, Vector<LogisticsBatchItemInfo>& items);
 }
 
 #endif // USERQUERY_H

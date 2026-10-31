@@ -12,6 +12,7 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFrame>
+#include <QTabWidget>
 #include <QStringList>
 #include <functional>
 #include <vector>
@@ -68,10 +69,15 @@ private:
     void loadOrderDetails(const std::string& orderCode);
     void loadLogisticsBatches(const std::string& orderCode);
     void loadLogisticsDetails(const std::string& logisticsCode);
+    void loadLogisticsUnits(const std::string& logisticsCode);
 
     void renderOrderDetails();
     void renderLogisticsBatches();
     void renderLogisticsDetails();
+    void renderLogisticsUnits();
+
+    void onStatusSummaryClicked();
+    void onChangeLogisticsUnitStatus();
 
     const Record* getSelectedMasterRecord(bool warnIfNone = true);
     const Record* getSelectedLogisticsRecord(bool warnIfNone = true);
@@ -157,6 +163,19 @@ private:
 
     QTableWidget* logisticsDetailTable;
     QLabel* logisticsDetailCountLabel;
+
+    // Right Lower Tab & Logistics Units components
+    QTabWidget* rightLowerTabWidget;
+    QWidget* logisticsUnitsTab;
+    QWidget* logisticsDetailTab;
+    QTableWidget* logisticsUnitsTable;
+    QLabel* logisticsUnitsCountLabel;
+    QPushButton* btnStatusSummary;
+    QPushButton* btnChangeUnitStatus;
+
+    Vector<Record> cachedLogisticsUnits;
+    int currentUnitsSortCol = -1;
+    bool currentUnitsSortAsc = true;
 
     // Maximize/Restore support
     void toggleMaximizePanel(int panelIndex);
