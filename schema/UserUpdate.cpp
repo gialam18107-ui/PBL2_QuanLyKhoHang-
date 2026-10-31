@@ -571,59 +571,21 @@ namespace user_update
         if (!rOUp) { db->rollback(); return rOUp; }
         totalAffected++;
 
-        // Check if shipment is fully dispatched -> COMPLETED
-        bool shipAllDone = true;
-        Vector<Record> curShipDets = Query::filterRecords(*shipDetTable, "shipment_id", Value(shipmentId));
-        for (const auto& row : curShipDets) {
-            int rQty = std::get<int>(row.get("received_quantity"));
-            int aQty = std::get<int>(row.get("actual_quantity"));
-            if (std::get<int>(row.get("shipment_detail_id")) == shipDetId) aQty += dispatchCount;
-            if (aQty < rQty) { shipAllDone = false; break; }
-        }
-
-        // Get current date
-        std::time_t t = std::time(nullptr);
-        std::tm tmVal;
-#if defined(_WIN32) || defined(_WIN64)
-        localtime_s(&tmVal, &t);
-#else
-        localtime_r(&t, &tmVal);
-#endif
-        std::ostringstream dtOss;
-        dtOss << std::setfill('0')
-              << (tmVal.tm_year + 1900) << "-"
-              << std::setw(2) << (tmVal.tm_mon + 1) << "-"
-              << std::setw(2) << tmVal.tm_mday;
-        std::string todayStr = dtOss.str();
-
-        Record shipStatusUp;
-        if (shipAllDone) {
-            shipStatusUp.set("status", std::string("COMPLETED"));
-            if (isNull(shipRec->get("ship_at"))) {
-                shipStatusUp.set("ship_at", todayStr);
-            }
-        } else {
+        // Update shipment status to PICKING if not already COMPLETED (Rule 4.5: do not auto-complete)
+        if (shipStatus != "COMPLETED" && shipStatus != "completed") {
+            Record shipStatusUp;
             shipStatusUp.set("status", std::string("PICKING"));
-        }
-        db->update("shipment", shipmentId, shipStatusUp);
-
-        // Check if outbound_transaction is fully dispatched -> CONFIRMED
-        bool outTxnAllDone = true;
-        Vector<Record> curOutDets = Query::filterRecords(*outDetTable, "outbound_transaction_id", Value(outTxnId));
-        for (const auto& row : curOutDets) {
-            int ordQ = std::get<int>(row.get("ordered_quantity"));
-            int actQ = std::get<int>(row.get("actual_quantity"));
-            if (std::get<int>(row.get("outbound_detail_id")) == outDetId) actQ += dispatchCount;
-            if (actQ < ordQ) { outTxnAllDone = false; break; }
+            db->update("shipment", shipmentId, shipStatusUp);
         }
 
-        Record outTxnStatusUp;
-        if (outTxnAllDone) {
-            outTxnStatusUp.set("status", std::string("CONFIRMED"));
-        } else {
+        // Update outbound_transaction status to PROCESSING if not already COMPLETED/CONFIRMED
+        std::string curOutTxnSt = outTxnRec->has("status") && std::holds_alternative<std::string>(outTxnRec->get("status"))
+            ? std::get<std::string>(outTxnRec->get("status")) : "";
+        if (curOutTxnSt != "COMPLETED" && curOutTxnSt != "completed" && curOutTxnSt != "CONFIRMED") {
+            Record outTxnStatusUp;
             outTxnStatusUp.set("status", std::string("PROCESSING"));
+            db->update("outbound_transaction", outTxnId, outTxnStatusUp);
         }
-        db->update("outbound_transaction", outTxnId, outTxnStatusUp);
 
         db->commit();
         return OperationResult{true, "Đã xuất " + std::to_string(dispatchCount) + " unit cho đợt xuất " + std::to_string(shipmentId) + " thành công!", totalAffected};

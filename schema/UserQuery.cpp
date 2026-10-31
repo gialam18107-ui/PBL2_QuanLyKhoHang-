@@ -128,12 +128,18 @@ void product_quantity_query(Database *db, Vector<Record> &results,
 				out.set("product.sku", p.get("sku"));
 			if (p.has("product_name"))
 				out.set("product.product_name", p.get("product_name"));
-			if (pq.has("available_quan"))
+			if (pq.has("available_quan")) {
 				out.set("product_quantity.available_quan", pq.get("available_quan"));
-			if (pq.has("warranty_quan"))
+				out.set("available_quan", pq.get("available_quan"));
+			}
+			if (pq.has("warranty_quan")) {
 				out.set("product_quantity.warranty_quan", pq.get("warranty_quan"));
-			if (pq.has("scrapped_quan"))
+				out.set("warranty_quan", pq.get("warranty_quan"));
+			}
+			if (pq.has("scrapped_quan")) {
 				out.set("product_quantity.scrapped_quan", pq.get("scrapped_quan"));
+				out.set("scrapped_quan", pq.get("scrapped_quan"));
+			}
 			if (p.has("is_sold"))
 				out.set("product.is_sold", p.get("is_sold"));
 

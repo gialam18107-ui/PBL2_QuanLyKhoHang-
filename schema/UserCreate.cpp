@@ -1535,44 +1535,23 @@ namespace user_create
         if (!rIUp) { db->rollback(); return rIUp; }
         totalAffected++;
 
-        // Check if delivery is fully received -> COMPLETED
-        bool delivAllDone = true;
-        Vector<Record> curDelDets = Query::filterRecords(*delDetTable, "delivery_id", Value(deliveryId));
-        for (const auto& row : curDelDets) {
-            int rQty = std::get<int>(row.get("received_quantity"));
-            int aQty = std::get<int>(row.get("actual_quantity"));
-            if (std::get<int>(row.get("delivery_detail_id")) == delDetId) aQty += quantity;
-            if (aQty < rQty) { delivAllDone = false; break; }
-        }
-
-        Record delStatusUp;
-        if (delivAllDone) {
-            delStatusUp.set("status", std::string("COMPLETED"));
-            if (isNull(delRec->get("delivery_at"))) {
-                delStatusUp.set("delivery_at", getCurrentDateStr());
-            }
-        } else {
+        // Update delivery status to RECEIVING if not already COMPLETED (Rule 4.5: do not auto-complete)
+        std::string curDelSt = delRec->has("status") && std::holds_alternative<std::string>(delRec->get("status"))
+            ? std::get<std::string>(delRec->get("status")) : "";
+        if (curDelSt != "COMPLETED" && curDelSt != "completed") {
+            Record delStatusUp;
             delStatusUp.set("status", std::string("RECEIVING"));
-        }
-        db->update("delivery", deliveryId, delStatusUp);
-
-        // Check if inbound_transaction is fully received -> CONFIRMED
-        bool inTxnAllDone = true;
-        Vector<Record> curInDets = Query::filterRecords(*inDetTable, "inbound_transaction_id", Value(inTxnId));
-        for (const auto& row : curInDets) {
-            int ordQ = std::get<int>(row.get("ordered_quantity"));
-            int actQ = std::get<int>(row.get("actual_quantity"));
-            if (std::get<int>(row.get("inbound_detail_id")) == inDetId) actQ += quantity;
-            if (actQ < ordQ) { inTxnAllDone = false; break; }
+            db->update("delivery", deliveryId, delStatusUp);
         }
 
-        Record inTxnStatusUp;
-        if (inTxnAllDone) {
-            inTxnStatusUp.set("status", std::string("CONFIRMED"));
-        } else {
+        // Update inbound_transaction status to PROCESSING if not already COMPLETED/CONFIRMED
+        std::string curInTxnSt = inTxnRec->has("status") && std::holds_alternative<std::string>(inTxnRec->get("status"))
+            ? std::get<std::string>(inTxnRec->get("status")) : "";
+        if (curInTxnSt != "COMPLETED" && curInTxnSt != "completed" && curInTxnSt != "CONFIRMED") {
+            Record inTxnStatusUp;
             inTxnStatusUp.set("status", std::string("PROCESSING"));
+            db->update("inbound_transaction", inTxnId, inTxnStatusUp);
         }
-        db->update("inbound_transaction", inTxnId, inTxnStatusUp);
 
         db->commit();
         return OperationResult{true, "Đã nhận " + std::to_string(quantity) + " unit vào đợt giao " + std::to_string(deliveryId) + " thành công!", totalAffected};

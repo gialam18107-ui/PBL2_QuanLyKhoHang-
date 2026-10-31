@@ -13,6 +13,7 @@
 #include <QPushButton>
 #include <QTableWidget>
 #include <QLabel>
+#include <QTimer>
 #include <vector>
 #include <string>
 
@@ -305,24 +306,48 @@ private:
     QString createdBatchCode;
 };
 
+struct BatchItemOverview {
+    int productId = 0;
+    QString productCode;
+    QString productName;
+    int batchQty = 0;
+    int actualQty = 0;
+    // Batch unit breakdown:
+    int batchAvail = 0;
+    int batchWrt = 0;
+    int batchScrap = 0;
+    int batchOut = 0;
+    // Total warehouse stock:
+    int stockAvail = 0;
+    int stockWrt = 0;
+    int stockScrap = 0;
+};
+
+class UnitEntryDialog;
+
 /**
- * @brief Modal dialog to select warehouse units to attach to a delivery/shipment (Rule 7.2).
- * Simulates hardware barcode scanning and unit inspection without physical products.
- * Provides product filtering and precondition validation.
+ * @brief Standalone companion window for Testing & Hardware Simulation (Rule 7.2).
+ * Runs parallel/side-by-side with UnitEntryDialog to provide tester utilities:
+ * - Tab 1: Pick candidate units from warehouse inventory (filter, multi-select, select all).
+ * - Tab 2: Single random serial generator & batch auto-creation for remaining order quotas.
  */
-class UnitSelectionDialog : public QDialog
+class SimulationToolDialog : public QDialog
 {
 public:
-    UnitSelectionDialog(
+    SimulationToolDialog(
         HubType type,
         Database* database,
+        int logisticsId,
+        const QString& batchCode,
         const std::string& txnType,
-        const std::vector<std::pair<int, QString>>& orderProducts, // pair<productId, displayName>
+        const std::vector<std::pair<int, QString>>& orderProducts,
+        UnitEntryDialog* entryDialog,
         QWidget* parent = nullptr
     );
-    ~UnitSelectionDialog() override = default;
+    ~SimulationToolDialog() override = default;
 
-    Vector<std::string> getSelectedSerials() const { return selectedSerials; }
+    void refreshCandidateList();
+    void updateMissingSummary();
 
 private:
     struct CandidateUnit {
@@ -342,16 +367,24 @@ private:
     void onSelectionChanged();
     void onSelectAllEligible();
     void onDeselectAll();
-    void onConfirm();
+    void onConfirmCandidates();
+    void onGenerateSingleRandomSerial();
+    void onFillSerialToEntry();
+    void onDirectRecordGeneratedSerial();
+    void onBatchAutoGenerate();
 
     bool isUnitEligible(const std::string& status) const;
     QString getEligibilityReason(const std::string& status) const;
 
     HubType hubType;
     Database* db;
+    int logId;
+    QString batchCodeStr;
     std::string transactionType;
     std::vector<std::pair<int, QString>> products;
+    UnitEntryDialog* entryDlg;
 
+    // Tab 1 controls (Warehouse candidates)
     QComboBox* productFilterCombo;
     QCheckBox* onlyEligibleCheck;
     QLineEdit* searchSerialInput;
@@ -361,8 +394,15 @@ private:
     QLabel* selectionSummaryLabel;
     QPushButton* confirmBtn;
 
+    // Tab 2 controls (Generators)
+    QLineEdit* generatedSerialDisplay;
+    QPushButton* genSingleSerialBtn;
+    QPushButton* fillToEntryBtn;
+    QPushButton* recordNowBtn;
+    QLabel* batchMissingSummaryLabel;
+    QPushButton* batchAutoReceiveBtn;
+
     std::vector<CandidateUnit> candidates;
-    Vector<std::string> selectedSerials;
 };
 
 /**
@@ -379,9 +419,21 @@ public:
         const QString& parentOrderCode,
         QWidget* parent = nullptr
     );
-    ~UnitEntryDialog() override = default;
+    ~UnitEntryDialog() override;
 
     bool didModifyUnits() const { return hasModifiedUnits; }
+    void showToast(const QString& message, bool isSuccess = true);
+
+    // Methods for SimulationToolDialog communication
+    void fillSerialInput(const QString& serial);
+    bool recordCustomSerial(const QString& serial, QString& outErrMsg);
+    void onBatchAutoGenerateUnits();
+    void onCandidateSerialsSelected(const Vector<std::string>& serials);
+    std::vector<std::pair<int, QString>> getOrderProductsList() const;
+    const std::vector<BatchItemOverview>& getBatchItems() const { return batchItems; }
+
+protected:
+    void resizeEvent(QResizeEvent* event) override;
 
 private:
     struct StagedUnit {
@@ -396,17 +448,6 @@ private:
         bool isModified = false;
     };
 
-    struct BatchItemOverview {
-        int productId = 0;
-        QString productCode;
-        QString productName;
-        int batchQty = 0;
-        int actualQty = 0;
-        int stockAvail = 0;
-        int stockWrt = 0;
-        int stockScrap = 0;
-    };
-
     void setupUI();
     void loadBatchData();
     void loadAllUnitsData();
@@ -415,9 +456,7 @@ private:
     void refreshBatchOverviewTable();
 
     void onDirectSerialEntered();
-    void onGenerateRandomSerial();
-    void onBatchAutoGenerateUnits();
-    void onOpenUnitSelectionDialog();
+    void onOpenSimulationToolsDialog();
     void onUnitStatusChanged(int unitId, const QString& newStatus);
     void onSaveChanges();
 
@@ -431,6 +470,10 @@ private:
     std::string transactionType;
     bool isLogisticsCompleted = false;
     bool hasModifiedUnits = false;
+
+    // Toast notification overlay
+    QLabel* toastOverlayLabel = nullptr;
+    QTimer* toastTimer = nullptr;
 
     // 2-Tab Structure
     QTabWidget* mainTabWidget;
@@ -446,9 +489,7 @@ private:
     // Tab 2 controls
     QLineEdit* unifiedSerialInput;
     QPushButton* recordDirectSerialBtn;
-    QPushButton* randomSerialBtn;
-    QPushButton* openUnitSelectionBtn;
-    QPushButton* batchAutoReceiveBtn;
+    QPushButton* openSimulationToolsBtn;
     QTableWidget* batchOverviewTable;
     QTableWidget* recentUnitsTable;
     QLabel* recentUnitsLabel;
@@ -457,6 +498,8 @@ private:
     QLabel* statusSummaryLabel;
     QPushButton* saveChangesBtn;
     QPushButton* closeBtn;
+
+    SimulationToolDialog* simulationDialog = nullptr;
 
     std::vector<StagedUnit> stagedUnits;
     std::vector<int> recentUnitIds; // Up to 3 most recently entered/updated units
