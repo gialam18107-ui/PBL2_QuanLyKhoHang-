@@ -340,6 +340,8 @@ private:
     void loadCandidateUnits();
     void filterTable();
     void onSelectionChanged();
+    void onSelectAllEligible();
+    void onDeselectAll();
     void onConfirm();
 
     bool isUnitEligible(const std::string& status) const;
@@ -353,6 +355,8 @@ private:
     QComboBox* productFilterCombo;
     QCheckBox* onlyEligibleCheck;
     QLineEdit* searchSerialInput;
+    QPushButton* selectAllBtn;
+    QPushButton* deselectAllBtn;
     QTableWidget* unitsTable;
     QLabel* selectionSummaryLabel;
     QPushButton* confirmBtn;
@@ -411,6 +415,8 @@ private:
     void refreshBatchOverviewTable();
 
     void onDirectSerialEntered();
+    void onGenerateRandomSerial();
+    void onBatchAutoGenerateUnits();
     void onOpenUnitSelectionDialog();
     void onUnitStatusChanged(int unitId, const QString& newStatus);
     void onSaveChanges();
@@ -440,7 +446,9 @@ private:
     // Tab 2 controls
     QLineEdit* unifiedSerialInput;
     QPushButton* recordDirectSerialBtn;
+    QPushButton* randomSerialBtn;
     QPushButton* openUnitSelectionBtn;
+    QPushButton* batchAutoReceiveBtn;
     QTableWidget* batchOverviewTable;
     QTableWidget* recentUnitsTable;
     QLabel* recentUnitsLabel;

@@ -571,12 +571,23 @@ void inbound_detail_query(Database *db, Vector<Record> &results,
 			}
 			if (it.has("inbound_code"))
 				out.set("inbound_transaction.inbound_code", it.get("inbound_code"));
-			if (p.has("product_code"))
+			if (id.has("product_id")) {
+				out.set("inbound_detail.product_id", id.get("product_id"));
+				out.set("product.product_id", id.get("product_id"));
+				out.set("product_id", id.get("product_id"));
+			}
+			if (p.has("product_code")) {
 				out.set("product.product_code", p.get("product_code"));
-			if (p.has("product_name"))
+				out.set("product_code", p.get("product_code"));
+			}
+			if (p.has("product_name")) {
 				out.set("product.product_name", p.get("product_name"));
-			if (id.has("ordered_quantity"))
+				out.set("product_name", p.get("product_name"));
+			}
+			if (id.has("ordered_quantity")) {
 				out.set("inbound_detail.ordered_quantity", id.get("ordered_quantity"));
+				out.set("ordered_quantity", id.get("ordered_quantity"));
+			}
 			if (id.has("actual_quantity")) {
 				out.set("inbound_detail.actual_quantity", id.get("actual_quantity"));
 				out.set("actual_quantity", id.get("actual_quantity"));
@@ -765,12 +776,23 @@ void delivery_detail_query_impl(Database *db, Vector<Record> &results,
 			}
 			if (d.has("delivery_code"))
 				out.set("delivery.delivery_code", d.get("delivery_code"));
-			if (p.has("product_code"))
+			if (dd.has("product_id")) {
+				out.set("delivery_detail.product_id", dd.get("product_id"));
+				out.set("product.product_id", dd.get("product_id"));
+				out.set("product_id", dd.get("product_id"));
+			}
+			if (p.has("product_code")) {
 				out.set("product.product_code", p.get("product_code"));
-			if (p.has("product_name"))
+				out.set("product_code", p.get("product_code"));
+			}
+			if (p.has("product_name")) {
 				out.set("product.product_name", p.get("product_name"));
-			if (dd.has("received_quantity"))
+				out.set("product_name", p.get("product_name"));
+			}
+			if (dd.has("received_quantity")) {
 				out.set("delivery_detail.received_quantity", dd.get("received_quantity"));
+				out.set("received_quantity", dd.get("received_quantity"));
+			}
 			if (dd.has("actual_quantity")) {
 				out.set("delivery_detail.actual_quantity", dd.get("actual_quantity"));
 				out.set("actual_quantity", dd.get("actual_quantity"));
@@ -996,11 +1018,23 @@ void outbound_detail_query(Database *db, Vector<Record> &results,
 			}
 			if (ot.has("outbound_code"))
 				out.set("outbound_transaction.outbound_code", ot.get("outbound_code"));
-			if (p.has("product_code"))
+			if (od.has("product_id")) {
+				out.set("outbound_detail.product_id", od.get("product_id"));
+				out.set("product.product_id", od.get("product_id"));
+				out.set("product_id", od.get("product_id"));
+			}
+			if (p.has("product_code")) {
 				out.set("product.product_code", p.get("product_code"));
-			if (p.has("product_name"))
+				out.set("product_code", p.get("product_code"));
+			}
+			if (p.has("product_name")) {
 				out.set("product.product_name", p.get("product_name"));
-			if (od.has("ordered_quantity"))
+				out.set("product_name", p.get("product_name"));
+			}
+			if (od.has("ordered_quantity")) {
+				out.set("outbound_detail.ordered_quantity", od.get("ordered_quantity"));
+				out.set("ordered_quantity", od.get("ordered_quantity"));
+			}
 				out.set("outbound_detail.ordered_quantity", od.get("ordered_quantity"));
 			if (od.has("actual_quantity")) {
 				out.set("outbound_detail.actual_quantity", od.get("actual_quantity"));
@@ -1200,12 +1234,23 @@ void shipment_detail_query_impl(Database *db, Vector<Record> &results,
 			}
 			if (s.has("shipment_code"))
 				out.set("shipment.shipment_code", s.get("shipment_code"));
-			if (p.has("product_code"))
+			if (sd.has("product_id")) {
+				out.set("shipment_detail.product_id", sd.get("product_id"));
+				out.set("product.product_id", sd.get("product_id"));
+				out.set("product_id", sd.get("product_id"));
+			}
+			if (p.has("product_code")) {
 				out.set("product.product_code", p.get("product_code"));
-			if (p.has("product_name"))
+				out.set("product_code", p.get("product_code"));
+			}
+			if (p.has("product_name")) {
 				out.set("product.product_name", p.get("product_name"));
-			if (sd.has("received_quantity"))
+				out.set("product_name", p.get("product_name"));
+			}
+			if (sd.has("received_quantity")) {
 				out.set("shipment_detail.received_quantity", sd.get("received_quantity"));
+				out.set("received_quantity", sd.get("received_quantity"));
+			}
 			if (sd.has("actual_quantity")) {
 				out.set("shipment_detail.actual_quantity", sd.get("actual_quantity"));
 				out.set("actual_quantity", sd.get("actual_quantity"));
