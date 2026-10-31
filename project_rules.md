@@ -170,6 +170,22 @@ Once a Transaction + `Delivery`/`Shipment` pair (along with its attached `Unit` 
 - **Permitted Updates (`UserUpdate`)**:
   - **`status`**: Users may modify the `status` field of Transactions (`inbound_transaction`, `outbound_transaction`), `Delivery`, and `Shipment` during order lifecycle processing.
   - **`delivery_at` & `ship_at`**: Users are permitted to edit/update the actual delivery date (`delivery.delivery_at`) and actual shipment date (`shipment.ship_at`) when goods are actually delivered/dispatched or when adjustments to actual logistics dates are required. The updated dates must strictly obey the chronological constraint: `delivery.delivery_at >= inbound_transaction.order_at` and `shipment.ship_at >= outbound_transaction.order_at` (actual date can be earlier than expected date, but never earlier than order date).
+  - **Flexible Unit Target Status Switching During In-Progress Logistics (Cho phép thay đổi trạng thái linh kiện tự do một phần khi đơn chưa hoàn thành)**:
+    - While a `Delivery` or `Shipment` is in progress (status is not yet `COMPLETED`), users are permitted to freely switch the target status (`new_status` / `curr_status`) of recorded units back and forth, strictly restricted within the domain of valid business statuses permitted for that transaction type:
+      - **Inbound `PUR` (Purchasing)**: Target status can be switched back and forth between `AVAILABLE` and `SCRAPPED` (e.g. if an item originally recorded as `AVAILABLE` is subsequently found defective during receiving inspection, or vice-versa).
+      - **Inbound `CRT` (Customer Return)**: Target status can be switched freely among `AVAILABLE`, `WARRANTY`, and `SCRAPPED`.
+      - **Inbound `ADJ` (Adjustment In)**: Target status can be switched freely among internal warehouse statuses (`AVAILABLE`, `WARRANTY`, `SCRAPPED`).
+      - **Outbound Transactions (`SEL`, `WRT`, `WRC`, `ADJ`)**: Target status remains strictly `OUT`.
+    - Every status transition atomically updates `unit_inventory.status`, recomputes inventory breakdown counters in `product_quantity` (`available_quan`, `warranty_quan`, `scrapped_quan`), and logs the transition into `status_history`.
+- **Strict Post-Completion Lock (Khóa toàn bộ thao tác khi đơn chuyển sang hoàn thành - `COMPLETED`)**:
+  - Once a transaction, `Delivery`, or `Shipment` is transitioned and confirmed to `COMPLETED`:
+    - All unit status transitions, unit additions, removals, and modifications for that delivery/shipment are **strictly locked** (frozen/immutable). Users can no longer modify the status of any units associated with that completed batch.
+- **Mandatory Completion Confirmation Dialog (Cửa sổ xuất xác nhận hoàn thành đơn)**:
+  - When the user triggers transitioning an order/delivery/shipment status to `COMPLETED`, the system must not commit the change immediately. It must pop up a dedicated modal confirmation window containing:
+    1. A clear warning message stating that completing the order will permanently lock unit statuses and inventory records.
+    2. A mandatory confirmation tick-box (`QCheckBox`, e.g., `"Tôi xác nhận đơn hàng đã được kiểm đếm đầy đủ và đồng ý chuyển sang trạng thái hoàn tất đơn"`).
+    3. An explicit Confirmation button (`"Xác nhận hoàn thành"`), which remains disabled until the tick-box is checked.
+    4. An explicit Cancel / Postpone button (`"Chưa hoàn thành"` / `"Hủy"`) to dismiss the popup without changing the status.
 - **Frozen Business Data**: Planned order quantities (`ordered_quantity`, `received_quantity`), product references, transaction types, customer/partner details, and attached serial numbers are locked and cannot be edited arbitrarily.
 - **Logistics Batch Immutability**: No additional `Delivery` or `Shipment` records may be added to a transaction after confirmation.
 
@@ -214,6 +230,10 @@ All auto-generated codes and user inputs must strictly conform to the specificat
 
 ### 6.2 Query Execution & Caching Flag (`user_query`)
 - Query logic resides in the `query/` library and is implemented in `schema/UserQuery.*`.
+- **Strict Query Encapsulation in `schema/UserQuery.*`**:
+  - All database queries, data lookups, table joins, filtered scans, and aggregations required by the system and UI must be implemented exclusively in `schema/UserQuery.*`.
+  - Writing inline database queries, ad-hoc table lookups, or directly traversing table rows (`Table::getRows()`) inside UI files (`ui/*.cpp`) is strictly prohibited. The UI must only invoke standardized `user_query::*` functions.
+  - Any query logic found in the UI layer must be refactored into `schema/UserQuery.*`.
 - Table data is treated as read-only during queries: extract required data from the table (using indexes where applicable) into a `Vector<Record>`.
 - The extracted `Vector<Record>` must contain the table's `*_id` primary key column (hidden from UI view, reserved strictly for CRUD identification).
 - Implements queries across all domains: Warehouse, Category Hardware, Auxiliary Specs, and Customers (`individual_customer_query`, `business_customer_query`).
@@ -238,7 +258,9 @@ All auto-generated codes and user inputs must strictly conform to the specificat
   - The parameters of insert functions include: `tableName`, `Record& r`.
   - The parameters of delete functions include: `tableName`, `record_id`.
   - Column names, constraints, datatypes, and referential integrity must be validated before modifying tables.
-  - Implementation functions must be written in the designated files: `schema/UserCreate.*`, `schema/UserUpdate.*`, `schema/UserDelete.*`.
+  - **Strict CRUD Layering in `schema/`**:
+    - Implementation functions must be written in the designated schema files: `schema/UserCreate.*` for record creation, `schema/UserUpdate.*` for updates and unit status transitions, and `schema/UserDelete.*` for record deletion.
+    - Direct table manipulations, ad-hoc insertions, updates, or deletions within the UI layer (`ui/`) are strictly forbidden. All state-changing operations must route through `UserCreate`, `UserUpdate`, or `UserDelete`.
 
 #### 6.3.1 Error Handling & UI Return Contract for User CRUD
 - To ensure robust UI interaction without unhandled exceptions or application crashes, all functions in `UserCreate`, `UserUpdate`, and `UserDelete` must return an explicit status/result object (e.g., `struct OperationResult { bool success; std::string message; }` or equivalent error-reporting contract).
@@ -276,6 +298,11 @@ All auto-generated codes and user inputs must strictly conform to the specificat
 - Preserve existing UI behavior when modifying interfaces unless explicitly instructed otherwise.
 - The `Vector<Record> results` contain `*_id` (e.g., `product_id`, `cpu_id`, `inbound_id`), but **do not display this ID on the screen**. It is used exclusively as internal metadata for CRUD operations.
 - The UI must manage the cache validity flag for query results as defined in Section 6.2.
+- **Architectural Boundary & Prohibition of Queries/CRUD in UI Layer**:
+  - UI classes must strictly function as presentation and user-interaction components.
+  - UI code must **never** write custom queries, execute raw table scans (`getTable()->getRows()`), manipulate internal table pointers, or directly mutate table rows.
+  - All data retrieval and operations must route through the respective schema modules: `schema/UserQuery.*` for all queries and aggregations, `schema/UserCreate.*` for record additions, `schema/UserUpdate.*` for record and unit status modifications, and `schema/UserDelete.*` for record removals.
+  - Any ad-hoc queries previously implemented directly on the UI must be migrated to `schema/UserQuery.*`.
 
 ### 7.2 Dedicated Windows and Dialogs for CRUD
 - **Insert Windows (Dedicated Dialogs)**:
@@ -292,12 +319,40 @@ All auto-generated codes and user inputs must strictly conform to the specificat
       - When creating a transaction with multiple delivery/shipment batches, the total allocated quantity for each product across batches must equal the transaction's ordered quantity before the transaction can be confirmed.
       - Once the transaction is confirmed, no additional deliveries or shipments can be added.
     - **CRUD Error Handling**: Consume `OperationResult` from `UserCreate` to display explicit error alerts (`QMessageBox::critical`) if validation fails, preventing form submission.
-  - **Unit Entry Window for Delivery & Shipment**:
-    - Clicking the designated action button on a Delivery or Shipment record opens a dedicated dialog to input/attach units (serial numbers and target statuses) for each product in that delivery or shipment.
-    - Adding units automatically increments `actual_quantity` in `delivery_detail`/`shipment_detail` and in `inbound_detail`/`outbound_detail`.
+  - **Unit Entry and Processing for Delivery & Shipment**:
+    - **Unified Serial Scanning / Direct Input (Nhập Serial trực tiếp không cần chọn trước sản phẩm)**:
+      - When receiving (`Delivery`) or dispatching (`Shipment`) units, the user enters or scans the unit's serial into a single unified serial input field.
+      - The user is **not** required to select or click a specific product first before typing the serial.
+      - **Automated Scope & Product Validation**:
+        - For existing units in the warehouse, the system automatically looks up the unit's `serial` via `unit_inventory` to determine its corresponding `product_id`.
+        - The system strictly checks whether this product is declared in the items list of the current order (`delivery_detail` for Delivery, `shipment_detail` for Shipment). If the unit belongs to an external product not part of the order, the input is rejected immediately with an explicit error dialog ("Đơn vị sản phẩm không thuộc bất kỳ sản phẩm nào trong đơn hàng").
+        - The system verifies that the product's received/dispatched quantity has not already reached the order batch limit (`actual_quantity < received_quantity`). If full, the entry is rejected.
+        - Valid entries update the unit's status in accordance with business rules, log an immutable record into `status_history`, and automatically increment `actual_quantity`.
+    - **Unit Selection Helper Dialog (Cửa sổ hỗ trợ chọn Unit thử nghiệm nghiệp vụ)**:
+      - Because physical products and hardware barcode scanners are unavailable in this environment, the UI provides a dedicated **Unit Selection Helper Dialog** to facilitate testing and verifying business workflows.
+      - Allows users to browse and pick existing eligible warehouse units to attach to the `Delivery` or `Shipment` (simulating physical barcode scanning).
+      - **Product Filter**: Provides a product filter (combobox or selector restricted strictly to products declared in the active order) so users can quickly filter and select candidate units belonging to a specific product.
+      - Displays candidate units with their Serial, Product Name, and current status, ensuring only eligible units matching the transaction type's precondition rules can be selected.
+      - Selecting unit(s) and confirming adds them directly to the delivery/shipment, equivalent to manual serial scanning.
+  - **Delivery & Shipment Unit Inspection View (Danh sách Unit bị thay đổi trạng thái khi bấm vào Delivery / Shipment)**:
+    - When clicking on a `Delivery` or `Shipment` record in the transaction view, the UI must provide a dedicated inspection view displaying the list of all units whose status was changed by that specific delivery or shipment batch.
+    - Each unit row in this view must explicitly show:
+      1. **Tên sản phẩm (Product Name)**: The name of the product corresponding to the unit (`product.product_name`).
+      2. **Số Serial (Unit Serial)**: Unique serial number of the unit (`unit_inventory.serial`).
+      3. **Trạng thái ban đầu (Old / Initial Status)**: Status prior to this operation (`status_history.old_status` or `NULL` for new purchase).
+      4. **Trạng thái kết thúc / hiện tại (New / Final Status)**: Status resulting from this delivery/shipment (`status_history.curr_status` / `unit_inventory.status`).
+    - **Status Summary Button (Nút bấm tổng kết số lượng theo từng trạng thái Unit)**:
+      - Inside this changed-units inspection view, provide a dedicated action button: **"Tổng kết trạng thái" (Status Summary)**.
+      - Clicking this button computes and presents an aggregated breakdown of unit counts grouped by each unit status for that specific delivery or shipment (e.g. `AVAILABLE: X`, `SCRAPPED: Y`, `WARRANTY: Z`, `OUT: W`, Total: `N`), powered by `UserQuery` aggregation logic using `HashTable`.
   - **Order Detail Inspection Window**:
     - Both Transaction and Delivery/Shipment interfaces must have an action button to open a sub-window displaying the list of products in that specific order.
     - This window executes the detail query logic (`inbound_detail_query`, `delivery_detail_query`, `outbound_detail_query`, or `shipment_detail_query`) filtered specifically by that order's code (showing products, quantities, prices, etc., without listing individual units).
+  - **Order Completion Confirmation Dialog (Cửa sổ xuất xác nhận hoàn thành đơn)**:
+    - Whenever changing the status of an order, delivery, or shipment to `COMPLETED`:
+      - Pops up a dedicated confirmation modal window.
+      - Requires checking a confirmation checkbox (`QCheckBox`, e.g. `"Tôi xác nhận đã kiểm đếm đầy đủ các đơn vị sản phẩm và đồng ý hoàn tất đơn hàng"`).
+      - Features a Confirmation button (`"Xác nhận hoàn thành"`, enabled only when ticked) and a Cancel button (`"Chưa hoàn thành"` / `"Hủy"`).
+      - Once confirmed, locks all unit modifications for that order.
 
 ### 7.3 Navigation & Menus
 - **Warehouse vs. Reference Separation**: All category tables (`CPU`, `GPU`, `Mainboard`, etc.), specification sub-tables, `Category`, and `Brand` must be separated from the main warehouse inventory view.
