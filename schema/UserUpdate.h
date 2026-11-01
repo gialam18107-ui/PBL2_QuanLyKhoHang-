@@ -60,7 +60,8 @@ namespace user_update
     OperationResult updateProductSellingStatus(
         Database* db,
         int productId,
-        bool isSold
+        bool isSold,
+        const std::string& dateStr = ""
     );
 
     // ========================================================
@@ -135,6 +136,35 @@ namespace user_update
         bool isInbound,
         const std::string& serial,
         const std::string& newStatus
+    );
+
+    // ========================================================
+    // INVENTORY CHECK & ADJUSTMENT MOVEMENT UPDATES
+    // ========================================================
+
+    OperationResult updateInventoryCheckQuantity(
+        Database* db,
+        int checkQuantityId,
+        int actualAvail,
+        int actualWarr,
+        int actualScrap,
+        const std::string& note = ""
+    );
+
+    OperationResult updateInventoryCheckUnit(
+        Database* db,
+        int checkUnitId,
+        const std::string& scannedStatus
+    );
+
+    OperationResult completeInventoryCheck(
+        Database* db,
+        int checkId
+    );
+
+    OperationResult executeAdjustmentMovement(
+        Database* db,
+        int adjustId
     );
 }
 

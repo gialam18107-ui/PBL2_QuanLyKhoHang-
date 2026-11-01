@@ -276,6 +276,7 @@ QWidget* OrderDialog::createStep1Widget()
     grid->addWidget(new QLabel("Loại giao dịch (*):", headerGroup), 0, 0);
     grid->addWidget(typeCombo, 0, 1, 1, 3);
 
+    customerLabel = new QLabel(hubType == HubType::INBOUND ? "Đối tác / KH (*):" : "Khách hàng (*):", headerGroup);
     customerCombo = new QComboBox(headerGroup);
     customerCombo->setEditable(true);
     customerCombo->setInsertPolicy(QComboBox::NoInsert);
@@ -291,27 +292,58 @@ QWidget* OrderDialog::createStep1Widget()
         onQuickAddCustomer();
     });
 
-    auto* custLayout = new QHBoxLayout();
+    customerContainer = new QWidget(headerGroup);
+    auto* custLayout = new QHBoxLayout(customerContainer);
     custLayout->setContentsMargins(0, 0, 0, 0);
     custLayout->setSpacing(8);
     custLayout->addWidget(customerCombo, 1);
     custLayout->addWidget(addCustomerBtn);
 
-    grid->addWidget(new QLabel(hubType == HubType::INBOUND ? "Đối tác / KH (*):" : "Khách hàng (*):", headerGroup), 1, 0);
-    grid->addLayout(custLayout, 1, 1, 1, 3);
+    grid->addWidget(customerLabel, 1, 0);
+    grid->addWidget(customerContainer, 1, 1, 1, 3);
+
+    sourceCodeLabel = new QLabel("Đợt kiểm kho gốc (source_code *):", headerGroup);
+    sourceCodeCombo = new QComboBox(headerGroup);
+    sourceCodeCombo->setEditable(true);
+    sourceCodeCombo->setInsertPolicy(QComboBox::NoInsert);
+    if (sourceCodeCombo->lineEdit()) {
+        sourceCodeCombo->lineEdit()->setPlaceholderText("Chọn hoặc nhập mã đợt kiểm kho (CHK-...)...");
+        sourceCodeCombo->lineEdit()->setClearButtonEnabled(true);
+    }
+    if (db) {
+        Table* chkTable = db->getTable("inventory_check");
+        if (chkTable) {
+            const auto& rows = chkTable->getRows();
+            for (size_t i = 0; i < rows.size(); ++i) {
+                if (chkTable->isRowDeleted(i)) continue;
+                const auto& r = rows[i];
+                std::string code = r.has("check_code") && std::holds_alternative<std::string>(r.get("check_code")) ? std::get<std::string>(r.get("check_code")) : "";
+                std::string type = r.has("check_type") && std::holds_alternative<std::string>(r.get("check_type")) ? std::get<std::string>(r.get("check_type")) : "";
+                std::string status = r.has("status") && std::holds_alternative<std::string>(r.get("status")) ? std::get<std::string>(r.get("status")) : "";
+                if (!code.empty()) {
+                    QString display = QString("%1 [%2 - %3]").arg(QString::fromStdString(code), QString::fromStdString(type), QString::fromStdString(status));
+                    sourceCodeCombo->addItem(display, QString::fromStdString(code));
+                }
+            }
+        }
+    }
+    sourceCodeLabel->setVisible(false);
+    sourceCodeCombo->setVisible(false);
+    grid->addWidget(sourceCodeLabel, 2, 0);
+    grid->addWidget(sourceCodeCombo, 2, 1, 1, 3);
 
     QDate today = QDate::currentDate();
     orderDateEdit = new QDateEdit(today, headerGroup);
     orderDateEdit->setCalendarPopup(true);
     orderDateEdit->setDisplayFormat("yyyy-MM-dd");
 
-    grid->addWidget(new QLabel("Ngày đặt đơn (order_at *):", headerGroup), 2, 0);
-    grid->addWidget(orderDateEdit, 2, 1, 1, 3);
+    grid->addWidget(new QLabel("Ngày đặt đơn (order_at *):", headerGroup), 3, 0);
+    grid->addWidget(orderDateEdit, 3, 1, 1, 3);
 
     noteEdit = new QLineEdit(headerGroup);
     noteEdit->setPlaceholderText("Nhập ghi chú chứng từ / lý do nhập xuất (không bắt buộc)...");
-    grid->addWidget(new QLabel("Ghi chú đơn:", headerGroup), 3, 0);
-    grid->addWidget(noteEdit, 3, 1, 1, 3);
+    grid->addWidget(new QLabel("Ghi chú đơn:", headerGroup), 4, 0);
+    grid->addWidget(noteEdit, 4, 1, 1, 3);
 
     pageLayout->addWidget(headerGroup);
 
@@ -594,28 +626,39 @@ bool OrderDialog::validateCurrentStep()
 {
     int current = stepStack->currentIndex();
     if (current == 0) {
-        QString custCode;
-        int custIdx = customerCombo->currentIndex();
-        QString custText = customerCombo->currentText().trimmed();
-        if (custIdx >= 0 && customerCombo->itemText(custIdx) == custText) {
-            custCode = customerCombo->itemData(custIdx).toString();
-        } else if (!custText.isEmpty()) {
-            int sepIdx = custText.indexOf(" — ");
-            custCode = (sepIdx > 0) ? custText.left(sepIdx).trimmed() : custText;
-        }
-
         QString txnType = typeCombo ? typeCombo->currentData().toString() : "";
-        if (txnType == "ADJUSTMENT_IN" || txnType == "ADJUSTMENT_OUT") {
-            if (custCode.isEmpty()) {
-                custCode = "BS-0000000";
-            }
-        }
+        bool isAdj = (txnType == "ADJUSTMENT_IN" || txnType == "ADJUSTMENT_OUT");
 
-        if (custCode.isEmpty()) {
-            QMessageBox::warning(this, "Thiếu thông tin đối tác/khách hàng",
-                "Vui lòng chọn hoặc tạo mới khách hàng / đối tác cho đơn giao dịch.");
-            customerCombo->setFocus();
-            return false;
+        if (isAdj) {
+            QString srcCode = sourceCodeCombo ? sourceCodeCombo->currentData().toString().trimmed() : "";
+            if (srcCode.isEmpty() && sourceCodeCombo) {
+                srcCode = sourceCodeCombo->currentText().trimmed();
+                int sep = srcCode.indexOf(" ");
+                if (sep > 0) srcCode = srcCode.left(sep).trimmed();
+            }
+            if (srcCode.isEmpty()) {
+                QMessageBox::warning(this, "Thiếu đợt kiểm kho gốc",
+                    "Đơn điều chỉnh kiểm kê (ADJUSTMENT) bắt buộc phải gắn với mã đợt kiểm kho (source_code tham chiếu đến check_code).");
+                if (sourceCodeCombo) sourceCodeCombo->setFocus();
+                return false;
+            }
+        } else {
+            QString custCode;
+            int custIdx = customerCombo->currentIndex();
+            QString custText = customerCombo->currentText().trimmed();
+            if (custIdx >= 0 && customerCombo->itemText(custIdx) == custText) {
+                custCode = customerCombo->itemData(custIdx).toString();
+            } else if (!custText.isEmpty()) {
+                int sepIdx = custText.indexOf(" — ");
+                custCode = (sepIdx > 0) ? custText.left(sepIdx).trimmed() : custText;
+            }
+
+            if (custCode.isEmpty()) {
+                QMessageBox::warning(this, "Thiếu thông tin đối tác/khách hàng",
+                    "Vui lòng chọn hoặc tạo mới khách hàng / đối tác cho đơn giao dịch.");
+                customerCombo->setFocus();
+                return false;
+            }
         }
         return true;
     } else if (current == 1) {
@@ -819,27 +862,14 @@ void OrderDialog::renderMultiBatchTable()
 
 void OrderDialog::onOrderTypeChanged(int)
 {
-    if (!typeCombo || !customerCombo) return;
+    if (!typeCombo) return;
     QString t = typeCombo->currentData().toString();
-    if (t == "ADJUSTMENT_IN" || t == "ADJUSTMENT_OUT") {
-        for (int i = 0; i < customerCombo->count(); ++i) {
-            if (customerCombo->itemData(i).toString() == "BS-0000000") {
-                customerCombo->setCurrentIndex(i);
-                break;
-            }
-        }
-        if (addCustomerBtn) addCustomerBtn->setEnabled(false);
-    } else {
-        if (addCustomerBtn) addCustomerBtn->setEnabled(true);
-        if (customerCombo->currentData().toString() == "BS-0000000") {
-            for (int i = 0; i < customerCombo->count(); ++i) {
-                if (customerCombo->itemData(i).toString() != "BS-0000000") {
-                    customerCombo->setCurrentIndex(i);
-                    break;
-                }
-            }
-        }
-    }
+    bool isAdj = (t == "ADJUSTMENT_IN" || t == "ADJUSTMENT_OUT");
+
+    if (customerLabel) customerLabel->setVisible(!isAdj);
+    if (customerContainer) customerContainer->setVisible(!isAdj);
+    if (sourceCodeLabel) sourceCodeLabel->setVisible(isAdj);
+    if (sourceCodeCombo) sourceCodeCombo->setVisible(isAdj);
 }
 
 void OrderDialog::populateOrderTypes()
@@ -1294,21 +1324,42 @@ void OrderDialog::onSaveOrder()
 {
     if (!db) return;
 
-    QString custCode;
-    int custIdx = customerCombo->currentIndex();
-    QString custText = customerCombo->currentText().trimmed();
-    if (custIdx >= 0 && customerCombo->itemText(custIdx) == custText) {
-        custCode = customerCombo->itemData(custIdx).toString();
-    } else if (!custText.isEmpty()) {
-        int sepIdx = custText.indexOf(" — ");
-        custCode = (sepIdx > 0) ? custText.left(sepIdx).trimmed() : custText;
-    }
+    QString txnType = typeCombo->currentData().toString();
+    bool isAdj = (txnType == "ADJUSTMENT_IN" || txnType == "ADJUSTMENT_OUT");
+    QString custCode = "";
+    QString sourceCode = "";
 
-    if (custCode.isEmpty()) {
-        QMessageBox::critical(this, "Thiếu thông tin đối tác/khách hàng", "Vui lòng chọn hoặc tạo mới khách hàng / đối tác cho đơn giao dịch.");
-        goToStep(0);
-        customerCombo->setFocus();
-        return;
+    if (isAdj) {
+        if (sourceCodeCombo) {
+            sourceCode = sourceCodeCombo->currentData().toString().trimmed();
+            if (sourceCode.isEmpty()) {
+                sourceCode = sourceCodeCombo->currentText().trimmed();
+                int sep = sourceCode.indexOf(" ");
+                if (sep > 0) sourceCode = sourceCode.left(sep).trimmed();
+            }
+        }
+        if (sourceCode.isEmpty()) {
+            QMessageBox::critical(this, "Thiếu đợt kiểm kho gốc", "Đơn điều chỉnh kiểm kê bắt buộc phải có mã đợt kiểm kho (source_code).");
+            goToStep(0);
+            if (sourceCodeCombo) sourceCodeCombo->setFocus();
+            return;
+        }
+    } else {
+        int custIdx = customerCombo->currentIndex();
+        QString custText = customerCombo->currentText().trimmed();
+        if (custIdx >= 0 && customerCombo->itemText(custIdx) == custText) {
+            custCode = customerCombo->itemData(custIdx).toString();
+        } else if (!custText.isEmpty()) {
+            int sepIdx = custText.indexOf(" — ");
+            custCode = (sepIdx > 0) ? custText.left(sepIdx).trimmed() : custText;
+        }
+
+        if (custCode.isEmpty()) {
+            QMessageBox::critical(this, "Thiếu thông tin đối tác/khách hàng", "Vui lòng chọn hoặc tạo mới khách hàng / đối tác cho đơn giao dịch.");
+            goToStep(0);
+            customerCombo->setFocus();
+            return;
+        }
     }
 
     if (lineItems.empty()) {
@@ -1319,14 +1370,7 @@ void OrderDialog::onSaveOrder()
     }
 
     QString orderDate = orderDateEdit->date().toString("yyyy-MM-dd");
-    QString txnType = typeCombo->currentData().toString();
     QString note = noteEdit->text().trimmed();
-
-    if (txnType == "ADJUSTMENT_IN" || txnType == "ADJUSTMENT_OUT") {
-        if (custCode.isEmpty()) {
-            custCode = "BS-0000000";
-        }
-    }
 
     Vector<Pair<int, int>> items;
     for (const auto& li : lineItems) {
@@ -1382,8 +1426,8 @@ void OrderDialog::onSaveOrder()
         }
 
         res = (hubType == HubType::INBOUND)
-            ? user_create::createInboundOrderWithDeliveries(db, txnType.toStdString(), custCode.toStdString(), items, batchInputs, orderDate.toStdString(), note.toStdString())
-            : user_create::createOutboundOrderWithShipments(db, txnType.toStdString(), custCode.toStdString(), items, batchInputs, orderDate.toStdString(), note.toStdString());
+            ? user_create::createInboundOrderWithDeliveries(db, txnType.toStdString(), custCode.toStdString(), items, batchInputs, orderDate.toStdString(), note.toStdString(), sourceCode.toStdString())
+            : user_create::createOutboundOrderWithShipments(db, txnType.toStdString(), custCode.toStdString(), items, batchInputs, orderDate.toStdString(), note.toStdString(), sourceCode.toStdString());
     } else {
         QString expectedDate = expectedDateEdit->date().toString("yyyy-MM-dd");
         if (expectedDate < orderDate) {
@@ -1394,8 +1438,8 @@ void OrderDialog::onSaveOrder()
         }
 
         res = (hubType == HubType::INBOUND)
-            ? user_create::createInboundOrder(db, txnType.toStdString(), custCode.toStdString(), items, orderDate.toStdString(), expectedDate.toStdString(), note.toStdString())
-            : user_create::createOutboundOrder(db, txnType.toStdString(), custCode.toStdString(), items, orderDate.toStdString(), expectedDate.toStdString(), note.toStdString());
+            ? user_create::createInboundOrder(db, txnType.toStdString(), custCode.toStdString(), items, orderDate.toStdString(), expectedDate.toStdString(), note.toStdString(), sourceCode.toStdString())
+            : user_create::createOutboundOrder(db, txnType.toStdString(), custCode.toStdString(), items, orderDate.toStdString(), expectedDate.toStdString(), note.toStdString(), sourceCode.toStdString());
     }
 
     if (!res.success) {

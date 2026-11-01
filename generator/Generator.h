@@ -37,7 +37,7 @@ namespace Generator
      * - Inbound operations ONLY process units whose old status is OUT or NULL.
      * - ADJUSTMENT_IN and ADJUSTMENT_OUT transactions have NO customer (customer_id = NULL) and source_code MUST reference check_code.
      * - Batch generation selects only active products (product.is_sold == TRUE).
-     * - Synchronizes both product_quantity and product table inventory counters.
+     * - Synchronizes product table inventory counters directly.
      * - Strictly no STL containers or smart pointers (uses custom Vector, HashMap, Pair).
      */
     class DataGenerator
@@ -169,7 +169,7 @@ namespace Generator
         bool updateProductIsSold(int productId, bool newIsSold, int changedBy = 1, const string& reason = "");
 
         /**
-         * @brief Synchronize product and product_quantity tables with actual counts in unit_inventory.
+         * @brief Synchronize product table inventory counters with actual counts in unit_inventory.
          */
         void syncProductQuantities();
 

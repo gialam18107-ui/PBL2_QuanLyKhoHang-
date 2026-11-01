@@ -33,7 +33,7 @@ namespace DataIO
         }
 
         // Section 10.3: Products
-        if (name == "product_quantity" || name == "product" || name == "is_sold_changing" ||
+        if (name == "product" || name == "is_sold_changing" ||
             name == "cpu" || name == "mainboard" || name == "gpu" ||
             name == "ram" || name == "ssd" || name == "psu" ||
             name == "cooling" || name == "case" || name == "brand" || name == "category")

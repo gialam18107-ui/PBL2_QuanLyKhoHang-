@@ -32,7 +32,7 @@ int main() {
   printBanner("TEST 1: Schema Table Names & Topological Order");
   Vector<string> tableNames = Schema::getTableNames();
   cout << "[+] Total tables defined in schema: " << tableNames.size() << endl;
-  assert(tableNames.size() == 42);
+  assert(tableNames.size() == 41);
   for (size_t i = 0; i < tableNames.size(); i++) {
     cout << "  " << setw(2) << (i + 1) << ". " << tableNames[i] << endl;
   }
@@ -82,7 +82,7 @@ int main() {
   bool readAllOk = DatabaseIO::readAll(db, "data");
   cout << "[+] Database readAll result: " << (readAllOk ? "SUCCESS" : "PARTIAL")
        << endl;
-  assert(db.getTableCount() == 42);
+  assert(db.getTableCount() == 41);
 
   int totalRecords = 0;
   for (const string &name : tableNames) {
@@ -190,7 +190,7 @@ int main() {
   assert(DatabaseIO::getTableDomain("unit_inventory") == "unit");
 
   assert(DatabaseIO::getTableDomain("product") == "products");
-  assert(DatabaseIO::getTableDomain("product_quantity") == "products");
+  // product_quantity removed (canonical 41 tables)
   assert(DatabaseIO::getTableDomain("cpu") == "products");
   assert(DatabaseIO::getTableDomain("mainboard") == "products");
   assert(DatabaseIO::getTableDomain("gpu") == "products");
@@ -271,7 +271,7 @@ int main() {
   assert(io.readTransactions(facadeDb));
   assert(facadeDb.getTableCount() >= 32);
   assert(io.readInventoryChecks(facadeDb));
-  assert(facadeDb.getTableCount() == 42);
+  assert(facadeDb.getTableCount() == 41);
   cout << "[+] DataIO facade domain loaders verified: " << facadeDb.getTableCount()
        << " tables loaded step by step.\n";
 

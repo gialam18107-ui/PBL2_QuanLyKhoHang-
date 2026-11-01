@@ -431,19 +431,6 @@ namespace Generator
             prodRows[i].set("warranty_quantity", warr);
             prodRows[i].set("scrapped_quantity", scrap);
         }
-
-        Table* prodQuanTbl = db.getTable("product_quantity");
-        if (prodQuanTbl != nullptr)
-        {
-            auto& pqRows = prodQuanTbl->getRows();
-            for (size_t i = 0; i < pqRows.size(); i++)
-            {
-                int pid = get<int>(pqRows[i].get("product_id"));
-                pqRows[i].set("available_quan", availableCounts.contains(pid) ? availableCounts[pid] : 0);
-                pqRows[i].set("warranty_quan", warrantyCounts.contains(pid) ? warrantyCounts[pid] : 0);
-                pqRows[i].set("scrapped_quan", scrappedCounts.contains(pid) ? scrappedCounts[pid] : 0);
-            }
-        }
     }
 
     bool DataGenerator::updateProductIsSold(int productId, bool newIsSold, int changedBy, const string& reason)

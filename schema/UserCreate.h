@@ -19,7 +19,7 @@ namespace user_create
     /**
      * @brief High-level atomic creation of a new product across 3 tables:
      * 1. product (basic product information, is_sold = true)
-     * 2. product_quantity (initialized with available=0, warranty=0, scrapped=0)
+     * 2. product counters (initialized with available=0, warranty=0, scrapped=0 directly on product)
      * 3. Hardware specification table (cpu, gpu, mainboard, ram, ssd, psu, cooling, case)
      * Enforces atomic transaction rollback if any step fails.
      */
@@ -83,7 +83,8 @@ namespace user_create
         const Vector<Pair<int, int>>& items,
         const std::string& orderDate,
         const std::string& expectedDeliveryDate,
-        const std::string& note = ""
+        const std::string& note = "",
+        const std::string& sourceCode = ""
     );
 
     /**
@@ -103,7 +104,8 @@ namespace user_create
         const Vector<Pair<int, int>>& items,
         const std::string& orderDate,
         const std::string& expectedShipDate,
-        const std::string& note = ""
+        const std::string& note = "",
+        const std::string& sourceCode = ""
     );
 
     // ========================================================
@@ -130,7 +132,8 @@ namespace user_create
         const Vector<Pair<int, int>>& totalOrderedItems,
         const Vector<LogisticsBatchInput>& deliveryBatches,
         const std::string& orderDate,
-        const std::string& note = ""
+        const std::string& note = "",
+        const std::string& sourceCode = ""
     );
 
     /**
@@ -145,7 +148,8 @@ namespace user_create
         const Vector<Pair<int, int>>& totalOrderedItems,
         const Vector<LogisticsBatchInput>& shipmentBatches,
         const std::string& orderDate,
-        const std::string& note = ""
+        const std::string& note = "",
+        const std::string& sourceCode = ""
     );
 
     /**
@@ -237,6 +241,66 @@ namespace user_create
 
     /// Check if an SKU already exists in the product table
     bool isSkuUnique(Database* db, const std::string& sku);
+
+    // ========================================================
+    // INVENTORY CHECK & ADJUSTMENT MOVEMENT CREATION
+    // ========================================================
+
+    struct AdjustMovementItem {
+        int productId = 0;
+        std::string fromStatus;
+        std::string toStatus;
+        int quantity = 0;
+    };
+
+    /**
+     * @brief Create an Inventory Check (Rule: product scope must be declared upfront).
+     * @param checkType "QUAN" (Quantity Check) or "UNIT" (Detailed Unit Check)
+     * @param checkDate YYYY-MM-DD
+     * @param productIds Pre-declared list of products to inspect (locked scope)
+     * @param note Notes
+     */
+    OperationResult createInventoryCheck(
+        Database* db,
+        const std::string& checkType,
+        const std::string& checkDate,
+        const Vector<int>& productIds,
+        const std::string& note = ""
+    );
+
+    /**
+     * @brief Create an Adjustment Movement (Rule: details must be declared upfront).
+     * @param sourceCheckCode Code of inventory check (CHK-...) or empty
+     * @param reason Must exist in reason table
+     * @param adjustedAt YYYY-MM-DD
+     * @param items Pre-declared list of adjustment items (locked scope)
+     * @param note Notes
+     */
+    OperationResult createAdjustmentMovement(
+        Database* db,
+        const std::string& sourceCheckCode,
+        const std::string& reason,
+        const std::string& adjustedAt,
+        const Vector<AdjustMovementItem>& items,
+        const std::string& note = ""
+    );
+
+    /**
+     * @brief Automatically generate adjustments from an inventory check (if user confirms).
+     * For QUAN check: creates ADJUSTMENT_IN or ADJUSTMENT_OUT transactions (customer_id = NULL, source_code = check_code).
+     * For UNIT check: creates ADJUSTMENT_IN, ADJUSTMENT_OUT, and/or ADJUSTMENT_MOVEMENT.
+     */
+    OperationResult createAdjustmentsFromCheck(
+        Database* db,
+        int checkId,
+        const std::string& actionDate
+    );
+
+    /// Generate unique check_code format: CHK-{TYPE}-{SEQ:6}
+    std::string generateUniqueCheckCode(Database* db, const std::string& checkType);
+
+    /// Generate unique adjust_code format: ADJ-{SEQ:6}
+    std::string generateUniqueAdjustCode(Database* db);
 }
 
 #endif // USER_CREATE_H

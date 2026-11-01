@@ -173,16 +173,72 @@ namespace user_update
                 }
             }
         }
+        else if (tableName == "inventory_check") {
+            std::string oldChkSt = oldRecord.has("status") && std::holds_alternative<std::string>(oldRecord.get("status"))
+                                 ? std::get<std::string>(oldRecord.get("status")) : "";
+            if (oldChkSt == "COMPLETED" || oldChkSt == "completed") {
+                return OperationResult{false, "Đợt kiểm kho đã ở trạng thái HOÀN THÀNH (COMPLETED), không thể chỉnh sửa.", 0};
+            }
+        }
+        else if (tableName == "adjustment_movement") {
+            std::string oldAdjSt = oldRecord.has("status") && std::holds_alternative<std::string>(oldRecord.get("status"))
+                                 ? std::get<std::string>(oldRecord.get("status")) : "";
+            if (oldAdjSt == "COMPLETED" || oldAdjSt == "completed") {
+                return OperationResult{false, "Phiếu điều chuyển đã ở trạng thái HOÀN THÀNH (COMPLETED), không thể chỉnh sửa.", 0};
+            }
+        }
+        else if (tableName == "inventory_check_quantity") {
+            for (size_t i = 0; i < modifiedColumns.size(); ++i) {
+                const std::string& col = modifiedColumns[i];
+                if (col == "check_id" || col == "product_id" || col == "system_available_quan" ||
+                    col == "system_warranty_quan" || col == "system_scrapped_quan") {
+                    return OperationResult{false, "Không thể sửa đổi phạm vi hoặc số lượng hệ thống của đợt kiểm kho (cột '" + col + "' bị khóa).", 0};
+                }
+            }
+        }
+        else if (tableName == "inventory_check_unit") {
+            for (size_t i = 0; i < modifiedColumns.size(); ++i) {
+                const std::string& col = modifiedColumns[i];
+                if (col != "scanned_status") {
+                    return OperationResult{false, "Chỉ được phép cập nhật trạng thái quét 'scanned_status' cho linh kiện kiểm kê.", 0};
+                }
+            }
+        }
+        else if (tableName == "adjust_movement_detail") {
+            for (size_t i = 0; i < modifiedColumns.size(); ++i) {
+                const std::string& col = modifiedColumns[i];
+                if (col != "actual_quantity") {
+                    return OperationResult{false, "Không thể sửa đổi thông tin chi tiết điều chuyển đã khai báo (cột '" + col + "' bị khóa).", 0};
+                }
+            }
+        }
         else if (tableName == "inbound_detail" || tableName == "delivery_detail" ||
                  tableName == "outbound_detail" || tableName == "shipment_detail" ||
-                 tableName == "status_history" || tableName == "product_quantity") {
-            return OperationResult{false, "Bảng chi tiết giao dịch / lịch sử / số lượng tồn kho không được phép sửa đổi trực tiếp.", 0};
+                 tableName == "status_history") {
+            return OperationResult{false, "Bảng chi tiết giao dịch / lịch sử không được phép sửa đổi trực tiếp.", 0};
         }
         else if (tableName == "customer") {
             for (size_t i = 0; i < modifiedColumns.size(); ++i) {
                 const std::string& colName = modifiedColumns[i];
                 if (colName == "customer_code" || colName == "customer_id" || colName == "type") {
                     return OperationResult{false, "Không được phép thay đổi mã khách hàng, ID hoặc loại khách hàng (Rule 4.1).", 0};
+                }
+            }
+        }
+        else if (tableName == "product") {
+            for (size_t i = 0; i < modifiedColumns.size(); ++i) {
+                if (modifiedColumns[i] == "is_sold") {
+                    bool newSold = std::holds_alternative<bool>(modifyingValues[i]) ? std::get<bool>(modifyingValues[i]) : true;
+                    bool oldSold = (oldRecord.has("is_sold") && std::holds_alternative<bool>(oldRecord.get("is_sold"))) ? std::get<bool>(oldRecord.get("is_sold")) : true;
+                    if (oldSold != newSold && !newSold) {
+                        int avail = (oldRecord.has("available_quantity") && std::holds_alternative<int>(oldRecord.get("available_quantity"))) ? std::get<int>(oldRecord.get("available_quantity")) : 0;
+                        int warr = (oldRecord.has("warranty_quantity") && std::holds_alternative<int>(oldRecord.get("warranty_quantity"))) ? std::get<int>(oldRecord.get("warranty_quantity")) : 0;
+                        int scrap = (oldRecord.has("scrapped_quantity") && std::holds_alternative<int>(oldRecord.get("scrapped_quantity"))) ? std::get<int>(oldRecord.get("scrapped_quantity")) : 0;
+                        int total = avail + warr + scrap;
+                        if (total > 0) {
+                            return OperationResult{false, "Không thể chuyển trạng thái ngừng bán (is_sold = FALSE): Sản phẩm vẫn còn tồn kho (" + std::to_string(total) + " cái).", 0};
+                        }
+                    }
                 }
             }
         }
@@ -207,7 +263,42 @@ namespace user_update
             newValuesRecord.set(modifiedColumns[i], modifyingValues[i]);
         }
 
-        return db->update(tableName, recordId, newValuesRecord);
+        OperationResult res = db->update(tableName, recordId, newValuesRecord);
+        if (res.success && tableName == "product") {
+            for (size_t i = 0; i < modifiedColumns.size(); ++i) {
+                if (modifiedColumns[i] == "is_sold") {
+                    bool newSold = std::holds_alternative<bool>(modifyingValues[i]) ? std::get<bool>(modifyingValues[i]) : true;
+                    bool oldSold = (oldRecord.has("is_sold") && std::holds_alternative<bool>(oldRecord.get("is_sold"))) ? std::get<bool>(oldRecord.get("is_sold")) : true;
+                    if (oldSold != newSold) {
+                        Table* histTable = db->getTable("is_sold_changing");
+                        if (histTable) {
+                            time_t now = time(nullptr);
+                            tm* t = localtime(&now);
+                            char buf[32];
+                            strftime(buf, sizeof(buf), "%Y-%m-%d", t);
+                            int hId = 1;
+                            const auto& hRows = histTable->getRows();
+                            for (size_t h = 0; h < hRows.size(); ++h) {
+                                if (hRows[h].has("history_id") && std::holds_alternative<int>(hRows[h].get("history_id"))) {
+                                    int hidVal = std::get<int>(hRows[h].get("history_id"));
+                                    if (hidVal >= hId) hId = hidVal + 1;
+                                }
+                            }
+                            Record hRec;
+                            hRec.set("history_id", hId);
+                            hRec.set("product_id", recordId);
+                            hRec.set("old_is_sold", oldSold);
+                            hRec.set("new_is_sold", newSold);
+                            hRec.set("changed_at", std::string(buf));
+                            hRec.set("reason", std::string("Cập nhật thông tin sản phẩm"));
+                            db->insertRecord("is_sold_changing", hRec);
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+        return res;
     }
 
     OperationResult updateTransactionStatus(
@@ -245,13 +336,80 @@ namespace user_update
     OperationResult updateProductSellingStatus(
         Database* db,
         int productId,
-        bool isSold
+        bool isSold,
+        const std::string& dateStr
     ) {
-        Vector<std::string> cols;
-        cols.push_back("is_sold");
-        Vector<Value> vals;
-        vals.push_back(Value(isSold));
-        return updateRecord(db, "product", productId, cols, vals);
+        if (!db) return OperationResult{false, "Cơ sở dữ liệu chưa được khởi tạo.", 0};
+        Table* prodTable = db->getTable("product");
+        Table* histTable = db->getTable("is_sold_changing");
+        if (!prodTable) return OperationResult{false, "Bảng product không tồn tại.", 0};
+
+        const Record* pRec = prodTable->getRecordById(productId);
+        if (!pRec) {
+            return OperationResult{false, "Không tìm thấy sản phẩm với ID " + std::to_string(productId) + ".", 0};
+        }
+
+        bool oldIsSold = (pRec->has("is_sold") && std::holds_alternative<bool>(pRec->get("is_sold")))
+                       ? std::get<bool>(pRec->get("is_sold")) : true;
+
+        if (oldIsSold == isSold) {
+            return OperationResult{true, "Trạng thái kinh doanh không thay đổi.", 0};
+        }
+
+        // Rule: is_sold chỉ có thể đổi sang FALSE nếu tổng số lượng sản phẩm là 0
+        if (!isSold) {
+            int avail = (pRec->has("available_quantity") && std::holds_alternative<int>(pRec->get("available_quantity")))
+                      ? std::get<int>(pRec->get("available_quantity")) : 0;
+            int warr = (pRec->has("warranty_quantity") && std::holds_alternative<int>(pRec->get("warranty_quantity")))
+                     ? std::get<int>(pRec->get("warranty_quantity")) : 0;
+            int scrap = (pRec->has("scrapped_quantity") && std::holds_alternative<int>(pRec->get("scrapped_quantity")))
+                      ? std::get<int>(pRec->get("scrapped_quantity")) : 0;
+            int total = avail + warr + scrap;
+            if (total > 0) {
+                return OperationResult{false, "Không thể chuyển trạng thái ngừng bán (is_sold = FALSE): Sản phẩm vẫn còn tồn kho (" + std::to_string(total) + " cái).", 0};
+            }
+        }
+
+        if (!db->beginTransaction()) {
+            return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
+        }
+
+        Record pUp;
+        pUp.set("is_sold", isSold);
+        OperationResult rUp = db->update("product", productId, pUp);
+        if (!rUp) { db->rollback(); return rUp; }
+
+        if (histTable) {
+            std::string actualDate = dateStr;
+            if (actualDate.empty()) {
+                time_t now = time(nullptr);
+                tm* t = localtime(&now);
+                char buf[32];
+                strftime(buf, sizeof(buf), "%Y-%m-%d", t);
+                actualDate = buf;
+            }
+
+            int hId = 1;
+            for (const auto& r : histTable->getRows()) {
+                if (r.has("history_id") && std::holds_alternative<int>(r.get("history_id"))) {
+                    int id = std::get<int>(r.get("history_id"));
+                    if (id >= hId) hId = id + 1;
+                }
+            }
+
+            Record hRec;
+            hRec.set("history_id", hId);
+            hRec.set("product_id", productId);
+            hRec.set("date", actualDate);
+            hRec.set("old_status", oldIsSold);
+            hRec.set("new_status", isSold);
+
+            OperationResult rH = db->insertRecord("is_sold_changing", hRec);
+            if (!rH) { db->rollback(); return rH; }
+        }
+
+        db->commit();
+        return OperationResult{true, "Cập nhật trạng thái bán và ghi nhật ký lịch sử thành công!", 2};
     }
 
     OperationResult updateCustomerContact(
@@ -364,10 +522,9 @@ namespace user_update
         Table* outDetTable = db->getTable("outbound_detail");
         Table* unitTable = db->getTable("unit_inventory");
         Table* histTable = db->getTable("status_history");
-        Table* qtyTable = db->getTable("product_quantity");
-        Table* prodTable = db->getTable("product");
+                Table* prodTable = db->getTable("product");
 
-        if (!shipTable || !shipDetTable || !outTxnTable || !outDetTable || !unitTable || !histTable || !qtyTable || !prodTable) {
+        if (!shipTable || !shipDetTable || !outTxnTable || !outDetTable || !unitTable || !histTable || !prodTable) {
             return OperationResult{false, "Các bảng dữ liệu xuất kho không đầy đủ.", 0};
         }
 
@@ -538,23 +695,22 @@ namespace user_update
         }
 
         // Decrement product_quantity
-        const Record* pqRec = qtyTable->getRecordById(productId);
+        const Record* pRec = prodTable->getRecordById(productId);
         int curAvail = 0, curWarr = 0, curScrap = 0;
-        if (pqRec) {
-            if (pqRec->has("available_quan") && std::holds_alternative<int>(pqRec->get("available_quan")))
-                curAvail = std::get<int>(pqRec->get("available_quan"));
-            if (pqRec->has("warranty_quan") && std::holds_alternative<int>(pqRec->get("warranty_quan")))
-                curWarr = std::get<int>(pqRec->get("warranty_quan"));
-            if (pqRec->has("scrapped_quan") && std::holds_alternative<int>(pqRec->get("scrapped_quan")))
-                curScrap = std::get<int>(pqRec->get("scrapped_quan"));
+        if (pRec) {
+            if (pRec->has("available_quantity") && std::holds_alternative<int>(pRec->get("available_quantity")))
+                curAvail = std::get<int>(pRec->get("available_quantity"));
+            if (pRec->has("warranty_quantity") && std::holds_alternative<int>(pRec->get("warranty_quantity")))
+                curWarr = std::get<int>(pRec->get("warranty_quantity"));
+            if (pRec->has("scrapped_quantity") && std::holds_alternative<int>(pRec->get("scrapped_quantity")))
+                curScrap = std::get<int>(pRec->get("scrapped_quantity"));
         }
 
-        Record pqUp;
-        pqUp.set("available_quan", std::max(0, curAvail - decrementedAvail));
-        pqUp.set("warranty_quan", std::max(0, curWarr - decrementedWarr));
-        pqUp.set("scrapped_quan", std::max(0, curScrap - decrementedScrap));
-
-        OperationResult rPq = db->update("product_quantity", productId, pqUp);
+        Record pUp;
+        pUp.set("available_quantity", std::max(0, curAvail - decrementedAvail));
+        pUp.set("warranty_quantity", std::max(0, curWarr - decrementedWarr));
+        pUp.set("scrapped_quantity", std::max(0, curScrap - decrementedScrap));
+        OperationResult rPq = db->update("product", productId, pUp);
         if (!rPq) { db->rollback(); return rPq; }
         totalAffected++;
 
@@ -619,8 +775,8 @@ namespace user_update
         Table* logTable = db->getTable(tbl);
         Table* unitTable = db->getTable("unit_inventory");
         Table* histTable = db->getTable("status_history");
-        Table* qtyTable = db->getTable("product_quantity");
-        if (!logTable || !unitTable || !histTable || !qtyTable) {
+        Table* prodTable = db->getTable("product");
+        if (!logTable || !unitTable || !histTable || !prodTable) {
             return OperationResult{false, "Các bảng dữ liệu giao vận hoặc linh kiện không đầy đủ.", 0};
         }
 
@@ -715,16 +871,16 @@ namespace user_update
         OperationResult rU = db->update("unit_inventory", unitId, uUp);
         if (!rU) { db->rollback(); return rU; }
 
-        // Update product_quantity buckets
-        const Record* pqRec = qtyTable->getRecordById(productId);
+        // Update product buckets directly
+        const Record* pRec = prodTable ? prodTable->getRecordById(productId) : nullptr;
         int curAvail = 0, curWarr = 0, curScrap = 0;
-        if (pqRec) {
-            if (pqRec->has("available_quan") && std::holds_alternative<int>(pqRec->get("available_quan")))
-                curAvail = std::get<int>(pqRec->get("available_quan"));
-            if (pqRec->has("warranty_quan") && std::holds_alternative<int>(pqRec->get("warranty_quan")))
-                curWarr = std::get<int>(pqRec->get("warranty_quan"));
-            if (pqRec->has("scrapped_quan") && std::holds_alternative<int>(pqRec->get("scrapped_quan")))
-                curScrap = std::get<int>(pqRec->get("scrapped_quan"));
+        if (pRec) {
+            if (pRec->has("available_quantity") && std::holds_alternative<int>(pRec->get("available_quantity")))
+                curAvail = std::get<int>(pRec->get("available_quantity"));
+            if (pRec->has("warranty_quantity") && std::holds_alternative<int>(pRec->get("warranty_quantity")))
+                curWarr = std::get<int>(pRec->get("warranty_quantity"));
+            if (pRec->has("scrapped_quantity") && std::holds_alternative<int>(pRec->get("scrapped_quantity")))
+                curScrap = std::get<int>(pRec->get("scrapped_quantity"));
         }
 
         if (oldStatus == "AVAILABLE") curAvail = std::max(0, curAvail - 1);
@@ -735,11 +891,11 @@ namespace user_update
         else if (newStatus == "WARRANTY") curWarr++;
         else if (newStatus == "SCRAPPED") curScrap++;
 
-        Record pqUp;
-        pqUp.set("available_quan", curAvail);
-        pqUp.set("warranty_quan", curWarr);
-        pqUp.set("scrapped_quan", curScrap);
-        OperationResult rPq = db->update("product_quantity", productId, pqUp);
+        Record pUp;
+        pUp.set("available_quantity", curAvail);
+        pUp.set("warranty_quantity", curWarr);
+        pUp.set("scrapped_quantity", curScrap);
+        OperationResult rPq = db->update("product", productId, pUp);
         if (!rPq) { db->rollback(); return rPq; }
 
         // Update existing record in status_history if present, else insert new
@@ -801,5 +957,215 @@ namespace user_update
 
         db->commit();
         return OperationResult{true, "Đã cập nhật trạng thái linh kiện " + serial + " từ '" + oldStatus + "' sang '" + newStatus + "' thành công!", 3};
+    }
+
+
+// ========================================================
+    // INVENTORY CHECK & ADJUSTMENT MOVEMENT UPDATE IMPLEMENTATION
+    // ========================================================
+
+    OperationResult updateInventoryCheckQuantity(
+        Database* db,
+        int checkQuantityId,
+        int actualAvail,
+        int actualWarr,
+        int actualScrap,
+        const std::string& note
+    ) {
+        if (!db || checkQuantityId <= 0) return OperationResult{false, "Tham số không hợp lệ.", 0};
+        Table* cqTbl = db->getTable("inventory_check_quantity");
+        if (!cqTbl) return OperationResult{false, "Bảng inventory_check_quantity không tồn tại.", 0};
+
+        const Record* cqRec = cqTbl->getRecordById(checkQuantityId);
+        if (!cqRec) return OperationResult{false, "Không tìm thấy bản ghi số lượng kiểm kho với ID " + std::to_string(checkQuantityId) + ".", 0};
+
+        Record up;
+        up.set("actual_available_quan", std::max(0, actualAvail));
+        up.set("actual_warranty_quan", std::max(0, actualWarr));
+        up.set("actual_scrapped_quan", std::max(0, actualScrap));
+        if (!note.empty()) up.set("note", note);
+
+        return db->update("inventory_check_quantity", checkQuantityId, up);
+    }
+
+    OperationResult updateInventoryCheckUnit(
+        Database* db,
+        int checkUnitId,
+        const std::string& scannedStatus
+    ) {
+        if (!db || checkUnitId <= 0) return OperationResult{false, "Tham số không hợp lệ.", 0};
+        Table* cuTbl = db->getTable("inventory_check_unit");
+        Table* cqTbl = db->getTable("inventory_check_quantity");
+        if (!cuTbl || !cqTbl) return OperationResult{false, "Bảng kiểm kê không tồn tại.", 0};
+
+        const Record* cuRec = cuTbl->getRecordById(checkUnitId);
+        if (!cuRec) return OperationResult{false, "Không tìm thấy linh kiện kiểm kê với ID " + std::to_string(checkUnitId) + ".", 0};
+
+        int cqId = std::get<int>(cuRec->get("check_quantity_id"));
+
+        if (!db->beginTransaction()) return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
+
+        Record cuUp;
+        cuUp.set("scanned_status", scannedStatus);
+        OperationResult rCu = db->update("inventory_check_unit", checkUnitId, cuUp);
+        if (!rCu) { db->rollback(); return rCu; }
+
+        // Recalculate actual counts for this check_quantity
+        Vector<Record> allUnitsForCq = Query::filterRecords(*cuTbl, "check_quantity_id", Value(cqId));
+        int actAvail = 0, actWarr = 0, actScrap = 0;
+        for (size_t i = 0; i < allUnitsForCq.size(); ++i) {
+            const auto& u = allUnitsForCq[i];
+            int uPk = std::get<int>(u.get("check_unit_id"));
+            std::string st = (uPk == checkUnitId) ? scannedStatus : std::get<std::string>(u.get("scanned_status"));
+            if (st == "AVAILABLE") actAvail++;
+            else if (st == "WARRANTY") actWarr++;
+            else if (st == "SCRAPPED") actScrap++;
+        }
+
+        Record cqUp;
+        cqUp.set("actual_available_quan", actAvail);
+        cqUp.set("actual_warranty_quan", actWarr);
+        cqUp.set("actual_scrapped_quan", actScrap);
+
+        OperationResult rCq = db->update("inventory_check_quantity", cqId, cqUp);
+        if (!rCq) { db->rollback(); return rCq; }
+
+        db->commit();
+        return OperationResult{true, "Cập nhật trạng thái quét linh kiện và đồng bộ số lượng kiểm kho thành công!", 2};
+    }
+
+    OperationResult completeInventoryCheck(
+        Database* db,
+        int checkId
+    ) {
+        if (!db || checkId <= 0) return OperationResult{false, "Tham số không hợp lệ.", 0};
+        Table* chkTbl = db->getTable("inventory_check");
+        if (!chkTbl) return OperationResult{false, "Bảng inventory_check không tồn tại.", 0};
+
+        const Record* chkRec = chkTbl->getRecordById(checkId);
+        if (!chkRec) return OperationResult{false, "Không tìm thấy đợt kiểm kho với ID " + std::to_string(checkId) + ".", 0};
+
+        Record up;
+        up.set("status", std::string("COMPLETED"));
+        return db->update("inventory_check", checkId, up);
+    }
+
+    OperationResult executeAdjustmentMovement(
+        Database* db,
+        int adjustId
+    ) {
+        if (!db || adjustId <= 0) return OperationResult{false, "Tham số không hợp lệ.", 0};
+        Table* adjTbl = db->getTable("adjustment_movement");
+        Table* detTbl = db->getTable("adjust_movement_detail");
+        Table* prodTbl = db->getTable("product");
+        Table* unitTbl = db->getTable("unit_inventory");
+        Table* histTbl = db->getTable("status_history");
+
+        if (!adjTbl || !detTbl || !prodTbl || !unitTbl || !histTbl) {
+            return OperationResult{false, "Các bảng dữ liệu điều chuyển không đầy đủ.", 0};
+        }
+
+        const Record* adjRec = adjTbl->getRecordById(adjustId);
+        if (!adjRec) return OperationResult{false, "Không tìm thấy phiếu điều chuyển với ID " + std::to_string(adjustId) + ".", 0};
+
+        std::string adjStatus = std::get<std::string>(adjRec->get("status"));
+        if (adjStatus == "COMPLETED") {
+            return OperationResult{false, "Phiếu điều chuyển này đã hoàn thành (COMPLETED).", 0};
+        }
+
+        Vector<Record> details = Query::filterRecords(*detTbl, "adjust_id", Value(adjustId));
+        if (details.empty()) {
+            return OperationResult{false, "Phiếu điều chuyển không có mặt hàng chi tiết nào.", 0};
+        }
+
+        if (!db->beginTransaction()) return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
+
+        int totalAffected = 0;
+        for (size_t i = 0; i < details.size(); ++i) {
+            const auto& det = details[i];
+            int detId = std::get<int>(det.get("adjust_detail_id"));
+            int pid = std::get<int>(det.get("product_id"));
+            std::string fromSt = std::get<std::string>(det.get("from_status"));
+            std::string toSt = std::get<std::string>(det.get("to_status"));
+            int reqQty = std::get<int>(det.get("adjust_quantity"));
+
+            // Find candidates in unit_inventory
+            Vector<Record> candidates;
+            for (const auto& u : unitTbl->getRows()) {
+                if (std::get<int>(u.get("product_id")) == pid && std::get<std::string>(u.get("status")) == fromSt) {
+                    candidates.push_back(u);
+                    if (static_cast<int>(candidates.size()) == reqQty) break;
+                }
+            }
+
+            int moved = 0;
+            for (size_t k = 0; k < candidates.size(); ++k) {
+                int uId = std::get<int>(candidates[k].get("unit_id"));
+                Record uUp;
+                uUp.set("status", toSt);
+                OperationResult rU = db->update("unit_inventory", uId, uUp);
+                if (!rU) { db->rollback(); return rU; }
+
+                // Log into status_history
+                int maxHId = 1;
+                for (const auto& h : histTbl->getRows()) {
+                    if (h.has("history_id") && std::holds_alternative<int>(h.get("history_id"))) {
+                        int hid = std::get<int>(h.get("history_id"));
+                        if (hid >= maxHId) maxHId = hid + 1;
+                    }
+                }
+                Record hRec;
+                hRec.set("history_id", maxHId);
+                hRec.set("unit_id", uId);
+                hRec.set("old_status", fromSt);
+                hRec.set("curr_status", toSt);
+                hRec.set("transaction", adjustId);
+                hRec.set("type", std::string("ADJUSTMENT"));
+                OperationResult rH = db->insertRecord("status_history", hRec);
+                if (!rH) { db->rollback(); return rH; }
+                moved++;
+                totalAffected++;
+            }
+
+            // Update product stock counters
+            const Record* pRec = prodTbl->getRecordById(pid);
+            if (pRec) {
+                int avail = (pRec->has("available_quantity") && std::holds_alternative<int>(pRec->get("available_quantity")))
+                          ? std::get<int>(pRec->get("available_quantity")) : 0;
+                int warr = (pRec->has("warranty_quantity") && std::holds_alternative<int>(pRec->get("warranty_quantity")))
+                         ? std::get<int>(pRec->get("warranty_quantity")) : 0;
+                int scrap = (pRec->has("scrapped_quantity") && std::holds_alternative<int>(pRec->get("scrapped_quantity")))
+                          ? std::get<int>(pRec->get("scrapped_quantity")) : 0;
+
+                if (fromSt == "AVAILABLE") avail = std::max(0, avail - moved);
+                else if (fromSt == "WARRANTY") warr = std::max(0, warr - moved);
+                else if (fromSt == "SCRAPPED") scrap = std::max(0, scrap - moved);
+
+                if (toSt == "AVAILABLE") avail += moved;
+                else if (toSt == "WARRANTY") warr += moved;
+                else if (toSt == "SCRAPPED") scrap += moved;
+
+                Record pUp;
+                pUp.set("available_quantity", avail);
+                pUp.set("warranty_quantity", warr);
+                pUp.set("scrapped_quantity", scrap);
+                OperationResult rP = db->update("product", pid, pUp);
+                if (!rP) { db->rollback(); return rP; }
+                totalAffected++;
+            }
+
+            Record detUp;
+            detUp.set("actual_quantity", moved);
+            db->update("adjust_movement_detail", detId, detUp);
+        }
+
+        Record adjUp;
+        adjUp.set("status", std::string("COMPLETED"));
+        OperationResult rAdj = db->update("adjustment_movement", adjustId, adjUp);
+        if (!rAdj) { db->rollback(); return rAdj; }
+        totalAffected++;
+
+        db->commit();
+        return OperationResult{true, "Thực hiện điều chuyển trạng thái linh kiện thành công!", totalAffected};
     }
 }

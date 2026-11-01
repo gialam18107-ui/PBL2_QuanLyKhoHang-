@@ -17,6 +17,8 @@
 
 #include "database/Database.h"
 #include "QueryTableWidget.h"
+#include "ui/InventoryCheckDialog.h"
+#include "ui/AdjustmentMovementDialog.h" 
 
 class TransactionHubWidget;
 
@@ -102,6 +104,14 @@ private:
     QueryTableWidget* outboundDetailWidget;
     QueryTableWidget* shipmentWidget;
     QueryTableWidget* shipmentDetailWidget;
+
+    // 6 Inventory Check & Adjustment Movement Query Table Widgets
+    QueryTableWidget* inventoryCheckWidget;
+    QueryTableWidget* inventoryCheckQuantityWidget;
+    QueryTableWidget* inventoryCheckUnitWidget;
+    QueryTableWidget* adjustmentMovementWidget;
+    QueryTableWidget* adjustMovementDetailWidget;
+    QueryTableWidget* isSoldChangingWidget;
 
     // 8 Category Hardware Classification Widgets (Rule 9.2)
     QueryTableWidget* cpuWidget;

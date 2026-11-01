@@ -284,23 +284,7 @@ namespace Schema
     }
 
     // ========================================================
-    // 18. PRODUCT_QUANTITY (For backward compatibility / view support)
-    // ========================================================
-    Table* createProductQuantityTable()
-    {
-        auto table = new Table("product_quantity");
-        table->addColumn(Column("product_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("available_quan", DataType::INTEGER, 0, false, false, true, false, "0"));
-        table->addColumn(Column("warranty_quan", DataType::INTEGER, 0, false, false, true, false, "0"));
-        table->addColumn(Column("scrapped_quan", DataType::INTEGER, 0, false, false, true, false, "0"));
-
-        table->addConstraint(new PrimaryKeyConstraint("pk_product_quantity", "product_id"));
-        table->addConstraint(new ForeignKeyConstraint("fk_product_quantity_product", "product_id", "product", "product_id"));
-        return table;
-    }
-
-    // ========================================================
-    // 19. IS_SOLD_CHANGING (From Schema JSON)
+    // 18. IS_SOLD_CHANGING (From Schema JSON)
     // ========================================================
     Table* createIsSoldChangingTable()
     {
@@ -843,7 +827,6 @@ namespace Schema
 
         // Level 3: Depends on Level 2
         if (tableName == "is_sold_changing") return createIsSoldChangingTable();
-        if (tableName == "product_quantity") return createProductQuantityTable();
         if (tableName == "cpu") return createCpuTable();
         if (tableName == "gpu") return createGpuTable();
         if (tableName == "mainboard") return createMainboardTable();
@@ -899,7 +882,6 @@ namespace Schema
 
             // Level 3: Depends on Level 2
             "is_sold_changing",
-            "product_quantity",
             "cpu",
             "gpu",
             "mainboard",

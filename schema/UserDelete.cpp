@@ -64,20 +64,14 @@ namespace user_delete
                                  ? std::get<std::string>(pRec->get("category")) : "";
 
         // 2. Stock Precondition Check: Product cannot be deleted if active stock exists
-        Table* qtyTable = db->getTable("product_quantity");
-        if (qtyTable) {
-            const Record* qRec = qtyTable->getRecordById(productId);
-            if (qRec) {
-                int avail = qRec->has("available_quan") && std::holds_alternative<int>(qRec->get("available_quan")) ? std::get<int>(qRec->get("available_quan")) : 0;
-                int wrt = qRec->has("warranty_quan") && std::holds_alternative<int>(qRec->get("warranty_quan")) ? std::get<int>(qRec->get("warranty_quan")) : 0;
-                int scr = qRec->has("scrapped_quan") && std::holds_alternative<int>(qRec->get("scrapped_quan")) ? std::get<int>(qRec->get("scrapped_quan")) : 0;
-                if (avail > 0 || wrt > 0 || scr > 0) {
-                    return OperationResult{false, "Không thể xóa sản phẩm: Vẫn còn hàng tồn trong kho (Khả dụng: " + std::to_string(avail) + ", Bảo hành: " + std::to_string(wrt) + ", Phế phẩm: " + std::to_string(scr) + ").", 0};
-                }
-            }
+        int avail = (pRec->has("available_quantity") && std::holds_alternative<int>(pRec->get("available_quantity"))) ? std::get<int>(pRec->get("available_quantity")) : 0;
+        int wrt = (pRec->has("warranty_quantity") && std::holds_alternative<int>(pRec->get("warranty_quantity"))) ? std::get<int>(pRec->get("warranty_quantity")) : 0;
+        int scr = (pRec->has("scrapped_quantity") && std::holds_alternative<int>(pRec->get("scrapped_quantity"))) ? std::get<int>(pRec->get("scrapped_quantity")) : 0;
+        if (avail > 0 || wrt > 0 || scr > 0) {
+            return OperationResult{false, "Không thể xóa sản phẩm: Vẫn còn hàng tồn trong kho (Khả dụng: " + std::to_string(avail) + ", Bảo hành: " + std::to_string(wrt) + ", Phế phẩm: " + std::to_string(scr) + ").", 0};
         }
 
-        // 3. Transaction History Check
+        // 3. History Checks (Transactions, Units, Inventory Checks, Movements, Status Changing)
         if (hasMatchingRecord(db->getTable("inbound_detail"), "product_id", productId)) {
             return OperationResult{false, "Không thể xóa sản phẩm: Đã có lịch sử trong Đơn nhập kho (inbound_detail).", 0};
         }
@@ -86,6 +80,15 @@ namespace user_delete
         }
         if (hasMatchingRecord(db->getTable("unit_inventory"), "product_id", productId)) {
             return OperationResult{false, "Không thể xóa sản phẩm: Đang có Unit / Serial tồn tại cho sản phẩm này.", 0};
+        }
+        if (hasMatchingRecord(db->getTable("inventory_check_quantity"), "product_id", productId)) {
+            return OperationResult{false, "Không thể xóa sản phẩm: Đã có lịch sử trong Đợt kiểm kho (inventory_check_quantity).", 0};
+        }
+        if (hasMatchingRecord(db->getTable("adjust_movement_detail"), "product_id", productId)) {
+            return OperationResult{false, "Không thể xóa sản phẩm: Đã có lịch sử trong Phiếu điều chuyển (adjust_movement_detail).", 0};
+        }
+        if (hasMatchingRecord(db->getTable("is_sold_changing"), "product_id", productId)) {
+            return OperationResult{false, "Không thể xóa sản phẩm: Đã có lịch sử thay đổi trạng thái bán (is_sold_changing).", 0};
         }
 
         std::string specTable = getSpecTableName(categoryName);
@@ -120,14 +123,7 @@ namespace user_delete
             }
         }
 
-        // Delete from product_quantity (child)
-        if (qtyTable) {
-            OperationResult qtyRes = db->remove("product_quantity", productId);
-            if (!qtyRes && qtyRes.message.find("tham chiếu") != std::string::npos) {
-                db->rollback();
-                return qtyRes;
-            }
-        }
+
 
         // Delete from product (parent)
         OperationResult prodRes = db->remove("product", productId);
@@ -228,7 +224,10 @@ namespace user_delete
             tableName == "outbound_transaction" || tableName == "outbound_detail" ||
             tableName == "shipment" || tableName == "shipment_detail" ||
             tableName == "unit_inventory" || tableName == "status_history" ||
-            tableName == "product_quantity" || tableName == "category") {
+            tableName == "category" || tableName == "is_sold_changing" ||
+            tableName == "inventory_check" || tableName == "inventory_check_quantity" ||
+            tableName == "inventory_check_unit" || tableName == "adjustment_movement" ||
+            tableName == "adjust_movement_detail") {
             return OperationResult{false, "Bảng '" + tableName + "' là dữ liệu hệ thống / chứng từ giao dịch đã xác nhận, không được phép xóa (Rule 5.3).", 0};
         }
 

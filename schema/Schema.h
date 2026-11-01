@@ -41,7 +41,6 @@ namespace Schema
 
     // Level 3 tables
     Table* createIsSoldChangingTable();
-    Table* createProductQuantityTable();
     Table* createCpuTable();
     Table* createGpuTable();
     Table* createMainboardTable();

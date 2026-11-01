@@ -196,7 +196,31 @@ namespace user_query {
 		bool isInbound,
 		Vector<ProductLogisticsStatusSummary>& summary
 	);
+
+	// ========================================================
+	// 17. TRUY VẤN KIỂM KHO VÀ ĐIỀU CHUYỂN (INVENTORY CHECK & ADJUSTMENT QUERIES)
+	// ========================================================
+	// 17.1 Truy vấn đợt kiểm kho (inventory_check)
+	void inventory_check_query(Database *db, Vector<Record> &results);
+	void inventory_check_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& val);
+	void inventory_check_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& minVal, const Value& maxVal);
+
+	// 17.2 Chi tiết số lượng kiểm kê theo đợt (inventory_check_quantity)
+	void inventory_check_quantity_query(Database *db, int checkId, Vector<Record> &results);
+
+	// 17.3 Chi tiết linh kiện kiểm kê theo đợt (inventory_check_unit)
+	void inventory_check_unit_query(Database *db, int checkId, Vector<Record> &results);
+
+	// 17.4 Truy vấn phiếu điều chuyển trạng thái (adjustment_movement)
+	void adjustment_movement_query(Database *db, Vector<Record> &results);
+	void adjustment_movement_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& val);
+	void adjustment_movement_query(Database *db, Vector<Record> &results, const string& indexedColumn, const Value& minVal, const Value& maxVal);
+
+	// 17.5 Chi tiết điều chuyển (adjust_movement_detail)
+	void adjust_movement_detail_query(Database *db, int adjustId, Vector<Record> &results);
+
+	// 17.6 Lịch sử thay đổi trạng thái bán is_sold (is_sold_changing)
+	void is_sold_changing_query(Database *db, Vector<Record> &results, int productId = 0);
 }
 
 #endif // USERQUERY_H
-

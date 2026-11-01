@@ -23,6 +23,17 @@
 #include <QLineEdit>
 #include <QGroupBox>
 
+namespace {
+inline QString getRecordStringValue(const Record& rec, const std::string& col) {
+    if (!rec.has(col)) return "";
+    const auto& v = rec.get(col);
+    if (std::holds_alternative<std::string>(v)) return QString::fromStdString(std::get<std::string>(v));
+    if (std::holds_alternative<int>(v)) return QString::number(std::get<int>(v));
+    if (std::holds_alternative<bool>(v)) return std::get<bool>(v) ? "TRUE" : "FALSE";
+    return "";
+}
+}
+
 MainWindow::MainWindow(Database* database, QWidget* parent)
     : QMainWindow(parent), db(database), hasUnsavedChanges(false),
       warehouseMenu(nullptr), categoryMenu(nullptr), customerMenu(nullptr), auxSpecMenu(nullptr), reportMenu(nullptr),
@@ -32,7 +43,11 @@ MainWindow::MainWindow(Database* database, QWidget* parent)
       productQuantityWidget(nullptr), unitInventoryWidget(nullptr), statusHistoryWidget(nullptr),
       inboundTxnWidget(nullptr), inboundDetailWidget(nullptr), deliveryWidget(nullptr),
       deliveryDetailWidget(nullptr), outboundTxnWidget(nullptr), outboundDetailWidget(nullptr),
-      shipmentWidget(nullptr), shipmentDetailWidget(nullptr), cpuWidget(nullptr), gpuWidget(nullptr),
+      shipmentWidget(nullptr), shipmentDetailWidget(nullptr),
+      inventoryCheckWidget(nullptr), inventoryCheckQuantityWidget(nullptr),
+      inventoryCheckUnitWidget(nullptr), adjustmentMovementWidget(nullptr),
+      adjustMovementDetailWidget(nullptr), isSoldChangingWidget(nullptr),
+      cpuWidget(nullptr), gpuWidget(nullptr),
       mainboardWidget(nullptr), ramWidget(nullptr), ssdWidget(nullptr), psuWidget(nullptr),
       coolingWidget(nullptr), caseWidget(nullptr), auxSpecWidget(nullptr), auxSpecTableCombo(nullptr),
       individualCustomerWidget(nullptr), businessCustomerWidget(nullptr),
@@ -105,10 +120,16 @@ void MainWindow::setupMenuBar()
         "8. Quản lý Đơn Xuất kho (OUTBOUND HUB)",
         "   ↳ 9. Chi tiết Đơn xuất (Toàn màn hình)",
         "   ↳ 10. Đợt Xuất hàng (Toàn màn hình)",
-        "   ↳ 11. Chi tiết Xuất hàng (Toàn màn hình)"
+        "   ↳ 11. Chi tiết Xuất hàng (Toàn màn hình)",
+        "12. Quản lý Đợt Kiểm kho (INVENTORY CHECK)",
+        "   ↳ 13. Chi tiết Số lượng Kiểm kê (Toàn màn hình)",
+        "   ↳ 14. Chi tiết Linh kiện Kiểm kê (Toàn màn hình)",
+        "15. Quản lý Phiếu Điều chuyển (ADJUSTMENT MOVEMENT)",
+        "   ↳ 16. Chi tiết Điều chuyển Trạng thái (Toàn màn hình)",
+        "17. Lịch sử đổi trạng thái bán (IS_SOLD_CHANGING)"
     };
     for (int i = 0; i < whTitles.size(); ++i) {
-        if (i == 3 || i == 7) {
+        if (i == 3 || i == 7 || i == 11 || i == 14 || i == 16) {
             warehouseMenu->addSeparator();
         }
         auto* act = warehouseMenu->addAction(whTitles[i]);
@@ -945,7 +966,200 @@ void MainWindow::setupPages()
     stackedWidget->addWidget(shipmentDetailWidget);
 
     // ========================================================
-    // 12. CPU_QUERY (Danh mục sản phẩm - Rule 9.2)
+    // 12. INVENTORY_CHECK_QUERY
+    // ========================================================
+    inventoryCheckWidget = new QueryTableWidget(
+        "12. Quản lý Đợt Kiểm kho (INVENTORY_CHECK)",
+        "Quản lý danh sách các đợt kiểm kê kho số lượng (QUAN) và chi tiết linh kiện (UNIT)",
+        this
+    );
+    inventoryCheckWidget->setColumns(
+        {"Mã đợt kiểm", "Hình thức kiểm", "Ngày kiểm kho", "Trạng thái", "Ghi chú"},
+        {"inventory_check.check_code", "inventory_check.check_type", "inventory_check.check_date", "inventory_check.status", "inventory_check.note"}
+    );
+    inventoryCheckWidget->setFilterColumns({
+        {"Mã đợt kiểm (check_code)", "check_code", FilterType::EXACT_TEXT, {}},
+        {"Hình thức (check_type)", "check_type", FilterType::SELECT_OR_TYPE, {"QUAN", "UNIT"}},
+        {"Trạng thái (status)", "status", FilterType::SELECT_OR_TYPE, {"PENDING", "IN_PROCESS", "COMPLETED", "CANCELLED"}}
+    });
+    inventoryCheckWidget->setRefreshCallback([this]() { refreshQuery(11); });
+    inventoryCheckWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
+        if (!db) return;
+        Vector<Record> results;
+        user_query::inventory_check_query(db, results, col, Value(v1.toStdString()));
+        inventoryCheckWidget->setData(results);
+    });
+    stackedWidget->addWidget(inventoryCheckWidget);
+
+    // ========================================================
+    // 13. INVENTORY_CHECK_QUANTITY_QUERY
+    // ========================================================
+    inventoryCheckQuantityWidget = new QueryTableWidget(
+        "13. Chi tiết Số lượng Kiểm kê (INVENTORY_CHECK_QUANTITY)",
+        "Bảng theo dõi số lượng hệ thống và số lượng thực tế kiểm đếm theo từng sản phẩm",
+        this
+    );
+    inventoryCheckQuantityWidget->setColumns(
+        {"Mã đợt kiểm", "Mã sản phẩm", "Tên sản phẩm", "Tồn HT (Avail)", "Thực tế (Avail)", "Lệch (Avail)", "BH HT (Warr)", "Thực tế (Warr)", "Lệch (Warr)", "Phế HT (Scrap)", "Thực tế (Scrap)", "Lệch (Scrap)", "Ghi chú"},
+        {"check_code", "product_code", "product_name", "system_available_quan", "actual_available_quan", "diff_available", "system_warranty_quan", "actual_warranty_quan", "diff_warranty", "system_scrapped_quan", "actual_scrapped_quan", "diff_scrapped", "note"}
+    );
+    inventoryCheckQuantityWidget->setFilterColumns({
+        {"Mã đợt kiểm (check_code)", "check_code", FilterType::EXACT_TEXT, {}},
+        {"Mã sản phẩm", "product_code", FilterType::EXACT_TEXT, {}}
+    });
+    inventoryCheckQuantityWidget->setRefreshCallback([this]() { refreshQuery(12); });
+    inventoryCheckQuantityWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
+        if (!db) return;
+        Vector<Record> all;
+        user_query::inventory_check_quantity_query(db, 0, all);
+        Vector<Record> filtered;
+        for (size_t i = 0; i < all.size(); ++i) {
+            if (all[i].has(col)) {
+                QString valStr = getRecordStringValue(all[i], col);
+                if (valStr.contains(v1, Qt::CaseInsensitive)) {
+                    filtered.push_back(all[i]);
+                }
+            }
+        }
+        inventoryCheckQuantityWidget->setData(filtered);
+    });
+    stackedWidget->addWidget(inventoryCheckQuantityWidget);
+
+    // ========================================================
+    // 14. INVENTORY_CHECK_UNIT_QUERY
+    // ========================================================
+    inventoryCheckUnitWidget = new QueryTableWidget(
+        "14. Chi tiết Linh kiện Kiểm kê (INVENTORY_CHECK_UNIT)",
+        "Danh sách từng số Serial Number được kiểm tra trong đợt kiểm kê chi tiết (UNIT)",
+        this
+    );
+    inventoryCheckUnitWidget->setColumns(
+        {"Mã đợt kiểm", "Số Serial (SN)", "Mã sản phẩm", "Tên sản phẩm", "Trạng thái Hệ thống", "Trạng thái Quét thực tế"},
+        {"check_code", "serial", "product_code", "product_name", "system_status", "scanned_status"}
+    );
+    inventoryCheckUnitWidget->setFilterColumns({
+        {"Mã đợt kiểm", "check_code", FilterType::EXACT_TEXT, {}},
+        {"Số Serial (SN)", "serial", FilterType::EXACT_TEXT, {}},
+        {"Trạng thái HT", "system_status", FilterType::SELECT_OR_TYPE, {"AVAILABLE", "WARRANTY", "SCRAPPED", "OUT"}},
+        {"Trạng thái Quét", "scanned_status", FilterType::SELECT_OR_TYPE, {"AVAILABLE", "WARRANTY", "SCRAPPED", "OUT"}}
+    });
+    inventoryCheckUnitWidget->setRefreshCallback([this]() { refreshQuery(13); });
+    inventoryCheckUnitWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
+        if (!db) return;
+        Vector<Record> all;
+        user_query::inventory_check_unit_query(db, 0, all);
+        Vector<Record> filtered;
+        for (size_t i = 0; i < all.size(); ++i) {
+            if (all[i].has(col)) {
+                QString valStr = getRecordStringValue(all[i], col);
+                if (valStr.contains(v1, Qt::CaseInsensitive)) {
+                    filtered.push_back(all[i]);
+                }
+            }
+        }
+        inventoryCheckUnitWidget->setData(filtered);
+    });
+    stackedWidget->addWidget(inventoryCheckUnitWidget);
+
+    // ========================================================
+    // 15. ADJUSTMENT_MOVEMENT_QUERY
+    // ========================================================
+    adjustmentMovementWidget = new QueryTableWidget(
+        "15. Quản lý Phiếu Điều chuyển (ADJUSTMENT_MOVEMENT)",
+        "Điều chuyển trạng thái tồn kho nội bộ giữa Available, Warranty và Scrapped",
+        this
+    );
+    adjustmentMovementWidget->setColumns(
+        {"Mã phiếu", "Lý do", "Ngày điều chuyển", "Đợt kiểm gốc", "Trạng thái", "Ghi chú"},
+        {"adjustment_movement.adjust_code", "adjustment_movement.reason", "adjustment_movement.adjusted_at", "adjustment_movement.source_code", "adjustment_movement.status", "adjustment_movement.note"}
+    );
+    adjustmentMovementWidget->setFilterColumns({
+        {"Mã phiếu (adjust_code)", "adjust_code", FilterType::EXACT_TEXT, {}},
+        {"Lý do điều chuyển", "reason", FilterType::SELECT_OR_TYPE, {"INVENTORY_AUDIT", "BROKEN", "EXPIRED", "LOST", "FOUND", "OTHER"}},
+        {"Đợt kiểm gốc (source_code)", "source_code", FilterType::EXACT_TEXT, {}},
+        {"Trạng thái", "status", FilterType::SELECT_OR_TYPE, {"PENDING", "IN_PROCESS", "COMPLETED", "CANCELLED"}}
+    });
+    adjustmentMovementWidget->setRefreshCallback([this]() { refreshQuery(14); });
+    adjustmentMovementWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
+        if (!db) return;
+        Vector<Record> results;
+        user_query::adjustment_movement_query(db, results, col, Value(v1.toStdString()));
+        adjustmentMovementWidget->setData(results);
+    });
+    stackedWidget->addWidget(adjustmentMovementWidget);
+
+    // ========================================================
+    // 16. ADJUST_MOVEMENT_DETAIL_QUERY
+    // ========================================================
+    adjustMovementDetailWidget = new QueryTableWidget(
+        "16. Chi tiết Điều chuyển Trạng thái (ADJUST_MOVEMENT_DETAIL)",
+        "Chi tiết số lượng và trạng thái nguồn / đích của các sản phẩm được điều chuyển",
+        this
+    );
+    adjustMovementDetailWidget->setColumns(
+        {"Mã phiếu", "Mã sản phẩm", "Tên sản phẩm", "Từ trạng thái", "Sang trạng thái", "Số lượng"},
+        {"adjust_code", "product_code", "product_name", "from_status", "to_status", "actual_quantity"}
+    );
+    adjustMovementDetailWidget->setFilterColumns({
+        {"Mã phiếu (adjust_code)", "adjust_code", FilterType::EXACT_TEXT, {}},
+        {"Mã sản phẩm", "product_code", FilterType::EXACT_TEXT, {}},
+        {"Từ trạng thái", "from_status", FilterType::SELECT_OR_TYPE, {"AVAILABLE", "WARRANTY", "SCRAPPED"}},
+        {"Sang trạng thái", "to_status", FilterType::SELECT_OR_TYPE, {"AVAILABLE", "WARRANTY", "SCRAPPED"}}
+    });
+    adjustMovementDetailWidget->setRefreshCallback([this]() { refreshQuery(15); });
+    adjustMovementDetailWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
+        if (!db) return;
+        Vector<Record> all;
+        user_query::adjust_movement_detail_query(db, 0, all);
+        Vector<Record> filtered;
+        for (size_t i = 0; i < all.size(); ++i) {
+            if (all[i].has(col)) {
+                QString valStr = getRecordStringValue(all[i], col);
+                if (valStr.contains(v1, Qt::CaseInsensitive)) {
+                    filtered.push_back(all[i]);
+                }
+            }
+        }
+        adjustMovementDetailWidget->setData(filtered);
+    });
+    stackedWidget->addWidget(adjustMovementDetailWidget);
+
+    // ========================================================
+    // 17. IS_SOLD_CHANGING_QUERY
+    // ========================================================
+    isSoldChangingWidget = new QueryTableWidget(
+        "17. Lịch sử Đổi Trạng thái Bán (IS_SOLD_CHANGING)",
+        "Nhật ký kiểm toán ghi lại mọi thay đổi trạng thái kinh doanh của sản phẩm",
+        this
+    );
+    isSoldChangingWidget->setColumns(
+        {"Mã sản phẩm", "Tên sản phẩm", "Trạng thái cũ", "Trạng thái mới", "Ngày thay đổi", "Lý do"},
+        {"product_code", "product_name", "old_is_sold", "new_is_sold", "changed_at", "reason"}
+    );
+    isSoldChangingWidget->setFilterColumns({
+        {"Mã sản phẩm", "product_code", FilterType::EXACT_TEXT, {}},
+        {"Ngày thay đổi", "changed_at", FilterType::EXACT_TEXT, {}}
+    });
+    isSoldChangingWidget->setRefreshCallback([this]() { refreshQuery(16); });
+    isSoldChangingWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
+        if (!db) return;
+        Vector<Record> all;
+        user_query::is_sold_changing_query(db, all);
+        Vector<Record> filtered;
+        for (size_t i = 0; i < all.size(); ++i) {
+            if (all[i].has(col)) {
+                QString valStr = getRecordStringValue(all[i], col);
+                if (valStr.contains(v1, Qt::CaseInsensitive)) {
+                    filtered.push_back(all[i]);
+                }
+            }
+        }
+        isSoldChangingWidget->setData(filtered);
+    });
+    stackedWidget->addWidget(isSoldChangingWidget);
+
+    // ========================================================
+    // CPU_QUERY (Danh mục sản phẩm - Rule 9.2)
     // ========================================================
     cpuWidget = new QueryTableWidget(
         "Bộ vi xử lý CPU (CPU_QUERY)",
@@ -956,7 +1170,7 @@ void MainWindow::setupPages()
         {"Mã sản phẩm", "Tên sản phẩm", "Socket CPU", "Phân khúc (Tier)", "Dòng CPU (Series)", "Đang bán (is_sold)"},
         {"product.product_code", "product.product_name", "cpu.socket", "cpu.tier", "cpu.series", "product.is_sold"}
     );
-    cpuWidget->setRefreshCallback([this]() { refreshQuery(11); });
+    cpuWidget->setRefreshCallback([this]() { refreshQuery(17); });
     cpuWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
         if (!db) return;
         QElapsedTimer timer;
@@ -981,7 +1195,7 @@ void MainWindow::setupPages()
         {"Mã sản phẩm", "Tên sản phẩm", "Dòng GPU (Series)", "Hãng chip (Producer)", "VRAM (GB)", "Đang bán (is_sold)"},
         {"product.product_code", "product.product_name", "gpu.series", "gpu.producer", "gpu.vram", "product.is_sold"}
     );
-    gpuWidget->setRefreshCallback([this]() { refreshQuery(12); });
+    gpuWidget->setRefreshCallback([this]() { refreshQuery(18); });
     gpuWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
         if (!db) return;
         QElapsedTimer timer;
@@ -1014,7 +1228,7 @@ void MainWindow::setupPages()
         {"Mã sản phẩm", "Tên sản phẩm", "Hỗ trợ CPU", "Socket", "Kích cỡ (Size)", "Chipset", "Chuẩn RAM", "Đang bán (is_sold)"},
         {"product.product_code", "product.product_name", "mainboard.cpu_support", "mainboard.socket", "mainboard.size", "mainboard.chipset", "mainboard.ram_support", "product.is_sold"}
     );
-    mainboardWidget->setRefreshCallback([this]() { refreshQuery(13); });
+    mainboardWidget->setRefreshCallback([this]() { refreshQuery(19); });
     mainboardWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
         if (!db) return;
         QElapsedTimer timer;
@@ -1039,7 +1253,7 @@ void MainWindow::setupPages()
         {"Mã sản phẩm", "Tên sản phẩm", "Thế hệ RAM", "Số lượng thanh", "Dung lượng", "Tốc độ Bus", "Đang bán (is_sold)"},
         {"product.product_code", "product.product_name", "ram.generation", "ram.quantity", "ram.capacity", "ram.bus", "product.is_sold"}
     );
-    ramWidget->setRefreshCallback([this]() { refreshQuery(14); });
+    ramWidget->setRefreshCallback([this]() { refreshQuery(20); });
     ramWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
         if (!db) return;
         QElapsedTimer timer;
@@ -1064,7 +1278,7 @@ void MainWindow::setupPages()
         {"Mã sản phẩm", "Tên sản phẩm", "Loại SSD", "Thế hệ (Gen)", "Dung lượng", "Đang bán (is_sold)"},
         {"product.product_code", "product.product_name", "ssd.type", "ssd.gen", "ssd.capacity", "product.is_sold"}
     );
-    ssdWidget->setRefreshCallback([this]() { refreshQuery(15); });
+    ssdWidget->setRefreshCallback([this]() { refreshQuery(21); });
     ssdWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
         if (!db) return;
         QElapsedTimer timer;
@@ -1089,7 +1303,7 @@ void MainWindow::setupPages()
         {"Mã sản phẩm", "Tên sản phẩm", "Chuẩn hiệu suất (Quality)", "Công suất (W)", "Kích thước (Size)", "Đang bán (is_sold)"},
         {"product.product_code", "product.product_name", "psu.quality", "psu.capacity", "psu.size", "product.is_sold"}
     );
-    psuWidget->setRefreshCallback([this]() { refreshQuery(16); });
+    psuWidget->setRefreshCallback([this]() { refreshQuery(22); });
     psuWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
         if (!db) return;
         QElapsedTimer timer;
@@ -1122,7 +1336,7 @@ void MainWindow::setupPages()
         {"Mã sản phẩm", "Tên sản phẩm", "Loại tản nhiệt (Type)", "Đang bán (is_sold)"},
         {"product.product_code", "product.product_name", "cooling.type", "product.is_sold"}
     );
-    coolingWidget->setRefreshCallback([this]() { refreshQuery(17); });
+    coolingWidget->setRefreshCallback([this]() { refreshQuery(23); });
     coolingWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
         if (!db) return;
         QElapsedTimer timer;
@@ -1147,7 +1361,7 @@ void MainWindow::setupPages()
         {"Mã sản phẩm", "Tên sản phẩm", "Kích cỡ vỏ (Size)", "Đang bán (is_sold)"},
         {"product.product_code", "product.product_name", "case.size", "product.is_sold"}
     );
-    caseWidget->setRefreshCallback([this]() { refreshQuery(18); });
+    caseWidget->setRefreshCallback([this]() { refreshQuery(24); });
     caseWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
         if (!db) return;
         QElapsedTimer timer;
@@ -1284,7 +1498,7 @@ void MainWindow::setupPages()
         {"Số điện thoại (phone_number)", "phone_number", FilterType::EXACT_TEXT, {}},
         {"Email (email)", "email", FilterType::EXACT_TEXT, {}}
     });
-    individualCustomerWidget->setRefreshCallback([this]() { refreshQuery(20); });
+    individualCustomerWidget->setRefreshCallback([this]() { refreshQuery(26); });
     individualCustomerWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
         if (!db) return;
         QElapsedTimer timer;
@@ -1316,7 +1530,7 @@ void MainWindow::setupPages()
         {"Số điện thoại (phone_number)", "phone_number", FilterType::EXACT_TEXT, {}},
         {"Email (email)", "email", FilterType::EXACT_TEXT, {}}
     });
-    businessCustomerWidget->setRefreshCallback([this]() { refreshQuery(21); });
+    businessCustomerWidget->setRefreshCallback([this]() { refreshQuery(27); });
     businessCustomerWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
         if (!db) return;
         QElapsedTimer timer;
@@ -1432,6 +1646,24 @@ void MainWindow::setupSidebar()
 
     auto* shipDetailItem = new QListWidgetItem("      ↳ 11. Chi tiết Xuất hàng (Toàn màn hình)", warehouseList);
     shipDetailItem->setForeground(QColor("#94a3b8"));
+
+    // Phân hệ Kiểm kho & Điều chuyển
+    auto* chkHubItem = new QListWidgetItem("📋 12. Quản lý Đợt Kiểm kho (INVENTORY CHECK)", warehouseList);
+    chkHubItem->setFont(inHubFont);
+
+    auto* chkQuanItem = new QListWidgetItem("      ↳ 13. Chi tiết Số lượng Kiểm kê (Toàn màn hình)", warehouseList);
+    chkQuanItem->setForeground(QColor("#94a3b8"));
+
+    auto* chkUnitItem = new QListWidgetItem("      ↳ 14. Chi tiết Linh kiện Kiểm kê (Toàn màn hình)", warehouseList);
+    chkUnitItem->setForeground(QColor("#94a3b8"));
+
+    auto* adjHubItem = new QListWidgetItem("🔄 15. Quản lý Phiếu Điều chuyển (ADJUSTMENT MOVEMENT)", warehouseList);
+    adjHubItem->setFont(inHubFont);
+
+    auto* adjDetailItem = new QListWidgetItem("      ↳ 16. Chi tiết Điều chuyển Trạng thái (Toàn màn hình)", warehouseList);
+    adjDetailItem->setForeground(QColor("#94a3b8"));
+
+    warehouseList->addItem("📜 17. Lịch sử đổi trạng thái bán (IS_SOLD_CHANGING)");
 
     // 2. Category List (8 bảng danh mục sản phẩm tách biệt - Rule 9.2)
     categoryList->addItem("⚡ 1. Bộ vi xử lý (CPU)");
@@ -1612,7 +1844,7 @@ void MainWindow::switchToDomain(int domainIndex)
 
 void MainWindow::selectWarehouseQuery(int row)
 {
-    if (row < 0 || row >= 11) return;
+    if (row < 0 || row >= 17) return;
     if (sidebarStack->currentIndex() != 0) {
         switchToDomain(0);
     }
@@ -1634,8 +1866,8 @@ void MainWindow::selectCategoryQuery(int row)
     categoryList->setCurrentRow(row);
     categoryList->blockSignals(false);
 
-    stackedWidget->setCurrentIndex(11 + row);
-    refreshQuery(11 + row);
+    stackedWidget->setCurrentIndex(17 + row);
+    refreshQuery(17 + row);
 }
 
 void MainWindow::selectCustomerQuery(int row)
@@ -1648,8 +1880,8 @@ void MainWindow::selectCustomerQuery(int row)
     customerList->setCurrentRow(row);
     customerList->blockSignals(false);
 
-    stackedWidget->setCurrentIndex(20 + row);
-    refreshQuery(20 + row);
+    stackedWidget->setCurrentIndex(26 + row);
+    refreshQuery(26 + row);
 }
 
 void MainWindow::selectAuxSpecQuery(const QString& tableName)
@@ -1666,7 +1898,7 @@ void MainWindow::selectAuxSpecQuery(const QString& tableName)
         }
     }
 
-    stackedWidget->setCurrentIndex(19);
+    stackedWidget->setCurrentIndex(25);
 
     if (auxSpecTableCombo) {
         for (int i = 0; i < auxSpecTableCombo->count(); ++i) {
@@ -1735,52 +1967,76 @@ void MainWindow::refreshQuery(int index)
         shipmentDetailWidget->setData(results);
         break;
     case 11:
+        user_query::inventory_check_query(db, results);
+        inventoryCheckWidget->setData(results);
+        break;
+    case 12:
+        user_query::inventory_check_quantity_query(db, 0, results);
+        inventoryCheckQuantityWidget->setData(results);
+        break;
+    case 13:
+        user_query::inventory_check_unit_query(db, 0, results);
+        inventoryCheckUnitWidget->setData(results);
+        break;
+    case 14:
+        user_query::adjustment_movement_query(db, results);
+        adjustmentMovementWidget->setData(results);
+        break;
+    case 15:
+        user_query::adjust_movement_detail_query(db, 0, results);
+        adjustMovementDetailWidget->setData(results);
+        break;
+    case 16:
+        user_query::is_sold_changing_query(db, results);
+        isSoldChangingWidget->setData(results);
+        break;
+    case 17:
         user_query::cpu_query(db, results);
         cpuWidget->setData(results);
         break;
-    case 12:
+    case 18:
         user_query::gpu_query(db, results);
         gpuWidget->setData(results);
         break;
-    case 13:
+    case 19:
         user_query::mainboard_query(db, results);
         mainboardWidget->setData(results);
         break;
-    case 14:
+    case 20:
         user_query::ram_query(db, results);
         ramWidget->setData(results);
         break;
-    case 15:
+    case 21:
         user_query::ssd_query(db, results);
         ssdWidget->setData(results);
         break;
-    case 16:
+    case 22:
         user_query::psu_query(db, results);
         psuWidget->setData(results);
         break;
-    case 17:
+    case 23:
         user_query::cooling_query(db, results);
         coolingWidget->setData(results);
         break;
-    case 18:
+    case 24:
         user_query::case_query(db, results);
         caseWidget->setData(results);
         break;
-    case 19:
+    case 25:
         if (auxSpecTableCombo) {
             loadAuxSpecData(auxSpecTableCombo->currentData().toString());
             return;
         }
         break;
-    case 20:
+    case 26:
         user_query::individual_customer_query(db, results);
         individualCustomerWidget->setData(results);
         break;
-    case 21:
+    case 27:
         user_query::business_customer_query(db, results);
         businessCustomerWidget->setData(results);
         break;
-    case 22:
+    case 28:
         if (reportDataCached) {
             renderReportTable();
         }
@@ -1790,16 +2046,16 @@ void MainWindow::refreshQuery(int index)
     }
 
     QString queryDomain;
-    if (index >= 0 && index < 11) {
+    if (index >= 0 && index < 17) {
         queryDomain = QString("Kho hàng #%1").arg(index + 1);
-    } else if (index >= 11 && index < 19) {
+    } else if (index >= 17 && index < 25) {
         const QString catNames[] = {"CPU", "GPU", "Mainboard", "RAM", "SSD", "PSU", "Cooling", "Case"};
-        queryDomain = QString("Danh mục sản phẩm [%1]").arg(catNames[index - 11]);
-    } else if (index == 19) {
+        queryDomain = QString("Danh mục sản phẩm [%1]").arg(catNames[index - 17]);
+    } else if (index == 25) {
         queryDomain = "Danh mục phụ";
-    } else if (index == 20) {
+    } else if (index == 26) {
         queryDomain = "Khách hàng cá nhân";
-    } else if (index == 21) {
+    } else if (index == 27) {
         queryDomain = "Khách hàng doanh nghiệp";
     }
 
@@ -2532,7 +2788,73 @@ void MainWindow::setupCrudWiring()
             "🗑️ Xóa sản phẩm"
         );
 
-        // Quick Toggle Selling Status (Rule 4.2: product.is_sold)
+    // --------------------------------------------------------
+    // Inventory Check Wiring
+    // --------------------------------------------------------
+    if (inventoryCheckWidget) {
+        inventoryCheckWidget->setCrudCallbacks(
+            [this]() {
+                InventoryCheckCreateDialog dlg(db, this);
+                if (dlg.exec() == QDialog::Accepted) {
+                    notifyDataChanged("Đã tạo mới đợt kiểm kho: " + dlg.getCreatedCheckCode());
+                    refreshQuery(11);
+                }
+            },
+            [this](const Record& rec) {
+                int chkId = rec.has("check_id") && holds_alternative<int>(rec.get("check_id")) ? get<int>(rec.get("check_id")) : 0;
+                if (chkId <= 0) return;
+                InventoryCheckDetailDialog dlg(db, chkId, this);
+                dlg.exec();
+                if (dlg.wasModified()) {
+                    notifyDataChanged("Đã cập nhật tiến độ kiểm kho");
+                    refreshQuery(11);
+                }
+            },
+            nullptr,
+            "➕ Tạo đợt kiểm kho mới",
+            "🔍 Mở giao diện kiểm kê chi tiết",
+            ""
+        );
+        inventoryCheckWidget->setExtraAction("📋 Xem chi tiết SL", [this](const Record& rec) {
+            int chkId = rec.has("check_id") && holds_alternative<int>(rec.get("check_id")) ? get<int>(rec.get("check_id")) : 0;
+            if (chkId <= 0) return;
+            selectWarehouseQuery(12);
+            Vector<Record> results;
+            user_query::inventory_check_quantity_query(db, chkId, results);
+            inventoryCheckQuantityWidget->setData(results);
+        });
+    }
+
+    // --------------------------------------------------------
+    // Adjustment Movement Wiring
+    // --------------------------------------------------------
+    if (adjustmentMovementWidget) {
+        adjustmentMovementWidget->setCrudCallbacks(
+            [this]() {
+                AdjustmentMovementCreateDialog dlg(db, this);
+                if (dlg.exec() == QDialog::Accepted) {
+                    notifyDataChanged("Đã tạo mới phiếu điều chuyển: " + dlg.getCreatedAdjustCode());
+                    refreshQuery(14);
+                }
+            },
+            [this](const Record& rec) {
+                int adjId = rec.has("adjust_id") && holds_alternative<int>(rec.get("adjust_id")) ? get<int>(rec.get("adjust_id")) : 0;
+                if (adjId <= 0) return;
+                AdjustmentMovementDetailDialog dlg(db, adjId, this);
+                dlg.exec();
+                if (dlg.wasExecuted()) {
+                    notifyDataChanged("Đã thực hiện điều chuyển trạng thái linh kiện");
+                    refreshQuery(14);
+                }
+            },
+            nullptr,
+            "➕ Tạo phiếu điều chuyển",
+            "🔍 Xem chi tiết & Thực hiện",
+            ""
+        );
+    }
+
+    // Quick Toggle Selling Status (Rule 4.2: product.is_sold)
         widget->setExtraAction("🔄 Đổi TT Bán", [this, catTable, widget](const Record& rec) {
             int pid = resolveProductId(rec, catTable);
             if (pid <= 0 || !db) return;

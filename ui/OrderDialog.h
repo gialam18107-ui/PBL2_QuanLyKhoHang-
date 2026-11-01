@@ -93,8 +93,12 @@ private:
     QPushButton* cancelBtn;
 
     QComboBox* typeCombo;
+    QLabel* customerLabel;
+    QWidget* customerContainer;
     QComboBox* customerCombo;
     QPushButton* addCustomerBtn;
+    QLabel* sourceCodeLabel;
+    QComboBox* sourceCodeCombo;
     QDateEdit* orderDateEdit;
     QDateEdit* expectedDateEdit;
     QLineEdit* noteEdit;
