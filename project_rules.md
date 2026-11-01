@@ -13,10 +13,10 @@
 ## 2. Data Sources and File Organization
 
 ### 2.1 General Data & Schema
-- The database schema is defined by `QuanLyKhoHang_schema.json` and must strictly follow all notes, constraints, and relationships specified in that file.
+- The database schema is defined by `QuanLyKhoHang_schema.json` and must strictly follow all notes, constraints, column comments, and relationships specified in that file.
 - CSV data is stored in the `data/` folder.
 - Queries used for reporting are stored in the `report/` folder.
-- Virtual query views/schemas (such as `INBOUND_TRANSACTION_QUERY`, `CPU_QUERY`, `STATUS_HISTORY_QUERY`, etc., defined in `QuanLyKhoHang_schema.json`) are currently not stored as physical CSV tables, but their schema definitions must remain available as testing contracts for `UserQuery`.
+- Virtual query views/schemas (such as `INBOUND_TRANSACTION_QUERY`, `INBOUND_DETAIL_QUERY`, `DELIVERY_QUERY`, `DELIVERY_DETAIL_QUERY`, `OUTBOUND_TRANSACTION_copy`, `OUTBOUND_DETAIL_QUERY`, `SHIPMENT_QUERY`, `SHIPMENT_DETAIL_QUERY`, `PRODUCT_QUANTITY_QUERY`, `UNIT_INVENTORY_QUERY`, `STATUS_HISTORY_QUERY`) are not stored as physical CSV tables, but their schema definitions must remain available as testing contracts for `UserQuery`.
 - File organization must not alter table names, column names, keys, relationships, or schema definitions.
 
 ### 2.2 Domain-Based Folder Structure for CSV Data
@@ -28,19 +28,27 @@ CSV files inside `data/` must be organized by the business domain of the corresp
   - `delivery`, `shipment`
   - `delivery_detail`, `shipment_detail`
 - **`data/unit/`**: Contains unit-level inventory data:
-  - `status_history`
   - `unit_inventory`
+  - `status_history`
 - **`data/products/`**: Contains product and product-reference tables:
-  - `product_quantity`, `product`, `brand`, `category`
-  - Category tables: `cpu`, `mainboard`, `gpu`, `ram`, `ssd`, `psu`, `cooling`, `case`
-- **`data/<category>_specs/`**: Each category must have its own specification folder (e.g., `data/ssd_specs/`):
+  - `product` (stores core product identity along with inventory counters `available_quantity`, `warranty_quantity`, `scrapped_quantity`, and active status `is_sold`)
+  - `is_sold_changing` (audit log recording all status transitions of `product.is_sold`)
+  - `brand`, `category`
+  - Category hardware tables: `cpu`, `mainboard`, `gpu`, `ram`, `ssd`, `psu`, `cooling`, `case`
+- **`data/<category>_specs/`**: Each category must have its own specification folder (e.g., `data/ssd_specs/`, `data/cpu_specs/`, etc.):
   - Contains specification sub-tables belonging exclusively to that category (e.g., `type`, `gen`, `capacity`).
   - Each sub-table contains exactly two columns: `id` (key) and `spec` (value).
 - **`data/customers/`**: Contains customer-related tables:
-  - `customer`, `individual_infor`, `business_info`
-- **`data/status_type/`**: Contains all master status and type tables:
-  - Status tables (`inbound_status`, `outbound_status`, `delivery_status`, `shipment_status`, `unit_status`).
-  - Type tables (`inbound_type`, `outbound_type`).
+  - `customer`, `individual_info`, `business_info`
+- **`data/inventory_check/`** (or `data/internal/`): Contains inventory auditing and internal stock adjustment tables:
+  - `inventory_check` (header for warehouse stock counts)
+  - `inventory_check_quantity` (product-level quantity snapshot and physical counts)
+  - `inventory_check_unit` (unit-level serial verification during detailed checks)
+  - `adjustment_movement` (header for internal status transfer movements within warehouse)
+  - `adjust_movement_detail` (product status shift details: `from_status` -> `to_status`)
+- **`data/status_type/`**: Contains all master status, type, and lookup tables:
+  - Status tables: `inbound_status`, `outbound_status`, `delivery_status`, `shipment_status`, `unit_status`, `inventory_check_status`, `adjustment_status`.
+  - Type & reason tables: `inbound_type`, `outbound_type`, `check_type`, `reason`.
 
 ---
 
@@ -48,462 +56,443 @@ CSV files inside `data/` must be organized by the business domain of the corresp
 
 - Tables, columns, CSV files, and report files must **never be deleted**.
 - **Referential Integrity**: A record must **never be deleted** if it is referenced by, or has an active relationship/dependency with, another table.
-- **Strict Permanent Retention**: Confirmed transactions, deliveries, shipments, units, and status histories must **never be deleted**.
-- **Permitted Deletions (`UserDelete`)**: Users are only permitted to delete standalone records (such as an unreferenced `Product`, `Brand`, or `Customer`) that have **never** been associated with any transaction, delivery, shipment, or unit inventory records.
-- Every transaction and inventory record must satisfy all schema constraints and form a logically valid business chain from the moment it is created or imported.
+- **Strict Permanent Retention**: Confirmed transactions, deliveries, shipments, units, status histories, inventory checks, adjustment movements, and selling status audit logs must **never be deleted**.
+- **Permitted Deletions (`UserDelete`)**: Users are only permitted to delete standalone records (such as an unreferenced `Product`, `Brand`, or `Customer`) that have **never** been associated with any transaction, delivery, shipment, unit inventory, inventory check, or movement records.
+- Every transaction, inventory check, and inventory record must satisfy all schema constraints and form a logically valid business chain from the moment it is created or imported.
 
 ---
 
-## 4. User Permissions and CRUD Rules
+## 4. User Permissions and Master Data Rules
 
-The main program uses a **single normal user role** (no `ADMIN` role or account management required).
+The main program uses a **single normal user role** (no account management or complex role matrix required).
 
-### 4.1 Customer Precondition & Master Reference
-- **Customer Precondition**: A customer record must exist before creating an Outbound Transaction (or any transaction requiring a partner). If the customer does not exist in the database, the user must add the customer first.
-- **Inventory Adjustment Default Customer**: For warehouse inventory adjustment transactions (`ADJUSTMENT_IN` / `ADJUSTMENT_OUT`, code prefix `ADJ`), since this is an internal warehouse reconciliation operation rather than an external commercial partner transaction, the customer must default to **`BS-0000000`** (`customer_id = 0`, name = `None`). The user is not required to select or create an external partner.
-- **Customer Code Auto-Generation**: Customer code is automatically generated based on customer type and sequential number (`next_code_no`, 7 digits) as specified in `QuanLyKhoHang_schema.json`:
-  - Individual: `IN-xxxxxxx` (e.g., `IN-0002340`)
-  - Business: `BS-xxxxxxx` (e.g., `BS-0002314`)
-  - Default Internal Business Partner: `BS-0000000` (ID `0`, name `None`, reserved system customer for internal inventory adjustments).
-- **Direct Creation Allowed**:
-  - `Customer` (along with `individual_infor` or `business_info`).
-  - `Brand`.
-  - Allowed specification values in `<category>_specs/` sub-tables.
+### 4.1 Customer Precondition & Adjustment Independence
+- **Commercial Transactions Customer Requirement**:
+  - For standard external commercial transactions (`PUR`, `SEL`, `WCK`, `WRP`, `CRT`, `WRT`, `WRC`), a valid customer record (`customer_id`) is **mandatory**.
+  - If the customer does not exist in the database, the user must create the customer first before creating the transaction.
+- **Strict No-Customer Rule for Adjustment Transactions (`ADJUSTMENT_IN` / `ADJUSTMENT_OUT`)**:
+  - Warehouse adjustment transactions (`type == "ADJUSTMENT_IN"` or `type == "ADJUSTMENT_OUT"`, code prefix `ADJ`) represent internal warehouse reconciliations originating from stock audit discrepancies, not external commercial dealings.
+  - **No customer is permitted for `ADJ` transactions**: `customer_id` must be `NULL` (represented by `std::monostate`).
+  - **Pre-creation Validation**: The system and UI must strictly verify that **no customer is selected or assigned** before creating an Inbound or Outbound adjustment transaction. Any attempt to associate a customer with an `ADJ` transaction must be rejected.
+- **Customer Code Auto-Generation**:
+  - Customer codes are automatically generated based on customer type and sequential number (`next_code_no`, 7 digits) as documented in `QuanLyKhoHang_schema.json`:
+    - Individual: `IN-xxxxxxx` (e.g., `IN-0002340`)
+    - Business: `BS-xxxxxxx` (e.g., `BS-0002314`)
 
-### 4.2 Product Creation and Category Binding
-- Adding a new product is an integrated operation: it creates a record in `product` AND a corresponding record in the appropriate category table (`CPU`, `GPU`, `Mainboard`, `RAM`, `SSD`, `PSU`, `Cooling`, `Case`) with specifications selected from the valid master spec tables.
-- All quantity fields in `product_quantity` are initialized to `0`.
-- When any unit belonging to a product changes its status, `product_quantity` must be immediately updated.
-- **Product Code Auto-Generation**: `product_code` must be automatically generated following the exact schema rule from `QuanLyKhoHang_schema.json`:
-  - Format: `<producer_code>-<category_code>-<next_code_no(producer)>-<next_code_no(category)>`
-  - Examples: `INTEL-CPU-0001-0001`, `NVI-GPU-0032-0034`, `SAM-SSD-0003-0031`, `AMD-GPU-0323-2323`.
-- **Product Selling Status (`product.is_sold`)**:
+### 4.2 Product Selling Status (`product.is_sold`), Stock Discontinuance Rule & `IS_SOLD_CHANGING`
+- **Product Status Definition**:
   - `TRUE`: Product is actively on sale.
-  - `FALSE`: Product is discontinued / not on sale.
-  - **Transaction Ineligibility Rule**: If `product.is_sold` is `FALSE` (discontinued product), it must **never be selected** for any transaction (neither Inbound Transaction nor Outbound Transaction). Only products with `is_sold == TRUE` are eligible for transaction selection.
+  - `FALSE`: Product is discontinued / stopped selling.
+- **Strict Stock Discontinuance Precondition (Chỉ đổi sang FALSE khi tồn kho bằng 0)**:
+  - A product's `is_sold` flag can **ONLY** be changed to `FALSE` if the total warehouse quantity of that product is strictly **zero (0)**:
+    $$\text{total\_quantity} = \text{available\_quantity} + \text{warranty\_quantity} + \text{scrapped\_quantity} == 0$$
+  - If a product still has any inventory remaining in the warehouse ($\text{total\_quantity} > 0$), any attempt to change `is_sold` to `FALSE` must be **strictly rejected** by both the business layer (`UserUpdate`) and the UI with an explicit error alert (cannot discontinue an item while physical stock is still held).
+- **Mandatory Audit Logging into `IS_SOLD_CHANGING`**:
+  - Every time `product.is_sold` changes status (whether transitioning from `TRUE` to `FALSE` or from `FALSE` to `TRUE`), the system must atomically record an immutable history record into table **`IS_SOLD_CHANGING`**:
+    - `history_id`: auto-increment primary key
+    - `product_id`: foreign key referencing `PRODUCT.product_id`
+    - `date`: current date of the change
+    - `old_status`: previous boolean status
+    - `new_status`: new boolean status
+- **Transaction Ineligibility Rule (Ẩn và không cho chọn sản phẩm ngừng bán)**:
+  - If `product.is_sold == FALSE`, the product is discontinued and must **never be selected** for any new transaction orders (neither Inbound nor Outbound).
+  - The UI must filter out / hide discontinued products from dropdowns and product pickers during transaction creation (conforming to Note 6 of `QuanLyKhoHang_schema.json`).
 
 ### 4.3 Coupled Creation Only (Transactions, Delivery, Shipment)
-Users may manually input transactions and logistics records, strictly under atomic pairwise constraints:
-- **Inbound Pair & Total Quantity Equality**:
-  - Creating an Inbound Transaction requires simultaneously creating its paired `Delivery` records (either a single delivery or multiple delivery batches). Both must initialize their containing products and quantities.
-  - **Strict Quantity Equality Invariant**: For every product in the transaction, the total allocated quantity across all delivery records/batches must be **strictly equal** to the ordered quantity in the Inbound Transaction ($\sum \text{delivery\_detail.received\_quantity} == \text{inbound\_detail.ordered\_quantity}$ for each product). Under-allocation ($\sum < \text{ordered\_quantity}$) and over-allocation ($\sum > \text{ordered\_quantity}$) are strictly prohibited.
-- **Outbound Pair & Total Quantity Equality**:
+Users may manually create transactions and logistics records strictly under atomic pairwise constraints:
+- **Inbound Pair & Quantity Equality Invariant**:
+  - Creating an Inbound Transaction requires simultaneously creating its paired `Delivery` records (either a single delivery or multiple delivery batches).
+  - For every product in the transaction, the total allocated quantity across all delivery records must be **strictly equal** to the ordered quantity in the Inbound Transaction ($\sum \text{delivery\_detail.received\_quantity} == \text{inbound\_detail.ordered\_quantity}$). Under-allocation and over-allocation are strictly prohibited.
+- **Outbound Pair & Quantity Equality Invariant**:
   - Creating an Outbound Transaction requires simultaneously creating its paired `Shipment` records (either a single shipment or multiple shipment batches).
-  - **Permitted Outbound Quantity Exceeding Stock (Đơn xuất được phép vượt tồn kho)**: Outbound transaction order quantities (`outbound_detail.ordered_quantity` and shipment planned quantities) are **permitted to exceed current warehouse stock** (allowing backorders, pre-orders, and order creation ahead of inventory intake). Physical unit dispatching (`actual_quantity`) during shipment fulfillment remains bound to attaching currently available eligible units in the warehouse.
-  - **Strict Quantity Equality Invariant**: For every product in the transaction, the total allocated quantity across all shipment records/batches must be **strictly equal** to the ordered quantity in the Outbound Transaction ($\sum \text{shipment\_detail.received\_quantity} == \text{outbound\_detail.ordered\_quantity}$ for each product). Under-allocation and over-allocation are strictly prohibited.
-- **Strict Post-Confirmation Lock (Không được phép tạo thêm delivery/shipment sau khi bấm xác nhận đơn transaction)**:
-  - All deliveries/shipments associated with a transaction must be declared, allocated, and created atomically at the time of transaction creation.
-  - Once the transaction order is confirmed and committed to the database ("bấm xác nhận đơn transaction"), **it is strictly prohibited to create additional `Delivery` or `Shipment` records for that transaction**. Any subsequent attempt to add delivery or shipment batches to an existing/confirmed transaction must be rejected by the system.
-- **Active Product Eligibility Constraint**:
-  - Both Inbound and Outbound transactions are strictly restricted to products with `product.is_sold == TRUE`. If a product has `is_sold == FALSE`, the system and UI must reject or disable adding that product to transaction order details (`inbound_detail`, `outbound_detail`).
+  - **Permitted Outbound Quantity Exceeding Stock (Đơn xuất được phép vượt tồn kho)**: Outbound transaction order quantities (`outbound_detail.ordered_quantity` and shipment planned quantities) are **permitted to exceed current warehouse stock** (allowing backorders and order reservation ahead of inventory intake). Physical unit dispatching (`actual_quantity`) during shipment fulfillment remains bound to attaching currently available eligible units in the warehouse.
+  - For every product in the transaction, the total allocated quantity across all shipment records must be **strictly equal** to the ordered quantity in the Outbound Transaction ($\sum \text{shipment\_detail.received\_quantity} == \text{outbound\_detail.ordered\_quantity}$).
+- **Strict Post-Confirmation Lock (Khóa tạo mới Delivery/Shipment sau khi xác nhận đơn)**:
+  - All deliveries/shipments associated with a transaction must be declared, allocated, and created atomically at transaction creation time.
+  - Once the transaction order is confirmed and committed to the database, **it is strictly prohibited to create additional `Delivery` or `Shipment` records for that transaction**.
+- **Mandatory `source_code` Reference for `ADJ` Transactions**:
+  - If the transaction `type` is `ADJUSTMENT_IN` or `ADJUSTMENT_OUT`, `source_code` is **mandatory** and must reference a valid `check_code` from an existing `INVENTORY_CHECK` record (e.g., `CHK-QUAN-000001` or `CHK-UNIT-000001`).
+  - Standalone creation of an `ADJ` transaction without a referencing `check_code` is strictly prohibited.
 - **Product Scope Constraint for Logistics**:
-  - `Delivery` records may only contain products that are declared in the corresponding parent inbound transaction (`inbound_transaction` -> `inbound_detail`).
-  - `Shipment` records may only contain products that are declared in the corresponding parent outbound transaction (`outbound_transaction` -> `outbound_detail`).
-  - Including external or unlisted products in `delivery_detail` or `shipment_detail` is strictly prohibited.
+  - `delivery_detail` may only contain products declared in `inbound_detail`.
+  - `shipment_detail` may only contain products declared in `outbound_detail`.
 - **Logistics Date Constraints**:
-  - **Delivery Dates**: The actual delivery date (`delivery.delivery_at`) is permitted to be earlier than, equal to, or later than the expected delivery date (`delivery.expected_at`), but **must never be earlier than the order date** (`inbound_transaction.order_at`) (`delivery.delivery_at >= inbound_transaction.order_at`). In addition, the expected delivery date must also be on or after the order date (`delivery.expected_at >= inbound_transaction.order_at`).
-  - **Shipment Dates**: The actual shipment date (`shipment.ship_at`) is permitted to be earlier than, equal to, or later than the expected shipment date (`shipment.expected_at`), but **must never be earlier than the order date** (`outbound_transaction.order_at`) (`shipment.ship_at >= outbound_transaction.order_at`). In addition, the expected shipment date must also be on or after the order date (`shipment.expected_at >= outbound_transaction.order_at`).
-- Standalone creation of an Inbound/Outbound order without its paired `Delivery`/`Shipment` (or vice versa), or standalone creation of `Unit` records via normal CRUD, is strictly prohibited.
+  - `delivery.delivery_at >= inbound_transaction.order_at` and `delivery.expected_at >= inbound_transaction.order_at`.
+  - `shipment.ship_at >= outbound_transaction.order_at` and `shipment.expected_at >= outbound_transaction.order_at`.
+  - Standalone creation of transactions without logistics (or vice versa), or standalone creation of `Unit` records via raw CRUD, is strictly prohibited.
 
 ### 4.4 Unit Status Lifecycle and Transition Rules
 
 Unit status transitions must adhere strictly to the business rules of each transaction type:
 
-#### 4.4.1 Outbound Transactions (Đơn xuất)
-- **General Rule**: The new/target status of **all units** in an outbound transaction **must be `OUT`**.
+#### 4.4.1 Inbound Transactions (Đơn nhập)
+- **Universal Inbound Precondition (Mọi thao tác nhập inbound chỉ được phép triển khai từ unit có old status là out hoặc null)**:
+  - Goods entering the warehouse must originate outside the active warehouse inventory.
+  - Therefore, **all Inbound operations without exception** (`PUR`, `WRP`, `WCK`, `CRT`, `ADJ`) are strictly restricted to units whose `old_status` is either:
+    1. **`NULL` / uncreated** (`std::monostate`): Brand new unit entering the system for the first time.
+    2. **`OUT`**: Unit previously dispatched/sold that is returning or being re-admitted into the warehouse.
+  - Attempting to perform any Inbound operation on a unit that is currently inside the warehouse (`old_status` is `AVAILABLE`, `WARRANTY`, or `SCRAPPED`) is **strictly prohibited** and must be rejected.
+- **Target Status Invariant**:
+  - The new/target status of **all units** in an Inbound transaction **must never be `OUT`** (must transition into an internal warehouse status: `AVAILABLE`, `WARRANTY`, or `SCRAPPED`).
+- **Specific Inbound Type Rules**:
+  - **`PUR` (Purchasing - Mua hàng / Nhập kho mới)**:
+    - Precondition: Unit is newly acquired (`old_status == NULL`).
+    - Transition: `NULL -> AVAILABLE` (normal stock) or `SCRAPPED` (defective upon arrival).
+    - Automatically generates a unique Serial (`SN-` + 7 alphanumeric characters) and registers the unit into `unit_inventory`.
+  - **`WRP` (Warranty Replacement - Nhập hàng đổi bảo hành từ hãng/NCC)**:
+    - Precondition: Unit is a replacement item from supplier (`old_status == NULL`).
+    - Transition: `NULL -> WARRANTY`.
+    - Automatically generates a unique Serial and registers the unit into `unit_inventory` with status `WARRANTY`.
+  - **`WCK` (Warranty Checking - Nhận hàng bảo hành từ khách hàng để kiểm tra)**:
+    - Precondition: Unit was previously sold/dispatched (`old_status == OUT`).
+    - Transition: `OUT -> WARRANTY`.
+  - **`CRT` (Customer Return - Khách hàng trả lại hàng)**:
+    - Precondition: Unit was previously sold/dispatched (`old_status == OUT`).
+    - Transition: `OUT -> AVAILABLE`, `WARRANTY`, or `SCRAPPED` (depending on returned condition; target must never remain `OUT`).
+  - **`ADJ` (Adjustment In - Nhập điều chỉnh kho)**:
+    - Precondition: Must strictly obey the universal inbound precondition: unit's `old_status` must be **`NULL`** (surplus unrecorded unit discovered during audit) or **`OUT`** (missing unit previously written off as out, now rediscovered).
+    - Transition: Permitted to transition from **`OUT` or `NULL`** to **`AVAILABLE`**, **`SCRAPPED`**, or **`WARRANTY`**.
+    - If `old_status == NULL`, automatically generates a unique Serial (`SN-` + 7 alphanumeric characters) and registers the unit into `unit_inventory`.
+    - Requirement: Must have `source_code` referencing `check_code`, and `customer_id` must be `NULL`.
+    - *Note on internal status adjustments*: Units already in warehouse changing status internally (e.g., `AVAILABLE -> SCRAPPED` due to warehouse damage) do not use Inbound `ADJ`; they are handled by `ADJUSTMENT_MOVEMENT`.
+
+#### 4.4.2 Outbound Transactions (Đơn xuất)
+- **Universal Outbound Target Invariant**:
+  - The target/new status of **all units** in an Outbound transaction **must strictly be `OUT`**.
 - **Specific Outbound Type Rules**:
   - **`SEL` (Selling - Bán hàng)**:
     - Precondition: Selected units must have current status `AVAILABLE`.
-    - Transition: `AVAILABLE` -> `OUT`.
-  - **`WRT` (Warranty Return - Xuất trả hàng bảo hành/lỗi cho hãng hoặc nhà cung cấp)**:
+    - Transition: `AVAILABLE -> OUT`.
+  - **`WRT` (Warranty Return - Xuất trả hàng bảo hành/lỗi cho hãng/NCC)**:
     - Precondition: Selected units must have current status `SCRAPPED` or `WARRANTY`.
-    - Transition: `SCRAPPED / WARRANTY` -> `OUT`.
-  - **`WRC` (Warranty Replacement to Customer - Xuất trả hàng đổi bảo hành cho khách hàng)**:
+    - Transition: `SCRAPPED / WARRANTY -> OUT`.
+  - **`WRC` (Warranty Replacement to Customer - Xuất trả hàng đổi bảo hành cho khách)**:
     - Precondition: Selected units must have current status `AVAILABLE` or `WARRANTY`.
-    - Transition: `AVAILABLE / WARRANTY` -> `OUT`.
+    - Transition: `AVAILABLE / WARRANTY -> OUT`.
   - **`ADJ` (Adjustment Out - Xuất điều chỉnh / kiểm kê giảm kho)**:
     - Precondition: Selected units must currently exist in warehouse (status `AVAILABLE`, `WARRANTY`, or `SCRAPPED`).
-    - Transition: `AVAILABLE / WARRANTY / SCRAPPED` -> `OUT`.
-    - Customer partner: Defaults to **`BS-0000000`** (internal warehouse adjustment).
+    - Transition: `AVAILABLE / WARRANTY / SCRAPPED -> OUT`.
+    - Requirement: Must have `source_code` referencing `check_code`, and `customer_id` must be `NULL`.
 
-#### 4.4.2 Inbound Transactions (Đơn nhập)
-- **General Rule**: The new/target status of **all units** in an inbound transaction **must never be `OUT`** (must transition into an internal warehouse status: `AVAILABLE`, `WARRANTY`, or `SCRAPPED`).
-- **Specific Inbound Type Rules**:
-  - **`PUR` (Purchasing - Mua hàng / Nhập kho mới)**:
-    - Precondition: Unit is newly acquired and does not exist in the database (old status is `NULL` / `std::monostate`).
-    - Transition: `NULL` -> `AVAILABLE` (normal inventory) or `SCRAPPED` (defective upon receiving/inspection).
-    - Automatically generates a unique Serial (`SN-` + 7 alphanumeric characters) and inserts the unit record into `unit_inventory`.
-  - **`WRP` (Warranty Replacement - Nhập hàng đổi bảo hành từ hãng/nhà cung cấp)**:
-    - Precondition: Unit is a replacement item from the supplier (old status is `NULL` / `std::monostate`).
-    - Transition: `NULL` -> `WARRANTY`.
-    - Automatically generates a unique Serial and inserts the unit record into `unit_inventory` with status `WARRANTY`.
-  - **`WCK` (Warranty Checking - Nhận hàng bảo hành từ khách hàng để kiểm tra)**:
-    - Precondition: Unit was previously sold/dispatched and currently has status `OUT`.
-    - Transition: `OUT` -> `WARRANTY`.
-  - **`CRT` (Customer Return - Khách hàng trả lại hàng)**:
-    - Precondition: Unit was previously sold/dispatched and currently has status `OUT`.
-    - Transition: `OUT` -> `AVAILABLE`, `WARRANTY`, or `SCRAPPED` (depending on returned unit condition; new status must never remain `OUT`).
-  - **`ADJ` (Adjustment In - Nhập điều chỉnh kho)**:
-    - Precondition: Unit can be in **any** previous status (including `NULL` / uncreated, `OUT` / previously dispatched, or internal warehouse status `AVAILABLE`, `WARRANTY`, `SCRAPPED`).
-    - Transition: Permitted to transition from **any status to any internal warehouse status** (`AVAILABLE`, `WARRANTY`, or `SCRAPPED`).
-    - Target Constraint: Transition from any status to `OUT` (`* -> OUT`) is **strictly prohibited** (target status of inbound units must never be `OUT`).
-    - Serial Handling: If the unit is newly created (old status is `NULL` / `std::monostate`), automatically generates a unique Serial (`SN-` + 7 alphanumeric characters) and registers the unit into `unit_inventory`. If the unit already exists in the system, its status is updated and recorded into `status_history`.
-    - Customer partner: Defaults to **`BS-0000000`** (internal warehouse adjustment).
-
-#### 4.4.3 Quantity Constraints, Auto-Update Actual Quantity, and History Logging
+#### 4.4.3 Quantity Synchronization and History Logging
 - **Auto-Update `actual_quantity`**:
-  - When adding/attaching a `Unit` to a `Delivery` (Inbound):
-    - `delivery_detail.actual_quantity` for the corresponding product in that delivery must automatically increment (+1 for each unit recorded in this delivery).
-    - `inbound_detail.actual_quantity` for the corresponding product in that inbound transaction must also automatically increment accordingly (reflecting the cumulative total units actually received for that transaction).
-  - When dispatching/attaching a `Unit` to a `Shipment` (Outbound):
-    - `shipment_detail.actual_quantity` for the corresponding product in that shipment must automatically increment (+1 for each unit dispatched in this shipment).
-    - `outbound_detail.actual_quantity` for the corresponding product in that outbound transaction must also automatically increment accordingly (reflecting the cumulative total units actually dispatched for that transaction).
-- **Quantity Constraints**:
-  - Total planned received quantity across all deliveries/shipments must be strictly equal to the original order quantity of the transaction ($\sum \text{received\_quantity} == \text{ordered\_quantity}$ for each product).
-  - The number of unit status transitions (`actual_quantity`) in each delivery/shipment batch must not exceed the batch expected quantity (`delivery_detail.received_quantity` for Inbound or `shipment_detail.received_quantity` for Outbound).
-  - Total `actual_quantity` across all deliveries/shipments must not exceed the original order quantity of the transaction (`inbound_detail.ordered_quantity` or `outbound_detail.ordered_quantity`).
-- **History Logging**: Every unit transition automatically creates an immutable record in `status_history` logging `serial`, `old_status`, `curr_status` (new status), `transaction` (delivery/shipment code), `type` (`INBOUND` / `OUTBOUND`), and `date`.
+  - Attaching a unit to a `Delivery` increments `delivery_detail.actual_quantity` (+1) and `inbound_detail.actual_quantity` (+1).
+  - Dispatching a unit to a `Shipment` increments `shipment_detail.actual_quantity` (+1) and `outbound_detail.actual_quantity` (+1).
+- **Synchronous Product Quantity Counters**:
+  - Every unit status transition atomically updates the breakdown counters in `PRODUCT`: `available_quantity`, `warranty_quantity`, and `scrapped_quantity`.
+- **Immutable History Logging**:
+  - Every unit transition automatically creates an immutable record in `status_history` logging `unit_id`, `old_status`, `curr_status`, `transaction` (`delivery_id` or `shipment_id`), and `type` (`INBOUND` / `OUTBOUND`).
 
 ### 4.5 Update and Delete Restrictions (Immutability & Permitted Updates)
 Once a Transaction + `Delivery`/`Shipment` pair (along with its attached `Unit` transitions) is recorded/confirmed:
-- **No Deletion**: Confirmed transactions, deliveries, shipments, and unit mappings must **never be deleted**.
+- **No Deletion**: Confirmed transactions, deliveries, shipments, units, and status histories must **never be deleted**.
 - **Permitted Updates (`UserUpdate`)**:
-  - **`status`**: Users may modify the `status` field of Transactions (`inbound_transaction`, `outbound_transaction`), `Delivery`, and `Shipment` during order lifecycle processing.
-  - **`delivery_at` & `ship_at`**: Users are permitted to edit/update the actual delivery date (`delivery.delivery_at`) and actual shipment date (`shipment.ship_at`) when goods are actually delivered/dispatched or when adjustments to actual logistics dates are required. The updated dates must strictly obey the chronological constraint: `delivery.delivery_at >= inbound_transaction.order_at` and `shipment.ship_at >= outbound_transaction.order_at` (actual date can be earlier than expected date, but never earlier than order date).
-  - **Flexible Unit Target Status Switching During In-Progress Logistics (Cho phép thay đổi trạng thái linh kiện tự do một phần khi đơn chưa hoàn thành)**:
-    - While a `Delivery` or `Shipment` is in progress (status is not yet `COMPLETED`), users are permitted to freely switch the target status (`new_status` / `curr_status`) of recorded units back and forth, strictly restricted within the domain of valid business statuses permitted for that transaction type:
-      - **Inbound `PUR` (Purchasing)**: Target status can be switched back and forth between `AVAILABLE` and `SCRAPPED` (e.g. if an item originally recorded as `AVAILABLE` is subsequently found defective during receiving inspection, or vice-versa).
-      - **Inbound `CRT` (Customer Return)**: Target status can be switched freely among `AVAILABLE`, `WARRANTY`, and `SCRAPPED`.
-      - **Inbound `ADJ` (Adjustment In)**: Target status can be switched freely among internal warehouse statuses (`AVAILABLE`, `WARRANTY`, `SCRAPPED`).
-      - **Outbound Transactions (`SEL`, `WRT`, `WRC`, `ADJ`)**: Target status remains strictly `OUT`.
-    - Every status transition atomically updates `unit_inventory.status`, recomputes inventory breakdown counters in `product_quantity` (`available_quan`, `warranty_quan`, `scrapped_quan`), and logs the transition into `status_history`.
-- **Strict Post-Completion Lock (Khóa toàn bộ thao tác khi đơn chuyển sang hoàn thành - `COMPLETED`)**:
-  - Once a transaction, `Delivery`, or `Shipment` is transitioned and confirmed to `COMPLETED`:
-    - All unit status transitions, unit additions, removals, and modifications for that delivery/shipment are **strictly locked** (frozen/immutable). Users can no longer modify the status of any units associated with that completed batch.
-- **Mandatory Completion Confirmation Dialog (Cửa sổ xuất xác nhận hoàn thành đơn)**:
-  - When the user triggers transitioning an order/delivery/shipment status to `COMPLETED`, the system must not commit the change immediately. It must pop up a dedicated modal confirmation window containing:
-    1. A clear warning message stating that completing the order will permanently lock unit statuses and inventory records.
-    2. A mandatory confirmation tick-box (`QCheckBox`, e.g., `"Tôi xác nhận đơn hàng đã được kiểm đếm đầy đủ và đồng ý chuyển sang trạng thái hoàn tất đơn"`).
-    3. An explicit Confirmation button (`"Xác nhận hoàn thành"`), which remains disabled until the tick-box is checked.
-    4. An explicit Cancel / Postpone button (`"Chưa hoàn thành"` / `"Hủy"`) to dismiss the popup without changing the status.
-- **Frozen Business Data**: Planned order quantities (`ordered_quantity`, `received_quantity`), product references, transaction types, customer/partner details, and attached serial numbers are locked and cannot be edited arbitrarily.
-- **Logistics Batch Immutability**: No additional `Delivery` or `Shipment` records may be added to a transaction after confirmation.
+  - **`status`**: Users may modify the `status` field of Transactions, `Delivery`, and `Shipment` during order lifecycle processing (`PENDING` -> `PROCESSING` -> `CONFIRMED` / `COMPLETED`).
+  - **`delivery_at` & `ship_at`**: Users are permitted to update actual logistics dates, satisfying `delivery.delivery_at >= inbound_transaction.order_at` and `shipment.ship_at >= outbound_transaction.order_at`.
+  - **Flexible Unit Target Status Switching During In-Progress Logistics**:
+    - While a `Delivery` or `Shipment` is in progress (status is not yet `COMPLETED`), users are permitted to switch the target status (`new_status` / `curr_status`) of recorded units back and forth within valid domain boundaries:
+      - Inbound `PUR`: between `AVAILABLE` and `SCRAPPED`.
+      - Inbound `CRT`: among `AVAILABLE`, `WARRANTY`, and `SCRAPPED`.
+      - Inbound `ADJ`: among `AVAILABLE`, `WARRANTY`, and `SCRAPPED`.
+      - Outbound Transactions (`SEL`, `WRT`, `WRC`, `ADJ`): target status remains strictly `OUT`.
+- **Strict Post-Completion Lock (Khóa hoàn toàn khi chuyển COMPLETED)**:
+  - Once an order, delivery, or shipment transitions to `COMPLETED`:
+    - All unit status transitions, additions, and modifications are **strictly locked** (frozen/immutable).
+  - Transitioning to `COMPLETED` requires a mandatory modal confirmation dialog with an explicit acknowledgment checkbox.
 
 ### 4.6 Read-Only Master Data & Direct Unit Restrictions
 Users must **never** directly edit:
-- Any `Status` or `Type` master table (`INBOUND_TYPE`, `INBOUND_STATUS`, `OUTBOUND_TYPE`, `OUTBOUND_STATUS`, `DELIVERY_STATUS`, `SHIPMENT_STATUS`, `UNIT_STATUS`).
-- `Unit.status` directly through raw editing (a unit's status may only change via `Delivery` or `Shipment` workflows).
+- Any `Status`, `Type`, or `Reason` master table (`INBOUND_TYPE`, `INBOUND_STATUS`, `OUTBOUND_TYPE`, `OUTBOUND_STATUS`, `DELIVERY_STATUS`, `SHIPMENT_STATUS`, `UNIT_STATUS`, `INVENTORY_CHECK_STATUS`, `ADJUSTMENT_STATUS`, `CHECK_TYPE`, `REASON`).
+- `unit_inventory.status` directly through raw editing (a unit's status may only change via `Delivery`, `Shipment`, or `Adjustment Movement` workflows).
 
 ---
 
-## 5. Code Formats and System Conventions
+## 5. Inventory Check and Internal Adjustment Management (Kiểm Kê Kho và Điều Chỉnh Nội Bộ)
 
-All auto-generated codes and user inputs must strictly conform to the specifications and notes documented in `QuanLyKhoHang_schema.json`:
+### 5.1 Two Inventory Check Types (Hai Loại Kiểm Kho)
+The warehouse audit system provides two distinct inventory check types defined in `CHECK_TYPE`:
+1. **Kiểm kho số lượng (`CHK-QUAN`, Quantity Inventory Check)**:
+   - Evaluates inventory solely at the aggregated product quantity level without tracking individual physical serial units.
+   - Purpose: Fast periodic reconciliation of total counts in stock.
+2. **Kiểm kho chi tiết (`CHK-UNIT`, Detailed / Unit Inventory Check)**:
+   - Evaluates inventory at the granular individual unit level, inspecting and verifying every specific unit serial (`unit_inventory.serial`) physically present in the warehouse.
+   - Purpose: In-depth audit to verify unit serial identities, detect unrecorded units, locate missing units, and inspect physical conditions (status shifts).
+
+### 5.2 Quantity Inventory Check (`CHK-QUAN`) Workflow & Discrepancy Adjustment Orders
+- **Data Capture in `inventory_check_quantity`**:
+  - When a `CHK-QUAN` check is created, the system takes an atomic snapshot of current system quantities from `PRODUCT`:
+    - `system_available_quan`
+    - `system_warranty_quan`
+    - `system_scrapped_quan`
+  - During the audit, the user inputs the counted physical quantities:
+    - `actual_available_quan`
+    - `actual_warranty_quan`
+    - `actual_scrapped_quan`
+- **Reconciliation & Order Generation Capabilities**:
+  - The system computes discrepancy per product: $\Delta = \text{actual\_total} - \text{system\_total}$.
+  - **Surplus Discrepancy ($\Delta > 0$)**: The user may generate an **Inbound Adjustment Transaction (`ADJUSTMENT_IN`, `IN-ADJ-xxxxxx`)** for the surplus quantity.
+  - **Deficit Discrepancy ($\Delta < 0$)**: The user may generate an **Outbound Adjustment Transaction (`ADJUSTMENT_OUT`, `OUT-ADJ-xxxxxx`)** for the missing quantity.
+  - **Explicit User Confirmation Gate (Chỉ tạo đơn nếu người dùng bấm xác nhận tạo)**:
+    - The generation of adjustment orders is **never automatic**. The system only creates the transaction if the user explicitly reviews the calculated discrepancies and clicks the confirmation button ("Xác nhận tạo đơn điều chỉnh").
+  - **Scope Limitation**:
+    - Quantity inventory check **can only generate Inbound or Outbound adjustment transactions** based on quantity variance. It **cannot** generate internal status adjustment movements (`ADJUSTMENT_MOVEMENT`) because individual serial units are not tracked in quantity checks.
+
+### 5.3 Detailed / Unit Inventory Check (`CHK-UNIT`) Workflow & Unit Adjustment Orders
+- **Data Capture in `inventory_check_quantity` & `inventory_check_unit`**:
+  - Product-level snapshot is recorded in `inventory_check_quantity`.
+  - For every candidate unit in the warehouse, a record in `inventory_check_unit` captures:
+    - `unit_id`: reference to `unit_inventory`
+    - `system_status`: recorded status in system at audit creation
+    - `scanned_status`: actual physical condition verified during inspection (defaults to `system_status`)
+- **Reconciliation & Order Generation Capabilities**:
+  - Detailed unit audits can uncover three types of discrepancies:
+    1. **Surplus Units (Hàng thừa / tìm thấy ngoài kho)**: Unrecorded units (`old_status == NULL`) or units previously dispatched (`old_status == OUT`) found physically in the warehouse.
+       - Can generate an **Inbound Adjustment Transaction (`ADJUSTMENT_IN`)** transitioning units from `OUT` or `NULL` to `AVAILABLE`, `WARRANTY`, or `SCRAPPED`.
+    2. **Missing Units (Hàng thiếu / mất)**: Units recorded in system as inside the warehouse (`AVAILABLE`, `WARRANTY`, `SCRAPPED`) but physically absent.
+       - Can generate an **Outbound Adjustment Transaction (`ADJUSTMENT_OUT`)** transitioning units to `OUT`.
+    3. **Status Shift Discrepancies (Thay đổi trạng thái vật lý trong kho)**: Units physically located in the warehouse whose condition changed (e.g., recorded as `AVAILABLE` but found damaged -> `SCRAPPED`, or moved to `WARRANTY`).
+       - Can generate an **Internal Adjustment Movement (`ADJUSTMENT_MOVEMENT`)** shifting units between internal warehouse statuses (`from_status -> to_status`).
+  - **Explicit User Confirmation Gate (Chỉ tạo đơn nếu người dùng bấm xác nhận)**:
+    - All three types of orders (`ADJUSTMENT_IN`, `ADJUSTMENT_OUT`, `ADJUSTMENT_MOVEMENT`) are created **only upon explicit user confirmation** ("nếu người dùng bấm xác nhận").
+
+### 5.4 Internal Status Adjustment Movement (`ADJUSTMENT_MOVEMENT`)
+- Used exclusively for shifting the status of existing warehouse units internally without moving them in or out of the warehouse.
+- **Attributes**:
+  - `adjust_id`: primary key
+  - `adjust_code`: `ADJ-<reason_code>-<xxxxxx>` (e.g., `ADJ-STD-000001`, `ADJ-DMG-000001`)
+  - `source_code`: unique, references `INVENTORY_CHECK.check_code`
+  - `reason`: references `REASON.reason` (`STOCKTAKE_DIFF`, `DAMAGED`, `DATA_ERROR`, `OTHER`)
+  - `adjusted_at`: execution date
+  - `status`: `PENDING`, `COMPLETED`, `PARTLY_COMPLETED`, `CANCELLED`
+- **Detail Table (`ADJUST_MOVEMENT_DETAIL`)**:
+  - `adjust_detail_id`: primary key
+  - `adjust_id`: foreign key to parent movement
+  - `product_id`: foreign key to product
+  - `from_status`: source warehouse status (`AVAILABLE`, `WARRANTY`, `SCRAPPED`)
+  - `to_status`: destination warehouse status (`AVAILABLE`, `WARRANTY`, `SCRAPPED`; must not be `OUT`)
+  - `adjust_quantity`: planned quantity to shift
+  - `actual_quantity`: actual number of units shifted
+
+### 5.5 Referential Linkage & Cardinality Invariant (`source_code` referencing `check_code`)
+- **Mandatory Linkage Rule**:
+  - Whenever an Inbound Transaction or Outbound Transaction is created with type `ADJ` (`ADJUSTMENT_IN` / `ADJUSTMENT_OUT`), its `source_code` **must strictly reference an existing `INVENTORY_CHECK.check_code`**.
+- **Cardinality Invariant (Quy tắc một đơn nhập, một đơn xuất, một điều chỉnh cho một kiểm kê)**:
+  - In `inbound_transaction`, `outbound_transaction`, and `adjustment_movement`, `source_code` carries a **UNIQUE (`[UQ]`) constraint**.
+  - A single inventory check (`check_code`) can be referenced by at most **one** Inbound Transaction (`ADJUSTMENT_IN`), at most **one** Outbound Transaction (`ADJUSTMENT_OUT`), and at most **one** Adjustment Movement (`ADJUSTMENT_MOVEMENT`).
+  - Associating multiple transactions of the same direction to the same inventory check (e.g., two outbound orders pointing to the same check) is strictly prohibited by schema and referential integrity.
+- **No-Customer Validation**:
+  - Both Inbound and Outbound adjustment transactions must have `customer_id == NULL`. The system must validate that no customer is selected before committing the order.
+
+---
+
+## 6. Code Formats and System Conventions
+
+All auto-generated codes and user inputs must strictly conform to `QuanLyKhoHang_schema.json`:
 
 1. **Transaction Codes (User Input with Format Validation)**:
-   - `inbound_code`: Typed manually by user. Must follow format `IN-<type_code>-<next_code_no>` (6 digits, e.g., `IN-PUR-000032`, `IN-ADJ-003223`, `IN-WCK-002313`), must match the selected inbound type, and must be verified unique in the database.
-   - `outbound_code`: Typed manually by user. Must follow format `OUT-<type_code>-<next_code_no>` (6 digits, e.g., `OUT-SEL-000999`, `OUT-ADJ-000001`, `OUT-RTS-999999`, `OUT-WRC-000001`), must match the selected outbound type, and must be verified unique in the database.
+   - `inbound_code`: Format `IN-<type_code>-<next_code_no>` (6 digits, e.g., `IN-PUR-000032`, `IN-ADJ-003223`, `IN-WCK-002313`), matches the selected inbound type, unique in database.
+   - `outbound_code`: Format `OUT-<type_code>-<next_code_no>` (6 digits, e.g., `OUT-SEL-000999`, `OUT-ADJ-000001`, `OUT-WRC-000001`), matches the selected outbound type, unique in database.
 2. **Logistics Codes (Auto-Generated)**:
-   - `delivery_code`: Automatically generated from `inbound_code`: `<inbound_code>-D<XX>` (2 digits, e.g., `IN-PUR-000032-D01`, `IN-WCK-002313-D02`).
-   - `shipment_code`: Automatically generated from `outbound_code`: `<outbound_code>-S<XX>` (2 digits, e.g., `OUT-SEL-000999-S01`).
-3. **Customer Codes (Auto-Generated)**:
+   - `delivery_code`: Format `<inbound_code>-D<XX>` (2 digits, e.g., `IN-PUR-000032-D01`, `IN-WCK-002313-D02`), derived from `inbound_transaction.next_delivery_no`.
+   - `shipment_code`: Format `<outbound_code>-S<XX>` (2 digits, e.g., `OUT-SEL-000999-S01`), derived from `outbound_transaction.next_ship_no`.
+3. **Inventory Check Code (Auto-Generated)**:
+   - Format: `CHK-<type>-<xxxxxx>` (6 digits, e.g., `CHK-QUAN-000001`, `CHK-UNIT-000001`), derived from `CHECK_TYPE.next_code_no`.
+4. **Adjustment Movement Code (Auto-Generated)**:
+   - Format: `ADJ-<reason_code>-<xxxxxx>` (6 digits, e.g., `ADJ-STD-000001`, `ADJ-DMG-000002`, `ADJ-DTE-000003`, `ADJ-OTH-000004`), derived from `REASON.next_code_no`.
+5. **Customer Codes (Auto-Generated)**:
    - Individual: `IN-xxxxxxx` (7 digits, e.g., `IN-0002340`).
    - Business: `BS-xxxxxxx` (7 digits, e.g., `BS-0002314`).
-   - Default Adjustment Customer: `BS-0000000` (ID `0`, name `None`, reserved as default customer for inventory adjustment transactions).
-4. **Product Code (Auto-Generated)**:
-   - `<producer_code>-<category_code>-<next_code_no(producer)>-<next_code_no(category)>` (e.g., `INTEL-CPU-0001-0001`).
-5. **Unit Serial (Auto-Generated / Scanned)**:
-   - `SN-` + 7 random characters (e.g., `SN-7K3PE33`), unique in warehouse inventory.
-6. **NULL Representation in Database**:
+   - Note: Adjustment transactions do not have a customer (`customer_id = NULL`).
+6. **Product Code (Auto-Generated)**:
+   - Format: `<producer_code>-<category_code>-<next_code_no(producer)>-<next_code_no(category)>` (e.g., `INTEL-CPU-0001-0001`, `NVI-GPU-0032-0034`, `SAM-SSD-0003-0031`).
+7. **Unit Serial (Auto-Generated / Scanned)**:
+   - `SN-` + 7 random alphanumeric characters (e.g., `SN-7K3PE33`), unique across inventory.
+8. **NULL Representation in Database**:
    - `NULL` is represented by `std::monostate` in the `Value` variant (`variant<monostate, int, double, string, bool>`).
-   - In code, check for `NULL` using `isNull(val)` and assign `NULL` using `Value{}` or `monostate{}`. The string representation of a null value is `"NULL"`.
+   - In code, check for `NULL` using `isNull(val)` and assign `NULL` using `Value{}` or `monostate{}`. String representation in CSV is `"NULL"`.
 
 ---
 
-## 6. Indexing, Query, and CRUD Architecture
+## 7. Indexing, Query, and CRUD Architecture
 
-### 6.1 Index Naming and Selection
+### 7.1 Index Naming and Selection
 - Index naming convention: `index_type + index_column` (where `index_type` is `hash`, `hash_tree`, or `avl_tree`).
-  - `hash`: For columns with unique values (primary keys, unique codes).
-  - `hash_tree`: For columns with a fixed set of values and many duplicates (e.g., category specs, `product.is_sold`, status, type).
-  - `avl_tree`: For date columns (supports range lookup).
+  - `hash`: For columns with unique values (primary keys, unique codes, serial numbers).
+  - `hash_tree`: For columns with a fixed set of values and many duplicates (e.g., category specs, `product.is_sold`, status, type, reason).
+  - `avl_tree`: For date columns (supports range lookups: `order_at`, `delivery_at`, `ship_at`, `check_at`, `adjusted_at`).
 
-### 6.2 Query Execution & Caching Flag (`user_query`)
+### 7.2 Query Execution & Caching Flag (`user_query`)
 - Query logic resides in the `query/` library and is implemented in `schema/UserQuery.*`.
 - **Strict Query Encapsulation in `schema/UserQuery.*`**:
   - All database queries, data lookups, table joins, filtered scans, and aggregations required by the system and UI must be implemented exclusively in `schema/UserQuery.*`.
   - Writing inline database queries, ad-hoc table lookups, or directly traversing table rows (`Table::getRows()`) inside UI files (`ui/*.cpp`) is strictly prohibited. The UI must only invoke standardized `user_query::*` functions.
-  - Any query logic found in the UI layer must be refactored into `schema/UserQuery.*`.
 - Table data is treated as read-only during queries: extract required data from the table (using indexes where applicable) into a `Vector<Record>`.
 - The extracted `Vector<Record>` must contain the table's `*_id` primary key column (hidden from UI view, reserved strictly for CRUD identification).
-- Implements queries across all domains: Warehouse, Category Hardware, Auxiliary Specs, and Customers (`individual_customer_query`, `business_customer_query`).
 - **UI Caching Flag Mechanism**:
   - The UI maintains a cache validity flag for query results.
   - When the user changes search criteria (selects a new filter column or enters a new filter value), the flag is raised (invalidated/reset), triggering a fresh database query via `user_query`.
-  - The resulting `Vector<Record>` is cached in the UI.
-  - Subsequent column sorting operates directly in-place on the cached `Vector<Record>&` (using `std::sort` via `sort_query_results`) without re-querying the database.
+  - The resulting `Vector<Record>` is cached in the UI. Subsequent column sorting operates directly in-place on the cached `Vector<Record>&` (using `std::sort` via `sort_query_results`) without re-querying the database.
   - When an insert, update, or delete operation succeeds, the cache flag is set to dirty/invalidated so that subsequent displays re-fetch fresh data from the database.
 
-#### 6.2.1 Pre-built Aggregate & Sort Functions
-- Provide 3 pre-built operations on `Vector<Record>` for both single columns and column pairs: `sum`, `count`, and `sort`.
-- **`sort`**: Sort directly in-place on the cached `Vector<Record>&`. Permitted to use C++ built-in `std::sort`.
-- **`sum` & `count`**: Must be implemented using custom `HashTable`.
-
-### 6.3 Create, Update, and Delete Architecture
-- To simplify record modification without SQL parsing overhead:
-  - Records in tables are modified directly through their `id` in the table (e.g., `product_id`, `delivery_id`, `customer_id`), without needing SQL `Condition` clauses at the user interface level.
-  - When a user interacts with the UI to update or delete a row, the UI retrieves the hidden `*_id` from the selected row in `Vector<Record>`.
-  - The UI calls the database/schema methods passing the target table name and record `id`.
-  - The parameters of update functions include: `tableName`, `record_id`, `Vector<string>& modifiedColumns`, `Vector<Value>& modifyingValues`.
-  - The parameters of insert functions include: `tableName`, `Record& r`.
-  - The parameters of delete functions include: `tableName`, `record_id`.
-  - Column names, constraints, datatypes, and referential integrity must be validated before modifying tables.
-  - **Strict CRUD Layering in `schema/`**:
-    - Implementation functions must be written in the designated schema files: `schema/UserCreate.*` for record creation, `schema/UserUpdate.*` for updates and unit status transitions, and `schema/UserDelete.*` for record deletion.
-    - Direct table manipulations, ad-hoc insertions, updates, or deletions within the UI layer (`ui/`) are strictly forbidden. All state-changing operations must route through `UserCreate`, `UserUpdate`, or `UserDelete`.
-
-#### 6.3.1 Error Handling & UI Return Contract for User CRUD
-- To ensure robust UI interaction without unhandled exceptions or application crashes, all functions in `UserCreate`, `UserUpdate`, and `UserDelete` must return an explicit status/result object (e.g., `struct OperationResult { bool success; std::string message; }` or equivalent error-reporting contract).
+### 7.3 Create, Update, and Delete Architecture & Validation Layers
+- Records in tables are modified directly through their `id` in the table (e.g., `product_id`, `delivery_id`, `check_id`), without needing SQL `Condition` clauses at the user interface level.
+- Implementation functions must be written in designated schema files: `schema/UserCreate.*`, `schema/UserUpdate.*`, and `schema/UserDelete.*`.
+- All CRUD functions must return an explicit status/result object (`OperationResult { bool success; std::string message; }`).
 - **Validation Layers**:
   1. **Schema & Existence Validation**:
-     - Verify that the target table exists in the database.
-     - For `UserUpdate` and `UserDelete`, verify that the record with the given `record_id` actually exists. If not found, return an error (e.g., `"Record not found with the specified ID"`).
-     - Verify that all columns in `modifiedColumns` exist in the schema and that types in `modifyingValues` are compatible with `Column::type` (preventing type mismatch or corrupt entries).
+     - Verify table existence, record existence by ID, column names, and type compatibility.
   2. **Integrity & Constraint Validation**:
-     - **NOT NULL**: Reject any operation setting a non-nullable column to `NULL` / `monostate`.
-     - **UNIQUE**: Validate that unique codes (`product_code`, `customer_code`, `inbound_code`, `outbound_code`, `serial`, etc.) are not duplicated across existing records.
-     - **Foreign Key Lookup**: Verify that foreign keys point to valid, existing parent records (e.g., `brand_id`, `category_id`, `customer_id`, `product_id`).
-     - **Referential Protection (`UserDelete`)**: Verify that the record is not referenced by any child table (e.g., cannot delete a `Product` referenced in `product_quantity`, `inbound_detail`, `outbound_detail`, or category hardware tables; cannot delete a `Customer` associated with transactions). If referenced, return a descriptive error (e.g., `"Cannot delete record: Active references exist in other tables"`).
+     - **NOT NULL**: Reject setting non-nullable columns to `NULL`.
+     - **UNIQUE**: Validate uniqueness for codes (`product_code`, `customer_code`, `inbound_code`, `outbound_code`, `check_code`, `adjust_code`, `serial`, `source_code`).
+     - **Foreign Key Lookup**: Verify that foreign keys point to valid, existing parent records.
+     - **Referential Protection (`UserDelete`)**: Verify that records are not referenced by any active transactional, logistics, audit, or inventory records before deletion.
   3. **Domain Business Logic Validation**:
-     - **Discontinued Product Restriction**: Block adding any product with `product.is_sold == FALSE` to inbound or outbound transactions.
-     - **Logistics Product Scope**: Reject any delivery or shipment detail that contains products not present in the parent transaction's details.
-     - **Chronological Date Validation**: Reject dates where `delivery_at < order_at` or `ship_at < order_at`.
-     - **Outbound Quantity Flexibility**: Outbound transaction quantities (`ordered_quantity`) are **permitted to exceed current warehouse stock** (no error/rejection if ordered quantity > current inventory). Actual unit dispatch is validated when assigning physical serial units to shipments.
-     - **Immutable Fields Protection (`UserUpdate`)**: Reject modification of frozen fields (e.g., quantities, order items, transaction codes, customer IDs). Only `status`, `delivery_at`, and `ship_at` are updatable on orders/logistics.
-     - **Strict Logistics Allocation Equality**: In transaction creation, validate that for each product, the sum of quantities across all deliveries/shipments equals the ordered quantity of the transaction ($\sum \text{received\_quantity} == \text{ordered\_quantity}$).
-     - **Post-Confirmation Logistics Lock**: Reject any attempt to create additional delivery or shipment records after a transaction has been confirmed/created.
-- **UI Integration & Error Consumption**:
-  - The UI calls `UserCreate` / `UserUpdate` / `UserDelete` and evaluates `result.success`:
-    - **On Failure (`result.success == false`)**: The UI displays a clear modal warning or error dialog (`QMessageBox::warning` or `QMessageBox::critical`) showing `result.message`, keeping the dialog open so the user can correct their input. The query cache flag remains untouched.
-    - **On Success (`result.success == true`)**: The UI closes the dialog, shows a confirmation message/toast if needed, and invalidates/resets the query cache flag (`cache_valid = false`) to automatically refresh table views with updated data.
+     - **`is_sold` Validation**:
+       - Reject changing `product.is_sold` to `FALSE` if $\text{total\_quantity} > 0$.
+       - Atomically insert an audit record into `IS_SOLD_CHANGING` on every status change.
+     - **Adjustment Transaction Validation (`ADJ`)**:
+       - If transaction type is `ADJUSTMENT_IN` or `ADJUSTMENT_OUT`:
+         - Enforce that `customer_id` is `NULL` (no customer). If a customer is provided, reject!
+         - Enforce that `source_code` is NOT NULL and exists in `INVENTORY_CHECK.check_code`.
+         - Enforce uniqueness: Ensure this `check_code` does not already have an existing transaction of this direction (`INBOUND` or `OUTBOUND`).
+     - **Commercial Transaction Validation**:
+       - If transaction is non-ADJ: enforce that `customer_id` is provided and exists in `customer`.
+     - **Inbound Unit Transition Validation**:
+       - Enforce that any unit attached to an Inbound Delivery has `old_status == NULL` or `old_status == OUT`.
+       - If unit is currently inside the warehouse (`AVAILABLE`, `WARRANTY`, `SCRAPPED`), reject immediately!
+       - If inbound type is `ADJ`: allow `new_status` to be `AVAILABLE`, `WARRANTY`, or `SCRAPPED`.
+     - **Outbound Unit Transition Validation**:
+       - Enforce that any unit attached to an Outbound Shipment has `new_status == OUT`.
+       - Enforce that candidate units currently exist in warehouse matching outbound type preconditions.
+     - **Chronological Date Validation**: `delivery_at >= order_at` and `ship_at >= order_at`.
+     - **Logistics Allocation Equality**: $\sum \text{received\_quantity} == \text{ordered\_quantity}$.
+     - **Post-Confirmation Logistics Lock**: Reject adding deliveries or shipments after transaction confirmation.
 
 ---
 
-## 7. UI Rules (Qt Widgets)
+## 8. UI Rules (Qt Widgets)
 
-### 7.1 Architecture & Separation of Concerns
+### 8.1 Architecture & Separation of Concerns
 - Use **Qt Widgets** with C++17; store all UI code in `ui/`.
 - UI classes may freely use Qt containers and presentation widgets, but must remain strictly separated from database storage, custom data structures, and core inventory business logic.
-- Do not modify auto-generated Qt files (e.g., `ui_*.h`) directly.
-- Preserve existing UI behavior when modifying interfaces unless explicitly instructed otherwise.
-- The `Vector<Record> results` contain `*_id` (e.g., `product_id`, `cpu_id`, `inbound_id`), but **do not display this ID on the screen**. It is used exclusively as internal metadata for CRUD operations.
-- The UI must manage the cache validity flag for query results as defined in Section 6.2.
-- **Architectural Boundary & Prohibition of Queries/CRUD in UI Layer**:
-  - UI classes must strictly function as presentation and user-interaction components.
-  - UI code must **never** write custom queries, execute raw table scans (`getTable()->getRows()`), manipulate internal table pointers, or directly mutate table rows.
-  - All data retrieval and operations must route through the respective schema modules: `schema/UserQuery.*` for all queries and aggregations, `schema/UserCreate.*` for record additions, `schema/UserUpdate.*` for record and unit status modifications, and `schema/UserDelete.*` for record removals.
-  - Any ad-hoc queries previously implemented directly on the UI must be migrated to `schema/UserQuery.*`.
+- UI code must **never** write custom queries, execute raw table scans (`getTable()->getRows()`), manipulate internal table pointers, or directly mutate table rows.
+- The `Vector<Record> results` contain `*_id` columns; **do not display primary key IDs on the screen**. They are used exclusively as internal metadata for CRUD operations.
 
-### 7.2 Dedicated Windows and Dialogs for CRUD
-- **Insert Windows (Dedicated Dialogs)**:
-  - **Product Insertion**: A dedicated dialog providing dropdowns to select `Category` and `Brand`, and dynamic specification selectors populated from the respective `<category>_specs` sub-tables. `product_code` is automatically generated.
-  - **Transaction & Logistics Insertion (Inbound / Outbound)**:
-    - Precondition check: prompts or allows quick creation of `Customer` if not present (with auto-generated customer code). For inventory adjustment transactions (`ADJUSTMENT_IN` / `ADJUSTMENT_OUT`), the customer field automatically defaults to `BS-0000000`.
-    - Pairs `Inbound Transaction` with `Delivery`, or `Outbound Transaction` with `Shipment`.
-    - Includes a sub-form to add containing products and their quantities.
-    - **Active Product Enforcement**: Dropdowns and selectors for product items must strictly filter out discontinued products (`product.is_sold == FALSE`), ensuring users can only select products currently active on sale.
-    - **Logistics Product Scope**: Delivery and shipment records must only allow products defined in the parent transaction's product list.
-    - **Date Pickers Validation**: Ensure `delivery_at >= order_at` and `ship_at >= order_at` (actual date can be before expected date, but not before order date).
-    - Outbound check: Allows inputting order quantities exceeding current warehouse stock. Physical unit attachment is constrained to available units during unit dispatch.
-    - **Strict Multi-Batch Allocation & Post-Confirmation Lock**:
-      - When creating a transaction with multiple delivery/shipment batches, the total allocated quantity for each product across batches must equal the transaction's ordered quantity before the transaction can be confirmed.
-      - Once the transaction is confirmed, no additional deliveries or shipments can be added.
-    - **CRUD Error Handling**: Consume `OperationResult` from `UserCreate` to display explicit error alerts (`QMessageBox::critical`) if validation fails, preventing form submission.
-  - **Unit Entry and Processing for Delivery & Shipment**:
-    - **Unified Serial Scanning / Direct Input (Nhập Serial trực tiếp không cần chọn trước sản phẩm)**:
-      - When receiving (`Delivery`) or dispatching (`Shipment`) units, the user enters or scans the unit's serial into a single unified serial input field.
-      - The user is **not** required to select or click a specific product first before typing the serial.
-      - **Automated Scope & Product Validation**:
-        - For existing units in the warehouse, the system automatically looks up the unit's `serial` via `unit_inventory` to determine its corresponding `product_id`.
-        - The system strictly checks whether this product is declared in the items list of the current order (`delivery_detail` for Delivery, `shipment_detail` for Shipment). If the unit belongs to an external product not part of the order, the input is rejected immediately with an explicit error dialog ("Đơn vị sản phẩm không thuộc bất kỳ sản phẩm nào trong đơn hàng").
-        - The system verifies that the product's received/dispatched quantity has not already reached the order batch limit (`actual_quantity < received_quantity`). If full, the entry is rejected.
-        - Valid entries update the unit's status in accordance with business rules, log an immutable record into `status_history`, and automatically increment `actual_quantity`.
-    - **Unit Selection Helper Dialog (Cửa sổ hỗ trợ chọn Unit thử nghiệm nghiệp vụ)**:
-      - Because physical products and hardware barcode scanners are unavailable in this environment, the UI provides a dedicated **Unit Selection Helper Dialog** to facilitate testing and verifying business workflows.
-      - Allows users to browse and pick existing eligible warehouse units to attach to the `Delivery` or `Shipment` (simulating physical barcode scanning).
-      - **Product Filter**: Provides a product filter (combobox or selector restricted strictly to products declared in the active order) so users can quickly filter and select candidate units belonging to a specific product.
-      - Displays candidate units with their Serial, Product Name, and current status, ensuring only eligible units matching the transaction type's precondition rules can be selected.
-      - Selecting unit(s) and confirming adds them directly to the delivery/shipment, equivalent to manual serial scanning.
-  - **Delivery & Shipment Unit Inspection View (Danh sách Unit bị thay đổi trạng thái khi bấm vào Delivery / Shipment)**:
-    - When clicking on a `Delivery` or `Shipment` record in the transaction view, the UI must provide a dedicated inspection view displaying the list of all units whose status was changed by that specific delivery or shipment batch.
-    - Each unit row in this view must explicitly show:
-      1. **Tên sản phẩm (Product Name)**: The name of the product corresponding to the unit (`product.product_name`).
-      2. **Số Serial (Unit Serial)**: Unique serial number of the unit (`unit_inventory.serial`).
-      3. **Trạng thái ban đầu (Old / Initial Status)**: Status prior to this operation (`status_history.old_status` or `NULL` for new purchase).
-      4. **Trạng thái kết thúc / hiện tại (New / Final Status)**: Status resulting from this delivery/shipment (`status_history.curr_status` / `unit_inventory.status`).
-    - **Status Summary Button (Nút bấm tổng kết số lượng theo từng trạng thái Unit)**:
-      - Inside this changed-units inspection view, provide a dedicated action button: **"Tổng kết trạng thái" (Status Summary)**.
-      - Clicking this button computes and presents an aggregated breakdown of unit counts grouped by each unit status for that specific delivery or shipment (e.g. `AVAILABLE: X`, `SCRAPPED: Y`, `WARRANTY: Z`, `OUT: W`, Total: `N`), powered by `UserQuery` aggregation logic using `HashTable`.
-  - **Order Detail Inspection Window**:
-    - Both Transaction and Delivery/Shipment interfaces must have an action button to open a sub-window displaying the list of products in that specific order.
-    - This window executes the detail query logic (`inbound_detail_query`, `delivery_detail_query`, `outbound_detail_query`, or `shipment_detail_query`) filtered specifically by that order's code (showing products, quantities, prices, etc., without listing individual units).
-  - **Order Completion Confirmation Dialog (Cửa sổ xuất xác nhận hoàn thành đơn)**:
-    - Whenever changing the status of an order, delivery, or shipment to `COMPLETED`:
-      - Pops up a dedicated confirmation modal window.
-      - Requires checking a confirmation checkbox (`QCheckBox`, e.g. `"Tôi xác nhận đã kiểm đếm đầy đủ các đơn vị sản phẩm và đồng ý hoàn tất đơn hàng"`).
-      - Features a Confirmation button (`"Xác nhận hoàn thành"`, enabled only when ticked) and a Cancel button (`"Chưa hoàn thành"` / `"Hủy"`).
-      - Once confirmed, locks all unit modifications for that order.
+### 8.2 Dedicated Windows and Dialogs for CRUD & Operations
+- **Product Management View**:
+  - Conforms to Note 9 of `QuanLyKhoHang_schema.json`: The main table view displays `PRODUCT_QUANTITY_QUERY` (`product_code`, `barcode`, `sku`, `product_name`, `available_quantity`, `warranty_quantity`, `scrapped_quantity`).
+  - Expanding or opening the product sub-window shows full detailed specifications (`product_query` + hardware category specs).
+  - **Discontinuance Switch (`is_sold`)**:
+    - The UI provides a toggle/switch for product selling status.
+    - If the user attempts to switch `is_sold` to `FALSE` while total quantity > 0, the UI must block the switch and display a warning dialog (`QMessageBox::warning`: "Không thể ngừng bán sản phẩm khi số lượng tồn kho vẫn còn lớn hơn 0").
+    - When successfully toggled, calls `UserUpdate`, which logs the transition to `IS_SOLD_CHANGING`.
+- **Transaction Creation Dialog (Inbound / Outbound)**:
+  - **Dynamic Customer & Source Code Handling Based on Transaction Type**:
+    - When the user selects transaction type `ADJUSTMENT_IN` or `ADJUSTMENT_OUT`:
+      - The customer selection field is **completely disabled or hidden** (enforcing no customer).
+      - The `source_code` field becomes **mandatory**: presents a combobox/selector of available `INVENTORY_CHECK` records (`check_code`).
+    - When the user selects a standard commercial type (`PUR`, `SEL`, `WCK`, `WRP`, `CRT`, `WRT`, `WRC`):
+      - The customer selection field is **mandatory** (allowing selection or quick creation of `Customer`).
+      - The `source_code` field is optional.
+  - **Active Product Enforcement**: Dropdowns and item selectors strictly filter out discontinued products (`product.is_sold == FALSE`).
+  - **Logistics Product Scope**: Delivery/Shipment detail rows must only contain products defined in the parent transaction's detail rows.
+  - **Date Pickers Validation**: Ensure `delivery_at >= order_at` and `ship_at >= order_at`.
+- **Unit Entry and Processing for Delivery & Shipment**:
+  - **Unified Serial Scanning / Direct Input**: Users enter/scan unit serials into a single input field without needing to click a product first.
+  - **Validation & Status Precondition Enforcement**:
+    - For Inbound deliveries: strictly verifies that the unit's `old_status` is `NULL` or `OUT`. If the unit already exists in the warehouse, the UI rejects the scan with an explicit error alert.
+    - For Outbound shipments: strictly verifies that the unit currently exists in the warehouse in an eligible status (`AVAILABLE`, `WARRANTY`, `SCRAPPED`).
+    - Updates `unit_inventory`, writes to `status_history`, and increments `actual_quantity`.
+  - **Unit Selection Helper Dialog**: Simulates barcode scanning by allowing users to browse and pick candidate units satisfying preconditions.
+  - **Delivery & Shipment Changed Units Inspection View**: Shows all units whose status was altered by that batch (Product Name, Serial, Old Status, New Status) and features a "Tổng kết trạng thái" (Status Summary) button aggregating unit counts by status using `HashTable`.
+  - **Order Completion Confirmation Dialog**: Modal popup with mandatory confirmation checkbox before setting status to `COMPLETED`.
+- **Inventory Check Interface (Kiểm Kê Kho)**:
+  - Provides two distinct tabs/workflows:
+    1. **Kiểm kho số lượng (`CHK-QUAN`)**:
+       - Displays products with system quantities snapshot (`system_available_quan`, etc.).
+       - Allows inputting actual counted quantities (`actual_available_quan`, etc.).
+       - Displays calculated discrepancy.
+       - Features an explicit action button: **"Xác nhận tạo đơn điều chỉnh"**. Clicking this button creates the corresponding `ADJUSTMENT_IN` or `ADJUSTMENT_OUT` transaction (with `source_code = check_code`, `customer_id = NULL`).
+    2. **Kiểm kho chi tiết (`CHK-UNIT`)**:
+       - Displays unit-by-unit verification list with `system_status` and `scanned_status`.
+       - Features explicit action buttons: **"Tạo đơn nhập điều chỉnh (ADJ-IN)"**, **"Tạo đơn xuất điều chỉnh (ADJ-OUT)"**, and **"Tạo đơn điều chỉnh nội bộ (Movement)"**. Each order is generated **only upon user confirmation**.
+- **Internal Adjustment Movement Interface (Điều Chỉnh Nội Bộ)**:
+  - Displays records from `ADJUSTMENT_MOVEMENT` and `adjust_movement_detail`.
+  - Shows `adjust_code`, `source_code` (referencing `check_code`), `reason` (`STOCKTAKE_DIFF`, `DAMAGED`, `DATA_ERROR`, `OTHER`), and status.
 
-### 7.3 Navigation & Menus
-- **Warehouse vs. Reference Separation**: All category tables (`CPU`, `GPU`, `Mainboard`, etc.), specification sub-tables, `Category`, and `Brand` must be separated from the main warehouse inventory view.
-- Add a menu **`Danh mục sản phẩm`** containing all product category tables.
-- Add a menu **`Danh mục phụ`** providing access to query specification tables, `Category`, and `Brand`.
-- **Customer Domain Separation**:
-  - All customer tables (`customer`, `individual_info`, `business_info`) must be separated from the warehouse table into their own domain and sidebar list.
-  - Add a dedicated menu **`Khách hàng`** containing separate choices for:
-    - **Khách hàng cá nhân (Individual)**
-    - **Khách hàng doanh nghiệp (Business)**
-  - Customer queries:
-    - `customer_id` must be retained in the query `Record` internally for CRUD/identification, but must remain hidden from UI table columns.
-    - **Individual Customer** (`individual_customer_query`): Mã khách hàng (`customer.customer_code`), Tên khách hàng (`customer.name`), Số điện thoại (`individual_info.phone_number`), Email (`individual_info.email`).
-    - **Business Customer** (`business_customer_query`): Mã đối tác / DN (`customer.customer_code`), Tên doanh nghiệp (`customer.name`), Mã số thuế (`business_info.tax_code`), Số điện thoại (`business_info.phone_number`), Email (`business_info.email`).
-- **Report Domain Separation**:
-  - Add a dedicated top menu **`Báo cáo`** and a dedicated navigation choice for **`Báo cáo xuất nhập tồn định kỳ`** (Periodic Inventory Movement Report), separated into its own domain and isolated from operational CRUD tables.
+### 8.3 Navigation & Menus
+- **Warehouse vs. Reference Separation**: All category tables, specification sub-tables, `Category`, and `Brand` are isolated under menu **`Danh mục sản phẩm`** and menu **`Danh mục phụ`**.
+- **Customer Domain**: Isolated under menu **`Khách hàng`** (choices for Khách hàng cá nhân and Khách hàng doanh nghiệp).
+- **Inventory Audit Domain**: Dedicated top menu **`Kiểm kê kho`** for inventory checks and internal adjustment movements.
+- **Report Domain**: Dedicated top menu **`Báo cáo`** for Periodic Inventory Movement Report.
 
-### 7.4 Column Filtering & Input Controls
-- Call `user_query` functions to filter by the user-selected column:
-  - **Primary Key / Unique / Code**: Text input for exact hash lookup.
-  - **Date**: Date-range picker (`from date` -> `to date`) using AVL tree range lookup.
-  - **Foreign Keys / Multi-duplicate Attributes** (e.g., category specs, `product.is_sold` (`TRUE`: đang bán, `FALSE`: ngừng bán), `type`, `status`): Allow selection from a dropdown/list (backed by `HashTree`) in addition to or instead of raw typing.
-  - **Customer Views**: Allow filtering by customer code (`customer_code`, Hash lookup), customer/business name (`name`), phone number (`phone_number`), email (`email`), and tax code (`tax_code`).
-- Enforce valid predefined specification values at the UI level when adding products.
+### 8.4 Column Filtering & Input Controls
+- Primary Key / Unique / Code: Hash lookup.
+- Date: AVL tree range lookup (`from date` -> `to date`).
+- Foreign Keys / Categorical Attributes (`product.is_sold`, status, type, reason): Dropdown selection backed by `HashTree`.
+- Customer Views: Filter by customer code, name, phone, email, and tax code.
 
 ---
 
-## 8. Auxiliary Tools
+## 9. Auxiliary Tools
 
-### 8.1 Transaction Data Generator
-- **Scope**: Generates transaction-flow test data only (Transactions, `Delivery`, `Shipment`, `Unit`, and `status_history`). Must not generate master data (`Brand`, `Category`, `Product`, or specification tables) or alter schema/table implementations.
-- **Independence**: Generator logic must remain decoupled from internal database/table/query classes.
-- **Strict Business Logic Compliance (Tuân thủ nghiệp vụ hệ thống)**:
-  - **Pairwise Logistics Association (Quy tắc cặp giao dịch - Section 4.3)**:
-    - Every Inbound Transaction must be paired with one or more `Delivery` records (`inbound_transaction` + `inbound_detail` with `delivery` + `delivery_detail`). Total received quantity across deliveries must strictly equal the inbound order quantity for every product.
-    - Every Outbound Transaction must be paired with one or more `Shipment` records (`outbound_transaction` + `outbound_detail` with `shipment` + `shipment_detail`). Total shipped quantity across shipments must strictly equal the outbound order quantity for every product.
-    - All delivery/shipment records are established exclusively during transaction creation; creating additional deliveries or shipments for an already confirmed transaction is strictly prohibited.
-    - **Product Eligibility & Scope**: The generator must only choose products where `product.is_sold == TRUE` for generating transactions. Furthermore, `delivery_detail` and `shipment_detail` must strictly contain only products that are part of the parent transaction's details (`inbound_detail` / `outbound_detail`).
-    - **Chronological & Historical Date Generation (Quy tắc ngày sinh dữ liệu)**:
-      - **Strictly Earlier Than Generation Date (Ngày sinh ra phải nhỏ hơn ngày bấm nút gen)**: All generated dates (`order_at`, `expected_at`, `delivery_at`, `ship_at`, and `date` in `status_history`) must strictly precede / be smaller than the date when the generator is executed/triggered (`generated_date < generation_trigger_date`). Generating transactions with dates on or after the trigger date is strictly prohibited.
-      - **Internal Chronological Constraints**: Logistics dates may be generated earlier than, equal to, or later than expected dates, but must strictly satisfy `delivery_at >= order_at` and `ship_at >= order_at`.
-  - **Unit Status Lifecycle & Precondition Enforcement (Vòng đời và điều kiện chuyển trạng thái - Section 4.4)**:
-    - **Outbound Types** (Target status of all units **must be `OUT`**):
-      - `SEL` (Selling - Bán hàng): Precondition requires selected units to currently have status `AVAILABLE` (`AVAILABLE -> OUT`).
-      - `WRT` (Warranty Return - Xuất trả bảo hành/lỗi): Precondition requires units with status `SCRAPPED` or `WARRANTY` (`SCRAPPED / WARRANTY -> OUT`).
-      - `WRC` (Warranty Replacement to Customer - Xuất trả đổi bảo hành): Precondition requires units with status `AVAILABLE` or `WARRANTY` (`AVAILABLE / WARRANTY -> OUT`).
-      - `ADJ` (Adjustment Out - Xuất điều chỉnh / kiểm kê giảm kho): Precondition requires units currently in warehouse (`AVAILABLE / WARRANTY / SCRAPPED -> OUT`). Customer defaults to `BS-0000000`.
-      - **Outbound Stock Quantity Rule**: Outbound transaction quantities (`ordered_quantity`) are permitted to exceed current warehouse stock. For physical unit dispatch in shipments, only currently eligible units in stock are transitioned.
-    - **Inbound Types** (Target status **must never be `OUT`**; must transition into `AVAILABLE`, `WARRANTY`, or `SCRAPPED`):
-      - `PUR` (Purchasing - Mua hàng/nhập mới): Precondition is uncreated/new units (`NULL -> AVAILABLE` for normal stock, or `NULL -> SCRAPPED` for items defective upon receiving). Automatically generates unique serial `SN-` + 7 alphanumeric characters and registers new units into `unit_inventory`.
-      - `WRP` (Warranty Replacement - Nhập hàng đổi bảo hành từ NCC): Precondition is new replacement units (`NULL -> WARRANTY`). Generates unique serial into `unit_inventory`.
-      - `WCK` (Warranty Checking - Nhận hàng bảo hành từ khách): Precondition requires previously dispatched units (`OUT -> WARRANTY`).
-      - `CRT` (Customer Return - Khách trả lại hàng): Precondition requires previously dispatched units (`OUT -> AVAILABLE`, `WARRANTY`, or `SCRAPPED`).
-      - `ADJ` (Adjustment In - Nhập điều chỉnh kho): Precondition allows units from any previous status (`NULL`, `OUT`, `AVAILABLE`, `WARRANTY`, `SCRAPPED`). Permitted to transition from any status to any internal warehouse status (`AVAILABLE`, `WARRANTY`, `SCRAPPED`), strictly prohibiting transitions where target status is `OUT` (`* -> OUT` is invalid). If uncreated (`NULL`), automatically generates unique serial into `unit_inventory`. Customer defaults to `BS-0000000`.
-  - **Quantity Synchronization & Inventory Consistency (Đồng bộ số lượng tồn kho - Section 4.2 & 4.4.3)**:
-    - The number of unit status transitions must strictly match and not exceed `Delivery.received_quantity` or `Shipment.shipped_quantity`.
-    - Every unit status transition must atomically update `product_quantity` (`available_quan`, `warranty_quan`, `scrapped_quan`, `total_quantity`).
-  - **Immutable Chronological History Logging (Ghi nhận lịch sử trạng thái - Section 4.4.3)**:
-    - Every unit transition automatically creates an immutable record in `status_history` logging `serial`, `old_status`, `curr_status`, `transaction` (delivery/shipment code), `type` (`INBOUND` / `OUTBOUND`), and `date` in strict chronological order.
-  - **Code Formatting & Customer Linkage (Định dạng mã và liên kết đối tác - Section 4.1 & Section 5)**:
-    - Generates valid transaction and logistics codes conforming strictly to schema format: `inbound_code` (`IN-<type_code>-<next_code_no>`, 6 digits), `outbound_code` (`OUT-<type_code>-<next_code_no>`, 6 digits), `delivery_code` (`<inbound_code>-D<XX>`, 2 digits), `shipment_code` (`<outbound_code>-S<XX>`, 2 digits), and `serial` (`SN-` + 7 alphanumeric characters).
-    - Every transaction must reference an existing valid customer (`customer_id`) conforming to customer code rules (`IN-xxxxxxx` for individuals, `BS-xxxxxxx` for businesses). For inventory adjustment transactions (`ADJUSTMENT_IN` / `ADJUSTMENT_OUT`), the customer must default to **`BS-0000000`** (`customer_id = 0`).
-- **Console Workflow**: Provides an interactive console UI allowing the user to select transaction types (Inbound / Outbound), products, quantities, and delivery/shipment batch splits, as well as an automated batch mode for test data generation.
+### 9.1 Transaction Data Generator
+- **Scope**: Generates transaction-flow test data only (Transactions, `Delivery`, `Shipment`, `Unit`, `status_history`, `inventory_check`, `adjustment_movement`). Must not alter master data or schema implementations.
+- **Strict Business Logic Compliance**:
+  - **Pairwise Logistics Association**: Every Inbound/Outbound transaction is paired with delivery/shipment records with total quantity equality ($\sum \text{received\_quantity} == \text{ordered\_quantity}$).
+  - **Product Eligibility & Scope**: Chooses only products with `product.is_sold == TRUE`.
+  - **Chronological Date Generation**: All generated dates must precede the execution date (`generated_date < generation_trigger_date`), with `delivery_at >= order_at` and `ship_at >= order_at`.
+  - **Unit Status Lifecycle Preconditions**:
+    - Inbound units: ONLY generated from `old_status == NULL` or `old_status == OUT`.
+    - Outbound units: target status strictly `OUT`.
+    - Inbound `ADJ`: transitions `OUT / NULL -> AVAILABLE / SCRAPPED / WARRANTY`.
+  - **Adjustment Transactions Compliance**:
+    - All generated `ADJ` transactions must have `customer_id = NULL` (no customer).
+    - All generated `ADJ` transactions and `adjustment_movement` records must have `source_code` linking to a valid `INVENTORY_CHECK.check_code`.
+    - Strictly obeys the single-check cardinality invariant (at most 1 Inbound ADJ, 1 Outbound ADJ, 1 Movement per check).
+  - **Commercial Transactions Compliance**: Every commercial transaction links to a valid `customer_id`.
+  - **Quantity Synchronization**: Atomically updates `available_quantity`, `warranty_quantity`, and `scrapped_quantity` in `product`.
+  - **History Logging**: Immutable chronological logging into `status_history`.
 
-### 8.2 Data Crawler
-- **Implementation**: May be implemented in **Python** to scrape authentic product data into category-organized CSV files.
-- **Strict Product & Category Classification**:
-  - Must categorize products strictly into the 8 defined hardware categories: `CPU`, `GPU`, `MAINBOARD`, `RAM`, `SSD`, `PSU`, `COOLING`, `CASE`.
-  - Must map each product to a valid manufacturer/brand in `brand` (e.g., `INTEL`, `AMD`, `NVIDIA`, `ASUS`, `MSI`, `GIGABYTE`, `SAMSUNG`, `CORSAIR`, `KINGSTON`, `WESTERN DIGITAL`).
-  - Must automatically generate `product_code` conforming to `<producer_code>-<category_code>-<next_code_no(producer)>-<next_code_no(category)>` (e.g., `INTEL-CPU-0001-0001`).
-- **Accurate Category-Specific Specifications Classification (Phân loại đúng specs của sản phẩm)**:
-  - Must strictly classify and isolate specifications specific to each category, conforming precisely to `QuanLyKhoHang_schema.json`. Never merge, confuse, or apply generic specifications across categories:
-    - **`CPU`**: `socket` (e.g., `LGA1700`, `AM5`), `tier` (e.g., `I3`, `I5`, `I7`, `I9`, `R5`, `R7`, `R9`), `series` (e.g., `intel 13th`, `intel 14th`, `amd 7000`, `amd 9000`).
-    - **`GPU`**: `series` (e.g., `RTX 4070`, `RX 7800`), `producer` (`NVIDIA`, `AMD`), `vram` (integer in GB, e.g., 8, 12, 16, 24).
-    - **`MAINBOARD`**: `cpu_support` (`INTEL`, `AMD`), `socket` (e.g., `LGA1700`, `AM5`), `size` (`ATX`, `Micro-ATX`, `Mini-ITX`), `chipset` (e.g., `B760`, `Z790`, `B650`, `X670`), `ram_support` (`DDR4`, `DDR5`).
-    - **`RAM`**: `generation` (`DDR4`, `DDR5`), `quantity` (kit count, e.g., 1, 2), `capacity` (e.g., `16GB`, `32GB`), `bus` (e.g., `3200MHz`, `6000MHz`).
-    - **`SSD`**: `type` (`NVMe M.2`, `SATA III`), `gen` (`PCIe 3.0`, `PCIe 4.0`, `PCIe 5.0`), `capacity` (e.g., `500GB`, `1TB`, `2TB`).
-    - **`PSU`**: `quality` (`80 Plus Bronze`, `80 Plus Gold`, `80 Plus Platinum`), `capacity` (wattage integer, e.g., 650, 750, 850, 1000), `size` (`ATX`, `SFX`).
-    - **`COOLING`**: `type` (e.g., `Air Cooling`, `AIO Liquid 240mm`, `AIO Liquid 360mm`).
-    - **`CASE`**: `size` (`Mid Tower`, `Full Tower`, `Mini Tower`), `product_name`.
-  - **Specification Sub-tables Organization**:
-    - Specification values must be properly extracted, deduplicated, and stored into category specification sub-tables under `data/<category>_specs/` (each sub-table containing exactly two columns: `id` and `spec`).
-    - Category hardware tables (`cpu`, `gpu`, `mainboard`, `ram`, `ssd`, `psu`, `cooling`, `case`) must strictly maintain valid foreign key references to `product.product_id` and the corresponding specification IDs/values.
-    - Prohibit mixing or interchanging specifications between different product categories.
-  - **Schema & Relational Integrity**:
-    - All crawled and exported data must strictly satisfy all data types, column names, constraints, and relationships in `QuanLyKhoHang_schema.json` so outputs can be cleanly loaded without modifying schema or existing records.
+### 9.2 Data Crawler
+- **Implementation**: Implemented in **Python** to scrape authentic product data into category-organized CSV files.
+- **Strict Product & Category Classification**: 8 categories (`CPU`, `GPU`, `MAINBOARD`, `RAM`, `SSD`, `PSU`, `COOLING`, `CASE`).
+- **Product Code Auto-Generation**: `<producer_code>-<category_code>-<next_code_no(producer)>-<next_code_no(category)>`.
+- **Accurate Category-Specific Specifications Classification**:
+  - `CPU`: `socket`, `tier` (`I3`, `I5`, `I7`, `I9`, `R3`, `R5`, `R7`, `R9`, `XE`, `TR`, `EP`, etc.), `series` (e.g., `intel 12th`, `intel 13th`, `intel 14th`, `amd 7000`, `amd 9000`).
+  - `GPU`: `series`, `producer` (`NVIDIA`, `AMD`), `vram` (GB integer).
+  - `MAINBOARD`: `cpu_support` (`INTEL`, `AMD`), `socket`, `size`, `chipset`, `ram_support`.
+  - `RAM`: `generation`, `quantity`, `capacity`, `bus`.
+  - `SSD`: `type`, `gen`, `capacity`.
+  - `PSU`: `quality`, `capacity`, `size`.
+  - `COOLING`: `type`.
+  - `CASE`: `size`, `product_name`.
+  - Extracted and stored into sub-tables under `data/<category>_specs/` (two columns: `id` and `spec`).
 
 ---
 
-## 9. Periodic Inventory Movement Report (Báo Cáo Xuất - Nhập - Tồn Định Kỳ)
+## 10. Periodic Inventory Movement Report (Báo Cáo Xuất - Nhập - Tồn Định Kỳ)
 
-### 9.1 Overview & Scope
-- **Reporting Period**: Monthly basis (e.g., Month `MM`, Year `YYYY`).
+### 10.1 Overview & Scope
+- **Reporting Period**: Monthly basis (Month `MM`, Year `YYYY`).
 - **Product Scope & Dynamic Monthly Filtering**:
-  - Does **not** restrict products by current selling status (`product.is_sold == TRUE`). Even if a product is discontinued (`is_sold == FALSE`), it must still be included in the report if it had transactions or stock during the reporting month, ensuring complete and accurate historical auditing when querying past periods.
-  - **Exclusion Rule (Quy tắc loại trừ)**: The report must exclude (not include) any product that simultaneously satisfies both conditions in the reporting month:
-    1. **No transactions occurred** in that month (neither inbound nor outbound: `inbound_quantity == 0` and `outbound_quantity == 0`).
-    2. **Total stock is zero** at the end of that month (`closing_stock == 0`, i.e., `available_quan + warranty_quan + scrapped_quan == 0`), and opening stock was also zero (`opening_stock == 0`).
-  - **Inclusion Criteria (Điều kiện đưa vào báo cáo)**: A product is included in the monthly report if in that month it had any transaction activity (`inbound_quantity > 0` or `outbound_quantity > 0`) OR maintained non-zero inventory (`opening_stock > 0` or `closing_stock > 0`).
+  - Historical inclusivity: Products with `product.is_sold == FALSE` are included if they had transactions or non-zero stock during the reporting month.
+  - **Exclusion Rule**: Excludes products that simultaneously have zero transactions (`inbound_quantity == 0` and `outbound_quantity == 0`) AND zero inventory (`opening_stock == 0` and `closing_stock == 0`).
+  - **Inclusion Criteria**: Included if transactions occurred in the month OR inventory was held (`opening_stock > 0` or `closing_stock > 0`).
 
-### 9.2 Report Columns & Data Structure
-The periodic inventory report contains the following columns for each eligible product:
-1. **`product_code`** (Mã sản phẩm): Unique product code (from `product.product_code`).
-2. **`product_name`** (Tên sản phẩm): Full product name/description (from `product.product_name`).
-3. **`opening_stock`** (Tồn đầu kỳ): Total stock quantity remaining in warehouse up to 23:59:59 of the last day of the month preceding the reporting month (e.g., for a September 2026 report, calculates cumulative stock movements through August 31, 2026).
-4. **`inbound_quantity`** (Tổng nhập trong tháng): Total quantity of goods actually received into warehouse during the reporting month.
-5. **`outbound_quantity`** (Tổng xuất trong tháng): Total quantity of goods actually dispatched from warehouse during the reporting month.
-6. **`closing_stock`** (Tồn cuối tháng): Total stock quantity remaining at the end of the reporting month, satisfying the invariant:
+### 10.2 Report Columns & Data Structure
+1. **`product_code`**: Unique product code.
+2. **`product_name`**: Full product name.
+3. **`opening_stock`**: Total stock remaining in warehouse up to 23:59:59 of the last day of the preceding month.
+4. **`inbound_quantity`**: Total quantity actually received during reporting month (from `delivery_detail.actual_quantity` where `delivery.delivery_at` is in period).
+5. **`outbound_quantity`**: Total quantity actually dispatched during reporting month (from `shipment_detail.actual_quantity` where `shipment.ship_at` is in period).
+6. **`closing_stock`**: Total stock remaining at month end:
    $$\text{closing\_stock} = \text{opening\_stock} + \text{inbound\_quantity} - \text{outbound\_quantity}$$
-7. **`available_quan`** (Tồn khả dụng): Quantity available for commercial sale at the end of the reporting month.
-8. **`warranty_quan`** (Hàng bảo hành): Quantity held under warranty inspection/replacement at the end of the reporting month.
-9. **`scrapped_quan`** (Hàng lỗi / hỏng): Quantity marked defective or scrapped at the end of the reporting month.
+7. **`available_quan`**: Available commercial stock at month end.
+8. **`warranty_quan`**: Stock under warranty at month end.
+9. **`scrapped_quan`**: Defective / scrapped stock at month end.
 
-### 9.3 Calculation Rules Based on Actual Quantities
-- All inventory movements (Inbound, Outbound, Opening Stock, Closing Stock) must be strictly computed from the **`actual_quantity`** of inbound and outbound transactions:
-  - **Inbound movements**: Sourced from `delivery_detail.actual_quantity` paired with `delivery.delivery_at` (actual receipt date).
-  - **Outbound movements**: Sourced from `shipment_detail.actual_quantity` paired with `shipment.ship_at` (actual dispatch date).
-- **Opening Stock Calculation**:
-  $$\text{opening\_stock}(product\_id) = \sum \text{Inbound } actual\_quantity(delivery\_at < D_{start}) - \sum \text{Outbound } actual\_quantity(ship\_at < D_{start})$$
-  *(where $D_{start} = \text{"YYYY-MM-01"}$ of the reporting month).*
-- **Inbound & Outbound Quantities in Period**:
-  - `inbound_quantity` = Total `actual_quantity` of deliveries where $D_{start} \le delivery\_at \le D_{end}$.
-  - `outbound_quantity` = Total `actual_quantity` of shipments where $D_{start} \le ship\_at \le D_{end}$.
-- **Status Breakdown at Month End**:
-  - `available_quan`, `warranty_quan`, and `scrapped_quan` represent the component quantities of `closing_stock` ($\text{available\_quan} + \text{warranty\_quan} + \text{scrapped\_quan} = \text{closing\_stock}$).
-
-### 9.4 Grand Totals Summary Row (Dòng Tổng Cộng)
-- The bottom of the report must contain a **Summary / Grand Total row** aggregating all numeric columns across all included products:
-  - `Total Opening Stock` ($\sum \text{opening\_stock}$)
-  - `Total Inbound` ($\sum \text{inbound\_quantity}$)
-  - `Total Outbound` ($\sum \text{outbound\_quantity}$)
-  - `Total Closing Stock` ($\sum \text{closing\_stock}$)
-  - `Total Available` ($\sum \text{available\_quan}$)
-  - `Total Warranty` ($\sum \text{warranty\_quan}$)
-  - `Total Scrapped` ($\sum \text{scrapped\_quan}$)
-
-### 9.5 Report Export & Storage
-- **Output Directory**: Exported report CSV files must be saved directly into the `report/` folder.
-- **File Naming Convention**:
-  - Format: `BaoCao_Thang_<tháng>_Nam_<Năm>.csv`
-  - Examples: `BaoCao_Thang_09_Nam_2026.csv`, `BaoCao_Thang_10_Nam_2026.csv`.
-- The CSV file must maintain UTF-8 encoding and follow standard tabular formatting compatible with external tools (such as Excel).
-
-### 9.6 UI Design & Interaction Rules (Qt Widgets)
-- **Dedicated Menu & Interface**:
-  - Accessible via a dedicated top menu **`Báo cáo`** and a separate navigation tab/page, isolated from transactional and master tables.
-- **Month & Year Selectors**:
-  - Provides intuitive UI controls (such as dropdown combo boxes or spinboxes) to select the reporting **Month** (1–12) and **Year** (e.g., 2020–2030), accompanied by a "Xem báo cáo" (Generate / View Report) trigger button and an "Xuất CSV" (Export CSV) button.
-- **Initial Blank State**:
-  - When the report page is first opened or switched to, **no data is displayed** (the table and summary metrics remain completely blank/empty).
-  - Data calculation and presentation only commence after the user explicitly selects a Month/Year and triggers the report generation.
-- **Query Caching & Invalidation Behavior (Cache Flag)**:
-  - **Cache Preservation (Clean Flag)**: When there are no data modification events in the database, previously computed report results remain cached in memory (`Vector<Record>`). In-place column sorting operates directly on this cached dataset without re-querying or recalculating.
-  - **Cache Invalidation & Blank Reset (Dirty Flag)**: When any database insert, update, or delete operation occurs across the system (raising the cache dirty/invalidated flag), the report cache is invalidated. Upon invalidation, the report view **must not display any outdated information** (resets back to the empty/blank state), requiring the user to explicitly re-execute the report generation to compute fresh data.
+### 10.3 Summary Row & Export
+- Bottom of report contains a **Grand Total row** aggregating all numeric columns across all included products.
+- Export to `report/BaoCao_Thang_<tháng>_Nam_<Năm>.csv` in UTF-8 format.
+- UI maintains cache validity flag; resets to blank on cache invalidation until fresh generation is triggered.
