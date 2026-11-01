@@ -3129,24 +3129,56 @@ void UnitEntryDialog::setupUI()
 
     batchOverviewTable = new QTableWidget(tabBatchOverview);
     batchOverviewTable->setColumnCount(7);
-    batchOverviewTable->setHorizontalHeaderLabels({
-        "Mã sản phẩm", "Tên sản phẩm", "SL Đợt này", "Thực nhận/xuất", "Còn thiếu",
-        "Trạng thái đợt (Khả dụng / BH / Lỗi)",
+
+    QString col3Title = (hubType == HubType::INBOUND) ? "Thực nhận" : "Thực xuất";
+    QString col5Title = (hubType == HubType::OUTBOUND)
+        ? "Trạng thái ban đầu (Khả dụng / BH / Lỗi)"
+        : "Trạng thái đợt (Khả dụng / BH / Lỗi)";
+
+    QStringList batchHeaders = {
+        "Mã sản phẩm", "Tên sản phẩm", "SL Đợt này", col3Title, "Còn thiếu",
+        col5Title,
         "Tồn kho chung (Khả dụng / BH / Lỗi)"
-    });
+    };
+    batchOverviewTable->setHorizontalHeaderLabels(batchHeaders);
     batchOverviewTable->setAlternatingRowColors(true);
     batchOverviewTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
     batchOverviewTable->verticalHeader()->setVisible(false);
     batchOverviewTable->verticalHeader()->setDefaultSectionSize(36);
     batchOverviewTable->horizontalHeader()->setHighlightSections(false);
     batchOverviewTable->horizontalHeader()->setStretchLastSection(false);
+
+    // Căn lề tiêu đề cột: Cột 1 (Tên SP) căn trái, tất cả cột còn lại căn giữa
+    for (int c = 0; c < batchOverviewTable->columnCount(); ++c) {
+        if (auto* item = batchOverviewTable->horizontalHeaderItem(c)) {
+            if (c == 1) {
+                item->setTextAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+            } else {
+                item->setTextAlignment(Qt::AlignCenter);
+            }
+        }
+    }
+    if (auto* it5 = batchOverviewTable->horizontalHeaderItem(5)) {
+        it5->setToolTip("Số lượng theo trạng thái: Khả dụng (AVAILABLE) / Bảo hành (WARRANTY) / Lỗi (SCRAPPED)");
+    }
+    if (auto* it6 = batchOverviewTable->horizontalHeaderItem(6)) {
+        it6->setToolTip("Tồn kho chung trong hệ thống: Khả dụng (AVAILABLE) / Bảo hành (WARRANTY) / Lỗi (SCRAPPED)");
+    }
+
+    batchOverviewTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Interactive);
     batchOverviewTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
-    batchOverviewTable->setColumnWidth(0, 130);
-    batchOverviewTable->setColumnWidth(2, 100);
-    batchOverviewTable->setColumnWidth(3, 110);
-    batchOverviewTable->setColumnWidth(4, 90);
-    batchOverviewTable->setColumnWidth(5, 230);
-    batchOverviewTable->setColumnWidth(6, 210);
+    batchOverviewTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Interactive);
+    batchOverviewTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Interactive);
+    batchOverviewTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Interactive);
+    batchOverviewTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::Interactive);
+    batchOverviewTable->horizontalHeader()->setSectionResizeMode(6, QHeaderView::Interactive);
+
+    batchOverviewTable->setColumnWidth(0, 130); // Mã SP
+    batchOverviewTable->setColumnWidth(2, 95);  // SL Đợt này
+    batchOverviewTable->setColumnWidth(3, 105); // Thực nhận / Thực xuất
+    batchOverviewTable->setColumnWidth(4, 90);  // Còn thiếu
+    batchOverviewTable->setColumnWidth(5, 235); // Trạng thái ban đầu / Trạng thái đợt (Khả dụng / BH / Lỗi)
+    batchOverviewTable->setColumnWidth(6, 225); // Tồn kho chung
     batchOverviewTable->setStyleSheet(
         "QTableWidget { background-color: #ffffff; alternate-background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 13px; }"
         "QHeaderView::section { background-color: #f1f5f9; color: #334155; font-weight: 600; padding: 7px 10px; border: none; border-bottom: 1px solid #cbd5e1; }"
@@ -3413,10 +3445,22 @@ void UnitEntryDialog::refreshBatchOverviewTable()
         if (rem < 0) rem = 0;
 
         auto* it0 = new QTableWidgetItem(itm.productCode);
+        it0->setTextAlignment(Qt::AlignCenter);
+        it0->setFont(QFont("Consolas", font().pointSize()));
+
         auto* it1 = new QTableWidgetItem(itm.productName);
+        it1->setTextAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+
         auto* it2 = new QTableWidgetItem(QString::number(itm.batchQty));
+        it2->setTextAlignment(Qt::AlignCenter);
+        it2->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
+
         auto* it3 = new QTableWidgetItem(QString::number(itm.actualQty));
+        it3->setTextAlignment(Qt::AlignCenter);
+        it3->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
+
         auto* it4 = new QTableWidgetItem(rem == 0 ? "✅ Đủ" : QString::number(rem));
+        it4->setTextAlignment(Qt::AlignCenter);
 
         QString batchBreakdown = QString("%1 / %2 / %3").arg(itm.batchAvail).arg(itm.batchWrt).arg(itm.batchScrap);
         auto* it5 = new QTableWidgetItem(batchBreakdown);
