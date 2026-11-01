@@ -148,6 +148,7 @@ private:
     HubType hubType;
     Database* db;
     int txnId;
+    QString orderCodeStr;
     QComboBox* statusCombo;
 };
 
@@ -442,8 +443,9 @@ private:
         int productId = 0;
         QString productCode;
         QString productName;
-        std::string originalStatus;
-        std::string currentStatus;
+        std::string originalStatus; // Initial status before entering batch / at creation
+        std::string currentStatus;  // Staged / new status in dropdown
+        std::string savedStatus;    // Currently saved status in database
         int historyId = 0;
         bool isModified = false;
     };

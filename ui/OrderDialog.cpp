@@ -1349,7 +1349,8 @@ TransactionStatusDialog::TransactionStatusDialog(
     const QString& orderDate,
     const QString& currentStatus,
     QWidget* parent)
-    : QDialog(parent), hubType(type), db(database), txnId(transactionId), statusCombo(nullptr)
+    : QDialog(parent), hubType(type), db(database), txnId(transactionId),
+      orderCodeStr(orderCode), statusCombo(nullptr)
 {
     setWindowTitle("Cập Nhật Trạng Thái Đơn Giao Dịch");
     setMinimumWidth(440);
@@ -1404,7 +1405,7 @@ TransactionStatusDialog::TransactionStatusDialog(
     grid->addWidget(new QLabel("Trạng thái mới (*):", this), 3, 0);
     grid->addWidget(statusCombo, 3, 1);
 
-    bool isCompleted = (currentStatus == "CONFIRMED" || currentStatus == "COMPLETED" || currentStatus == "CANCELLED");
+    bool isCompleted = (currentStatus == "COMPLETED" || currentStatus == "CANCELLED");
     if (isCompleted) {
         auto* warnLbl = new QLabel(
             QString("🔒 <b>Đơn hàng đã ở trạng thái hoàn tất (%1).</b><br>Toàn bộ thông tin đơn và trạng thái đã bị khóa vĩnh viễn (Rule 5.3, Rule 4.5).")
@@ -1443,7 +1444,7 @@ void TransactionStatusDialog::onSave()
 
     if (newStatus == "CONFIRMED" || newStatus == "COMPLETED") {
         CompletionConfirmationDialog confirmDlg(
-            QString::number(txnId),
+            !orderCodeStr.isEmpty() ? orderCodeStr : QString::number(txnId),
             (hubType == HubType::INBOUND ? "đơn nhập kho" : "đơn xuất kho"),
             this
         );
@@ -1797,14 +1798,12 @@ void LogisticsProductStatusSummaryDialog::setupUI()
     mainLayout->addWidget(subTitleLbl);
 
     summaryTable = new QTableWidget(this);
-    QStringList headers;
-    if (hubType == HubType::INBOUND) {
-        headers = {"Mã sản phẩm", "Tên sản phẩm", "SL Đợt này", "Thực nhận", "AVAILABLE", "WARRANTY", "SCRAPPED", "Tổng Unit"};
-        summaryTable->setColumnCount(8);
-    } else {
-        headers = {"Mã sản phẩm", "Tên sản phẩm", "SL Đợt này", "Thực xuất", "OUT", "Tổng Unit"};
-        summaryTable->setColumnCount(6);
-    }
+    QStringList headers = {
+        "Mã sản phẩm", "Tên sản phẩm", "SL Đợt này",
+        (hubType == HubType::INBOUND ? "Thực nhận" : "Thực xuất"),
+        "Khả dụng (AVAILABLE)", "Bảo hành (WARRANTY)", "Lỗi (SCRAPPED)", "Tổng Unit"
+    };
+    summaryTable->setColumnCount(8);
     summaryTable->setHorizontalHeaderLabels(headers);
     summaryTable->setAlternatingRowColors(true);
     summaryTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -1859,13 +1858,12 @@ void LogisticsProductStatusSummaryDialog::loadData()
     summaryTable->setRowCount(count);
 
     int totalBatch = 0, totalActual = 0, totalUnits = 0;
-    int totalAvail = 0, totalWrt = 0, totalScrap = 0, totalOut = 0;
+    int totalAvail = 0, totalWrt = 0, totalScrap = 0;
 
     for (int i = 0; i < count; ++i) {
         const auto& item = summary[i];
-        int itemTotal = (hubType == HubType::INBOUND)
-            ? (item.availableQty + item.warrantyQty + item.scrappedQty)
-            : item.outQty;
+        int itemTotal = item.availableQty + item.warrantyQty + item.scrappedQty;
+        if (itemTotal == 0 && item.outQty > 0) itemTotal = item.outQty;
 
         totalBatch += item.batchQty;
         totalActual += item.actualQty;
@@ -1873,7 +1871,6 @@ void LogisticsProductStatusSummaryDialog::loadData()
         totalAvail += item.availableQty;
         totalWrt += item.warrantyQty;
         totalScrap += item.scrappedQty;
-        totalOut += item.outQty;
 
         auto makeItem = [](const QString& txt, Qt::Alignment align = Qt::AlignLeft | Qt::AlignVCenter) {
             auto* it = new QTableWidgetItem(txt);
@@ -1886,58 +1883,37 @@ void LogisticsProductStatusSummaryDialog::loadData()
         summaryTable->setItem(i, 2, makeItem(QString::number(item.batchQty), Qt::AlignRight | Qt::AlignVCenter));
         summaryTable->setItem(i, 3, makeItem(QString::number(item.actualQty), Qt::AlignRight | Qt::AlignVCenter));
 
-        if (hubType == HubType::INBOUND) {
-            auto* itAvail = makeItem(QString::number(item.availableQty), Qt::AlignRight | Qt::AlignVCenter);
-            if (item.availableQty > 0) itAvail->setForeground(QColor(22, 163, 74));
-            summaryTable->setItem(i, 4, itAvail);
+        auto* itAvail = makeItem(QString::number(item.availableQty), Qt::AlignRight | Qt::AlignVCenter);
+        if (item.availableQty > 0) itAvail->setForeground(QColor(22, 163, 74));
+        summaryTable->setItem(i, 4, itAvail);
 
-            auto* itWrt = makeItem(QString::number(item.warrantyQty), Qt::AlignRight | Qt::AlignVCenter);
-            if (item.warrantyQty > 0) itWrt->setForeground(QColor(37, 99, 235));
-            summaryTable->setItem(i, 5, itWrt);
+        auto* itWrt = makeItem(QString::number(item.warrantyQty), Qt::AlignRight | Qt::AlignVCenter);
+        if (item.warrantyQty > 0) itWrt->setForeground(QColor(37, 99, 235));
+        summaryTable->setItem(i, 5, itWrt);
 
-            auto* itScrap = makeItem(QString::number(item.scrappedQty), Qt::AlignRight | Qt::AlignVCenter);
-            if (item.scrappedQty > 0) itScrap->setForeground(QColor(220, 38, 38));
-            summaryTable->setItem(i, 6, itScrap);
+        auto* itScrap = makeItem(QString::number(item.scrappedQty), Qt::AlignRight | Qt::AlignVCenter);
+        if (item.scrappedQty > 0) itScrap->setForeground(QColor(220, 38, 38));
+        summaryTable->setItem(i, 6, itScrap);
 
-            auto* itTot = makeItem(QString::number(itemTotal), Qt::AlignRight | Qt::AlignVCenter);
-            itTot->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
-            summaryTable->setItem(i, 7, itTot);
-        } else {
-            auto* itOut = makeItem(QString::number(item.outQty), Qt::AlignRight | Qt::AlignVCenter);
-            if (item.outQty > 0) itOut->setForeground(QColor(234, 88, 12));
-            summaryTable->setItem(i, 4, itOut);
-
-            auto* itTot = makeItem(QString::number(itemTotal), Qt::AlignRight | Qt::AlignVCenter);
-            itTot->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
-            summaryTable->setItem(i, 5, itTot);
-        }
+        auto* itTot = makeItem(QString::number(itemTotal), Qt::AlignRight | Qt::AlignVCenter);
+        itTot->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
+        summaryTable->setItem(i, 7, itTot);
     }
 
     summaryTable->setColumnWidth(0, 130);
     summaryTable->setColumnWidth(2, 90);
     summaryTable->setColumnWidth(3, 90);
-    if (hubType == HubType::INBOUND) {
-        summaryTable->setColumnWidth(4, 95);
-        summaryTable->setColumnWidth(5, 95);
-        summaryTable->setColumnWidth(6, 95);
-        summaryTable->setColumnWidth(7, 95);
-    } else {
-        summaryTable->setColumnWidth(4, 95);
-        summaryTable->setColumnWidth(5, 95);
-    }
+    summaryTable->setColumnWidth(4, 135);
+    summaryTable->setColumnWidth(5, 135);
+    summaryTable->setColumnWidth(6, 115);
+    summaryTable->setColumnWidth(7, 95);
 
     if (totalCountLabel) {
-        if (hubType == HubType::INBOUND) {
-            totalCountLabel->setText(
-                QString("Tổng kết: %1 mặt hàng | SL Đợt: %2 | Thực nhận: %3 | Avail: %4 | Bảo hành: %5 | Lỗi: %6")
-                    .arg(count).arg(totalBatch).arg(totalActual).arg(totalAvail).arg(totalWrt).arg(totalScrap)
-            );
-        } else {
-            totalCountLabel->setText(
-                QString("Tổng kết: %1 mặt hàng | SL Đợt: %2 | Thực xuất: %3 | Đã xuất (OUT): %4")
-                    .arg(count).arg(totalBatch).arg(totalActual).arg(totalOut)
-            );
-        }
+        totalCountLabel->setText(
+            QString("Tổng kết: %1 mặt hàng | SL Đợt: %2 | %3: %4 | Khả dụng: %5 | Bảo hành: %6 | Lỗi: %7")
+                .arg(count).arg(totalBatch).arg(hubType == HubType::INBOUND ? "Thực nhận" : "Thực xuất")
+                .arg(totalActual).arg(totalAvail).arg(totalWrt).arg(totalScrap)
+        );
     }
 }
 
@@ -3076,9 +3052,9 @@ void UnitEntryDialog::setupUI()
     tab1Layout->addLayout(filterRow);
 
     allUnitsTable = new QTableWidget(tabAllUnits);
-    allUnitsTable->setColumnCount(6);
+    allUnitsTable->setColumnCount(7);
     allUnitsTable->setHorizontalHeaderLabels({
-        "STT", "Mã Serial", "Mã SP", "Tên sản phẩm", "Trạng thái mới (*)", "Trạng thái ban đầu"
+        "STT", "Mã Serial", "Mã SP", "Tên sản phẩm", "Trạng thái ban đầu", "Trạng thái mới (*)", "Trạng thái hiện tại"
     });
     allUnitsTable->setAlternatingRowColors(true);
     allUnitsTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -3089,9 +3065,10 @@ void UnitEntryDialog::setupUI()
     allUnitsTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Stretch);
     allUnitsTable->setColumnWidth(0, 50);
     allUnitsTable->setColumnWidth(1, 160);
-    allUnitsTable->setColumnWidth(2, 120);
-    allUnitsTable->setColumnWidth(4, 160);
-    allUnitsTable->setColumnWidth(5, 150);
+    allUnitsTable->setColumnWidth(2, 110);
+    allUnitsTable->setColumnWidth(4, 140);
+    allUnitsTable->setColumnWidth(5, 160);
+    allUnitsTable->setColumnWidth(6, 140);
     allUnitsTable->setStyleSheet(
         "QTableWidget { background-color: #ffffff; alternate-background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 12px; }"
         "QHeaderView::section { background-color: #f1f5f9; color: #334155; font-weight: 600; padding: 6px 8px; border: none; border-bottom: 1px solid #cbd5e1; }"
@@ -3154,7 +3131,7 @@ void UnitEntryDialog::setupUI()
     batchOverviewTable->setColumnCount(7);
     batchOverviewTable->setHorizontalHeaderLabels({
         "Mã sản phẩm", "Tên sản phẩm", "SL Đợt này", "Thực nhận/xuất", "Còn thiếu",
-        (hubType == HubType::OUTBOUND ? "Trạng thái đợt (Đã xuất OUT)" : "Trạng thái đợt (Khả dụng / BH / Lỗi)"),
+        "Trạng thái đợt (Khả dụng / BH / Lỗi)",
         "Tồn kho chung (Khả dụng / BH / Lỗi)"
     });
     batchOverviewTable->setAlternatingRowColors(true);
@@ -3184,9 +3161,9 @@ void UnitEntryDialog::setupUI()
     recentLayout->setSpacing(6);
 
     recentUnitsTable = new QTableWidget(recentBox);
-    recentUnitsTable->setColumnCount(5);
+    recentUnitsTable->setColumnCount(6);
     recentUnitsTable->setHorizontalHeaderLabels({
-        "STT", "Mã Serial", "Tên sản phẩm", "Trạng thái mới (*)", "Trạng thái ban đầu"
+        "STT", "Mã Serial", "Tên sản phẩm", "Trạng thái ban đầu", "Trạng thái mới (*)", "Trạng thái hiện tại"
     });
     recentUnitsTable->setAlternatingRowColors(true);
     recentUnitsTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -3196,9 +3173,10 @@ void UnitEntryDialog::setupUI()
     recentUnitsTable->horizontalHeader()->setStretchLastSection(false);
     recentUnitsTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
     recentUnitsTable->setColumnWidth(0, 45);
-    recentUnitsTable->setColumnWidth(1, 160);
-    recentUnitsTable->setColumnWidth(3, 160);
-    recentUnitsTable->setColumnWidth(4, 140);
+    recentUnitsTable->setColumnWidth(1, 150);
+    recentUnitsTable->setColumnWidth(3, 140);
+    recentUnitsTable->setColumnWidth(4, 150);
+    recentUnitsTable->setColumnWidth(5, 140);
     recentUnitsTable->setFixedHeight(120);
     recentUnitsTable->setStyleSheet(
         "QTableWidget { background-color: #ffffff; alternate-background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 12px; }"
@@ -3368,15 +3346,17 @@ void UnitEntryDialog::loadAllUnitsData()
             ? QString::fromStdString(get<string>(r.get("product_code"))) : "";
         u.productName = (r.has("product_name") && holds_alternative<string>(r.get("product_name")))
             ? QString::fromStdString(get<string>(r.get("product_name"))) : "";
-        u.originalStatus = (r.has("curr_status") && holds_alternative<string>(r.get("curr_status")))
+        u.originalStatus = (r.has("old_status") && holds_alternative<string>(r.get("old_status")))
+            ? get<string>(r.get("old_status")) : "";
+        u.savedStatus = (r.has("curr_status") && holds_alternative<string>(r.get("curr_status")))
             ? get<string>(r.get("curr_status")) : "";
 
         auto itMod = modifiedMap.find(u.serial);
         if (itMod != modifiedMap.end()) {
             u.currentStatus = itMod->second;
-            u.isModified = (u.currentStatus != u.originalStatus);
+            u.isModified = (u.currentStatus != u.savedStatus);
         } else {
-            u.currentStatus = u.originalStatus;
+            u.currentStatus = u.savedStatus;
             u.isModified = false;
         }
 
@@ -3394,7 +3374,13 @@ void UnitEntryDialog::loadAllUnitsData()
                 if (u.currentStatus == "AVAILABLE") item.batchAvail++;
                 else if (u.currentStatus == "WARRANTY") item.batchWrt++;
                 else if (u.currentStatus == "SCRAPPED") item.batchScrap++;
-                else if (u.currentStatus == "OUT") item.batchOut++;
+                else if (u.currentStatus == "OUT") {
+                    item.batchOut++;
+                    if (u.originalStatus == "AVAILABLE") item.batchAvail++;
+                    else if (u.originalStatus == "WARRANTY") item.batchWrt++;
+                    else if (u.originalStatus == "SCRAPPED") item.batchScrap++;
+                    else item.batchAvail++;
+                }
             }
         }
     }
@@ -3432,12 +3418,7 @@ void UnitEntryDialog::refreshBatchOverviewTable()
         auto* it3 = new QTableWidgetItem(QString::number(itm.actualQty));
         auto* it4 = new QTableWidgetItem(rem == 0 ? "✅ Đủ" : QString::number(rem));
 
-        QString batchBreakdown;
-        if (hubType == HubType::OUTBOUND) {
-            batchBreakdown = QString("%1 đã xuất (OUT)").arg(itm.batchOut);
-        } else {
-            batchBreakdown = QString("%1 / %2 / %3").arg(itm.batchAvail).arg(itm.batchWrt).arg(itm.batchScrap);
-        }
+        QString batchBreakdown = QString("%1 / %2 / %3").arg(itm.batchAvail).arg(itm.batchWrt).arg(itm.batchScrap);
         auto* it5 = new QTableWidgetItem(batchBreakdown);
 
         auto* it6 = new QTableWidgetItem(QString("%1 / %2 / %3").arg(itm.stockAvail).arg(itm.stockWrt).arg(itm.stockScrap));
@@ -3496,17 +3477,22 @@ void UnitEntryDialog::refreshRecentUnitsTable()
 
         auto* itStt = new QTableWidgetItem(QString::number(i + 1));
         itStt->setTextAlignment(Qt::AlignCenter);
+
         auto* itSn = new QTableWidgetItem(QString::fromStdString(foundUnit->serial));
         itSn->setFont(QFont("Consolas", font().pointSize(), QFont::Bold));
+
         auto* itName = new QTableWidgetItem(foundUnit->productName);
-        auto* itOrig = new QTableWidgetItem(QString::fromStdString(foundUnit->originalStatus));
+
+        QString origSt = QString::fromStdString(foundUnit->originalStatus);
+        if (origSt.isEmpty()) origSt = "(Tạo mới)";
+        auto* itOrig = new QTableWidgetItem(origSt);
         itOrig->setTextAlignment(Qt::AlignCenter);
         itOrig->setForeground(QColor(100, 116, 139));
 
         recentUnitsTable->setItem(i, 0, itStt);
         recentUnitsTable->setItem(i, 1, itSn);
         recentUnitsTable->setItem(i, 2, itName);
-        recentUnitsTable->setItem(i, 4, itOrig);
+        recentUnitsTable->setItem(i, 3, itOrig);
 
         auto* combo = new QComboBox();
         QStringList opts = allowedStatuses;
@@ -3525,7 +3511,18 @@ void UnitEntryDialog::refreshRecentUnitsTable()
                 onUnitStatusChanged(unitId, newSt);
             });
         }
-        recentUnitsTable->setCellWidget(i, 3, combo);
+        recentUnitsTable->setCellWidget(i, 4, combo);
+
+        QString savedSt = QString::fromStdString(foundUnit->savedStatus);
+        auto* itSaved = new QTableWidgetItem(savedSt);
+        itSaved->setTextAlignment(Qt::AlignCenter);
+        itSaved->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
+        if (savedSt == "AVAILABLE") itSaved->setForeground(QColor(22, 163, 74));
+        else if (savedSt == "WARRANTY") itSaved->setForeground(QColor(37, 99, 235));
+        else if (savedSt == "SCRAPPED") itSaved->setForeground(QColor(220, 38, 38));
+        else if (savedSt == "OUT") itSaved->setForeground(QColor(234, 88, 12));
+        else itSaved->setForeground(QColor(71, 85, 105));
+        recentUnitsTable->setItem(i, 5, itSaved);
     }
 
     recentUnitsTable->blockSignals(false);
@@ -3579,22 +3576,17 @@ void UnitEntryDialog::refreshAllUnitsTable()
         auto* itCode = new QTableWidgetItem(u->productCode);
         auto* itName = new QTableWidgetItem(u->productName);
 
-        QString oldStatusStr = QString::fromStdString(u->originalStatus);
-        if (oldStatusStr.isEmpty()) oldStatusStr = "(Tạo mới)";
-        auto* itOldStatus = new QTableWidgetItem(oldStatusStr);
-        itOldStatus->setTextAlignment(Qt::AlignCenter);
-        if (u->isModified) {
-            itOldStatus->setForeground(QColor(217, 119, 6));
-            itOldStatus->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
-        } else {
-            itOldStatus->setForeground(QColor(100, 116, 139));
-        }
+        QString origStatusStr = QString::fromStdString(u->originalStatus);
+        if (origStatusStr.isEmpty()) origStatusStr = "(Tạo mới)";
+        auto* itOrigStatus = new QTableWidgetItem(origStatusStr);
+        itOrigStatus->setTextAlignment(Qt::AlignCenter);
+        itOrigStatus->setForeground(QColor(100, 116, 139));
 
         allUnitsTable->setItem(i, 0, itStt);
         allUnitsTable->setItem(i, 1, itSn);
         allUnitsTable->setItem(i, 2, itCode);
         allUnitsTable->setItem(i, 3, itName);
-        allUnitsTable->setItem(i, 5, itOldStatus);
+        allUnitsTable->setItem(i, 4, itOrigStatus);
 
         auto* combo = new QComboBox();
         QStringList opts = allowedStatuses;
@@ -3613,7 +3605,18 @@ void UnitEntryDialog::refreshAllUnitsTable()
                 onUnitStatusChanged(unitId, newSt);
             });
         }
-        allUnitsTable->setCellWidget(i, 4, combo);
+        allUnitsTable->setCellWidget(i, 5, combo);
+
+        QString savedStatusStr = QString::fromStdString(u->savedStatus);
+        auto* itSavedStatus = new QTableWidgetItem(savedStatusStr);
+        itSavedStatus->setTextAlignment(Qt::AlignCenter);
+        itSavedStatus->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
+        if (savedStatusStr == "AVAILABLE") itSavedStatus->setForeground(QColor(22, 163, 74));
+        else if (savedStatusStr == "WARRANTY") itSavedStatus->setForeground(QColor(37, 99, 235));
+        else if (savedStatusStr == "SCRAPPED") itSavedStatus->setForeground(QColor(220, 38, 38));
+        else if (savedStatusStr == "OUT") itSavedStatus->setForeground(QColor(234, 88, 12));
+        else itSavedStatus->setForeground(QColor(71, 85, 105));
+        allUnitsTable->setItem(i, 6, itSavedStatus);
     }
 
     allUnitsTable->blockSignals(false);
@@ -3629,7 +3632,7 @@ void UnitEntryDialog::onUnitStatusChanged(int unitId, const QString& newStatus)
         if (u.unitId == unitId) {
             if (u.currentStatus == newStStd) return;
             u.currentStatus = newStStd;
-            u.isModified = (u.currentStatus != u.originalStatus);
+            u.isModified = (u.currentStatus != u.savedStatus);
             changed = true;
             break;
         }
@@ -3696,7 +3699,7 @@ void UnitEntryDialog::onSaveChanges()
                 );
                 return;
             }
-            u.originalStatus = u.currentStatus;
+            u.savedStatus = u.currentStatus;
             u.isModified = false;
         }
     }

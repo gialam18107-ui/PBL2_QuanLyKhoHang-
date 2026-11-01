@@ -2502,13 +2502,20 @@ void logistics_product_status_summary(
 		const auto& uRec = unitHistories[i];
 		int pid = safeGetInt(uRec, "product_id", 0);
 		string st = safeGetString(uRec, "curr_status");
+		string oldSt = safeGetString(uRec, "old_status");
 
 		if (pidToIndex.contains(pid)) {
 			size_t idx = pidToIndex[pid];
 			if (st == "AVAILABLE") summary[idx].availableQty++;
 			else if (st == "WARRANTY") summary[idx].warrantyQty++;
 			else if (st == "SCRAPPED") summary[idx].scrappedQty++;
-			else if (st == "OUT") summary[idx].outQty++;
+			else if (st == "OUT") {
+				summary[idx].outQty++;
+				if (oldSt == "AVAILABLE") summary[idx].availableQty++;
+				else if (oldSt == "WARRANTY") summary[idx].warrantyQty++;
+				else if (oldSt == "SCRAPPED") summary[idx].scrappedQty++;
+				else summary[idx].availableQty++; // Default outbound unit was available stock
+			}
 		}
 	}
 }
