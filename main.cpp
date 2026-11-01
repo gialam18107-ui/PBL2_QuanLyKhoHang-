@@ -41,7 +41,7 @@ int main(int argc, char* argv[])
               << " (" << db.getTableCount() << " tables)" << std::endl;
 
     MainWindow mainWindow(&db);
-    mainWindow.show();
+    mainWindow.showMaximized();
 
     return app.exec();
 }

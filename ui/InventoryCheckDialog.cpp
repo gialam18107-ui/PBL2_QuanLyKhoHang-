@@ -4,8 +4,11 @@
 #include <QVBoxLayout>
 #include <QGridLayout>
 #include <QMessageBox>
+#include <QInputDialog>
+#include <QApplication>
 #include <QDate>
 #include <QDebug>
+#include "schema/UserUpdate.h"
 
 // ============================================================================
 // 1. InventoryCheckCreateDialog
@@ -250,6 +253,13 @@ void InventoryCheckCreateDialog::onCreateCheck()
             createdCode = QString::fromStdString(std::get<std::string>(r->get("check_code")));
         }
     }
+    if (createdCode.isEmpty()) {
+        QString msg = QString::fromStdString(res.message);
+        int idx = msg.indexOf("CHK-");
+        if (idx >= 0) {
+            createdCode = msg.mid(idx).split(" ").first().trimmed();
+        }
+    }
 
     QMessageBox::information(this, "Thành công", QString::fromStdString(res.message));
     accept();
@@ -262,9 +272,12 @@ void InventoryCheckCreateDialog::onCreateCheck()
 
 InventoryCheckDetailDialog::InventoryCheckDetailDialog(Database* database, int id, QWidget* parent)
     : QDialog(parent), db(database), checkId(id), dataModified(false),
-      quantityTable(nullptr), saveQuantityBtn(nullptr),
-      serialSearchInput(nullptr), unitStatusCombo(nullptr),
-      applyUnitStatusBtn(nullptr), unitTable(nullptr)
+      codeLabel(nullptr), typeLabel(nullptr), statusLabel(nullptr), dateLabel(nullptr), noteLabel(nullptr),
+      editCheckNoteBtn(nullptr), tabWidget(nullptr), quantityTable(nullptr), saveQuantityBtn(nullptr),
+      editRowNoteBtn(nullptr), quantitySummaryLabel(nullptr), unitPageWidget(nullptr),
+      serialSearchInput(nullptr), unitStatusCombo(nullptr), applyUnitStatusBtn(nullptr),
+      unitTable(nullptr), unitSummaryLabel(nullptr), refreshBtn(nullptr), createAdjBtn(nullptr),
+      completeCheckBtn(nullptr), closeBtn(nullptr)
 {
     setWindowTitle("Chi Tiết và Thực Hiện Đợt Kiểm Kê Kho");
     resize(1050, 700);
@@ -315,16 +328,40 @@ void InventoryCheckDetailDialog::setupUI()
         .arg(checkStatus == "COMPLETED" ? "#16a34a" : (checkStatus == "IN_PROCESS" ? "#2563eb" : "#ca8a04"), checkStatus), headerCard);
     dateLabel = new QLabel(QString("<b>Ngày kiểm:</b> %1").arg(checkDate), headerCard);
     noteLabel = new QLabel(QString("<b>Ghi chú:</b> %1").arg(checkNote.isEmpty() ? "(Không có)" : checkNote), headerCard);
+    noteLabel->setWordWrap(true);
+
+    bool isLocked = (checkStatus == "COMPLETED" || checkStatus == "CANCELLED");
+
+    editCheckNoteBtn = new QPushButton("✏️ Sửa ghi chú đợt", headerCard);
+    editCheckNoteBtn->setCursor(Qt::PointingHandCursor);
+    editCheckNoteBtn->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #f1f5f9;"
+        "  border: 1px solid #cbd5e1;"
+        "  border-radius: 4px;"
+        "  padding: 4px 10px;"
+        "  font-size: 12px;"
+        "  font-weight: 500;"
+        "  color: #334155;"
+        "}"
+        "QPushButton:hover { background-color: #e2e8f0; }"
+    );
+    editCheckNoteBtn->setEnabled(!isLocked);
+    connect(editCheckNoteBtn, &QPushButton::clicked, this, &InventoryCheckDetailDialog::onEditCheckNoteClicked);
+
+    auto* noteBox = new QHBoxLayout();
+    noteBox->setContentsMargins(0, 0, 0, 0);
+    noteBox->setSpacing(8);
+    noteBox->addWidget(noteLabel, 1);
+    noteBox->addWidget(editCheckNoteBtn, 0, Qt::AlignRight | Qt::AlignVCenter);
 
     hGrid->addWidget(codeLabel, 0, 0);
     hGrid->addWidget(typeLabel, 0, 1);
     hGrid->addWidget(statusLabel, 0, 2);
     hGrid->addWidget(dateLabel, 1, 0);
-    hGrid->addWidget(noteLabel, 1, 1, 1, 2);
+    hGrid->addLayout(noteBox, 1, 1, 1, 2);
 
     mainLayout->addWidget(headerCard);
-
-    bool isLocked = (checkStatus == "COMPLETED" || checkStatus == "CANCELLED");
 
     // Quantity View setup
     auto* quanWidget = new QWidget(this);
@@ -336,6 +373,24 @@ void InventoryCheckDetailDialog::setupUI()
     quantitySummaryLabel = new QLabel("Danh sách sản phẩm trong phạm vi kiểm kê:", quanWidget);
     quantitySummaryLabel->setStyleSheet("font-weight: 600; color: #1e293b;");
     quanToolbar->addWidget(quantitySummaryLabel, 1);
+
+    editRowNoteBtn = new QPushButton("📝 Sửa ghi chú dòng", quanWidget);
+    editRowNoteBtn->setCursor(Qt::PointingHandCursor);
+    editRowNoteBtn->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #f8fafc;"
+        "  border: 1px solid #cbd5e1;"
+        "  border-radius: 4px;"
+        "  padding: 6px 12px;"
+        "  font-size: 13px;"
+        "  font-weight: 600;"
+        "  color: #334155;"
+        "}"
+        "QPushButton:hover { background-color: #e2e8f0; }"
+    );
+    editRowNoteBtn->setEnabled(!isLocked);
+    connect(editRowNoteBtn, &QPushButton::clicked, this, &InventoryCheckDetailDialog::onEditRowNoteClicked);
+    quanToolbar->addWidget(editRowNoteBtn);
 
     if (checkType == "QUAN") {
         saveQuantityBtn = new QPushButton("💾 Lưu số lượng kiểm đếm", quanWidget);
@@ -363,6 +418,13 @@ void InventoryCheckDetailDialog::setupUI()
     quantityTable->horizontalHeader()->setSectionResizeMode(11, QHeaderView::Stretch);
     quantityTable->setColumnHidden(12, true); // Hidden CheckQuantityId
     quantityTable->setAlternatingRowColors(true);
+    quantityTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    quantityTable->setSelectionMode(QAbstractItemView::SingleSelection);
+    connect(quantityTable, &QTableWidget::cellDoubleClicked, [this, isLocked](int /*r*/, int c) {
+        if (!isLocked && c == 11) {
+            onEditRowNoteClicked();
+        }
+    });
     quanLayout->addWidget(quantityTable, 1);
 
     if (checkType == "UNIT") {
@@ -466,11 +528,26 @@ void InventoryCheckDetailDialog::loadQuantityData()
 {
     if (!db || checkId <= 0 || !quantityTable) return;
 
+    quantityTable->blockSignals(true);
+    for (int r = 0; r < quantityTable->rowCount(); ++r) {
+        quantityTable->removeCellWidget(r, 3);
+        quantityTable->removeCellWidget(r, 6);
+        quantityTable->removeCellWidget(r, 9);
+    }
+    quantityTable->setRowCount(0);
+
     Vector<Record> records;
     user_query::inventory_check_quantity_query(db, checkId, records);
 
     quantityTable->setRowCount(static_cast<int>(records.size()));
     bool isLocked = (checkStatus == "COMPLETED" || checkStatus == "CANCELLED");
+
+    auto makeItem = [](const QString& txt, Qt::Alignment align = Qt::AlignLeft | Qt::AlignVCenter) {
+        auto* it = new QTableWidgetItem(txt);
+        it->setTextAlignment(align);
+        it->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
+        return it;
+    };
 
     for (int r = 0; r < static_cast<int>(records.size()); ++r) {
         const auto& rec = records[r];
@@ -491,13 +568,11 @@ void InventoryCheckDetailDialog::loadQuantityData()
 
         QString note = rec.has("note") && std::holds_alternative<std::string>(rec.get("note")) ? QString::fromStdString(std::get<std::string>(rec.get("note"))) : "";
 
-        quantityTable->setItem(r, 0, new QTableWidgetItem(pCode));
-        quantityTable->setItem(r, 1, new QTableWidgetItem(pName));
+        quantityTable->setItem(r, 0, makeItem(pCode));
+        quantityTable->setItem(r, 1, makeItem(pName));
 
         // Available
-        auto* sysAItem = new QTableWidgetItem(QString::number(sysAvail));
-        sysAItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        quantityTable->setItem(r, 2, sysAItem);
+        quantityTable->setItem(r, 2, makeItem(QString::number(sysAvail), Qt::AlignRight | Qt::AlignVCenter));
 
         if (checkType == "QUAN" && !isLocked) {
             auto* spin = new QSpinBox();
@@ -505,22 +580,17 @@ void InventoryCheckDetailDialog::loadQuantityData()
             spin->setValue(actAvail);
             quantityTable->setCellWidget(r, 3, spin);
         } else {
-            auto* actAItem = new QTableWidgetItem(QString::number(actAvail));
-            actAItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
-            quantityTable->setItem(r, 3, actAItem);
+            quantityTable->setItem(r, 3, makeItem(QString::number(actAvail), Qt::AlignRight | Qt::AlignVCenter));
         }
 
-        auto* diffAItem = new QTableWidgetItem((diffAvail > 0 ? "+" : "") + QString::number(diffAvail));
-        diffAItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        auto* diffAItem = makeItem((diffAvail > 0 ? "+" : "") + QString::number(diffAvail), Qt::AlignRight | Qt::AlignVCenter);
         if (diffAvail < 0) diffAItem->setForeground(QColor("#dc2626"));
         else if (diffAvail > 0) diffAItem->setForeground(QColor("#2563eb"));
         else diffAItem->setForeground(QColor("#16a34a"));
         quantityTable->setItem(r, 4, diffAItem);
 
         // Warranty
-        auto* sysWItem = new QTableWidgetItem(QString::number(sysWarr));
-        sysWItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        quantityTable->setItem(r, 5, sysWItem);
+        quantityTable->setItem(r, 5, makeItem(QString::number(sysWarr), Qt::AlignRight | Qt::AlignVCenter));
 
         if (checkType == "QUAN" && !isLocked) {
             auto* spin = new QSpinBox();
@@ -528,22 +598,17 @@ void InventoryCheckDetailDialog::loadQuantityData()
             spin->setValue(actWarr);
             quantityTable->setCellWidget(r, 6, spin);
         } else {
-            auto* actWItem = new QTableWidgetItem(QString::number(actWarr));
-            actWItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
-            quantityTable->setItem(r, 6, actWItem);
+            quantityTable->setItem(r, 6, makeItem(QString::number(actWarr), Qt::AlignRight | Qt::AlignVCenter));
         }
 
-        auto* diffWItem = new QTableWidgetItem((diffWarr > 0 ? "+" : "") + QString::number(diffWarr));
-        diffWItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        auto* diffWItem = makeItem((diffWarr > 0 ? "+" : "") + QString::number(diffWarr), Qt::AlignRight | Qt::AlignVCenter);
         if (diffWarr < 0) diffWItem->setForeground(QColor("#dc2626"));
         else if (diffWarr > 0) diffWItem->setForeground(QColor("#2563eb"));
         else diffWItem->setForeground(QColor("#16a34a"));
         quantityTable->setItem(r, 7, diffWItem);
 
         // Scrapped
-        auto* sysSItem = new QTableWidgetItem(QString::number(sysScrap));
-        sysSItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        quantityTable->setItem(r, 8, sysSItem);
+        quantityTable->setItem(r, 8, makeItem(QString::number(sysScrap), Qt::AlignRight | Qt::AlignVCenter));
 
         if (checkType == "QUAN" && !isLocked) {
             auto* spin = new QSpinBox();
@@ -551,21 +616,24 @@ void InventoryCheckDetailDialog::loadQuantityData()
             spin->setValue(actScrap);
             quantityTable->setCellWidget(r, 9, spin);
         } else {
-            auto* actSItem = new QTableWidgetItem(QString::number(actScrap));
-            actSItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
-            quantityTable->setItem(r, 9, actSItem);
+            quantityTable->setItem(r, 9, makeItem(QString::number(actScrap), Qt::AlignRight | Qt::AlignVCenter));
         }
 
-        auto* diffSItem = new QTableWidgetItem((diffScrap > 0 ? "+" : "") + QString::number(diffScrap));
-        diffSItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        auto* diffSItem = makeItem((diffScrap > 0 ? "+" : "") + QString::number(diffScrap), Qt::AlignRight | Qt::AlignVCenter);
         if (diffScrap < 0) diffSItem->setForeground(QColor("#dc2626"));
         else if (diffScrap > 0) diffSItem->setForeground(QColor("#2563eb"));
         else diffSItem->setForeground(QColor("#16a34a"));
         quantityTable->setItem(r, 10, diffSItem);
 
-        quantityTable->setItem(r, 11, new QTableWidgetItem(note));
-        quantityTable->setItem(r, 12, new QTableWidgetItem(QString::number(cqId)));
+        auto* noteItem = makeItem(note);
+        if (!isLocked) {
+            noteItem->setToolTip("Nhấp đúp chuột hoặc bấm 'Sửa ghi chú dòng' để chỉnh sửa ghi chú");
+        }
+        quantityTable->setItem(r, 11, noteItem);
+        quantityTable->setItem(r, 12, makeItem(QString::number(cqId)));
     }
+
+    quantityTable->blockSignals(false);
 
     if (quantitySummaryLabel) {
         quantitySummaryLabel->setText(QString("Danh sách sản phẩm trong phạm vi kiểm kê (%1 mặt hàng):").arg(records.size()));
@@ -637,6 +705,11 @@ void InventoryCheckDetailDialog::onSaveQuantityCounts()
 {
     if (!db || checkType != "QUAN" || !quantityTable) return;
 
+    // Clear focus and selection to commit any active widget input safely
+    quantityTable->clearSelection();
+    QWidget* focusW = QApplication::focusWidget();
+    if (focusW) focusW->clearFocus();
+
     for (int r = 0; r < quantityTable->rowCount(); ++r) {
         int cqId = quantityTable->item(r, 12) ? quantityTable->item(r, 12)->text().toInt() : 0;
         if (cqId <= 0) continue;
@@ -661,6 +734,93 @@ void InventoryCheckDetailDialog::onSaveQuantityCounts()
     dataModified = true;
     QMessageBox::information(this, "Thành công", "Đã lưu số lượng kiểm đếm thực tế thành công!");
     loadQuantityData();
+}
+
+void InventoryCheckDetailDialog::onEditCheckNoteClicked()
+{
+    if (!db || checkId <= 0) return;
+    bool ok = false;
+    QString newNote = QInputDialog::getMultiLineText(
+        this,
+        "✏️ Sửa ghi chú đợt kiểm kho",
+        QString("Nhập nội dung ghi chú cho đợt kiểm [%1]:").arg(checkCode),
+        checkNote,
+        &ok
+    );
+    if (!ok) return;
+
+    Vector<std::string> cols;
+    cols.push_back("note");
+    Vector<Value> vals;
+    vals.push_back(Value(newNote.trimmed().toStdString()));
+
+    OperationResult res = user_update::updateRecord(
+        db, "inventory_check", checkId, cols, vals
+    );
+    if (!res.success) {
+        QMessageBox::critical(this, "Không thể cập nhật ghi chú", QString::fromStdString(res.message));
+        return;
+    }
+
+    checkNote = newNote.trimmed();
+    if (noteLabel) {
+        noteLabel->setText(QString("<b>Ghi chú:</b> %1").arg(checkNote.isEmpty() ? "(Không có)" : checkNote));
+    }
+    dataModified = true;
+    QMessageBox::information(this, "Thành công", "Đã cập nhật ghi chú đợt kiểm kho thành công!");
+}
+
+void InventoryCheckDetailDialog::onEditRowNoteClicked()
+{
+    if (!db || !quantityTable) return;
+    int r = quantityTable->currentRow();
+    if (r < 0 || r >= quantityTable->rowCount()) {
+        QMessageBox::warning(this, "Chưa chọn dòng", "Vui lòng chọn một dòng sản phẩm trong bảng để sửa ghi chú.");
+        return;
+    }
+
+    int cqId = quantityTable->item(r, 12) ? quantityTable->item(r, 12)->text().toInt() : 0;
+    if (cqId <= 0) return;
+
+    QString pCode = quantityTable->item(r, 0) ? quantityTable->item(r, 0)->text() : "";
+    QString pName = quantityTable->item(r, 1) ? quantityTable->item(r, 1)->text() : "";
+    QString curNote = quantityTable->item(r, 11) ? quantityTable->item(r, 11)->text() : "";
+
+    bool ok = false;
+    QString newNote = QInputDialog::getMultiLineText(
+        this,
+        "📝 Sửa ghi chú dòng sản phẩm",
+        QString("Nhập ghi chú kiểm kê cho [%1] - %2:").arg(pCode, pName),
+        curNote,
+        &ok
+    );
+    if (!ok) return;
+
+    int actA = 0, actW = 0, actS = 0;
+    if (checkType == "QUAN") {
+        auto* spinAvail = qobject_cast<QSpinBox*>(quantityTable->cellWidget(r, 3));
+        auto* spinWarr = qobject_cast<QSpinBox*>(quantityTable->cellWidget(r, 6));
+        auto* spinScrap = qobject_cast<QSpinBox*>(quantityTable->cellWidget(r, 9));
+        actA = spinAvail ? spinAvail->value() : 0;
+        actW = spinWarr ? spinWarr->value() : 0;
+        actS = spinScrap ? spinScrap->value() : 0;
+    } else {
+        actA = quantityTable->item(r, 3) ? quantityTable->item(r, 3)->text().toInt() : 0;
+        actW = quantityTable->item(r, 6) ? quantityTable->item(r, 6)->text().toInt() : 0;
+        actS = quantityTable->item(r, 9) ? quantityTable->item(r, 9)->text().toInt() : 0;
+    }
+
+    OperationResult res = user_update::updateInventoryCheckQuantity(db, cqId, actA, actW, actS, newNote.trimmed().toStdString());
+    if (!res.success) {
+        QMessageBox::critical(this, "Không thể cập nhật ghi chú dòng", QString::fromStdString(res.message));
+        return;
+    }
+
+    if (quantityTable->item(r, 11)) {
+        quantityTable->item(r, 11)->setText(newNote.trimmed());
+    }
+    dataModified = true;
+    QMessageBox::information(this, "Thành công", QString("Đã cập nhật ghi chú cho sản phẩm [%1]!").arg(pCode));
 }
 
 void InventoryCheckDetailDialog::onRecordUnitStatus()

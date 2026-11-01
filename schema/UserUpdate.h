@@ -44,6 +44,16 @@ namespace user_update
     );
 
     /**
+     * @brief Update the note of an inbound or outbound transaction (Rule 5.3 & User Request).
+     */
+    OperationResult updateTransactionNote(
+        Database* db,
+        const std::string& tableName,
+        int transactionId,
+        const std::string& newNote
+    );
+
+    /**
      * @brief Update the actual delivery or shipment date (Rule 5.3).
      * Validates chronological order against parent order_at.
      */

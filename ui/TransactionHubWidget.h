@@ -81,6 +81,7 @@ private:
 
     void onCreateOrderClicked();
     void onUpdateOrderStatusClicked();
+    void onEditOrderNoteClicked();
     void onInspectOrderClicked();
     void onAddLogisticsBatchClicked();
     void onUpdateLogisticsClicked();
@@ -139,6 +140,7 @@ private:
     QPushButton* createOrderBtn;
     QPushButton* addLogisticsBatchBtn;
     QPushButton* updateOrderStatusBtn;
+    QPushButton* editOrderNoteBtn;
     QPushButton* inspectOrderBtn;
     QPushButton* refreshBtn;
     QPushButton* exportBtn;

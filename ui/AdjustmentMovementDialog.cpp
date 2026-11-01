@@ -320,6 +320,13 @@ void AdjustmentMovementCreateDialog::onSaveMovement()
             createdCode = QString::fromStdString(std::get<std::string>(r->get("adjust_code")));
         }
     }
+    if (createdCode.isEmpty()) {
+        QString msg = QString::fromStdString(res.message);
+        int idx = msg.indexOf("ADJ-");
+        if (idx >= 0) {
+            createdCode = msg.mid(idx).split(" ").first().trimmed();
+        }
+    }
 
     QMessageBox::information(this, "Thành công", QString::fromStdString(res.message));
     accept();

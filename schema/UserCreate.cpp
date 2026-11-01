@@ -1804,7 +1804,7 @@ namespace user_create
         }
 
         db->commit();
-        return OperationResult{true, "Tạo đợt kiểm kho thành công! Mã đợt: " + checkCode, totalAffected};
+        return OperationResult{true, "Tạo đợt kiểm kho thành công! Mã đợt: " + checkCode, checkId};
     }
 
     OperationResult createAdjustmentMovement(
@@ -1889,7 +1889,7 @@ namespace user_create
         }
 
         db->commit();
-        return OperationResult{true, "Tạo phiếu điều chuyển trạng thái thành công! Mã: " + adjCode, totalAffected};
+        return OperationResult{true, "Tạo phiếu điều chuyển trạng thái thành công! Mã: " + adjCode, adjId};
     }
 
     OperationResult createAdjustmentsFromCheck(

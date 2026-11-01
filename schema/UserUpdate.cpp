@@ -79,13 +79,16 @@ namespace user_update
             std::string oldTxnSt = oldRecord.has("status") && std::holds_alternative<std::string>(oldRecord.get("status"))
                                  ? std::get<std::string>(oldRecord.get("status")) : "";
             for (size_t i = 0; i < modifiedColumns.size(); ++i) {
-                if (modifiedColumns[i] != "status") {
-                    return OperationResult{false, "Chỉ được phép cập nhật trạng thái (status) của đơn giao dịch đã xác nhận.", 0};
+                const std::string& colName = modifiedColumns[i];
+                if (colName != "status" && colName != "note") {
+                    return OperationResult{false, "Chỉ được phép cập nhật trạng thái (status) hoặc ghi chú (note) của đơn giao dịch.", 0};
                 }
-                std::string newTxnSt = std::holds_alternative<std::string>(modifyingValues[i])
-                                     ? std::get<std::string>(modifyingValues[i]) : "";
-                if ((oldTxnSt == "COMPLETED" || oldTxnSt == "completed") && newTxnSt != "COMPLETED") {
-                    return OperationResult{false, "Đơn giao dịch đã ở trạng thái HOÀN THÀNH (COMPLETED), không thể chuyển ngược trạng thái (Rule 4.5).", 0};
+                if (colName == "status") {
+                    std::string newTxnSt = std::holds_alternative<std::string>(modifyingValues[i])
+                                         ? std::get<std::string>(modifyingValues[i]) : "";
+                    if ((oldTxnSt == "COMPLETED" || oldTxnSt == "completed") && newTxnSt != "COMPLETED") {
+                        return OperationResult{false, "Đơn giao dịch đã ở trạng thái HOÀN THÀNH (COMPLETED), không thể chuyển ngược trạng thái (Rule 4.5).", 0};
+                    }
                 }
             }
         }
@@ -311,6 +314,23 @@ namespace user_update
         cols.push_back("status");
         Vector<Value> vals;
         vals.push_back(Value(newStatus));
+        return updateRecord(db, tableName, transactionId, cols, vals);
+    }
+
+    OperationResult updateTransactionNote(
+        Database* db,
+        const std::string& tableName,
+        int transactionId,
+        const std::string& newNote
+    ) {
+        if (!db || transactionId <= 0) return OperationResult{false, "Tham số không hợp lệ.", 0};
+        if (tableName != "inbound_transaction" && tableName != "outbound_transaction") {
+            return OperationResult{false, "Bảng giao dịch không hợp lệ.", 0};
+        }
+        Vector<std::string> cols;
+        cols.push_back("note");
+        Vector<Value> vals;
+        vals.push_back(Value(newNote));
         return updateRecord(db, tableName, transactionId, cols, vals);
     }
 
@@ -983,7 +1003,7 @@ namespace user_update
         up.set("actual_available_quan", std::max(0, actualAvail));
         up.set("actual_warranty_quan", std::max(0, actualWarr));
         up.set("actual_scrapped_quan", std::max(0, actualScrap));
-        if (!note.empty()) up.set("note", note);
+        up.set("note", note);
 
         return db->update("inventory_check_quantity", checkQuantityId, up);
     }

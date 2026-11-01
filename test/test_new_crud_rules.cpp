@@ -175,6 +175,15 @@ int main() {
     assert(safeGetString(latestAdjIn, "source_code") == chkCode);
     cout << "[+] Verified: ADJUSTMENT_IN source_code points to check_code (" << chkCode << ").\n";
 
+    // Test updating transaction note
+    int adjInId = safeGetInt(latestAdjIn, "inbound_transaction_id");
+    OperationResult rNote = user_update::updateTransactionNote(&db, "inbound_transaction", adjInId, "Ghi chú điều chỉnh kiểm kê cập nhật mới");
+    assert(rNote.success);
+    const Record* updatedAdjIn = inTxnTbl->getRecordById(adjInId);
+    assert(updatedAdjIn != nullptr);
+    assert(safeGetString(*updatedAdjIn, "note") == "Ghi chú điều chỉnh kiểm kê cập nhật mới");
+    cout << "[+] Verified: Successfully updated transaction note via updateTransactionNote.\n";
+
     // --------------------------------------------------------
     // TEST 4: UNIT Inventory Check (UNIT) & Auto-Sync
     // --------------------------------------------------------

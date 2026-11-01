@@ -22,6 +22,7 @@
 #include <QDialog>
 #include <QLineEdit>
 #include <QGroupBox>
+#include <QShortcut>
 
 namespace {
 inline QString getRecordStringValue(const Record& rec, const std::string& col) {
@@ -60,6 +61,15 @@ MainWindow::MainWindow(Database* database, QWidget* parent)
     setWindowTitle("Hệ thống Quản lý Kho Hàng - PBL2 (Query for Interface)");
     resize(1300, 850);
     setMinimumSize(1020, 680);
+
+    auto* f11Shortcut = new QShortcut(QKeySequence(Qt::Key_F11), this);
+    connect(f11Shortcut, &QShortcut::activated, [this]() {
+        if (isFullScreen()) {
+            showMaximized();
+        } else {
+            showFullScreen();
+        }
+    });
 
     setupMenuBar();
     setupUI();

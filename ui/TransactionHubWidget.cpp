@@ -368,6 +368,23 @@ void TransactionHubWidget::setupToolbarUI(QVBoxLayout* mainLayout)
     );
     connect(updateOrderStatusBtn, &QPushButton::clicked, [this]() { onUpdateOrderStatusClicked(); });
 
+    editOrderNoteBtn = new QPushButton("📝 Sửa ghi chú", this);
+    editOrderNoteBtn->setCursor(Qt::PointingHandCursor);
+    editOrderNoteBtn->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #f0fdf4;"
+        "  border: 1px solid #86efac;"
+        "  border-radius: 6px;"
+        "  padding: 5px 12px;"
+        "  font-size: 13px;"
+        "  font-weight: 600;"
+        "  color: #15803d;"
+        "}"
+        "QPushButton:hover { background-color: #dcfce7; }"
+        "QPushButton:pressed { background-color: #bbf7d0; }"
+    );
+    connect(editOrderNoteBtn, &QPushButton::clicked, [this]() { onEditOrderNoteClicked(); });
+
     inspectOrderBtn = new QPushButton("🔍 Chi tiết đơn", this);
     inspectOrderBtn->setCursor(Qt::PointingHandCursor);
     inspectOrderBtn->setStyleSheet(
@@ -388,6 +405,7 @@ void TransactionHubWidget::setupToolbarUI(QVBoxLayout* mainLayout)
     controlsLayout->addWidget(createOrderBtn);
     controlsLayout->addWidget(addLogisticsBatchBtn);
     controlsLayout->addWidget(updateOrderStatusBtn);
+    controlsLayout->addWidget(editOrderNoteBtn);
     controlsLayout->addWidget(inspectOrderBtn);
     controlsLayout->addWidget(refreshBtn);
     controlsLayout->addWidget(exportBtn);
@@ -1937,6 +1955,122 @@ void TransactionHubWidget::onUpdateOrderStatusClicked()
 
         if (onRefresh) onRefresh();
     }
+}
+
+void TransactionHubWidget::onEditOrderNoteClicked()
+{
+    const Record* rec = getSelectedMasterRecord(true);
+    if (!rec) return;
+
+    int txnId = -1;
+    QString orderCode;
+    QString currentNote;
+
+    if (hubType == HubType::INBOUND) {
+        if (rec->has("inbound_transaction_id") && holds_alternative<int>(rec->get("inbound_transaction_id")))
+            txnId = get<int>(rec->get("inbound_transaction_id"));
+        else if (rec->has("inbound_transaction.inbound_transaction_id") && holds_alternative<int>(rec->get("inbound_transaction.inbound_transaction_id")))
+            txnId = get<int>(rec->get("inbound_transaction.inbound_transaction_id"));
+
+        if (rec->has("inbound_code") && holds_alternative<string>(rec->get("inbound_code")))
+            orderCode = QString::fromStdString(get<string>(rec->get("inbound_code")));
+        else if (rec->has("inbound_transaction.inbound_code") && holds_alternative<string>(rec->get("inbound_transaction.inbound_code")))
+            orderCode = QString::fromStdString(get<string>(rec->get("inbound_transaction.inbound_code")));
+
+        if (rec->has("inbound_transaction.note") && holds_alternative<string>(rec->get("inbound_transaction.note")))
+            currentNote = QString::fromStdString(get<string>(rec->get("inbound_transaction.note")));
+        else if (rec->has("note") && holds_alternative<string>(rec->get("note")))
+            currentNote = QString::fromStdString(get<string>(rec->get("note")));
+    } else {
+        if (rec->has("outbound_trainsaction_id") && holds_alternative<int>(rec->get("outbound_trainsaction_id")))
+            txnId = get<int>(rec->get("outbound_trainsaction_id"));
+        else if (rec->has("outbound_transaction_id") && holds_alternative<int>(rec->get("outbound_transaction_id")))
+            txnId = get<int>(rec->get("outbound_transaction_id"));
+        else if (rec->has("outbound_transaction.outbound_trainsaction_id") && holds_alternative<int>(rec->get("outbound_transaction.outbound_trainsaction_id")))
+            txnId = get<int>(rec->get("outbound_transaction.outbound_trainsaction_id"));
+        else if (rec->has("outbound_transaction.outbound_transaction_id") && holds_alternative<int>(rec->get("outbound_transaction.outbound_transaction_id")))
+            txnId = get<int>(rec->get("outbound_transaction.outbound_transaction_id"));
+
+        if (rec->has("outbound_code") && holds_alternative<string>(rec->get("outbound_code")))
+            orderCode = QString::fromStdString(get<string>(rec->get("outbound_code")));
+        else if (rec->has("outbound_transaction.outbound_code") && holds_alternative<string>(rec->get("outbound_transaction.outbound_code")))
+            orderCode = QString::fromStdString(get<string>(rec->get("outbound_transaction.outbound_code")));
+
+        if (rec->has("outbound_transaction.note") && holds_alternative<string>(rec->get("outbound_transaction.note")))
+            currentNote = QString::fromStdString(get<string>(rec->get("outbound_transaction.note")));
+        else if (rec->has("note") && holds_alternative<string>(rec->get("note")))
+            currentNote = QString::fromStdString(get<string>(rec->get("note")));
+    }
+
+    // Direct DB lookup fallback if txnId not resolved from record
+    if (txnId <= 0 && !orderCode.isEmpty() && db) {
+        std::string targetTable = (hubType == HubType::INBOUND) ? "inbound_transaction" : "outbound_transaction";
+        std::string codeCol = (hubType == HubType::INBOUND) ? "inbound_code" : "outbound_code";
+        const Table* tbl = db->getTable(targetTable);
+        if (tbl) {
+            std::string codeStd = orderCode.toStdString();
+            const auto& rows = tbl->getRows();
+            for (size_t i = 0; i < rows.size(); ++i) {
+                if (tbl->isRowDeleted(i)) continue;
+                const auto& r = rows[i];
+                if (r.has(codeCol) && holds_alternative<string>(r.get(codeCol))) {
+                    if (get<string>(r.get(codeCol)) == codeStd) {
+                        if (hubType == HubType::INBOUND) {
+                            if (r.has("inbound_transaction_id") && holds_alternative<int>(r.get("inbound_transaction_id")))
+                                txnId = get<int>(r.get("inbound_transaction_id"));
+                        } else {
+                            if (r.has("outbound_trainsaction_id") && holds_alternative<int>(r.get("outbound_trainsaction_id")))
+                                txnId = get<int>(r.get("outbound_trainsaction_id"));
+                            else if (r.has("outbound_transaction_id") && holds_alternative<int>(r.get("outbound_transaction_id")))
+                                txnId = get<int>(r.get("outbound_transaction_id"));
+                        }
+                        if (currentNote.isEmpty() && r.has("note") && holds_alternative<string>(r.get("note"))) {
+                            currentNote = QString::fromStdString(get<string>(r.get("note")));
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    if (txnId <= 0) {
+        QMessageBox::critical(this, "Lỗi dữ liệu", "Không xác định được khóa chính nội bộ của đơn giao dịch.");
+        return;
+    }
+
+    bool ok = false;
+    QString newNote = QInputDialog::getMultiLineText(
+        this,
+        "✏️ Sửa ghi chú đơn hàng",
+        QString("Nhập nội dung ghi chú cho đơn [%1]:").arg(orderCode),
+        currentNote,
+        &ok
+    );
+
+    if (!ok) return;
+
+    std::string targetTable = (hubType == HubType::INBOUND) ? "inbound_transaction" : "outbound_transaction";
+    OperationResult res = user_update::updateTransactionNote(db, targetTable, txnId, newNote.trimmed().toStdString());
+    if (!res.success) {
+        QMessageBox::critical(this, "Không thể cập nhật ghi chú", QString::fromStdString(res.message));
+        return;
+    }
+
+    int row = masterTable->currentRow();
+    std::string noteCol = (hubType == HubType::INBOUND) ? "inbound_transaction.note" : "outbound_transaction.note";
+    updateMasterRowInPlace(row, noteCol, Value(newNote.trimmed().toStdString()));
+    updateMasterRowInPlace(row, "note", Value(newNote.trimmed().toStdString()));
+
+    QString summary = QString("Đã cập nhật ghi chú đơn %1 thành công!").arg(orderCode);
+    if (onMarkDirty) {
+        onMarkDirty(summary);
+    } else if (onDataChanged) {
+        onDataChanged(summary);
+    }
+
+    QMessageBox::information(this, "Thành công", summary);
+    if (onRefresh) onRefresh();
 }
 
 void TransactionHubWidget::onInspectOrderClicked()

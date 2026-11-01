@@ -91,6 +91,8 @@ private:
     void onRecordUnitStatus();
     void onCreateAdjustments();
     void onCompleteCheck();
+    void onEditCheckNoteClicked();
+    void onEditRowNoteClicked();
 
     Database* db;
     int checkId;
@@ -107,6 +109,7 @@ private:
     QLabel* statusLabel;
     QLabel* dateLabel;
     QLabel* noteLabel;
+    QPushButton* editCheckNoteBtn;
 
     // Tabs for UNIT mode (or single view for QUAN)
     QTabWidget* tabWidget;
@@ -114,6 +117,7 @@ private:
     // Quantity table & controls
     QTableWidget* quantityTable;
     QPushButton* saveQuantityBtn;
+    QPushButton* editRowNoteBtn;
     QLabel* quantitySummaryLabel;
 
     // Unit table & controls (for UNIT checks)
