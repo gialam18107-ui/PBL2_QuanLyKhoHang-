@@ -102,8 +102,11 @@ private:
     QComboBox* productCombo;
     QSpinBox* quantitySpin;
     QPushButton* addItemBtn;
+    QLabel* productStockHintLabel;
     QTableWidget* itemsTable;
     QLabel* itemsSummaryLabel;
+
+    void updateProductStockHint(int idx);
 
 
     // Logistics allocation controls (Rule 4.3)
@@ -149,6 +152,7 @@ private:
     Database* db;
     int txnId;
     QString orderCodeStr;
+    QString initialStatus;
     QComboBox* statusCombo;
 };
 

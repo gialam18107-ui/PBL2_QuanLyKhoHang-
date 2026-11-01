@@ -1834,15 +1834,45 @@ void TransactionHubWidget::onUpdateOrderStatusClicked()
         custCode = QString::fromStdString(get<string>(rec->get("customer_code")));
     }
 
-    // Fallback: If orderCode or status is empty, look in current master table row
-    int curRow = masterTable->currentRow();
-    if (orderCode.isEmpty() && curRow >= 0 && masterTable->columnCount() > 0) {
-        auto* it0 = masterTable->item(curRow, 0);
-        if (it0) orderCode = it0->text().trimmed();
+    // Dynamic column lookups for fallback from masterKeys
+    int codeCol = -1, custCol = -1, dateCol = -1, statusCol = -1;
+    for (size_t c = 0; c < masterKeys.size(); ++c) {
+        const std::string& k = masterKeys[c];
+        if (k.find("code") != std::string::npos && (k.find("inbound") != std::string::npos || k.find("outbound") != std::string::npos)) {
+            codeCol = static_cast<int>(c);
+        } else if (k.find("customer") != std::string::npos) {
+            custCol = static_cast<int>(c);
+        } else if (k.find("order_at") != std::string::npos || k.find("date") != std::string::npos) {
+            dateCol = static_cast<int>(c);
+        } else if (k.find("status") != std::string::npos) {
+            statusCol = static_cast<int>(c);
+        }
     }
-    if (status.isEmpty() && curRow >= 0 && masterTable->columnCount() > 2) {
-        auto* itSt = masterTable->item(curRow, 2);
-        if (itSt) status = itSt->text().trimmed();
+
+    int curRow = masterTable->currentRow();
+    if (curRow >= 0) {
+        if (orderCode.isEmpty()) {
+            int targetCol = (codeCol >= 0) ? codeCol : 0;
+            if (targetCol < masterTable->columnCount()) {
+                auto* it = masterTable->item(curRow, targetCol);
+                if (it) orderCode = it->text().trimmed();
+            }
+        }
+        if (custCode.isEmpty() && custCol >= 0 && custCol < masterTable->columnCount()) {
+            auto* it = masterTable->item(curRow, custCol);
+            if (it) custCode = it->text().trimmed();
+        }
+        if (orderDate.isEmpty() && dateCol >= 0 && dateCol < masterTable->columnCount()) {
+            auto* it = masterTable->item(curRow, dateCol);
+            if (it) orderDate = it->text().trimmed();
+        }
+        if (status.isEmpty()) {
+            int targetCol = (statusCol >= 0) ? statusCol : 4;
+            if (targetCol < masterTable->columnCount()) {
+                auto* itSt = masterTable->item(curRow, targetCol);
+                if (itSt) status = itSt->text().trimmed();
+            }
+        }
     }
 
     // Direct DB lookup fallback if txnId not resolved from record

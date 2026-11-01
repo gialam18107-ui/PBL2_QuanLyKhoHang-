@@ -138,6 +138,7 @@ OrderDialog::OrderDialog(HubType type, Database* database, QWidget* parent)
       typeCombo(nullptr), customerCombo(nullptr), addCustomerBtn(nullptr),
       orderDateEdit(nullptr), expectedDateEdit(nullptr), noteEdit(nullptr),
       productCombo(nullptr), quantitySpin(nullptr), addItemBtn(nullptr),
+      productStockHintLabel(nullptr),
       itemsTable(nullptr), itemsSummaryLabel(nullptr),
       singleBatchRadio(nullptr), multiBatchRadio(nullptr),
       singleBatchContainer(nullptr), singleBatchSummaryLabel(nullptr),
@@ -148,8 +149,8 @@ OrderDialog::OrderDialog(HubType type, Database* database, QWidget* parent)
     setWindowTitle(hubType == HubType::INBOUND
         ? "Tạo Đơn Nhập Kho & Đợt Giao Nhận (Inbound Order Wizard)"
         : "Tạo Đơn Xuất Kho & Đợt Xuất Hàng (Outbound Order Wizard)");
-    resize(880, 620);
-    setMinimumSize(780, 520);
+    resize(1120, 740);
+    setMinimumSize(960, 620);
 
     setupUI();
     populateOrderTypes();
@@ -336,19 +337,44 @@ QWidget* OrderDialog::createStep2Widget()
     auto* page = new QWidget(this);
     auto* pageLayout = new QVBoxLayout(page);
     pageLayout->setContentsMargins(0, 4, 0, 0);
-    pageLayout->setSpacing(10);
+    pageLayout->setSpacing(12);
 
     auto* itemsGroup = new QGroupBox("2. Danh sách mặt hàng trong đơn (Chỉ sản phẩm đang mở bán: is_sold = TRUE)", page);
     auto* itemsLayout = new QVBoxLayout(itemsGroup);
     itemsLayout->setContentsMargins(14, 16, 14, 12);
-    itemsLayout->setSpacing(10);
+    itemsLayout->setSpacing(12);
 
-    auto* addBar = new QHBoxLayout();
-    addBar->setSpacing(8);
+    // Spacious product selector box
+    auto* addBox = new QFrame(itemsGroup);
+    addBox->setObjectName("addBox");
+    addBox->setStyleSheet(
+        "QFrame#addBox {"
+        "  background-color: #f8fafc;"
+        "  border: 1px solid #cbd5e1;"
+        "  border-radius: 8px;"
+        "  padding: 8px 12px;"
+        "}"
+    );
+    auto* addBoxLayout = new QVBoxLayout(addBox);
+    addBoxLayout->setContentsMargins(8, 8, 8, 8);
+    addBoxLayout->setSpacing(8);
 
-    productCombo = new QComboBox(itemsGroup);
+    auto* selectLbl = new QLabel("🔍 <b>Chọn sản phẩm</b> (Tìm theo Mã SP, Tên SP, Barcode hoặc SKU):", addBox);
+    selectLbl->setStyleSheet("color: #1e293b; font-size: 13px;");
+    addBoxLayout->addWidget(selectLbl);
+
+    productCombo = new QComboBox(addBox);
     productCombo->setEditable(true);
     productCombo->setInsertPolicy(QComboBox::NoInsert);
+    productCombo->setMinimumHeight(38);
+    productCombo->setStyleSheet(
+        "QComboBox { font-size: 13px; padding: 4px 10px; background-color: #ffffff; border: 1.5px solid #94a3b8; border-radius: 6px; }"
+        "QComboBox:focus { border: 1.5px solid #2563eb; }"
+        "QComboBox::drop-down { subcontrol-origin: padding; subcontrol-position: top right; width: 28px; border-left: 1px solid #cbd5e1; }"
+    );
+    productCombo->view()->setMinimumWidth(1000);
+    productCombo->view()->setTextElideMode(Qt::ElideNone);
+    productCombo->view()->setStyleSheet("QListView::item { padding: 6px 10px; min-height: 28px; font-size: 13px; } QListView::item:hover { background-color: #eff6ff; color: #1e40af; }");
     if (productCombo->lineEdit()) {
         productCombo->lineEdit()->setPlaceholderText("Gõ mã SP, tên SP, Barcode hoặc SKU để tìm kiếm...");
         productCombo->lineEdit()->setClearButtonEnabled(true);
@@ -356,25 +382,45 @@ QWidget* OrderDialog::createStep2Widget()
             onAddLineItem();
         });
     }
+    addBoxLayout->addWidget(productCombo);
 
-    quantitySpin = new QSpinBox(itemsGroup);
+    auto* bottomActionLayout = new QHBoxLayout();
+    bottomActionLayout->setSpacing(10);
+
+    auto* qtyLbl = new QLabel("Số lượng cần đặt (*):", addBox);
+    qtyLbl->setStyleSheet("font-size: 13px; font-weight: 600; color: #334155;");
+
+    quantitySpin = new QSpinBox(addBox);
     quantitySpin->setRange(1, 99999);
     quantitySpin->setValue(1);
-    quantitySpin->setMinimumWidth(90);
+    quantitySpin->setMinimumWidth(110);
+    quantitySpin->setMinimumHeight(34);
+    quantitySpin->setAlignment(Qt::AlignCenter);
+    quantitySpin->setStyleSheet("font-size: 13px; font-weight: 600; padding: 2px 6px; border: 1.5px solid #94a3b8; border-radius: 6px;");
 
-    addItemBtn = new QPushButton("➕ Thêm vào đơn", itemsGroup);
-    addItemBtn->setObjectName("auxBtn");
+    addItemBtn = new QPushButton("➕ Thêm vào danh sách đơn", addBox);
     addItemBtn->setCursor(Qt::PointingHandCursor);
+    addItemBtn->setMinimumHeight(34);
+    addItemBtn->setStyleSheet(
+        "QPushButton { background-color: #2563eb; color: #ffffff; border: none; border-radius: 6px; padding: 6px 20px; font-size: 13px; font-weight: 600; }"
+        "QPushButton:hover { background-color: #1d4ed8; }"
+        "QPushButton:pressed { background-color: #1e40af; }"
+    );
     connect(addItemBtn, &QPushButton::clicked, [this]() {
         onAddLineItem();
     });
 
-    addBar->addWidget(new QLabel("Chọn sản phẩm:", itemsGroup));
-    addBar->addWidget(productCombo, 1);
-    addBar->addWidget(new QLabel("Số lượng:", itemsGroup));
-    addBar->addWidget(quantitySpin);
-    addBar->addWidget(addItemBtn);
-    itemsLayout->addLayout(addBar);
+    productStockHintLabel = new QLabel(addBox);
+    productStockHintLabel->setStyleSheet("font-size: 12px; color: #475569;");
+
+    bottomActionLayout->addWidget(qtyLbl);
+    bottomActionLayout->addWidget(quantitySpin);
+    bottomActionLayout->addWidget(addItemBtn);
+    bottomActionLayout->addSpacing(16);
+    bottomActionLayout->addWidget(productStockHintLabel, 1);
+
+    addBoxLayout->addLayout(bottomActionLayout);
+    itemsLayout->addWidget(addBox);
 
     itemsTable = new QTableWidget(itemsGroup);
     itemsTable->setColumnCount(5);
@@ -384,25 +430,26 @@ QWidget* OrderDialog::createStep2Widget()
     itemsTable->setAlternatingRowColors(true);
     itemsTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
     itemsTable->verticalHeader()->setVisible(false);
+    itemsTable->verticalHeader()->setDefaultSectionSize(36);
     itemsTable->horizontalHeader()->setStretchLastSection(false);
     itemsTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
-    itemsTable->setColumnWidth(0, 160);
-    itemsTable->setColumnWidth(2, 180);
-    itemsTable->setColumnWidth(3, 110);
-    itemsTable->setColumnWidth(4, 80);
+    itemsTable->setColumnWidth(0, 150);
+    itemsTable->setColumnWidth(2, 220);
+    itemsTable->setColumnWidth(3, 120);
+    itemsTable->setColumnWidth(4, 90);
     itemsTable->setStyleSheet(
         "QTableWidget {"
         "  background-color: #ffffff;"
         "  alternate-background-color: #f8fafc;"
         "  border: 1px solid #e2e8f0;"
         "  border-radius: 6px;"
-        "  font-size: 12px;"
+        "  font-size: 13px;"
         "}"
         "QHeaderView::section {"
         "  background-color: #f1f5f9;"
         "  color: #334155;"
         "  font-weight: 600;"
-        "  padding: 6px 8px;"
+        "  padding: 7px 10px;"
         "  border: none;"
         "  border-bottom: 1px solid #cbd5e1;"
         "}"
@@ -927,6 +974,46 @@ void OrderDialog::populateActiveProducts()
             productCombo->setCurrentIndex(index.row());
         }
     });
+
+    connect(productCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &OrderDialog::updateProductStockHint);
+    updateProductStockHint(productCombo->currentIndex());
+}
+
+void OrderDialog::updateProductStockHint(int idx)
+{
+    if (!productStockHintLabel || !productCombo || idx < 0) return;
+    int pid = productCombo->itemData(idx).toInt();
+    if (pid <= 0 || !db) {
+        productStockHintLabel->clear();
+        return;
+    }
+
+    Table* pqTable = db->getTable("product_quantity");
+    int avail = 0, wrt = 0, scr = 0;
+    if (pqTable) {
+        const Record* r = pqTable->getRecordById(pid);
+        if (r) {
+            if (r->has("available_quan") && std::holds_alternative<int>(r->get("available_quan")))
+                avail = std::get<int>(r->get("available_quan"));
+            if (r->has("warranty_quan") && std::holds_alternative<int>(r->get("warranty_quan")))
+                wrt = std::get<int>(r->get("warranty_quan"));
+            if (r->has("scrapped_quan") && std::holds_alternative<int>(r->get("scrapped_quan")))
+                scr = std::get<int>(r->get("scrapped_quan"));
+        }
+    }
+
+    if (hubType == HubType::OUTBOUND && avail <= 0) {
+        productStockHintLabel->setText(
+            QString("⚠️ <b>Hết hàng khả dụng:</b> Khả dụng: 0 | BH: %1 | Lỗi: %2 (Không đủ tồn để xuất)").arg(wrt).arg(scr)
+        );
+        productStockHintLabel->setStyleSheet("font-size: 12px; color: #dc2626; font-weight: 600;");
+    } else {
+        productStockHintLabel->setText(
+            QString("📦 <b>Tồn kho hiện tại:</b> Khả dụng: <b>%1</b> | Bảo hành: %2 | Lỗi: %3").arg(avail).arg(wrt).arg(scr)
+        );
+        productStockHintLabel->setStyleSheet("font-size: 12px; color: #1e40af;");
+    }
 }
 
 void OrderDialog::onQuickAddCustomer()
@@ -1350,10 +1437,10 @@ TransactionStatusDialog::TransactionStatusDialog(
     const QString& currentStatus,
     QWidget* parent)
     : QDialog(parent), hubType(type), db(database), txnId(transactionId),
-      orderCodeStr(orderCode), statusCombo(nullptr)
+      orderCodeStr(orderCode), initialStatus(currentStatus.trimmed()), statusCombo(nullptr)
 {
     setWindowTitle("Cập Nhật Trạng Thái Đơn Giao Dịch");
-    setMinimumWidth(440);
+    setMinimumWidth(500);
     setStyleSheet(commonDialogStyleSheet());
 
     auto* mainLayout = new QVBoxLayout(this);
@@ -1372,22 +1459,24 @@ TransactionStatusDialog::TransactionStatusDialog(
     grid->setHorizontalSpacing(14);
     grid->setVerticalSpacing(8);
 
-    auto makeReadOnlyVal = [this](const QString& txt) {
-        auto* lbl = new QLabel(txt, this);
-        lbl->setStyleSheet("font-weight: 600; color: #0f172a;");
+    auto makeReadOnlyVal = [infoGroup](const QString& txt) {
+        auto* lbl = new QLabel(txt.isEmpty() ? "-" : txt, infoGroup);
+        lbl->setStyleSheet("font-weight: 600; color: #0f172a; font-size: 13px;");
         return lbl;
     };
 
-    grid->addWidget(new QLabel("Mã đơn giao dịch:", this), 0, 0);
+    grid->addWidget(new QLabel("Mã đơn giao dịch:", infoGroup), 0, 0);
     grid->addWidget(makeReadOnlyVal(orderCode), 0, 1);
 
-    grid->addWidget(new QLabel("Mã đối tác / KH:", this), 1, 0);
+    grid->addWidget(new QLabel("Mã đối tác / KH:", infoGroup), 1, 0);
     grid->addWidget(makeReadOnlyVal(customerCode), 1, 1);
 
-    grid->addWidget(new QLabel("Ngày đặt đơn:", this), 2, 0);
+    grid->addWidget(new QLabel("Ngày đặt đơn:", infoGroup), 2, 0);
     grid->addWidget(makeReadOnlyVal(orderDate), 2, 1);
 
-    statusCombo = new QComboBox(this);
+    statusCombo = new QComboBox(infoGroup);
+    statusCombo->setMinimumHeight(34);
+    statusCombo->setStyleSheet("font-size: 13px; font-weight: 600; padding: 2px 8px; border: 1.5px solid #94a3b8; border-radius: 6px;");
     std::string statusTbl = (hubType == HubType::INBOUND) ? "inbound_status" : "outbound_status";
     QStringList statuses;
     Vector<std::string> stVec;
@@ -1399,17 +1488,24 @@ TransactionStatusDialog::TransactionStatusDialog(
         statuses = {"PENDING", "PROCESSING", "PARTIALLY_CONFIRMED", "CONFIRMED", "CANCELLED"};
     }
     statusCombo->addItems(statuses);
-    int curIdx = statusCombo->findText(currentStatus, Qt::MatchFixedString);
-    if (curIdx >= 0) statusCombo->setCurrentIndex(curIdx);
+    int curIdx = statusCombo->findText(initialStatus, Qt::MatchFixedString);
+    if (curIdx >= 0) {
+        statusCombo->setCurrentIndex(curIdx);
+    } else if (!initialStatus.isEmpty()) {
+        statusCombo->addItem(initialStatus);
+        statusCombo->setCurrentIndex(statusCombo->count() - 1);
+    }
 
-    grid->addWidget(new QLabel("Trạng thái mới (*):", this), 3, 0);
+    grid->addWidget(new QLabel("Trạng thái mới (*):", infoGroup), 3, 0);
     grid->addWidget(statusCombo, 3, 1);
 
-    bool isCompleted = (currentStatus == "COMPLETED" || currentStatus == "CANCELLED");
+    mainLayout->addWidget(infoGroup);
+
+    bool isCompleted = (initialStatus == "COMPLETED" || initialStatus == "CANCELLED");
     if (isCompleted) {
         auto* warnLbl = new QLabel(
             QString("🔒 <b>Đơn hàng đã ở trạng thái hoàn tất (%1).</b><br>Toàn bộ thông tin đơn và trạng thái đã bị khóa vĩnh viễn (Rule 5.3, Rule 4.5).")
-                .arg(currentStatus),
+                .arg(initialStatus),
             this
         );
         warnLbl->setStyleSheet("background-color: #fef2f2; border: 1px solid #fecaca; border-left: 4px solid #ef4444; border-radius: 6px; padding: 8px 12px; font-size: 12px; color: #991b1b;");
@@ -1441,8 +1537,14 @@ void TransactionStatusDialog::onSave()
 {
     std::string tableName = (hubType == HubType::INBOUND) ? "inbound_transaction" : "outbound_transaction";
     std::string newStatus = statusCombo->currentText().trimmed().toStdString();
+    std::string oldStatus = initialStatus.trimmed().toStdString();
 
-    if (newStatus == "CONFIRMED" || newStatus == "COMPLETED") {
+    if (newStatus == oldStatus) {
+        accept();
+        return;
+    }
+
+    if ((newStatus == "CONFIRMED" || newStatus == "COMPLETED") && oldStatus != newStatus) {
         CompletionConfirmationDialog confirmDlg(
             !orderCodeStr.isEmpty() ? orderCodeStr : QString::number(txnId),
             (hubType == HubType::INBOUND ? "đơn nhập kho" : "đơn xuất kho"),
