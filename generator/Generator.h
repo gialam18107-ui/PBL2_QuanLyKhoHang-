@@ -147,11 +147,13 @@ namespace Generator
          * @brief Generate a batch of simulated transactions with random valid products and quantities.
          * @param numInbound Number of inbound transactions to generate.
          * @param numOutbound Number of outbound transactions to generate.
+         * @param numChecks Number of standalone inventory checks to generate.
          * @param startDate Starting date in YYYY-MM-DD.
          * @return Summary of generated entities.
          */
         GenerationSummary generateBatch(int numInbound,
                                         int numOutbound,
+                                        int numChecks = 0,
                                         const string& startDate = "2026-09-10");
 
         /**

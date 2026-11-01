@@ -1240,7 +1240,7 @@ namespace Generator
         return txnId;
     }
 
-    GenerationSummary DataGenerator::generateBatch(int numInbound, int numOutbound, const string& startDate)
+    GenerationSummary DataGenerator::generateBatch(int numInbound, int numOutbound, int numChecks, const string& startDate)
     {
         GenerationSummary summary;
         Table* prodTbl = db.getTable("product");
@@ -1346,6 +1346,34 @@ namespace Generator
                     summary.outboundTxnsGenerated++;
                     summary.shipmentsGenerated += numShipments;
                 }
+            }
+            curDate = advanceDate(curDate, 1);
+        }
+
+        // Generate Standalone Inventory Checks (alternating between QUAN and UNIT)
+        for (int k = 0; k < numChecks; k++)
+        {
+            string checkType = (k % 2 == 0) ? "QUAN" : "UNIT";
+            int numAuditProducts = 2 + (nextRandom() % 4);
+            if (numAuditProducts > static_cast<int>(productIds.size()))
+            {
+                numAuditProducts = productIds.size();
+            }
+
+            Vector<int> auditPids;
+            HashMap<int, bool> usedAudit;
+            for (int p = 0; p < numAuditProducts; p++)
+            {
+                int pid = productIds[nextRandom() % productIds.size()];
+                if (usedAudit.contains(pid)) continue;
+                usedAudit[pid] = true;
+                auditPids.push_back(pid);
+            }
+
+            string code = generateInventoryCheck(checkType, curDate, auditPids);
+            if (!code.empty())
+            {
+                summary.inventoryChecksGenerated++;
             }
             curDate = advanceDate(curDate, 1);
         }
@@ -1934,8 +1962,11 @@ namespace Generator
                 cout << "Enter number of Outbounds to generate: ";
                 int nOut = 5;
                 cin >> nOut;
+                cout << "Enter number of Inventory Checks to generate: ";
+                int nChk = 2;
+                cin >> nChk;
 
-                GenerationSummary summary = generateBatch(nIn, nOut);
+                GenerationSummary summary = generateBatch(nIn, nOut, nChk);
                 cout << "\n======================================================\n";
                 cout << "               BATCH GENERATION REPORT                \n";
                 cout << "======================================================\n";

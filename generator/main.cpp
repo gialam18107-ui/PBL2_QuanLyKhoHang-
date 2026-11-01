@@ -14,8 +14,9 @@ void printUsage(const char* progName)
     cout << "Warehouse Transaction Data Generator (PBL2)\n";
     cout << "Usage: " << progName << " [options]\n";
     cout << "Options:\n";
-    cout << "  --interactive, -i                     Launch interactive console interface (default if no args)\n";
-    cout << "  --batch <numInbound> <numOutbound>    Run batch generation non-interactively\n";
+    cout << "  --interactive, -i                           Launch interactive console interface (default if no args)\n";
+    cout << "  --batch <numInbound> <numOutbound> [checks] Run batch generation non-interactively (checks optional)\n";
+    cout << "  --checks, -c <numChecks>                    Generate standalone inventory checks\n";
     cout << "  --data-dir <path>                     Data directory (default: data)\n";
     cout << "  --save                                Write generated data back to CSV\n";
     cout << "  --help, -h                            Show this help message\n";
@@ -31,6 +32,7 @@ try
     string dataDir = "data";
     int numInbound = 0;
     int numOutbound = 0;
+    int numChecks = 0;
     bool isBatchMode = false;
     bool shouldSave = false;
     bool forceInteractive = false;
@@ -42,6 +44,20 @@ try
         {
             numInbound = stoi(argv[++i]);
             numOutbound = stoi(argv[++i]);
+            isBatchMode = true;
+            if (i + 1 < argc && argv[i + 1][0] != '-')
+            {
+                try
+                {
+                    numChecks = stoi(argv[i + 1]);
+                    i++;
+                }
+                catch (...) {}
+            }
+        }
+        else if ((arg == "--checks" || arg == "-c") && i + 1 < argc)
+        {
+            numChecks = stoi(argv[++i]);
             isBatchMode = true;
         }
         else if (arg == "--interactive" || arg == "-i")
@@ -91,9 +107,10 @@ try
 
     cout << "\n[+] Generating batch: "
          << numInbound << " inbounds, "
-         << numOutbound << " outbounds...\n";
+         << numOutbound << " outbounds, "
+         << numChecks << " inventory checks...\n";
 
-    GenerationSummary summary = generator.generateBatch(numInbound, numOutbound);
+    GenerationSummary summary = generator.generateBatch(numInbound, numOutbound, numChecks);
 
     cout << "\n======================================================\n";
     cout << "               GENERATION SUMMARY REPORT              \n";
