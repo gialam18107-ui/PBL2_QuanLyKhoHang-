@@ -199,6 +199,10 @@ Once a Transaction + `Delivery`/`Shipment` pair (along with its attached `Unit` 
   - Once an order, delivery, or shipment transitions to `COMPLETED`:
     - All unit status transitions, additions, and modifications are **strictly locked** (frozen/immutable).
   - Transitioning to `COMPLETED` requires a mandatory modal confirmation dialog with an explicit acknowledgment checkbox.
+- **Detail Line Scope Immutability (Bất biến danh mục chi tiết sau khi tạo phiếu)**:
+  - Just as `inbound_detail` and `outbound_detail` cannot have products added or removed after transaction order confirmation:
+  - **`inventory_check_quantity`**: The list of products audited in an `INVENTORY_CHECK` must be declared upfront upon check creation and **cannot be added or removed later**.
+  - **`adjust_movement_detail`**: The list of adjustment lines in an `ADJUSTMENT_MOVEMENT` must be declared upfront upon movement order creation and **cannot be added or removed later**.
 
 ### 4.6 Read-Only Master Data & Direct Unit Restrictions
 Users must **never** directly edit:
@@ -214,9 +218,20 @@ The warehouse audit system provides two distinct inventory check types defined i
 1. **Kiểm kho số lượng (`CHK-QUAN`, Quantity Inventory Check)**:
    - Evaluates inventory solely at the aggregated product quantity level without tracking individual physical serial units.
    - Purpose: Fast periodic reconciliation of total counts in stock.
+   - Generates only `inventory_check_quantity` records (no `inventory_check_unit`).
 2. **Kiểm kho chi tiết (`CHK-UNIT`, Detailed / Unit Inventory Check)**:
    - Evaluates inventory at the granular individual unit level, inspecting and verifying every specific unit serial (`unit_inventory.serial`) physically present in the warehouse.
    - Purpose: In-depth audit to verify unit serial identities, detect unrecorded units, locate missing units, and inspect physical conditions (status shifts).
+   - Generates simultaneously `inventory_check_quantity` (product-level progress tracker) and `inventory_check_unit` (serial-level inspection).
+
+### 5.1.1 Pre-Declaration of Audited Products & Scope Immutability (Khai báo trước phạm vi sản phẩm và tính bất biến)
+- **Mandatory Upfront Product Declaration (Bắt buộc khai báo trước danh sách sản phẩm kiểm kê)**:
+  - Similar to transactions, every `INVENTORY_CHECK` **must declare in advance exactly which products (`product_id`) will be audited** at the moment the check record is created.
+  - The declared products are atomically registered as rows in `inventory_check_quantity` with initial system stock snapshots (`system_available_quan`, `system_warranty_quan`, `system_scrapped_quan`).
+- **Strict Post-Creation Lock (Khóa hoàn toàn sau khi tạo đợt kiểm kê)**:
+  - Once an `INVENTORY_CHECK` is created and committed to the database, its product audit scope is **frozen/immutable**.
+  - It is **strictly prohibited to add, remove, or modify** products in the audit scope of that inventory check.
+  - In detailed unit checks (`CHK-UNIT`), candidate units verified in `inventory_check_unit` must strictly belong to the products declared in `inventory_check_quantity`.
 
 ### 5.2 Quantity Inventory Check (`CHK-QUAN`) Workflow & Discrepancy Adjustment Orders
 - **Data Capture in `inventory_check_quantity`**:
@@ -272,6 +287,9 @@ The warehouse audit system provides two distinct inventory check types defined i
   - `to_status`: destination warehouse status (`AVAILABLE`, `WARRANTY`, `SCRAPPED`; must not be `OUT`)
   - `adjust_quantity`: planned quantity to shift
   - `actual_quantity`: actual number of units shifted
+- **Mandatory Pre-Declaration of Movement Details & Detail Immutability (Khai báo cụ thể trước và khóa chi tiết điều chỉnh nội bộ)**:
+  - Similar to transactions and inventory checks, every `ADJUSTMENT_MOVEMENT` **must declare specifically in advance all planned adjustment detail lines** (`product_id`, `from_status`, `to_status`, `adjust_quantity`) in `adjust_movement_detail` at the moment the movement order is created.
+  - **Strict Post-Creation Lock**: Once the `ADJUSTMENT_MOVEMENT` record is created, **it is strictly prohibited to add, remove, or delete any records in the detail table `adjust_movement_detail`**.
 
 ### 5.5 Referential Linkage & Cardinality Invariant (`source_code` referencing `check_code`)
 - **Mandatory Linkage Rule**:
@@ -407,16 +425,19 @@ All auto-generated codes and user inputs must strictly conform to `QuanLyKhoHang
   - **Delivery & Shipment Changed Units Inspection View**: Shows all units whose status was altered by that batch (Product Name, Serial, Old Status, New Status) and features a "Tổng kết trạng thái" (Status Summary) button aggregating unit counts by status using `HashTable`.
   - **Order Completion Confirmation Dialog**: Modal popup with mandatory confirmation checkbox before setting status to `COMPLETED`.
 - **Inventory Check Interface (Kiểm Kê Kho)**:
+  - **Upfront Product Scope Declaration**: When initiating a new inventory check, the UI presents a product selector dialog where users must choose all participating products upfront. Once confirmed, the product list is permanently locked into `inventory_check_quantity` and cannot be modified.
   - Provides two distinct tabs/workflows:
     1. **Kiểm kho số lượng (`CHK-QUAN`)**:
-       - Displays products with system quantities snapshot (`system_available_quan`, etc.).
+       - Displays declared products with system quantities snapshot (`system_available_quan`, etc.).
        - Allows inputting actual counted quantities (`actual_available_quan`, etc.).
        - Displays calculated discrepancy.
        - Features an explicit action button: **"Xác nhận tạo đơn điều chỉnh"**. Clicking this button creates the corresponding `ADJUSTMENT_IN` or `ADJUSTMENT_OUT` transaction (with `source_code = check_code`, `customer_id = NULL`).
     2. **Kiểm kho chi tiết (`CHK-UNIT`)**:
-       - Displays unit-by-unit verification list with `system_status` and `scanned_status`.
+       - Uses `inventory_check_quantity` as the high-level progress tracker showing how many units have been audited vs. system stock.
+       - Displays unit-by-unit verification list in `inventory_check_unit` (`system_status` and `scanned_status`).
        - Features explicit action buttons: **"Tạo đơn nhập điều chỉnh (ADJ-IN)"**, **"Tạo đơn xuất điều chỉnh (ADJ-OUT)"**, and **"Tạo đơn điều chỉnh nội bộ (Movement)"**. Each order is generated **only upon user confirmation**.
 - **Internal Adjustment Movement Interface (Điều Chỉnh Nội Bộ)**:
+  - **Upfront Detail Declaration**: When creating an adjustment movement, users must configure all item shift details (`product_id`, `from_status`, `to_status`, `adjust_quantity`) upfront. Once confirmed and saved, the detail rows in `adjust_movement_detail` are permanently locked (no adding, editing, or deleting lines).
   - Displays records from `ADJUSTMENT_MOVEMENT` and `adjust_movement_detail`.
   - Shows `adjust_code`, `source_code` (referencing `check_code`), `reason` (`STOCKTAKE_DIFF`, `DAMAGED`, `DATA_ERROR`, `OTHER`), and status.
 
