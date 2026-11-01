@@ -421,8 +421,23 @@ bool Table::checkConstraints(const Record& record, int ignoreRowIndex) const
                 const Value& val = record.get(colName);
                 if (c->getType() == ConstraintType::PRIMARY_KEY && isNull(val))
                 {
-                    cout << "Constraint failed: " << c->getName() << endl;
+                    cout << "Constraint failed: " << c->getName() << " (Primary key cannot be null on table '" << name << "')" << endl;
                     return false;
+                }
+                if (c->getType() == ConstraintType::UNIQUE)
+                {
+                    if (isNull(val))
+                    {
+                        continue; // Null does not violate uniqueness
+                    }
+                    if (holds_alternative<string>(val) && get<string>(val).empty())
+                    {
+                        const Column* col = getColumn(colName);
+                        if (col != nullptr && !col->isNotNull())
+                        {
+                            continue; // Empty string in nullable unique column does not violate uniqueness
+                        }
+                    }
                 }
                 if (!isNull(val))
                 {
@@ -450,7 +465,7 @@ bool Table::checkConstraints(const Record& record, int ignoreRowIndex) const
                         }
                         if (violated)
                         {
-                            cout << "Constraint failed: " << c->getName() << endl;
+                            cout << "Constraint failed: " << c->getName() << " on table '" << name << "' (duplicate key on " << colName << ")" << endl;
                             return false;
                         }
                         continue; // Index check passed!
@@ -461,7 +476,7 @@ bool Table::checkConstraints(const Record& record, int ignoreRowIndex) const
 
         if (!c->validate(record, *targetRows, {}))
         {
-            cout << "Constraint failed: " << c->getName() << endl;
+            cout << "Constraint failed: " << c->getName() << " on table '" << name << "'" << endl;
             return false;
         }
     }

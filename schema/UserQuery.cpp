@@ -448,31 +448,41 @@ void inbound_transaction_query_impl(Database *db, Vector<Record> &results,
 	}
 
 	auto processIt = [&](const Record &it) {
-		if (!it.has("customer_id"))
-			return;
-		auto cit = custMap.find(it.get("customer_id"));
-		if (cit != custMap.end()) {
-			const Record &c = *(cit->second);
-			Record out;
-			if (it.has("inbound_transaction_id")) {
-				out.set("inbound_transaction.inbound_transaction_id", it.get("inbound_transaction_id"));
-				out.set("inbound_transaction_id", it.get("inbound_transaction_id"));
-				out.set("inbound_id", it.get("inbound_transaction_id"));
-			}
-			if (it.has("inbound_code"))
-				out.set("inbound_transaction.inbound_code", it.get("inbound_code"));
-			if (c.has("customer_code"))
-				out.set("customer.customer_code", c.get("customer_code"));
-			if (it.has("order_at"))
-				out.set("inbound_transaction.order_at", it.get("order_at"));
-			if (it.has("type"))
-				out.set("inbound_transaction.type", it.get("type"));
-			if (it.has("status"))
-				out.set("inbound_transaction.status", it.get("status"));
-			if (it.has("note"))
-				out.set("inbound_transaction.note", it.get("note"));
-			results.push_back(std::move(out));
+		Record out;
+		if (it.has("inbound_transaction_id")) {
+			out.set("inbound_transaction.inbound_transaction_id", it.get("inbound_transaction_id"));
+			out.set("inbound_transaction_id", it.get("inbound_transaction_id"));
+			out.set("inbound_id", it.get("inbound_transaction_id"));
 		}
+		if (it.has("inbound_code"))
+			out.set("inbound_transaction.inbound_code", it.get("inbound_code"));
+		if (it.has("source_code") && !isNull(it.get("source_code"))) {
+			out.set("inbound_transaction.source_code", it.get("source_code"));
+			out.set("source_code", it.get("source_code"));
+		} else {
+			out.set("inbound_transaction.source_code", std::string(""));
+			out.set("source_code", std::string(""));
+		}
+
+		std::string custCode = "";
+		if (it.has("customer_id") && !isNull(it.get("customer_id"))) {
+			auto cit = custMap.find(it.get("customer_id"));
+			if (cit != custMap.end() && cit->second && cit->second->has("customer_code")) {
+				custCode = std::get<std::string>(cit->second->get("customer_code"));
+			}
+		}
+		out.set("customer.customer_code", custCode);
+		out.set("customer_code", custCode);
+
+		if (it.has("order_at"))
+			out.set("inbound_transaction.order_at", it.get("order_at"));
+		if (it.has("type"))
+			out.set("inbound_transaction.type", it.get("type"));
+		if (it.has("status"))
+			out.set("inbound_transaction.status", it.get("status"));
+		if (it.has("note"))
+			out.set("inbound_transaction.note", it.get("note"));
+		results.push_back(std::move(out));
 	};
 
 	if (!col.empty()) {
@@ -891,32 +901,42 @@ void outbound_transaction_query_impl(Database *db, Vector<Record> &results,
 	}
 
 	auto processOt = [&](const Record &ot) {
-		if (!ot.has("customer_id"))
-			return;
-		auto cit = custMap.find(ot.get("customer_id"));
-		if (cit != custMap.end()) {
-			const Record &c = *(cit->second);
-			Record out;
-			Value otId = extractOtId(ot);
-			if (!holds_alternative<monostate>(otId)) {
-				out.set("outbound_transaction.outbound_transaction_id", otId);
-				out.set("outbound_transaction_id", otId);
-				out.set("outbound_id", otId);
-			}
-			if (ot.has("outbound_code"))
-				out.set("outbound_transaction.outbound_code", ot.get("outbound_code"));
-			if (c.has("customer_code"))
-				out.set("customer.customer_code", c.get("customer_code"));
-			if (ot.has("order_at"))
-				out.set("outbound_transaction.order_at", ot.get("order_at"));
-			if (ot.has("type"))
-				out.set("outbound_transaction.type", ot.get("type"));
-			if (ot.has("status"))
-				out.set("outbound_transaction.status", ot.get("status"));
-			if (ot.has("note"))
-				out.set("outbound_transaction.note", ot.get("note"));
-			results.push_back(std::move(out));
+		Record out;
+		Value otId = extractOtId(ot);
+		if (!holds_alternative<monostate>(otId)) {
+			out.set("outbound_transaction.outbound_transaction_id", otId);
+			out.set("outbound_transaction_id", otId);
+			out.set("outbound_id", otId);
 		}
+		if (ot.has("outbound_code"))
+			out.set("outbound_transaction.outbound_code", ot.get("outbound_code"));
+		if (ot.has("source_code") && !isNull(ot.get("source_code"))) {
+			out.set("outbound_transaction.source_code", ot.get("source_code"));
+			out.set("source_code", ot.get("source_code"));
+		} else {
+			out.set("outbound_transaction.source_code", std::string(""));
+			out.set("source_code", std::string(""));
+		}
+
+		std::string custCode = "";
+		if (ot.has("customer_id") && !isNull(ot.get("customer_id"))) {
+			auto cit = custMap.find(ot.get("customer_id"));
+			if (cit != custMap.end() && cit->second && cit->second->has("customer_code")) {
+				custCode = std::get<std::string>(cit->second->get("customer_code"));
+			}
+		}
+		out.set("customer.customer_code", custCode);
+		out.set("customer_code", custCode);
+
+		if (ot.has("order_at"))
+			out.set("outbound_transaction.order_at", ot.get("order_at"));
+		if (ot.has("type"))
+			out.set("outbound_transaction.type", ot.get("type"));
+		if (ot.has("status"))
+			out.set("outbound_transaction.status", ot.get("status"));
+		if (ot.has("note"))
+			out.set("outbound_transaction.note", ot.get("note"));
+		results.push_back(std::move(out));
 	};
 
 	if (!col.empty()) {

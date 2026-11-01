@@ -728,7 +728,7 @@ namespace Schema
         table->addColumn(Column("check_quantity_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("unit_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("system_status", DataType::VARCHAR, 50, false, false, true));
-        table->addColumn(Column("scanned_status", DataType::VARCHAR, 50, false, false, true));
+        table->addColumn(Column("scanned_status", DataType::VARCHAR, 50, false, false, false));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_inv_check_unit", "check_unit_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_inv_check_unit_check", "check_id", "inventory_check", "check_id"));

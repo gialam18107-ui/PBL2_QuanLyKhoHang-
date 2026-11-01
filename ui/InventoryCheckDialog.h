@@ -121,6 +121,30 @@ private:
     QPushButton* editRowNoteBtn;
     QLabel* quantitySummaryLabel;
 
+    // Recent units box in Tab 1 (for UNIT mode)
+    QGroupBox* recentUnitsGroup;
+    QTableWidget* recentUnitsTable;
+    void updateRecentUnitsBox();
+
+    struct RecentScannedUnit {
+        int checkUnitId;
+        QString serial;
+        QString productCode;
+        QString productName;
+        QString scannedStatus;
+    };
+    std::vector<RecentScannedUnit> recentScannedUnits;
+
+    struct CandidateUnit {
+        int checkUnitId;
+        QString serial;
+        QString productCode;
+        QString productName;
+        QString systemStatus;
+        QString scannedStatus;
+    };
+    std::vector<CandidateUnit> checkCandidateUnits;
+
     // Unit table & controls (for UNIT checks)
     QWidget* unitPageWidget;
     QLineEdit* serialSearchInput;

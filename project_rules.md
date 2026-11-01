@@ -234,6 +234,11 @@ The warehouse audit system provides two distinct inventory check types defined i
   - In detailed unit checks (`CHK-UNIT`), candidate units verified in `inventory_check_unit` must strictly belong to the products declared in `inventory_check_quantity`.
 
 ### 5.2 Quantity Inventory Check (`CHK-QUAN`) Workflow & Discrepancy Adjustment Orders
+- **Initial Lifecycle State**:
+  - Upon creation, every `INVENTORY_CHECK` starts strictly in the **`PENDING`** status.
+- **Mandatory Completed Status Gate (Chỉ tạo đơn sau khi đợt kiểm kê đã COMPLETED)**:
+  - Adjustment orders (`ADJUSTMENT_IN`, `ADJUSTMENT_OUT`) can **ONLY** be generated after the inventory check has transitioned to **`COMPLETED`**.
+  - Creating adjustment transactions while the check is `PENDING` or `IN_PROCESS` is strictly prohibited. The audit process must be finalized and officially marked `COMPLETED` before any ledger adjustments are generated.
 - **Data Capture in `inventory_check_quantity`**:
   - When a `CHK-QUAN` check is created, the system takes an atomic snapshot of current system quantities from `PRODUCT`:
     - `system_available_quan`
@@ -253,12 +258,16 @@ The warehouse audit system provides two distinct inventory check types defined i
     - Quantity inventory check **can only generate Inbound or Outbound adjustment transactions** based on quantity variance. It **cannot** generate internal status adjustment movements (`ADJUSTMENT_MOVEMENT`) because individual serial units are not tracked in quantity checks.
 
 ### 5.3 Detailed / Unit Inventory Check (`CHK-UNIT`) Workflow & Unit Adjustment Orders
+- **Initial Lifecycle State & Candidate Unit Verification**:
+  - Upon creation, the check starts strictly in status **`PENDING`**.
+  - All candidate units in warehouse for the declared products are registered into `inventory_check_unit` with `scanned_status = NULL` (unverified).
+  - The UI does **not pre-populate** units as verified; only when the user scans or inputs a specific serial number does that unit appear in the verified unit list, subsequently updating product counts and audit progress.
 - **Data Capture in `inventory_check_quantity` & `inventory_check_unit`**:
   - Product-level snapshot is recorded in `inventory_check_quantity`.
   - For every candidate unit in the warehouse, a record in `inventory_check_unit` captures:
     - `unit_id`: reference to `unit_inventory`
     - `system_status`: recorded status in system at audit creation
-    - `scanned_status`: actual physical condition verified during inspection (defaults to `system_status`)
+    - `scanned_status`: actual physical condition verified during inspection (initially `NULL`, updated upon user entry/scan)
 - **Reconciliation & Order Generation Capabilities**:
   - Detailed unit audits can uncover three types of discrepancies:
     1. **Surplus Units (Hàng thừa / tìm thấy ngoài kho)**: Unrecorded units (`old_status == NULL`) or units previously dispatched (`old_status == OUT`) found physically in the warehouse.
@@ -267,6 +276,8 @@ The warehouse audit system provides two distinct inventory check types defined i
        - Can generate an **Outbound Adjustment Transaction (`ADJUSTMENT_OUT`)** transitioning units to `OUT`.
     3. **Status Shift Discrepancies (Thay đổi trạng thái vật lý trong kho)**: Units physically located in the warehouse whose condition changed (e.g., recorded as `AVAILABLE` but found damaged -> `SCRAPPED`, or moved to `WARRANTY`).
        - Can generate an **Internal Adjustment Movement (`ADJUSTMENT_MOVEMENT`)** shifting units between internal warehouse statuses (`from_status -> to_status`).
+  - **Mandatory Completed Status Gate (Chỉ tạo đơn sau khi đợt kiểm kê đã COMPLETED)**:
+    - All three types of orders (`ADJUSTMENT_IN`, `ADJUSTMENT_OUT`, `ADJUSTMENT_MOVEMENT`) can **ONLY** be generated after the inventory check has transitioned to **`COMPLETED`**.
   - **Explicit User Confirmation Gate (Chỉ tạo đơn nếu người dùng bấm xác nhận)**:
     - All three types of orders (`ADJUSTMENT_IN`, `ADJUSTMENT_OUT`, `ADJUSTMENT_MOVEMENT`) are created **only upon explicit user confirmation** ("nếu người dùng bấm xác nhận").
 

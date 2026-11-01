@@ -84,6 +84,7 @@ bool UniqueConstraint::validate(
 {
     if (!record.has(columnName) || isNull(record.get(columnName))) return true;
     Value value = record.get(columnName);
+    if (holds_alternative<string>(value) && get<string>(value).empty()) return true;
     for (size_t index = 0; index < existingRecords.size(); ++index)
     {
         const Record& existing = existingRecords[index];
@@ -101,6 +102,7 @@ bool UniqueConstraint::validateUpdate(
 {
     if (!newRecord.has(columnName) || isNull(newRecord.get(columnName))) return true;
     Value value = newRecord.get(columnName);
+    if (holds_alternative<string>(value) && get<string>(value).empty()) return true;
     for (size_t index = 0; index < existingRecords.size(); ++index)
     {
         const Record& existing = existingRecords[index];

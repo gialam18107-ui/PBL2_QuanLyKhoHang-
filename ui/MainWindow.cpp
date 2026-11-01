@@ -697,11 +697,12 @@ void MainWindow::setupPages()
         this
     );
     inboundTxnWidget->setMasterColumns(
-        {"Mã đơn nhập", "Mã Đối tác / KH", "Ngày đặt", "Loại đơn", "Trạng thái", "Ghi chú"},
-        {"inbound_transaction.inbound_code", "customer.customer_code", "inbound_transaction.order_at", "inbound_transaction.type", "inbound_transaction.status", "inbound_transaction.note"}
+        {"Mã đơn nhập", "Mã tham chiếu", "Mã Đối tác / KH", "Ngày đặt", "Loại đơn", "Trạng thái", "Ghi chú"},
+        {"inbound_transaction.inbound_code", "inbound_transaction.source_code", "customer.customer_code", "inbound_transaction.order_at", "inbound_transaction.type", "inbound_transaction.status", "inbound_transaction.note"}
     );
     inboundTxnWidget->setFilterColumns({
         {"Mã đơn nhập (inbound_code)", "inbound_code", FilterType::EXACT_TEXT, {}},
+        {"Mã tham chiếu (source_code)", "source_code", FilterType::EXACT_TEXT, {}},
         {"Mã đối tác (customer_code)", "customer_code", FilterType::EXACT_TEXT, {}},
         {"Ngày đặt hàng (order_at)", "order_at", FilterType::DATE_RANGE, {}},
         {"Loại đơn nhập (type)", "type", FilterType::SELECT_OR_TYPE, {"PURCHASING", "ADJUSTMENT_IN", "WARRANTY_CHECKING", "WARRANTY_REPLACEMENT", "CUSTOMER_RETURN"}},
@@ -841,11 +842,12 @@ void MainWindow::setupPages()
         this
     );
     outboundTxnWidget->setMasterColumns(
-        {"Mã đơn xuất", "Mã Khách hàng", "Ngày tạo", "Loại đơn xuất", "Trạng thái", "Ghi chú"},
-        {"outbound_transaction.outbound_code", "customer.customer_code", "outbound_transaction.order_at", "outbound_transaction.type", "outbound_transaction.status", "outbound_transaction.note"}
+        {"Mã đơn xuất", "Mã tham chiếu", "Mã Khách hàng", "Ngày tạo", "Loại đơn xuất", "Trạng thái", "Ghi chú"},
+        {"outbound_transaction.outbound_code", "outbound_transaction.source_code", "customer.customer_code", "outbound_transaction.order_at", "outbound_transaction.type", "outbound_transaction.status", "outbound_transaction.note"}
     );
     outboundTxnWidget->setFilterColumns({
         {"Mã đơn xuất (outbound_code)", "outbound_code", FilterType::EXACT_TEXT, {}},
+        {"Mã tham chiếu (source_code)", "source_code", FilterType::EXACT_TEXT, {}},
         {"Mã khách hàng (customer_code)", "customer_code", FilterType::EXACT_TEXT, {}},
         {"Ngày đặt hàng (order_at)", "order_at", FilterType::DATE_RANGE, {}},
         {"Loại đơn xuất (type)", "type", FilterType::SELECT_OR_TYPE, {"SELLING", "ADJUSTMENT_OUT", "RETURN_TO_SUPPLIER", "WARRANTY_RETURN", "WARRANTY_REPLACEMENT_TO_CUSTOMER"}},
@@ -1201,6 +1203,50 @@ void MainWindow::setupPages()
         user_query::adjustment_movement_query(db, results, col, Value(v1.toStdString()));
         adjustmentMovementWidget->setData(results);
     });
+    adjustmentMovementWidget->enableBottomDetailPanel(
+        "📦 Chọn một phiếu điều chuyển ở trên để xem chi tiết danh mục mặt hàng điều chuyển...",
+        {"Mã phiếu", "Mã sản phẩm", "Tên sản phẩm", "Từ trạng thái", "Sang trạng thái", "SL Kế hoạch", "SL Thực tế"},
+        {"adjust_code", "product_code", "product_name", "from_status", "to_status", "adjust_quantity", "actual_quantity"},
+        [this](const Record* sel, QLabel* banner, QTableWidget* table) {
+            if (!banner || !table) return;
+            if (!sel || !db) {
+                banner->setText("📦 Chọn một phiếu điều chuyển ở trên để xem chi tiết danh mục mặt hàng điều chuyển...");
+                table->setRowCount(0);
+                return;
+            }
+            int adjId = sel->has("adjust_id") && std::holds_alternative<int>(sel->get("adjust_id")) ? std::get<int>(sel->get("adjust_id")) : 0;
+            QString adjCode = sel->has("adjust_code") && std::holds_alternative<std::string>(sel->get("adjust_code"))
+                            ? QString::fromStdString(std::get<std::string>(sel->get("adjust_code"))) : "";
+            banner->setText(QString("📦 Chi tiết các mặt hàng điều chuyển của phiếu: <b>%1</b> (ID: %2)").arg(adjCode).arg(adjId));
+
+            Vector<Record> results;
+            user_query::adjust_movement_detail_query(db, adjId, results);
+
+            table->setRowCount(static_cast<int>(results.size()));
+            for (int r = 0; r < static_cast<int>(results.size()); ++r) {
+                const auto& rec = results[r];
+                QString mCode = rec.has("adjust_code") && std::holds_alternative<std::string>(rec.get("adjust_code")) ? QString::fromStdString(std::get<std::string>(rec.get("adjust_code"))) : adjCode;
+                QString pCode = rec.has("product_code") && std::holds_alternative<std::string>(rec.get("product_code")) ? QString::fromStdString(std::get<std::string>(rec.get("product_code"))) : "";
+                QString pName = rec.has("product_name") && std::holds_alternative<std::string>(rec.get("product_name")) ? QString::fromStdString(std::get<std::string>(rec.get("product_name"))) : "";
+                QString fromSt = rec.has("from_status") && std::holds_alternative<std::string>(rec.get("from_status")) ? QString::fromStdString(std::get<std::string>(rec.get("from_status"))) : "";
+                QString toSt = rec.has("to_status") && std::holds_alternative<std::string>(rec.get("to_status")) ? QString::fromStdString(std::get<std::string>(rec.get("to_status"))) : "";
+                int planQty = rec.has("adjust_quantity") && std::holds_alternative<int>(rec.get("adjust_quantity")) ? std::get<int>(rec.get("adjust_quantity")) : 0;
+                int actQty = rec.has("actual_quantity") && std::holds_alternative<int>(rec.get("actual_quantity")) ? std::get<int>(rec.get("actual_quantity")) : 0;
+
+                table->setItem(r, 0, new QTableWidgetItem(mCode));
+                table->setItem(r, 1, new QTableWidgetItem(pCode));
+                table->setItem(r, 2, new QTableWidgetItem(pName));
+                table->setItem(r, 3, new QTableWidgetItem(fromSt));
+                table->setItem(r, 4, new QTableWidgetItem(toSt));
+                auto* planItem = new QTableWidgetItem(QString::number(planQty));
+                planItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+                table->setItem(r, 5, planItem);
+                auto* actItem = new QTableWidgetItem(QString::number(actQty));
+                actItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+                table->setItem(r, 6, actItem);
+            }
+        }
+    );
     stackedWidget->addWidget(adjustmentMovementWidget);
 
     // ========================================================

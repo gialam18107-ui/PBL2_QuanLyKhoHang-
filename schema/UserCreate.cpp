@@ -1246,10 +1246,9 @@ namespace user_create
         Table* inDetTable = db->getTable("inbound_detail");
         Table* unitTable = db->getTable("unit_inventory");
         Table* histTable = db->getTable("status_history");
-        Table* qtyTable = db->getTable("product_quantity");
         Table* prodTable = db->getTable("product");
 
-        if (!delTable || !delDetTable || !inTxnTable || !inDetTable || !unitTable || !histTable || !qtyTable || !prodTable) {
+        if (!delTable || !delDetTable || !inTxnTable || !inDetTable || !unitTable || !histTable || !prodTable) {
             return OperationResult{false, "Bảng liên quan đến nhận hàng và linh kiện không tồn tại trong CSDL.", 0};
         }
 
@@ -1727,7 +1726,7 @@ namespace user_create
         chkRec.set("check_code", checkCode);
         chkRec.set("check_type", checkType);
         chkRec.set("check_at", checkDate);
-        chkRec.set("status", std::string("IN_PROCESS"));
+        chkRec.set("status", std::string("PENDING"));
         chkRec.set("note", note);
 
         OperationResult rChk = db->insertRecord("inventory_check", chkRec);
@@ -1795,7 +1794,7 @@ namespace user_create
                 cuRec.set("check_quantity_id", cqId);
                 cuRec.set("unit_id", uId);
                 cuRec.set("system_status", st);
-                cuRec.set("scanned_status", st);
+                cuRec.set("scanned_status", Value{});
 
                 OperationResult rCu = db->insertRecord("inventory_check_unit", cuRec);
                 if (!rCu) { db->rollback(); return rCu; }
@@ -1905,6 +1904,12 @@ namespace user_create
         const Record* chkRec = chkTbl->getRecordById(checkId);
         if (!chkRec) return OperationResult{false, "Không tìm thấy đợt kiểm kho với ID " + std::to_string(checkId) + ".", 0};
 
+        std::string curStatus = (chkRec->has("status") && std::holds_alternative<std::string>(chkRec->get("status")))
+                              ? std::get<std::string>(chkRec->get("status")) : "";
+        if (curStatus != "COMPLETED") {
+            return OperationResult{false, "Chỉ có thể tạo đơn điều chỉnh sau khi đợt kiểm kê đã được chuyển sang trạng thái HOÀN THÀNH (COMPLETED) (Rule 5.2 & 5.3).", 0};
+        }
+
         std::string checkCode = std::get<std::string>(chkRec->get("check_code"));
         std::string checkType = std::get<std::string>(chkRec->get("check_type"));
 
@@ -1963,8 +1968,10 @@ namespace user_create
                 Vector<AdjustMovementItem> movements;
                 for (size_t i = 0; i < cuRows.size(); ++i) {
                     const auto& cu = cuRows[i];
-                    std::string sysSt = std::get<std::string>(cu.get("system_status"));
-                    std::string scanSt = std::get<std::string>(cu.get("scanned_status"));
+                    std::string sysSt = (cu.has("system_status") && std::holds_alternative<std::string>(cu.get("system_status")))
+                                      ? std::get<std::string>(cu.get("system_status")) : "";
+                    std::string scanSt = (cu.has("scanned_status") && std::holds_alternative<std::string>(cu.get("scanned_status")))
+                                       ? std::get<std::string>(cu.get("scanned_status")) : "";
                     if (!scanSt.empty() && scanSt != sysSt && scanSt != "OUT" && sysSt != "OUT") {
                         // Internal status shift!
                         int cqId = std::get<int>(cu.get("check_quantity_id"));

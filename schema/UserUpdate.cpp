@@ -1005,7 +1005,20 @@ namespace user_update
         up.set("actual_scrapped_quan", std::max(0, actualScrap));
         up.set("note", note);
 
-        return db->update("inventory_check_quantity", checkQuantityId, up);
+        OperationResult res = db->update("inventory_check_quantity", checkQuantityId, up);
+        if (res.success) {
+            int checkId = cqRec->has("check_id") && std::holds_alternative<int>(cqRec->get("check_id")) ? std::get<int>(cqRec->get("check_id")) : 0;
+            Table* chkTbl = db->getTable("inventory_check");
+            if (chkTbl && checkId > 0) {
+                const Record* chk = chkTbl->getRecordById(checkId);
+                if (chk && chk->has("status") && std::holds_alternative<std::string>(chk->get("status")) && std::get<std::string>(chk->get("status")) == "PENDING") {
+                    Record chkUp;
+                    chkUp.set("status", std::string("IN_PROCESS"));
+                    db->update("inventory_check", checkId, chkUp);
+                }
+            }
+        }
+        return res;
     }
 
     OperationResult updateInventoryCheckUnit(
@@ -1036,7 +1049,9 @@ namespace user_update
         for (size_t i = 0; i < allUnitsForCq.size(); ++i) {
             const auto& u = allUnitsForCq[i];
             int uPk = std::get<int>(u.get("check_unit_id"));
-            std::string st = (uPk == checkUnitId) ? scannedStatus : std::get<std::string>(u.get("scanned_status"));
+            std::string st = (uPk == checkUnitId) ? scannedStatus :
+                ((u.has("scanned_status") && std::holds_alternative<std::string>(u.get("scanned_status")))
+                    ? std::get<std::string>(u.get("scanned_status")) : "");
             if (st == "AVAILABLE") actAvail++;
             else if (st == "WARRANTY") actWarr++;
             else if (st == "SCRAPPED") actScrap++;
@@ -1049,6 +1064,17 @@ namespace user_update
 
         OperationResult rCq = db->update("inventory_check_quantity", cqId, cqUp);
         if (!rCq) { db->rollback(); return rCq; }
+
+        int checkId = cuRec->has("check_id") && std::holds_alternative<int>(cuRec->get("check_id")) ? std::get<int>(cuRec->get("check_id")) : 0;
+        Table* chkTbl = db->getTable("inventory_check");
+        if (chkTbl && checkId > 0) {
+            const Record* chk = chkTbl->getRecordById(checkId);
+            if (chk && chk->has("status") && std::holds_alternative<std::string>(chk->get("status")) && std::get<std::string>(chk->get("status")) == "PENDING") {
+                Record chkUp;
+                chkUp.set("status", std::string("IN_PROCESS"));
+                db->update("inventory_check", checkId, chkUp);
+            }
+        }
 
         db->commit();
         return OperationResult{true, "Cập nhật trạng thái quét linh kiện và đồng bộ số lượng kiểm kho thành công!", 2};
