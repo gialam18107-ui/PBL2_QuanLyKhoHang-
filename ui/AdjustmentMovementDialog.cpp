@@ -14,7 +14,12 @@ AdjustmentMovementCreateDialog::AdjustmentMovementCreateDialog(Database* databas
     : QDialog(parent), db(database), createdCode(""), createdId(-1)
 {
     setWindowTitle("Tạo Phiếu Điều Chuyển Trạng Thái (Khai báo chi tiết trước)");
-    resize(850, 600);
+    setWindowFlags(windowFlags() | Qt::WindowMaximizeButtonHint | Qt::WindowMinimizeButtonHint);
+    if (parent) {
+        resize(parent->size());
+    } else {
+        resize(1100, 750);
+    }
     setupUI();
     populateProducts();
     populateReasons();
@@ -341,7 +346,12 @@ AdjustmentMovementDetailDialog::AdjustmentMovementDetailDialog(Database* databas
     : QDialog(parent), db(database), adjustId(id), isExecuted(false)
 {
     setWindowTitle("Chi Tiết và Thực Hiện Phiếu Điều Chuyển Kho");
-    resize(850, 520);
+    setWindowFlags(windowFlags() | Qt::WindowMaximizeButtonHint | Qt::WindowMinimizeButtonHint);
+    if (parent) {
+        resize(parent->size());
+    } else {
+        resize(1100, 750);
+    }
     loadMovementInfo();
     setupUI();
     loadMovementDetails();

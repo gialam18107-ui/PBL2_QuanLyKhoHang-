@@ -984,7 +984,7 @@ void MainWindow::setupPages()
         this
     );
     inventoryCheckWidget->setColumns(
-        {"Mã đợt kiểm", "Hình thức kiểm", "Ngày kiểm kho", "Trạng thái", "Ghi chú"},
+        {"Mã đợt kiểm", "Hình thức kiểm", "Ngày kiểm kho", "Trạng thái", "Lý do kiểm kê"},
         {"inventory_check.check_code", "inventory_check.check_type", "inventory_check.check_at", "inventory_check.status", "inventory_check.note"}
     );
     inventoryCheckWidget->setFilterColumns({
@@ -999,6 +999,54 @@ void MainWindow::setupPages()
         user_query::inventory_check_query(db, results, col, Value(v1.toStdString()));
         inventoryCheckWidget->setData(results);
     });
+    inventoryCheckWidget->enableBottomDetailPanel(
+        "📋 Chọn một đợt kiểm kho ở trên để xem chi tiết số lượng sản phẩm...",
+        {"Mã SP", "Tên sản phẩm", "Tổng tồn HT", "Tổng thực tế", "Tổng chênh lệch", "Tồn tốt HT", "Thực tốt", "Lệch tốt", "Tồn BH HT", "Thực BH", "Lệch BH", "Tồn phế HT", "Thực phế", "Lệch phế", "Ghi chú"},
+        {"product_code", "product_name", "total_system_quan", "total_actual_quan", "total_diff_quan", "system_available_quan", "actual_available_quan", "diff_available", "system_warranty_quan", "actual_warranty_quan", "diff_warranty", "system_scrapped_quan", "actual_scrapped_quan", "diff_scrapped", "note"},
+        [this](const Record* sel, QLabel* banner, QTableWidget* table) {
+            if (!banner || !table) return;
+            if (!sel || !db) {
+                banner->setText("📋 Chọn một đợt kiểm kho ở trên để xem chi tiết số lượng sản phẩm...");
+                table->setRowCount(0);
+                return;
+            }
+            int chkId = sel->has("check_id") && holds_alternative<int>(sel->get("check_id")) ? get<int>(sel->get("check_id")) : 0;
+            QString code = sel->has("check_code") && holds_alternative<std::string>(sel->get("check_code")) ? QString::fromStdString(get<std::string>(sel->get("check_code"))) : "";
+            QString type = sel->has("check_type") && holds_alternative<std::string>(sel->get("check_type")) ? QString::fromStdString(get<std::string>(sel->get("check_type"))) : "";
+            QString note = sel->has("note") && holds_alternative<std::string>(sel->get("note")) ? QString::fromStdString(get<std::string>(sel->get("note"))) : "";
+            QString st = sel->has("status") && holds_alternative<std::string>(sel->get("status")) ? QString::fromStdString(get<std::string>(sel->get("status"))) : "";
+
+            banner->setText(QString("📋 Chi tiết kiểm đếm: Mã [%1] | Loại: %2 | Trạng thái: %3 | Lý do: %4")
+                .arg(code, type, st, note.isEmpty() ? "(Không có)" : note));
+
+            Vector<Record> qRecs;
+            user_query::inventory_check_quantity_query(db, chkId, qRecs);
+            table->setRowCount(static_cast<int>(qRecs.size()));
+
+            std::vector<std::string> qKeys = {
+                "product_code", "product_name", "total_system_quan", "total_actual_quan", "total_diff_quan",
+                "system_available_quan", "actual_available_quan", "diff_available",
+                "system_warranty_quan", "actual_warranty_quan", "diff_warranty",
+                "system_scrapped_quan", "actual_scrapped_quan", "diff_scrapped", "note"
+            };
+
+            for (size_t r = 0; r < qRecs.size(); ++r) {
+                const auto& rec = qRecs[r];
+                for (size_t c = 0; c < qKeys.size(); ++c) {
+                    QString val = "-";
+                    if (rec.has(qKeys[c])) {
+                        const auto& v = rec.get(qKeys[c]);
+                        if (holds_alternative<int>(v)) val = QString::number(get<int>(v));
+                        else if (holds_alternative<std::string>(v)) val = QString::fromStdString(get<std::string>(v));
+                    }
+                    auto* it = new QTableWidgetItem(val);
+                    if (c >= 2 && c <= 13) it->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+                    table->setItem(static_cast<int>(r), static_cast<int>(c), it);
+                }
+            }
+            if (qRecs.size() <= 50) table->resizeColumnsToContents();
+        }
+    );
     stackedWidget->addWidget(inventoryCheckWidget);
 
     // ========================================================
@@ -1010,8 +1058,8 @@ void MainWindow::setupPages()
         this
     );
     inventoryCheckQuantityWidget->setColumns(
-        {"Mã đợt kiểm", "Mã sản phẩm", "Tên sản phẩm", "Tồn HT (Avail)", "Thực tế (Avail)", "Lệch (Avail)", "BH HT (Warr)", "Thực tế (Warr)", "Lệch (Warr)", "Phế HT (Scrap)", "Thực tế (Scrap)", "Lệch (Scrap)", "Ghi chú"},
-        {"check_code", "product_code", "product_name", "system_available_quan", "actual_available_quan", "diff_available", "system_warranty_quan", "actual_warranty_quan", "diff_warranty", "system_scrapped_quan", "actual_scrapped_quan", "diff_scrapped", "note"}
+        {"Mã đợt kiểm", "Mã sản phẩm", "Tên sản phẩm", "Tổng tồn HT", "Tổng thực tế", "Tổng chênh lệch", "Tồn tốt HT", "Thực tốt", "Lệch tốt", "Tồn BH HT", "Thực BH", "Lệch BH", "Tồn phế HT", "Thực phế", "Lệch phế", "Ghi chú"},
+        {"check_code", "product_code", "product_name", "total_system_quan", "total_actual_quan", "total_diff_quan", "system_available_quan", "actual_available_quan", "diff_available", "system_warranty_quan", "actual_warranty_quan", "diff_warranty", "system_scrapped_quan", "actual_scrapped_quan", "diff_scrapped", "note"}
     );
     inventoryCheckQuantityWidget->setFilterColumns({
         {"Mã đợt kiểm (check_code)", "check_code", FilterType::EXACT_TEXT, {}},
@@ -1033,6 +1081,63 @@ void MainWindow::setupPages()
         }
         inventoryCheckQuantityWidget->setData(filtered);
     });
+    inventoryCheckQuantityWidget->enableBottomDetailPanel(
+        "🔍 Chọn một sản phẩm ở trên để xem danh sách chi tiết các linh kiện Serial Number...",
+        {"Mã đợt kiểm", "Số Serial (SN)", "Mã sản phẩm", "Tên sản phẩm", "Trạng thái HT", "Trạng thái Quét", "Kết quả đối soát"},
+        {"check_code", "serial", "product_code", "product_name", "system_status", "scanned_status", "match_result"},
+        [this](const Record* sel, QLabel* banner, QTableWidget* table) {
+            if (!banner || !table) return;
+            if (!sel || !db) {
+                banner->setText("🔍 Chọn một sản phẩm ở trên để xem danh sách chi tiết các linh kiện Serial Number...");
+                table->setRowCount(0);
+                return;
+            }
+            int chkId = sel->has("check_id") && holds_alternative<int>(sel->get("check_id")) ? get<int>(sel->get("check_id")) : 0;
+            int pId = sel->has("product_id") && holds_alternative<int>(sel->get("product_id")) ? get<int>(sel->get("product_id")) : 0;
+            QString pName = sel->has("product_name") && holds_alternative<std::string>(sel->get("product_name")) ? QString::fromStdString(get<std::string>(sel->get("product_name"))) : "";
+            QString pCode = sel->has("product_code") && holds_alternative<std::string>(sel->get("product_code")) ? QString::fromStdString(get<std::string>(sel->get("product_code"))) : "";
+            QString cCode = sel->has("check_code") && holds_alternative<std::string>(sel->get("check_code")) ? QString::fromStdString(get<std::string>(sel->get("check_code"))) : "";
+
+            banner->setText(QString("🔍 Danh sách Serial linh kiện của [%1] %2 trong đợt [%3]:").arg(pCode, pName, cCode));
+
+            Vector<Record> allUnits;
+            user_query::inventory_check_unit_query(db, chkId, allUnits);
+            Vector<Record> matchedUnits;
+            for (size_t i = 0; i < allUnits.size(); ++i) {
+                if (pId > 0 && allUnits[i].has("product_id") && holds_alternative<int>(allUnits[i].get("product_id"))) {
+                    if (get<int>(allUnits[i].get("product_id")) == pId) {
+                        matchedUnits.push_back(allUnits[i]);
+                    }
+                } else if (!pCode.isEmpty() && allUnits[i].has("product_code") && holds_alternative<std::string>(allUnits[i].get("product_code"))) {
+                    if (QString::fromStdString(get<std::string>(allUnits[i].get("product_code"))) == pCode) {
+                        matchedUnits.push_back(allUnits[i]);
+                    }
+                }
+            }
+
+            table->setRowCount(static_cast<int>(matchedUnits.size()));
+            std::vector<std::string> uKeys = {"check_code", "serial", "product_code", "product_name", "system_status", "scanned_status", "match_result"};
+            for (size_t r = 0; r < matchedUnits.size(); ++r) {
+                const auto& rec = matchedUnits[r];
+                for (size_t c = 0; c < uKeys.size(); ++c) {
+                    QString val = "-";
+                    if (rec.has(uKeys[c])) {
+                        const auto& v = rec.get(uKeys[c]);
+                        if (holds_alternative<std::string>(v)) val = QString::fromStdString(get<std::string>(v));
+                        else if (holds_alternative<int>(v)) val = QString::number(get<int>(v));
+                    }
+                    auto* it = new QTableWidgetItem(val);
+                    if (c == 6) {
+                        if (val.contains("Khớp")) it->setForeground(QColor("#16a34a"));
+                        else if (val.contains("Lệch") || val.contains("Chênh lệch")) it->setForeground(QColor("#dc2626"));
+                        else it->setForeground(QColor("#64748b"));
+                    }
+                    table->setItem(static_cast<int>(r), static_cast<int>(c), it);
+                }
+            }
+            if (matchedUnits.size() <= 50) table->resizeColumnsToContents();
+        }
+    );
     stackedWidget->addWidget(inventoryCheckQuantityWidget);
 
     // ========================================================

@@ -653,6 +653,13 @@ void QueryTableWidget::setData(const Vector<Record>& records)
             tableWidget->verticalScrollBar()->setValue(savedVScroll);
         }
         tableWidget->scrollToItem(tableWidget->item(prevRow, 0));
+    } else if (tableWidget->rowCount() > 0 && onDetailSelectionCallback) {
+        tableWidget->selectRow(0);
+    }
+
+    if (onDetailSelectionCallback) {
+        const Record* sel = getSelectedRecord(false);
+        onDetailSelectionCallback(sel, detailBanner, detailTable);
     }
 }
 
@@ -825,6 +832,106 @@ const Record* QueryTableWidget::getSelectedRecord(bool warnIfNone)
     }
 
     return &cachedRecords[row];
+}
+
+void QueryTableWidget::enableBottomDetailPanel(
+    const QString& defaultBannerText,
+    const QStringList& detailHeaders,
+    const std::vector<std::string>& detailKeys,
+    DetailSelectionCallback callback)
+{
+    Q_UNUSED(detailKeys);
+    defaultBannerMsg = defaultBannerText;
+    onDetailSelectionCallback = callback;
+
+    if (!mainSplitter) {
+        auto* mainLay = qobject_cast<QVBoxLayout*>(layout());
+        if (mainLay) {
+            mainLay->removeWidget(tableWidget);
+            mainSplitter = new QSplitter(Qt::Vertical, this);
+            mainSplitter->setStyleSheet(
+                "QSplitter::handle {"
+                "  background-color: #cbd5e1;"
+                "  height: 4px;"
+                "}"
+                "QSplitter::handle:hover {"
+                "  background-color: #2563eb;"
+                "}"
+            );
+            mainSplitter->addWidget(tableWidget);
+
+            bottomDetailContainer = new QWidget(mainSplitter);
+            auto* btmLayout = new QVBoxLayout(bottomDetailContainer);
+            btmLayout->setContentsMargins(0, 6, 0, 0);
+            btmLayout->setSpacing(6);
+
+            detailBanner = new QLabel(defaultBannerMsg, bottomDetailContainer);
+            detailBanner->setStyleSheet(
+                "QLabel {"
+                "  background-color: #f8fafc;"
+                "  border: 1px solid #cbd5e1;"
+                "  border-radius: 6px;"
+                "  padding: 8px 12px;"
+                "  font-weight: 600;"
+                "  font-size: 13px;"
+                "  color: #1e293b;"
+                "}"
+            );
+            btmLayout->addWidget(detailBanner);
+
+            detailTable = new QTableWidget(bottomDetailContainer);
+            detailTable->setAlternatingRowColors(true);
+            detailTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+            detailTable->verticalHeader()->setVisible(false);
+            detailTable->horizontalHeader()->setHighlightSections(false);
+            detailTable->horizontalHeader()->setStretchLastSection(true);
+            TableClipboardHelper::setupClipboardForTable(detailTable);
+
+            detailTable->setStyleSheet(
+                "QTableWidget {"
+                "  background-color: #ffffff;"
+                "  alternate-background-color: #f8fafc;"
+                "  border: 1px solid #e2e8f0;"
+                "  border-radius: 8px;"
+                "  gridline-color: #f1f5f9;"
+                "  font-size: 13px;"
+                "  color: #1e293b;"
+                "}"
+                "QTableWidget::item { padding: 4px 8px; }"
+                "QHeaderView::section {"
+                "  background-color: #f1f5f9;"
+                "  color: #334155;"
+                "  font-weight: 600;"
+                "  font-size: 12px;"
+                "  padding: 6px 8px;"
+                "  border: none;"
+                "  border-bottom: 2px solid #cbd5e1;"
+                "}"
+            );
+            btmLayout->addWidget(detailTable);
+
+            mainSplitter->addWidget(bottomDetailContainer);
+            mainSplitter->setStretchFactor(0, 3);
+            mainSplitter->setStretchFactor(1, 2);
+
+            mainLay->addWidget(mainSplitter, 1);
+        }
+    }
+
+    if (detailTable) {
+        detailTable->setColumnCount(detailHeaders.size());
+        detailTable->setHorizontalHeaderLabels(detailHeaders);
+    }
+
+    connect(tableWidget, &QTableWidget::itemSelectionChanged, this, [this]() {
+        if (!onDetailSelectionCallback) return;
+        const Record* sel = getSelectedRecord(false);
+        onDetailSelectionCallback(sel, detailBanner, detailTable);
+    });
+
+    if (tableWidget->rowCount() > 0) {
+        tableWidget->selectRow(0);
+    }
 }
 
 void QueryTableWidget::filterRows(const QString& query)

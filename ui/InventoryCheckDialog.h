@@ -89,6 +89,7 @@ private:
     void loadUnitData();
     void onSaveQuantityCounts();
     void onRecordUnitStatus();
+    void onOpenBatchDialog();
     void onCreateAdjustments();
     void onCompleteCheck();
     void onEditCheckNoteClicked();
@@ -123,8 +124,10 @@ private:
     // Unit table & controls (for UNIT checks)
     QWidget* unitPageWidget;
     QLineEdit* serialSearchInput;
+    QLabel* serialFeedbackLabel;
     QComboBox* unitStatusCombo;
     QPushButton* applyUnitStatusBtn;
+    QPushButton* batchTestBtn;
     QTableWidget* unitTable;
     QLabel* unitSummaryLabel;
 
@@ -133,6 +136,50 @@ private:
     QPushButton* createAdjBtn;
     QPushButton* completeCheckBtn;
     QPushButton* closeBtn;
+};
+
+/**
+ * @brief Batch selection & simulation tool for unit inventory checks (testing & rapid processing).
+ */
+class UnitCheckBatchDialog : public QDialog
+{
+public:
+    UnitCheckBatchDialog(Database* database, int checkId, QWidget* parent = nullptr);
+    ~UnitCheckBatchDialog() override = default;
+
+    int getUpdatedCount() const { return updatedCount; }
+
+private:
+    void setupUI();
+    void loadUnits();
+    void onSelectAll(bool select);
+    void onSelectUncheckedOnly();
+    void onApplyBatch();
+
+    Database* db;
+    int checkId;
+    int updatedCount;
+
+    QLineEdit* searchEdit;
+    QPushButton* selectAllBtn;
+    QPushButton* deselectAllBtn;
+    QPushButton* selectUncheckedBtn;
+    QLabel* countSelectedLabel;
+
+    QTableWidget* unitBatchTable;
+    QComboBox* targetModeCombo;
+    QPushButton* applyBtn;
+    QPushButton* cancelBtn;
+
+    struct UnitBatchItem {
+        int checkUnitId;
+        QString serial;
+        QString productCode;
+        QString productName;
+        QString systemStatus;
+        QString scannedStatus;
+    };
+    std::vector<UnitBatchItem> unitItems;
 };
 
 #endif // INVENTORY_CHECK_DIALOG_H

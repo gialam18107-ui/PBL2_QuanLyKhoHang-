@@ -149,7 +149,12 @@ OrderDialog::OrderDialog(HubType type, Database* database, QWidget* parent)
     setWindowTitle(hubType == HubType::INBOUND
         ? "Tạo Đơn Nhập Kho & Đợt Giao Nhận (Inbound Order Wizard)"
         : "Tạo Đơn Xuất Kho & Đợt Xuất Hàng (Outbound Order Wizard)");
-    resize(1120, 740);
+    setWindowFlags(windowFlags() | Qt::WindowMaximizeButtonHint | Qt::WindowMinimizeButtonHint);
+    if (parent) {
+        resize(parent->size());
+    } else {
+        resize(1120, 740);
+    }
     setMinimumSize(960, 620);
 
     setupUI();
@@ -2482,7 +2487,12 @@ SimulationToolDialog::SimulationToolDialog(
       batchAutoReceiveBtn(nullptr)
 {
     setWindowTitle("🧪 Bộ Công Cụ Giả Lập & Kiểm Thử Nghiệp Vụ - Đợt: " + batchCodeStr);
-    resize(920, 600);
+    setWindowFlags(windowFlags() | Qt::WindowMaximizeButtonHint | Qt::WindowMinimizeButtonHint);
+    if (parent) {
+        resize(parent->size() * 0.9);
+    } else {
+        resize(920, 600);
+    }
     setMinimumSize(820, 480);
     setStyleSheet(commonDialogStyleSheet());
 
@@ -3029,7 +3039,12 @@ UnitEntryDialog::UnitEntryDialog(
     setWindowTitle(hubType == HubType::INBOUND
         ? "Quản Lý Nhận Linh Kiện (Unit) - Đợt: " + batchCodeStr
         : "Quản Lý Xuất Linh Kiện (Unit) - Đợt: " + batchCodeStr);
-    resize(1200, 800);
+    setWindowFlags(windowFlags() | Qt::WindowMaximizeButtonHint | Qt::WindowMinimizeButtonHint);
+    if (parent) {
+        resize(parent->size());
+    } else {
+        resize(1200, 800);
+    }
     setMinimumSize(1020, 680);
     setStyleSheet(commonDialogStyleSheet());
 

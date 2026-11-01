@@ -3,6 +3,7 @@
 
 #include <QWidget>
 #include <QTableWidget>
+#include <QSplitter>
 #include <QLineEdit>
 #include <QLabel>
 #include <QPushButton>
@@ -67,6 +68,17 @@ public:
     void resetFilter();
     QTableWidget* getTableWidget() const { return tableWidget; }
 
+    using DetailSelectionCallback = std::function<void(const Record* selectedRecord, QLabel* banner, QTableWidget* detailTable)>;
+    void enableBottomDetailPanel(
+        const QString& defaultBannerText,
+        const QStringList& detailHeaders,
+        const std::vector<std::string>& detailKeys,
+        DetailSelectionCallback callback
+    );
+
+    QTableWidget* getDetailTable() const { return detailTable; }
+    QLabel* getDetailBanner() const { return detailBanner; }
+
 private:
     void setupFilterUI(QVBoxLayout* mainLayout);
     void setupToolbarUI(QVBoxLayout* mainLayout);
@@ -122,6 +134,14 @@ private:
     RecordActionCallback onEdit;
     RecordActionCallback onDelete;
     RecordActionCallback onExtraAction;
+
+    // Bottom Detail Panel components
+    QSplitter* mainSplitter = nullptr;
+    QWidget* bottomDetailContainer = nullptr;
+    QLabel* detailBanner = nullptr;
+    QTableWidget* detailTable = nullptr;
+    QString defaultBannerMsg;
+    DetailSelectionCallback onDetailSelectionCallback;
 };
 
 #endif // QUERY_TABLE_WIDGET_H

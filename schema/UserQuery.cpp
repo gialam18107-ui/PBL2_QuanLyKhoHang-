@@ -2611,9 +2611,17 @@ void inventory_check_quantity_query(Database *db, int checkId, Vector<Record> &r
 		int sysScrap = safeGetInt(cq, "system_scrapped_quan");
 		int actScrap = safeGetInt(cq, "actual_scrapped_quan");
 
+		int totalSys = sysAvail + sysWarr + sysScrap;
+		int totalAct = actAvail + actWarr + actScrap;
+		int totalDiff = totalAct - totalSys;
+
 		r.set("diff_available", actAvail - sysAvail);
 		r.set("diff_warranty", actWarr - sysWarr);
 		r.set("diff_scrapped", actScrap - sysScrap);
+
+		r.set("total_system_quan", totalSys);
+		r.set("total_actual_quan", totalAct);
+		r.set("total_diff_quan", totalDiff);
 
 		results.push_back(std::move(r));
 	}
@@ -2697,6 +2705,19 @@ void inventory_check_unit_query(Database *db, int checkId, Vector<Record> &resul
 				}
 			}
 		}
+
+		std::string sysSt = cu.has("system_status") && std::holds_alternative<std::string>(cu.get("system_status"))
+			? std::get<std::string>(cu.get("system_status")) : "";
+		std::string scanSt = cu.has("scanned_status") && std::holds_alternative<std::string>(cu.get("scanned_status"))
+			? std::get<std::string>(cu.get("scanned_status")) : "";
+		if (scanSt.empty() || scanSt == "UNCHECKED") {
+			r.set("match_result", std::string("Chưa quét"));
+		} else if (scanSt == sysSt) {
+			r.set("match_result", std::string("Khớp (" + sysSt + ")"));
+		} else {
+			r.set("match_result", std::string("Lệch (" + sysSt + " -> " + scanSt + ")"));
+		}
+
 		results.push_back(std::move(r));
 	}
 }
