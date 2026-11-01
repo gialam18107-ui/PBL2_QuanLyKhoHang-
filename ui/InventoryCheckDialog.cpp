@@ -93,10 +93,11 @@ void InventoryCheckCreateDialog::setupUI()
     productTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::ResizeToContents);
     productTable->horizontalHeader()->setSectionResizeMode(6, QHeaderView::ResizeToContents);
     productTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    productTable->setSelectionMode(QAbstractItemView::ExtendedSelection);
     productTable->setAlternatingRowColors(true);
     scopeLayout->addWidget(productTable, 1);
 
-    countSelectedLabel = new QLabel("Đã chọn: 0 sản phẩm.", scopeGroup);
+    countSelectedLabel = new QLabel("Đã chọn: 0 sản phẩm (Có thể kéo chuột hoặc Shift/Ctrl để chọn nhiều dòng).", scopeGroup);
     countSelectedLabel->setStyleSheet("font-weight: 600; color: #1e40af;");
     scopeLayout->addWidget(countSelectedLabel);
 
@@ -205,8 +206,27 @@ void InventoryCheckCreateDialog::loadProducts()
                     selectedCount++;
                 }
             }
-            countSelectedLabel->setText(QString("Đã chọn: %1 / %2 sản phẩm.").arg(selectedCount).arg(productTable->rowCount()));
+            countSelectedLabel->setText(QString("Đã chọn: %1 / %2 sản phẩm (Có thể kéo chuột hoặc Shift/Ctrl để chọn nhiều dòng).").arg(selectedCount).arg(productTable->rowCount()));
         }
+    });
+
+    connect(productTable->selectionModel(), &QItemSelectionModel::selectionChanged, [this]() {
+        productTable->blockSignals(true);
+        for (int r = 0; r < productTable->rowCount(); ++r) {
+            if (!productTable->isRowHidden(r) && productTable->selectionModel()->isRowSelected(r, QModelIndex())) {
+                auto* it = productTable->item(r, 0);
+                if (it) it->setCheckState(Qt::Checked);
+            }
+        }
+        int selectedCount = 0;
+        for (int r = 0; r < productTable->rowCount(); ++r) {
+            auto* it = productTable->item(r, 0);
+            if (it && it->checkState() == Qt::Checked) {
+                selectedCount++;
+            }
+        }
+        countSelectedLabel->setText(QString("Đã chọn: %1 / %2 sản phẩm (Có thể kéo chuột hoặc Shift/Ctrl để chọn nhiều dòng).").arg(selectedCount).arg(productTable->rowCount()));
+        productTable->blockSignals(false);
     });
 }
 
@@ -462,6 +482,70 @@ void InventoryCheckDetailDialog::setupUI()
     quanLayout->addWidget(quantityTable, 1);
 
     if (checkType == "UNIT") {
+        quanScanGroup = new QGroupBox("⚡ Nhập / Quét Serial linh kiện trực tiếp tại đây", quanWidget);
+        auto* qMainLayout = new QVBoxLayout(quanScanGroup);
+        qMainLayout->setContentsMargins(10, 8, 10, 8);
+        qMainLayout->setSpacing(6);
+
+        auto* qRow1 = new QHBoxLayout();
+        qRow1->setSpacing(8);
+
+        quanSerialInput = new QLineEdit(quanScanGroup);
+        quanSerialInput->setPlaceholderText("Nhập hoặc dùng máy quét mã Serial Number (SN) rồi nhấn Enter...");
+        quanSerialInput->setEnabled(!isLocked);
+
+        quanUnitStatusCombo = new QComboBox(quanScanGroup);
+        quanUnitStatusCombo->addItem("⚡ Tự nhận diện & Khớp hệ thống", "AUTO_MATCH");
+        quanUnitStatusCombo->addItem("AVAILABLE — Khả dụng / Tốt", "AVAILABLE");
+        quanUnitStatusCombo->addItem("WARRANTY — Đang bảo hành", "WARRANTY");
+        quanUnitStatusCombo->addItem("SCRAPPED — Hỏng / Phế phẩm", "SCRAPPED");
+        quanUnitStatusCombo->addItem("OUT — Không tìm thấy (Mất/Thiếu)", "OUT");
+        quanUnitStatusCombo->setEnabled(!isLocked);
+
+        quanApplyUnitStatusBtn = new QPushButton("✅ Ghi nhận Trạng thái", quanScanGroup);
+        quanApplyUnitStatusBtn->setStyleSheet("background-color: #16a34a; color: #ffffff; font-weight: 600; padding: 6px 14px; border-radius: 4px;");
+        quanApplyUnitStatusBtn->setEnabled(!isLocked);
+
+        qRow1->addWidget(new QLabel("Số Serial:"));
+        qRow1->addWidget(quanSerialInput, 1);
+        qRow1->addWidget(new QLabel("Trạng thái quét:"));
+        qRow1->addWidget(quanUnitStatusCombo);
+        qRow1->addWidget(quanApplyUnitStatusBtn);
+
+        qMainLayout->addLayout(qRow1);
+
+        quanSerialFeedbackLabel = new QLabel("⚪ Sẵn sàng nhận diện Serial linh kiện...", quanScanGroup);
+        quanSerialFeedbackLabel->setStyleSheet("font-size: 12px; color: #64748b; font-weight: 500;");
+        qMainLayout->addWidget(quanSerialFeedbackLabel);
+
+        quanLayout->addWidget(quanScanGroup);
+
+        connect(quanApplyUnitStatusBtn, &QPushButton::clicked, this, &InventoryCheckDetailDialog::onRecordUnitFromQuanTab);
+        connect(quanSerialInput, &QLineEdit::returnPressed, this, &InventoryCheckDetailDialog::onRecordUnitFromQuanTab);
+        connect(quanSerialInput, &QLineEdit::textChanged, [this](const QString& text) {
+            QString sn = text.trimmed().toUpper();
+            if (sn.isEmpty()) {
+                quanSerialFeedbackLabel->setText("⚪ Sẵn sàng nhận diện Serial linh kiện...");
+                quanSerialFeedbackLabel->setStyleSheet("font-size: 12px; color: #64748b; font-weight: 500;");
+                return;
+            }
+            bool found = false;
+            for (const auto& u : checkCandidateUnits) {
+                if (u.serial.compare(sn, Qt::CaseInsensitive) == 0) {
+                    QString statusNote = u.scannedStatus.isEmpty() ? "(Chưa quét)" : ("(Đã quét: " + u.scannedStatus + ")");
+                    quanSerialFeedbackLabel->setText(QString("🟢 Nhận diện thành công: [%1] %2 | Trạng thái HT: %3 %4")
+                        .arg(u.productCode, u.productName, u.systemStatus, statusNote));
+                    quanSerialFeedbackLabel->setStyleSheet("font-size: 12px; color: #16a34a; font-weight: 600;");
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                quanSerialFeedbackLabel->setText(QString("🟡 Serial [%1] chưa khớp với danh mục đợt kiểm kê này...").arg(sn));
+                quanSerialFeedbackLabel->setStyleSheet("font-size: 12px; color: #d97706; font-weight: 500;");
+            }
+        });
+
         recentUnitsGroup = new QGroupBox("⚡ 3 Linh kiện kiểm tra gần nhất (Tiện chuyển trạng thái nhanh)", quanWidget);
         auto* ruLayout = new QVBoxLayout(recentUnitsGroup);
         ruLayout->setContentsMargins(10, 8, 10, 8);
@@ -1070,18 +1154,16 @@ void InventoryCheckDetailDialog::onOpenBatchDialog()
     }
 }
 
-void InventoryCheckDetailDialog::onRecordUnitStatus()
+bool InventoryCheckDetailDialog::processUnitScan(const QString& sn, const QString& chosenMode, QLabel* feedbackLabel, QLineEdit* inputLine)
 {
-    if (!db || checkType != "UNIT" || !serialSearchInput || !unitTable) return;
+    if (!db || checkType != "UNIT") return false;
 
-    QString sn = serialSearchInput->text().trimmed().toUpper();
     if (sn.isEmpty()) {
         QMessageBox::warning(this, "Thiếu số Serial", "Vui lòng nhập hoặc quét mã Serial linh kiện.");
-        serialSearchInput->setFocus();
-        return;
+        if (inputLine) inputLine->setFocus();
+        return false;
     }
 
-    QString chosenMode = unitStatusCombo->currentData().toString();
     int targetCuId = 0;
     QString targetSysSt = "";
     QString targetPCode = "";
@@ -1100,9 +1182,11 @@ void InventoryCheckDetailDialog::onRecordUnitStatus()
     if (targetCuId <= 0) {
         QMessageBox::critical(this, "Không tìm thấy Serial",
             QString("Số Serial [%1] không nằm trong phạm vi sản phẩm của đợt kiểm kê này.").arg(sn));
-        serialSearchInput->selectAll();
-        serialSearchInput->setFocus();
-        return;
+        if (inputLine) {
+            inputLine->selectAll();
+            inputLine->setFocus();
+        }
+        return false;
     }
 
     QString finalStatus = (chosenMode == "AUTO_MATCH") ? targetSysSt : chosenMode;
@@ -1110,16 +1194,28 @@ void InventoryCheckDetailDialog::onRecordUnitStatus()
     OperationResult res = user_update::updateInventoryCheckUnit(db, targetCuId, finalStatus.toStdString());
     if (!res.success) {
         QMessageBox::critical(this, "Lỗi ghi nhận linh kiện", QString::fromStdString(res.message));
-        return;
+        return false;
     }
 
     dataModified = true;
-    if (serialFeedbackLabel) {
-        serialFeedbackLabel->setText(QString("✅ Đã ghi nhận SN [%1] -> Trạng thái: %2").arg(sn, finalStatus));
+    QString succMsg = QString("✅ Đã ghi nhận SN [%1] -> Trạng thái: %2 (%3)").arg(sn, finalStatus, targetPName);
+    if (feedbackLabel) {
+        feedbackLabel->setText(succMsg);
+        feedbackLabel->setStyleSheet("font-size: 12px; color: #16a34a; font-weight: 600;");
+    }
+    if (quanSerialFeedbackLabel && quanSerialFeedbackLabel != feedbackLabel) {
+        quanSerialFeedbackLabel->setText(succMsg);
+        quanSerialFeedbackLabel->setStyleSheet("font-size: 12px; color: #16a34a; font-weight: 600;");
+    }
+    if (serialFeedbackLabel && serialFeedbackLabel != feedbackLabel) {
+        serialFeedbackLabel->setText(succMsg);
         serialFeedbackLabel->setStyleSheet("font-size: 12px; color: #16a34a; font-weight: 600;");
     }
-    serialSearchInput->clear();
-    serialSearchInput->setFocus();
+
+    if (inputLine) {
+        inputLine->clear();
+        inputLine->setFocus();
+    }
 
     // Update recentScannedUnits list (add to front, max 3)
     for (auto it = recentScannedUnits.begin(); it != recentScannedUnits.end(); ++it) {
@@ -1135,13 +1231,32 @@ void InventoryCheckDetailDialog::onRecordUnitStatus()
     loadQuantityData();
 
     // Scroll to the modified unit in unitTable if displayed
-    for (int r = 0; r < unitTable->rowCount(); ++r) {
-        if (unitTable->item(r, 0) && unitTable->item(r, 0)->text().compare(sn, Qt::CaseInsensitive) == 0) {
-            unitTable->selectRow(r);
-            unitTable->scrollToItem(unitTable->item(r, 0));
-            break;
+    if (unitTable) {
+        for (int r = 0; r < unitTable->rowCount(); ++r) {
+            if (unitTable->item(r, 0) && unitTable->item(r, 0)->text().compare(sn, Qt::CaseInsensitive) == 0) {
+                unitTable->selectRow(r);
+                unitTable->scrollToItem(unitTable->item(r, 0));
+                break;
+            }
         }
     }
+    return true;
+}
+
+void InventoryCheckDetailDialog::onRecordUnitFromQuanTab()
+{
+    if (!quanSerialInput || !quanUnitStatusCombo) return;
+    QString sn = quanSerialInput->text().trimmed().toUpper();
+    QString chosenMode = quanUnitStatusCombo->currentData().toString();
+    processUnitScan(sn, chosenMode, quanSerialFeedbackLabel, quanSerialInput);
+}
+
+void InventoryCheckDetailDialog::onRecordUnitStatus()
+{
+    if (!serialSearchInput || !unitStatusCombo) return;
+    QString sn = serialSearchInput->text().trimmed().toUpper();
+    QString chosenMode = unitStatusCombo->currentData().toString();
+    processUnitScan(sn, chosenMode, serialFeedbackLabel, serialSearchInput);
 }
 
 void InventoryCheckDetailDialog::onCreateAdjustments()
@@ -1247,18 +1362,20 @@ void UnitCheckBatchDialog::setupUI()
 
     unitBatchTable = new QTableWidget(this);
     unitBatchTable->setColumnCount(6);
-    unitBatchTable->setHorizontalHeaderLabels({"Chọn", "Số Serial (SN)", "Mã SP", "Tên sản phẩm", "Trạng thái Hệ thống", "Trạng thái Quét hiện tại"});
+    unitBatchTable->setHorizontalHeaderLabels({"Số Serial (SN)", "Mã SP", "Tên sản phẩm", "Trạng thái Hệ thống", "Trạng thái Quét hiện tại", "CheckUnitID"});
     unitBatchTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
     unitBatchTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
-    unitBatchTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
-    unitBatchTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Stretch);
+    unitBatchTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
+    unitBatchTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
     unitBatchTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
-    unitBatchTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::ResizeToContents);
+    unitBatchTable->setColumnHidden(5, true);
     unitBatchTable->setAlternatingRowColors(true);
     unitBatchTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    unitBatchTable->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    unitBatchTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
     mainLayout->addWidget(unitBatchTable, 1);
 
-    countSelectedLabel = new QLabel("Đã chọn: 0 linh kiện.", this);
+    countSelectedLabel = new QLabel("Đã chọn: 0 linh kiện (Kéo chuột hoặc nhấn Shift/Ctrl để chọn nhiều dòng).", this);
     countSelectedLabel->setStyleSheet("font-weight: 600; color: #1e40af;");
     mainLayout->addWidget(countSelectedLabel);
 
@@ -1297,9 +1414,9 @@ void UnitCheckBatchDialog::setupUI()
         for (int r = 0; r < unitBatchTable->rowCount(); ++r) {
             bool match = q.isEmpty();
             if (!match) {
-                QString sn = unitBatchTable->item(r, 1) ? unitBatchTable->item(r, 1)->text().toLower() : "";
-                QString code = unitBatchTable->item(r, 2) ? unitBatchTable->item(r, 2)->text().toLower() : "";
-                QString name = unitBatchTable->item(r, 3) ? unitBatchTable->item(r, 3)->text().toLower() : "";
+                QString sn = unitBatchTable->item(r, 0) ? unitBatchTable->item(r, 0)->text().toLower() : "";
+                QString code = unitBatchTable->item(r, 1) ? unitBatchTable->item(r, 1)->text().toLower() : "";
+                QString name = unitBatchTable->item(r, 2) ? unitBatchTable->item(r, 2)->text().toLower() : "";
                 if (sn.contains(q) || code.contains(q) || name.contains(q)) match = true;
             }
             unitBatchTable->setRowHidden(r, !match);
@@ -1331,30 +1448,19 @@ void UnitCheckBatchDialog::loadUnits()
     for (int r = 0; r < static_cast<int>(unitItems.size()); ++r) {
         const auto& item = unitItems[r];
 
-        auto* chkItem = new QTableWidgetItem();
-        chkItem->setFlags(Qt::ItemIsUserCheckable | Qt::ItemIsEnabled);
-        chkItem->setCheckState(Qt::Unchecked);
-        chkItem->setData(Qt::UserRole, item.checkUnitId);
-        unitBatchTable->setItem(r, 0, chkItem);
-
         auto* snItem = new QTableWidgetItem(item.serial);
-        snItem->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
-        unitBatchTable->setItem(r, 1, snItem);
+        unitBatchTable->setItem(r, 0, snItem);
 
         auto* codeItem = new QTableWidgetItem(item.productCode);
-        codeItem->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
-        unitBatchTable->setItem(r, 2, codeItem);
+        unitBatchTable->setItem(r, 1, codeItem);
 
         auto* nameItem = new QTableWidgetItem(item.productName);
-        nameItem->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
-        unitBatchTable->setItem(r, 3, nameItem);
+        unitBatchTable->setItem(r, 2, nameItem);
 
         auto* sysItem = new QTableWidgetItem(item.systemStatus);
-        sysItem->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
-        unitBatchTable->setItem(r, 4, sysItem);
+        unitBatchTable->setItem(r, 3, sysItem);
 
         auto* scanItem = new QTableWidgetItem(item.scannedStatus.isEmpty() ? "UNCHECKED" : item.scannedStatus);
-        scanItem->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
         if (item.scannedStatus.isEmpty() || item.scannedStatus == "UNCHECKED") {
             scanItem->setForeground(QColor("#94a3b8"));
         } else if (item.scannedStatus == item.systemStatus) {
@@ -1362,54 +1468,41 @@ void UnitCheckBatchDialog::loadUnits()
         } else {
             scanItem->setForeground(QColor("#dc2626"));
         }
-        unitBatchTable->setItem(r, 5, scanItem);
+        unitBatchTable->setItem(r, 4, scanItem);
+
+        auto* idItem = new QTableWidgetItem(QString::number(item.checkUnitId));
+        unitBatchTable->setItem(r, 5, idItem);
     }
 
-    connect(unitBatchTable, &QTableWidget::itemChanged, [this](QTableWidgetItem* item) {
-        if (item && item->column() == 0) {
-            int selectedCount = 0;
-            for (int r = 0; r < unitBatchTable->rowCount(); ++r) {
-                auto* it = unitBatchTable->item(r, 0);
-                if (it && it->checkState() == Qt::Checked) selectedCount++;
-            }
-            countSelectedLabel->setText(QString("Đã chọn: %1 / %2 linh kiện.").arg(selectedCount).arg(unitBatchTable->rowCount()));
-        }
+    connect(unitBatchTable->selectionModel(), &QItemSelectionModel::selectionChanged, [this]() {
+        int selectedCount = unitBatchTable->selectionModel()->selectedRows().size();
+        countSelectedLabel->setText(QString("Đã chọn: %1 / %2 linh kiện (Kéo chuột hoặc nhấn Shift/Ctrl để chọn nhiều dòng).")
+            .arg(selectedCount).arg(unitBatchTable->rowCount()));
     });
 }
 
 void UnitCheckBatchDialog::onSelectAll(bool select)
 {
-    unitBatchTable->blockSignals(true);
-    int selectedCount = 0;
-    for (int r = 0; r < unitBatchTable->rowCount(); ++r) {
-        if (!unitBatchTable->isRowHidden(r)) {
-            auto* it = unitBatchTable->item(r, 0);
-            if (it) it->setCheckState(select ? Qt::Checked : Qt::Unchecked);
-        }
-        auto* it = unitBatchTable->item(r, 0);
-        if (it && it->checkState() == Qt::Checked) selectedCount++;
+    if (select) {
+        unitBatchTable->selectAll();
+    } else {
+        unitBatchTable->clearSelection();
     }
-    unitBatchTable->blockSignals(false);
-    countSelectedLabel->setText(QString("Đã chọn: %1 / %2 linh kiện.").arg(selectedCount).arg(unitBatchTable->rowCount()));
 }
 
 void UnitCheckBatchDialog::onSelectUncheckedOnly()
 {
-    unitBatchTable->blockSignals(true);
-    int selectedCount = 0;
+    unitBatchTable->clearSelection();
     for (int r = 0; r < unitBatchTable->rowCount(); ++r) {
         if (!unitBatchTable->isRowHidden(r)) {
-            auto* scanItem = unitBatchTable->item(r, 5);
+            auto* scanItem = unitBatchTable->item(r, 4);
             QString st = scanItem ? scanItem->text() : "";
             bool isUnchecked = (st.isEmpty() || st == "UNCHECKED" || st == "(Chưa quét)");
-            auto* it = unitBatchTable->item(r, 0);
-            if (it) it->setCheckState(isUnchecked ? Qt::Checked : Qt::Unchecked);
+            if (isUnchecked) {
+                unitBatchTable->selectRow(r);
+            }
         }
-        auto* it = unitBatchTable->item(r, 0);
-        if (it && it->checkState() == Qt::Checked) selectedCount++;
     }
-    unitBatchTable->blockSignals(false);
-    countSelectedLabel->setText(QString("Đã chọn: %1 / %2 linh kiện.").arg(selectedCount).arg(unitBatchTable->rowCount()));
 }
 
 void UnitCheckBatchDialog::onApplyBatch()
@@ -1422,17 +1515,18 @@ void UnitCheckBatchDialog::onApplyBatch()
     };
     std::vector<TargetItem> selectedUnits;
 
-    for (int r = 0; r < unitBatchTable->rowCount(); ++r) {
-        auto* it = unitBatchTable->item(r, 0);
-        if (it && it->checkState() == Qt::Checked) {
-            int cuId = it->data(Qt::UserRole).toInt();
-            QString sysSt = unitBatchTable->item(r, 4) ? unitBatchTable->item(r, 4)->text() : "AVAILABLE";
+    QModelIndexList selectedRows = unitBatchTable->selectionModel()->selectedRows();
+    for (const auto& idx : selectedRows) {
+        int r = idx.row();
+        int cuId = unitBatchTable->item(r, 5) ? unitBatchTable->item(r, 5)->text().toInt() : 0;
+        QString sysSt = unitBatchTable->item(r, 3) ? unitBatchTable->item(r, 3)->text() : "AVAILABLE";
+        if (cuId > 0) {
             selectedUnits.push_back({cuId, sysSt});
         }
     }
 
     if (selectedUnits.empty()) {
-        QMessageBox::warning(this, "Chưa chọn linh kiện", "Vui lòng tích chọn ít nhất một linh kiện để ghi nhận.");
+        QMessageBox::warning(this, "Chưa chọn linh kiện", "Vui lòng kéo chuột hoặc chọn ít nhất một linh kiện trong bảng để ghi nhận.");
         return;
     }
 

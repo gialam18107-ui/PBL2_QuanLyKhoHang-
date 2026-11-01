@@ -45,6 +45,7 @@ private:
         int warrantyQty;
         int scrappedQty;
         int orderedQty;
+        std::vector<std::string> assignedSerials;
     };
 
     struct MultiBatchDef {
@@ -59,6 +60,7 @@ private:
     void onOrderTypeChanged(int index);
     void onQuickAddCustomer();
     void onAddLineItem();
+    void onPickUnitsForProduct();
     void removeLineItem(int row);
     void renderLineItems();
     void onSaveOrder();
@@ -106,6 +108,7 @@ private:
     QComboBox* productCombo;
     QSpinBox* quantitySpin;
     QPushButton* addItemBtn;
+    QPushButton* pickUnitsBtn;
     QLabel* productStockHintLabel;
     QTableWidget* itemsTable;
     QLabel* itemsSummaryLabel;
@@ -332,6 +335,55 @@ struct BatchItemOverview {
     int stockScrap = 0;
 };
 
+/**
+ * @brief Modal dialog to pick candidate units from warehouse inventory for a specific product during Outbound operations.
+ */
+class OutboundProductUnitPickerDialog : public QDialog
+{
+public:
+    OutboundProductUnitPickerDialog(
+        Database* database,
+        int productId,
+        const QString& productCode,
+        const QString& productName,
+        int targetQuantity = 0,
+        QWidget* parent = nullptr
+    );
+    ~OutboundProductUnitPickerDialog() override = default;
+
+    std::vector<std::string> getSelectedSerials() const { return selectedSerials; }
+
+private:
+    struct CandidateRow {
+        int unitId;
+        std::string serial;
+        std::string status;
+    };
+
+    void setupUI();
+    void loadCandidates();
+    void filterTable();
+    void updateSelectionCount();
+
+    Database* db;
+    int prodId;
+    QString prodCode;
+    QString prodName;
+    int targetQty;
+
+    QLineEdit* searchInput;
+    QPushButton* quickSelectBtn;
+    QPushButton* selectAllBtn;
+    QPushButton* deselectAllBtn;
+    QTableWidget* unitsTable;
+    QLabel* selectionCountLabel;
+    QPushButton* confirmBtn;
+    QPushButton* cancelBtn;
+
+    std::vector<CandidateRow> candidateList;
+    std::vector<std::string> selectedSerials;
+};
+
 class UnitEntryDialog;
 
 /**
@@ -466,6 +518,7 @@ private:
     void refreshBatchOverviewTable();
 
     void onDirectSerialEntered();
+    void onOpenProductUnitPicker(int productId, const QString& pCode, const QString& pName, int missingQty);
     void onOpenSimulationToolsDialog();
     void onUnitStatusChanged(int unitId, const QString& newStatus);
     void onSaveChanges();

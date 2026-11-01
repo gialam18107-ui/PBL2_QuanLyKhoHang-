@@ -121,6 +121,15 @@ private:
     QPushButton* editRowNoteBtn;
     QLabel* quantitySummaryLabel;
 
+    // Unit scanner bar in Tab 1 (for UNIT mode)
+    QGroupBox* quanScanGroup;
+    QLineEdit* quanSerialInput;
+    QComboBox* quanUnitStatusCombo;
+    QPushButton* quanApplyUnitStatusBtn;
+    QLabel* quanSerialFeedbackLabel;
+    void onRecordUnitFromQuanTab();
+    bool processUnitScan(const QString& sn, const QString& chosenMode, QLabel* feedbackLabel, QLineEdit* inputLine);
+
     // Recent units box in Tab 1 (for UNIT mode)
     QGroupBox* recentUnitsGroup;
     QTableWidget* recentUnitsTable;
