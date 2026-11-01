@@ -20,6 +20,14 @@ namespace Generator
           nextShipmentId(1),
           nextShipmentDetailId(1),
           nextStatusHistoryId(1),
+          nextInventoryCheckId(1),
+          nextCheckQuantityId(1),
+          nextCheckUnitId(1),
+          nextAdjustmentMovementId(1),
+          nextAdjustDetailId(1),
+          nextIsSoldChangingId(1),
+          nextCheckSeq(1),
+          nextAdjustSeq(1),
           rngSeed(seed == 0 ? static_cast<unsigned int>(time(nullptr)) : seed)
     {
         initialize();
@@ -94,7 +102,10 @@ namespace Generator
             {
                 int id = get<int>(rows[i].get("unit_id"));
                 if (id >= nextUnitId) nextUnitId = id + 1;
-                existingSerials[get<string>(rows[i].get("serial"))] = true;
+                if (holds_alternative<string>(rows[i].get("serial")))
+                {
+                    existingSerials[get<string>(rows[i].get("serial"))] = true;
+                }
             }
         }
 
@@ -108,14 +119,25 @@ namespace Generator
                 int id = get<int>(rows[i].get("inbound_transaction_id"));
                 if (id >= nextInboundTxnId) nextInboundTxnId = id + 1;
 
-                string code = get<string>(rows[i].get("inbound_code"));
-                // Format: IN-{TYPE}-{SEQ} e.g. IN-PUR-000001
-                if (code.length() >= 13)
+                if (holds_alternative<string>(rows[i].get("inbound_code")))
                 {
-                    string typeCode = code.substr(3, 3);
-                    int seq = stoi(code.substr(7));
-                    int cur = inboundTypeCounters.contains(typeCode) ? inboundTypeCounters[typeCode] : 0;
-                    if (seq > cur) inboundTypeCounters[typeCode] = seq;
+                    string code = get<string>(rows[i].get("inbound_code"));
+                    // Format: IN-{TYPE}-{SEQ} e.g. IN-PUR-000001
+                    if (code.length() >= 11)
+                    {
+                        string typeCode = code.substr(3, 3);
+                        size_t lastDash = code.rfind('-');
+                        if (lastDash != string::npos && lastDash + 1 < code.length())
+                        {
+                            try
+                            {
+                                int seq = stoi(code.substr(lastDash + 1));
+                                int cur = inboundTypeCounters.contains(typeCode) ? inboundTypeCounters[typeCode] : 0;
+                                if (seq > cur) inboundTypeCounters[typeCode] = seq;
+                            }
+                            catch (...) {}
+                        }
+                    }
                 }
             }
         }
@@ -166,19 +188,30 @@ namespace Generator
                 int id = get<int>(rows[i].get("outbound_trainsaction_id"));
                 if (id >= nextOutboundTxnId) nextOutboundTxnId = id + 1;
 
-                string code = get<string>(rows[i].get("outbound_code"));
-                // Format: OUT-{TYPE}-{SEQ} e.g. OUT-SEL-000001
-                if (code.length() >= 14)
+                if (holds_alternative<string>(rows[i].get("outbound_code")))
                 {
-                    string typeCode = code.substr(4, 3);
-                    int seq = stoi(code.substr(8));
-                    int cur = outboundTypeCounters.contains(typeCode) ? outboundTypeCounters[typeCode] : 0;
-                    if (seq > cur) outboundTypeCounters[typeCode] = seq;
+                    string code = get<string>(rows[i].get("outbound_code"));
+                    // Format: OUT-{TYPE}-{SEQ} e.g. OUT-SEL-000001
+                    if (code.length() >= 12)
+                    {
+                        string typeCode = code.substr(4, 3);
+                        size_t lastDash = code.rfind('-');
+                        if (lastDash != string::npos && lastDash + 1 < code.length())
+                        {
+                            try
+                            {
+                                int seq = stoi(code.substr(lastDash + 1));
+                                int cur = outboundTypeCounters.contains(typeCode) ? outboundTypeCounters[typeCode] : 0;
+                                if (seq > cur) outboundTypeCounters[typeCode] = seq;
+                            }
+                            catch (...) {}
+                        }
+                    }
                 }
             }
         }
 
-        // 7. Scan Outbound Detail
+        // 6. Scan Outbound Detail
         Table* outDetTbl = db.getTable("outbound_detail");
         if (outDetTbl != nullptr)
         {
@@ -190,7 +223,7 @@ namespace Generator
             }
         }
 
-        // 8. Scan Shipment
+        // 7. Scan Shipment
         Table* shipTbl = db.getTable("shipment");
         if (shipTbl != nullptr)
         {
@@ -202,7 +235,7 @@ namespace Generator
             }
         }
 
-        // 8b. Scan Shipment Detail
+        // 7b. Scan Shipment Detail
         Table* shipDetTbl = db.getTable("shipment_detail");
         if (shipDetTbl != nullptr)
         {
@@ -225,6 +258,110 @@ namespace Generator
                 if (id >= nextStatusHistoryId) nextStatusHistoryId = id + 1;
             }
         }
+
+        // 9. Scan Inventory Check
+        Table* chkTbl = db.getTable("inventory_check");
+        if (chkTbl != nullptr)
+        {
+            const auto& rows = chkTbl->getRows();
+            for (size_t i = 0; i < rows.size(); i++)
+            {
+                int id = get<int>(rows[i].get("check_id"));
+                if (id >= nextInventoryCheckId) nextInventoryCheckId = id + 1;
+
+                if (holds_alternative<string>(rows[i].get("check_code")))
+                {
+                    string code = get<string>(rows[i].get("check_code"));
+                    // Format: CHK-{TYPE}-{SEQ} e.g. CHK-QUAN-000001
+                    size_t lastDash = code.rfind('-');
+                    if (lastDash != string::npos && lastDash + 1 < code.length())
+                    {
+                        try
+                        {
+                            int seq = stoi(code.substr(lastDash + 1));
+                            if (seq >= nextCheckSeq) nextCheckSeq = seq + 1;
+                        }
+                        catch (...) {}
+                    }
+                }
+            }
+        }
+
+        // 10. Scan Inventory Check Quantity
+        Table* chkQuanTbl = db.getTable("inventory_check_quantity");
+        if (chkQuanTbl != nullptr)
+        {
+            const auto& rows = chkQuanTbl->getRows();
+            for (size_t i = 0; i < rows.size(); i++)
+            {
+                int id = get<int>(rows[i].get("check_quantity_id"));
+                if (id >= nextCheckQuantityId) nextCheckQuantityId = id + 1;
+            }
+        }
+
+        // 11. Scan Inventory Check Unit
+        Table* chkUnitTbl = db.getTable("inventory_check_unit");
+        if (chkUnitTbl != nullptr)
+        {
+            const auto& rows = chkUnitTbl->getRows();
+            for (size_t i = 0; i < rows.size(); i++)
+            {
+                int id = get<int>(rows[i].get("check_unit_id"));
+                if (id >= nextCheckUnitId) nextCheckUnitId = id + 1;
+            }
+        }
+
+        // 12. Scan Adjustment Movement
+        Table* adjTbl = db.getTable("adjustment_movement");
+        if (adjTbl != nullptr)
+        {
+            const auto& rows = adjTbl->getRows();
+            for (size_t i = 0; i < rows.size(); i++)
+            {
+                int id = get<int>(rows[i].get("adjust_id"));
+                if (id >= nextAdjustmentMovementId) nextAdjustmentMovementId = id + 1;
+
+                if (holds_alternative<string>(rows[i].get("adjust_code")))
+                {
+                    string code = get<string>(rows[i].get("adjust_code"));
+                    // Format: ADJ-{REASON}-{SEQ} e.g. ADJ-STD-000001
+                    size_t lastDash = code.rfind('-');
+                    if (lastDash != string::npos && lastDash + 1 < code.length())
+                    {
+                        try
+                        {
+                            int seq = stoi(code.substr(lastDash + 1));
+                            if (seq >= nextAdjustSeq) nextAdjustSeq = seq + 1;
+                        }
+                        catch (...) {}
+                    }
+                }
+            }
+        }
+
+        // 13. Scan Adjustment Movement Detail
+        Table* adjDetTbl = db.getTable("adjust_movement_detail");
+        if (adjDetTbl != nullptr)
+        {
+            const auto& rows = adjDetTbl->getRows();
+            for (size_t i = 0; i < rows.size(); i++)
+            {
+                int id = get<int>(rows[i].get("adjust_detail_id"));
+                if (id >= nextAdjustDetailId) nextAdjustDetailId = id + 1;
+            }
+        }
+
+        // 14. Scan is_sold_changing
+        Table* isSoldTbl = db.getTable("is_sold_changing");
+        if (isSoldTbl != nullptr)
+        {
+            const auto& rows = isSoldTbl->getRows();
+            for (size_t i = 0; i < rows.size(); i++)
+            {
+                int id = get<int>(rows[i].get("history_id"));
+                if (id >= nextIsSoldChangingId) nextIsSoldChangingId = id + 1;
+            }
+        }
     }
 
     void DataGenerator::initialize()
@@ -241,6 +378,7 @@ namespace Generator
         for (const auto& r : unitTbl->getRows())
         {
             if (get<int>(r.get("product_id")) == productId &&
+                holds_alternative<string>(r.get("status")) &&
                 get<string>(r.get("status")) == "AVAILABLE")
             {
                 count++;
@@ -262,6 +400,7 @@ namespace Generator
         for (const auto& u : unitTbl->getRows())
         {
             int pid = get<int>(u.get("product_id"));
+            if (!holds_alternative<string>(u.get("status"))) continue;
             string st = get<string>(u.get("status"));
             if (st == "AVAILABLE")
             {
@@ -284,8 +423,13 @@ namespace Generator
         for (size_t i = 0; i < prodRows.size(); i++)
         {
             int pid = get<int>(prodRows[i].get("product_id"));
-            int actual = availableCounts.contains(pid) ? availableCounts[pid] : 0;
-            prodRows[i].set("quantity", actual);
+            int avail = availableCounts.contains(pid) ? availableCounts[pid] : 0;
+            int warr = warrantyCounts.contains(pid) ? warrantyCounts[pid] : 0;
+            int scrap = scrappedCounts.contains(pid) ? scrappedCounts[pid] : 0;
+
+            prodRows[i].set("available_quantity", avail);
+            prodRows[i].set("warranty_quantity", warr);
+            prodRows[i].set("scrapped_quantity", scrap);
         }
 
         Table* prodQuanTbl = db.getTable("product_quantity");
@@ -302,11 +446,182 @@ namespace Generator
         }
     }
 
+    bool DataGenerator::updateProductIsSold(int productId, bool newIsSold, int changedBy, const string& reason)
+    {
+        (void)changedBy;
+        (void)reason;
+        Table* prodTbl = db.getTable("product");
+        Table* histTbl = db.getTable("is_sold_changing");
+        if (!prodTbl) return false;
+
+        auto& rows = prodTbl->getRows();
+        for (size_t i = 0; i < rows.size(); i++)
+        {
+            if (get<int>(rows[i].get("product_id")) == productId)
+            {
+                bool curIsSold = true;
+                if (holds_alternative<bool>(rows[i].get("is_sold")))
+                {
+                    curIsSold = get<bool>(rows[i].get("is_sold"));
+                }
+
+                if (curIsSold == newIsSold) return true; // No change needed
+
+                // Rule: is_sold can ONLY be set to false if total quantity of the product is 0.
+                if (!newIsSold)
+                {
+                    int avail = get<int>(rows[i].get("available_quantity"));
+                    int warr = get<int>(rows[i].get("warranty_quantity"));
+                    int scrap = get<int>(rows[i].get("scrapped_quantity"));
+                    int totalStock = avail + warr + scrap;
+
+                    if (totalStock > 0)
+                    {
+                        cerr << "[Generator Error] Cannot set is_sold = FALSE for product " << productId
+                             << " because stock remains in warehouse (" << totalStock << " units).\n";
+                        return false;
+                    }
+                }
+
+                rows[i].set("is_sold", newIsSold);
+
+                if (histTbl != nullptr)
+                {
+                    Record hist;
+                    hist.set("history_id", nextIsSoldChangingId++);
+                    hist.set("product_id", productId);
+                    hist.set("date", getCurrentDate());
+                    hist.set("old_status", curIsSold);
+                    hist.set("new_status", newIsSold);
+                    histTbl->insert(hist);
+                }
+
+                cout << "[+] Product ID " << productId << " is_sold changed to "
+                     << (newIsSold ? "TRUE" : "FALSE") << "\n";
+                return true;
+            }
+        }
+
+        cerr << "[Generator Error] Product ID " << productId << " not found.\n";
+        return false;
+    }
+
+    string DataGenerator::generateInventoryCheck(const string& checkType,
+                                                const string& checkDate,
+                                                const Vector<int>& productIds)
+    {
+        Table* chkTbl = db.getTable("inventory_check");
+        if (!chkTbl) return "";
+
+        string actualType = (checkType == "UNIT") ? "UNIT" : "QUAN";
+        string date = checkDate.empty() ? getCurrentDate() : checkDate;
+
+        int chkId = nextInventoryCheckId++;
+        string code = "CHK-" + actualType + "-" + formatNumber(nextCheckSeq++, 6);
+
+        Record chkRec;
+        chkRec.set("check_id", chkId);
+        chkRec.set("check_code", code);
+        chkRec.set("check_type", actualType);
+        chkRec.set("check_at", date);
+        chkRec.set("status", string("COMPLETED"));
+        chkRec.set("note", string("Inventory check audit (" + actualType + ") completed"));
+        chkTbl->insert(chkRec);
+
+        Table* chkQuanTbl = db.getTable("inventory_check_quantity");
+        Table* unitTbl = db.getTable("unit_inventory");
+        Table* prodTbl = db.getTable("product");
+
+        Vector<int> pids = productIds;
+        if (pids.empty() && prodTbl)
+        {
+            for (const auto& r : prodTbl->getRows())
+            {
+                pids.push_back(get<int>(r.get("product_id")));
+            }
+        }
+
+        HashMap<int, int> pidToCqId;
+
+        if (chkQuanTbl)
+        {
+            for (size_t i = 0; i < pids.size(); i++)
+            {
+                int pid = pids[i];
+                int avail = 0, warr = 0, scrap = 0;
+                if (unitTbl)
+                {
+                    for (const auto& u : unitTbl->getRows())
+                    {
+                        if (get<int>(u.get("product_id")) == pid && holds_alternative<string>(u.get("status")))
+                        {
+                            string st = get<string>(u.get("status"));
+                            if (st == "AVAILABLE") avail++;
+                            else if (st == "WARRANTY") warr++;
+                            else if (st == "SCRAPPED") scrap++;
+                        }
+                    }
+                }
+
+                int cqId = nextCheckQuantityId++;
+                pidToCqId[pid] = cqId;
+
+                Record qRec;
+                qRec.set("check_quantity_id", cqId);
+                qRec.set("check_id", chkId);
+                qRec.set("product_id", pid);
+                qRec.set("system_available_quan", avail);
+                qRec.set("system_warranty_quan", warr);
+                qRec.set("system_scrapped_quan", scrap);
+                qRec.set("actual_available_quan", avail);
+                qRec.set("actual_warranty_quan", warr);
+                qRec.set("actual_scrapped_quan", scrap);
+                qRec.set("note", string(""));
+                chkQuanTbl->insert(qRec);
+            }
+        }
+
+        if (actualType == "UNIT")
+        {
+            Table* chkUnitTbl = db.getTable("inventory_check_unit");
+            if (chkUnitTbl && unitTbl)
+            {
+                HashMap<int, bool> filterPids;
+                for (size_t i = 0; i < pids.size(); i++) filterPids[pids[i]] = true;
+
+                for (const auto& u : unitTbl->getRows())
+                {
+                    int pid = get<int>(u.get("product_id"));
+                    if (!filterPids.contains(pid)) continue;
+
+                    string st = get<string>(u.get("status"));
+                    if (st == "OUT") continue; // Chỉ kiểm kê các đơn vị hiện vật đang thực tế tồn tại trong kho
+
+                    int uId = get<int>(u.get("unit_id"));
+                    int cqId = pidToCqId.contains(pid) ? pidToCqId[pid] : 1;
+
+                    Record uRec;
+                    uRec.set("check_unit_id", nextCheckUnitId++);
+                    uRec.set("check_id", chkId);
+                    uRec.set("check_quantity_id", cqId);
+                    uRec.set("unit_id", uId);
+                    uRec.set("system_status", st);
+                    uRec.set("scanned_status", st);
+                    chkUnitTbl->insert(uRec);
+                }
+            }
+        }
+
+        cout << "[+] Generated Inventory Check: " << code << " (ID: " << chkId << ")\n";
+        return code;
+    }
+
     int DataGenerator::generateInbound(const string& inboundType,
-                                        const Vector<Pair<int, int>>& items,
-                                        int numDeliveries,
-                                        const string& orderDate,
-                                        const string& note)
+                                       const Vector<Pair<int, int>>& items,
+                                       int numDeliveries,
+                                       const string& orderDate,
+                                       const string& note,
+                                       const string& sourceCode)
     {
         if (items.empty())
         {
@@ -342,15 +657,54 @@ namespace Generator
         if (numDeliveries < 1) numDeliveries = 1;
         string date = orderDate.empty() ? getCurrentDate() : orderDate;
 
-        // Choose appropriate customer: Business (4) for supplier purchasing/warranty replacement, Individual (1) for customer returns
-        int customerId = (inboundType == "WARRANTY_CHECKING" || inboundType == "CUSTOMER_RETURN") ? 1 : 4;
+        // Rule: For ADJUSTMENT_IN, customer_id MUST be NULL; otherwise valid customer
+        Value customerVal;
+        if (inboundType == "ADJUSTMENT_IN")
+        {
+            customerVal = Value{}; // NULL
+        }
+        else if (inboundType == "WARRANTY_CHECKING" || inboundType == "CUSTOMER_RETURN")
+        {
+            customerVal = 1; // Individual customer
+        }
+        else
+        {
+            customerVal = 4; // Supplier / Business
+        }
+
+        // Rule: For ADJUSTMENT_IN, source_code MUST reference a check_code from inventory_check
+        Value sourceCodeVal;
+        if (inboundType == "ADJUSTMENT_IN")
+        {
+            string finalSource = sourceCode;
+            if (finalSource.empty())
+            {
+                // Auto-generate quantity audit check for the items involved
+                Vector<int> pids;
+                for (const auto& item : items) pids.push_back(item.first);
+                finalSource = generateInventoryCheck("QUAN", date, pids);
+            }
+            sourceCodeVal = finalSource;
+        }
+        else
+        {
+            if (!sourceCode.empty())
+            {
+                sourceCodeVal = sourceCode;
+            }
+            else
+            {
+                sourceCodeVal = Value{}; // NULL
+            }
+        }
 
         // 1. Create InboundTransaction record
         int txnId = nextInboundTxnId++;
         Record inTxn;
         inTxn.set("inbound_transaction_id", txnId);
         inTxn.set("inbound_code", inboundCode);
-        inTxn.set("customer_id", customerId);
+        inTxn.set("source_code", sourceCodeVal);
+        inTxn.set("customer_id", customerVal);
         inTxn.set("order_at", date);
         inTxn.set("type", inboundType);
         inTxn.set("status", string("CONFIRMED"));
@@ -376,7 +730,6 @@ namespace Generator
         }
 
         // 3. Create Delivery and DeliveryUnitDetail records
-        // Split product quantities evenly across deliveries
         for (int d = 1; d <= numDeliveries; d++)
         {
             int delId = nextDeliveryId++;
@@ -396,7 +749,6 @@ namespace Generator
             {
                 int pid = item.first;
                 int totalQty = item.second;
-                // Distribute remainder onto first delivery
                 int baseQty = totalQty / numDeliveries;
                 int rem = totalQty % numDeliveries;
                 int deliveryQty = baseQty + (d <= rem ? 1 : 0);
@@ -412,6 +764,9 @@ namespace Generator
                     delDetTbl->insert(delDet);
                 }
 
+                // Inbound Unit Processing
+                // RULE: Inbound operations ONLY permit transitioning units from OUT or NULL!
+                // Never modify units currently in AVAILABLE, WARRANTY, or SCRAPPED!
                 for (int u = 0; u < deliveryQty; u++)
                 {
                     int uId = 0;
@@ -421,7 +776,7 @@ namespace Generator
 
                     if (inboundType == "PURCHASING")
                     {
-                        // PUR: NULL -> AVAILABLE (or small chance of SCRAPPED upon inspection)
+                        // PUR: NULL -> AVAILABLE (or small chance of SCRAPPED on inspection)
                         oldStatus = "";
                         targetStatus = (nextRandom() % 25 == 0) ? "SCRAPPED" : "AVAILABLE";
                         uId = nextUnitId++;
@@ -451,7 +806,7 @@ namespace Generator
                     }
                     else if (inboundType == "WARRANTY_CHECKING")
                     {
-                        // WCK: OUT -> WARRANTY (previously sold unit returned for checking)
+                        // WCK: OUT -> WARRANTY (previously sold unit returned for RMA checking)
                         oldStatus = "OUT";
                         targetStatus = "WARRANTY";
                         bool foundOut = false;
@@ -470,6 +825,8 @@ namespace Generator
                         }
                         if (!foundOut)
                         {
+                            // If no OUT unit exists, create a new unit from NULL
+                            oldStatus = "";
                             uId = nextUnitId++;
                             serial = generateUniqueSerial();
                             Record unitRecord;
@@ -482,7 +839,7 @@ namespace Generator
                     }
                     else if (inboundType == "CUSTOMER_RETURN")
                     {
-                        // CRT: OUT -> AVAILABLE (or WARRANTY/SCRAPPED)
+                        // CRT: OUT -> AVAILABLE
                         oldStatus = "OUT";
                         targetStatus = "AVAILABLE";
                         bool foundOut = false;
@@ -501,6 +858,7 @@ namespace Generator
                         }
                         if (!foundOut)
                         {
+                            oldStatus = "";
                             uId = nextUnitId++;
                             serial = generateUniqueSerial();
                             Record unitRecord;
@@ -511,20 +869,40 @@ namespace Generator
                             unitTbl->insert(unitRecord);
                         }
                     }
-                    else
+                    else // ADJUSTMENT_IN
                     {
-                        // ADJUSTMENT_IN: NULL -> AVAILABLE
-                        oldStatus = "";
-                        targetStatus = "AVAILABLE";
-                        uId = nextUnitId++;
-                        serial = generateUniqueSerial();
+                        // Rule: ADJUSTMENT_IN may transition from OUT or NULL -> AVAILABLE/SCRAPPED/WARRANTY
+                        // First see if there is an OUT unit to restore; otherwise create new from NULL
+                        bool foundOut = false;
+                        auto& uRows = unitTbl->getRows();
+                        for (size_t r = 0; r < uRows.size(); r++)
+                        {
+                            if (get<int>(uRows[r].get("product_id")) == pid &&
+                                get<string>(uRows[r].get("status")) == "OUT")
+                            {
+                                uId = get<int>(uRows[r].get("unit_id"));
+                                serial = get<string>(uRows[r].get("serial"));
+                                oldStatus = "OUT";
+                                targetStatus = "AVAILABLE";
+                                uRows[r].set("status", targetStatus);
+                                foundOut = true;
+                                break;
+                            }
+                        }
+                        if (!foundOut)
+                        {
+                            oldStatus = "";
+                            targetStatus = "AVAILABLE";
+                            uId = nextUnitId++;
+                            serial = generateUniqueSerial();
 
-                        Record unitRecord;
-                        unitRecord.set("unit_id", uId);
-                        unitRecord.set("product_id", pid);
-                        unitRecord.set("serial", serial);
-                        unitRecord.set("status", targetStatus);
-                        unitTbl->insert(unitRecord);
+                            Record unitRecord;
+                            unitRecord.set("unit_id", uId);
+                            unitRecord.set("product_id", pid);
+                            unitRecord.set("serial", serial);
+                            unitRecord.set("status", targetStatus);
+                            unitTbl->insert(unitRecord);
+                        }
                     }
 
                     // Insert Status History
@@ -540,7 +918,7 @@ namespace Generator
                         histTbl->insert(histRecord);
                     }
 
-                    // Auto-increment actual_quantity on delivery_detail
+                    // Increment actual_quantity on delivery_detail
                     if (delDetTbl != nullptr)
                     {
                         auto& ddRows = delDetTbl->getRows();
@@ -556,7 +934,7 @@ namespace Generator
                         }
                     }
 
-                    // Auto-increment actual_quantity on inbound_detail
+                    // Increment actual_quantity on inbound_detail
                     auto& idRows = inDetTbl->getRows();
                     for (size_t r = 0; r < idRows.size(); r++)
                     {
@@ -572,7 +950,7 @@ namespace Generator
             }
         }
 
-        // 4. Update Product stock quantity
+        // 4. Update Product stock quantities
         if (prodTbl != nullptr)
         {
             syncProductQuantities();
@@ -587,7 +965,8 @@ namespace Generator
                                         const Vector<Pair<int, int>>& items,
                                         int numShipments,
                                         const string& orderDate,
-                                        const string& note)
+                                        const string& note,
+                                        const string& sourceCode)
     {
         if (items.empty())
         {
@@ -607,17 +986,6 @@ namespace Generator
         {
             cerr << "[Generator Error] Missing required database tables for outbound generation.\n";
             return -1;
-        }
-
-        // Required unit status depends on outbound type
-        // SEL: AVAILABLE -> OUT
-        // WRT: SCRAPPED / WARRANTY -> OUT
-        // WRC: AVAILABLE / WARRANTY -> OUT
-        // RTS: AVAILABLE / WARRANTY / SCRAPPED -> OUT
-        string requiredStatus = "AVAILABLE";
-        if (outboundType == "WARRANTY_RETURN")
-        {
-            requiredStatus = "WARRANTY";
         }
 
         // Validate stock availability before altering database
@@ -673,15 +1041,53 @@ namespace Generator
         if (numShipments < 1) numShipments = 1;
         string date = orderDate.empty() ? getCurrentDate() : orderDate;
 
-        // Choose appropriate customer: Individual (1) for retail sales/replacements, Business (4) for supplier returns
-        int customerId = (outboundType == "WARRANTY_RETURN" || outboundType == "RETURN_TO_SUPPLIER") ? 4 : 1;
+        // Rule: For ADJUSTMENT_OUT, customer_id MUST be NULL; otherwise valid customer
+        Value customerVal;
+        if (outboundType == "ADJUSTMENT_OUT")
+        {
+            customerVal = Value{}; // NULL
+        }
+        else if (outboundType == "WARRANTY_RETURN" || outboundType == "RETURN_TO_SUPPLIER")
+        {
+            customerVal = 4; // Supplier / Business
+        }
+        else
+        {
+            customerVal = 1; // Individual customer
+        }
+
+        // Rule: For ADJUSTMENT_OUT, source_code MUST reference a check_code from inventory_check
+        Value sourceCodeVal;
+        if (outboundType == "ADJUSTMENT_OUT")
+        {
+            string finalSource = sourceCode;
+            if (finalSource.empty())
+            {
+                Vector<int> pids;
+                for (const auto& item : items) pids.push_back(item.first);
+                finalSource = generateInventoryCheck("QUAN", date, pids);
+            }
+            sourceCodeVal = finalSource;
+        }
+        else
+        {
+            if (!sourceCode.empty())
+            {
+                sourceCodeVal = sourceCode;
+            }
+            else
+            {
+                sourceCodeVal = Value{}; // NULL
+            }
+        }
 
         // 1. Create OutboundTransaction record
         int txnId = nextOutboundTxnId++;
         Record outTxn;
         outTxn.set("outbound_trainsaction_id", txnId);
         outTxn.set("outbound_code", outboundCode);
-        outTxn.set("customer_id", customerId);
+        outTxn.set("source_code", sourceCodeVal);
+        outTxn.set("customer_id", customerVal);
         outTxn.set("order_at", date);
         outTxn.set("type", outboundType);
         outTxn.set("status", string("CONFIRMED"));
@@ -770,7 +1176,6 @@ namespace Generator
                         if (isEligible)
                         {
                             int uId = get<int>(unitRows[u].get("unit_id"));
-                            string serial = get<string>(unitRows[u].get("serial"));
 
                             // Transition unit status to OUT
                             unitRows[u].set("status", string("OUT"));
@@ -788,7 +1193,7 @@ namespace Generator
                                 histTbl->insert(histRecord);
                             }
 
-                            // Auto-increment actual_quantity on shipment_detail
+                            // Increment actual_quantity on shipment_detail
                             if (shipDetTbl != nullptr)
                             {
                                 auto& sdRows = shipDetTbl->getRows();
@@ -804,7 +1209,7 @@ namespace Generator
                                 }
                             }
 
-                            // Auto-increment actual_quantity on outbound_detail
+                            // Increment actual_quantity on outbound_detail
                             auto& odRows = outDetTbl->getRows();
                             for (size_t r = 0; r < odRows.size(); r++)
                             {
@@ -824,7 +1229,7 @@ namespace Generator
             }
         }
 
-        // 4. Update Product stock quantity
+        // 4. Update Product stock quantities
         if (prodTbl != nullptr)
         {
             syncProductQuantities();
@@ -845,10 +1250,25 @@ namespace Generator
             return summary;
         }
 
+        // Rule: Only active products (is_sold == TRUE) may participate in generated transactions
         Vector<int> productIds;
         for (const auto& p : prodTbl->getRows())
         {
-            productIds.push_back(get<int>(p.get("product_id")));
+            bool isSold = true;
+            if (holds_alternative<bool>(p.get("is_sold")))
+            {
+                isSold = get<bool>(p.get("is_sold"));
+            }
+            if (isSold)
+            {
+                productIds.push_back(get<int>(p.get("product_id")));
+            }
+        }
+
+        if (productIds.empty())
+        {
+            cerr << "[Generator Error] No active products (is_sold == TRUE) found for batch generation.\n";
+            return summary;
         }
 
         string curDate = startDate.empty() ? "2026-09-10" : startDate;
@@ -871,6 +1291,11 @@ namespace Generator
                 int qty = 5 + (nextRandom() % 15);
                 items.push_back(Pair<int, int>(pid, qty));
                 summary.unitsCreated += qty;
+            }
+
+            if (inType == "ADJUSTMENT_IN")
+            {
+                summary.inventoryChecksGenerated++;
             }
 
             int id = generateInbound(inType, items, numDeliveries, curDate);
@@ -910,6 +1335,11 @@ namespace Generator
 
             if (!items.empty())
             {
+                if (outType == "ADJUSTMENT_OUT")
+                {
+                    summary.inventoryChecksGenerated++;
+                }
+
                 int id = generateOutbound(outType, items, numShipments, curDate);
                 if (id > 0)
                 {
@@ -931,6 +1361,8 @@ namespace Generator
         Table* delTbl = db.getTable("delivery");
         Table* outTxnTbl = db.getTable("outbound_transaction");
         Table* shipTbl = db.getTable("shipment");
+        Table* histTbl = db.getTable("status_history");
+        Table* chkTbl = db.getTable("inventory_check");
 
         if (!prodTbl || !unitTbl || !inTxnTbl || !delTbl || !outTxnTbl || !shipTbl)
         {
@@ -938,7 +1370,7 @@ namespace Generator
             return false;
         }
 
-        // 1. Verify all units reference valid products
+        // 1. Verify all units reference valid products and have unique serials
         HashMap<int, bool> validProductIds;
         for (const auto& p : prodTbl->getRows())
         {
@@ -964,12 +1396,52 @@ namespace Generator
             seenSerials[serial] = true;
         }
 
-        // 2. Verify Deliveries link to valid Inbound Transactions
+        // 2. Build map of inventory check codes
+        HashMap<string, bool> validCheckCodes;
+        if (chkTbl != nullptr)
+        {
+            for (const auto& c : chkTbl->getRows())
+            {
+                if (holds_alternative<string>(c.get("check_code")))
+                {
+                    validCheckCodes[get<string>(c.get("check_code"))] = true;
+                }
+            }
+        }
+
+        // 3. Verify Inbound Transactions & ADJUSTMENT_IN rules
         HashMap<int, bool> validInboundTxns;
         for (const auto& t : inTxnTbl->getRows())
         {
-            validInboundTxns[get<int>(t.get("inbound_transaction_id"))] = true;
+            int txnId = get<int>(t.get("inbound_transaction_id"));
+            validInboundTxns[txnId] = true;
+
+            string type = get<string>(t.get("type"));
+            if (type == "ADJUSTMENT_IN")
+            {
+                // Must NOT have customer
+                if (!holds_alternative<monostate>(t.get("customer_id")))
+                {
+                    cerr << "[-] Inbound Transaction " << txnId << " (ADJUSTMENT_IN) must NOT have customer_id.\n";
+                    return false;
+                }
+                // source_code MUST reference a valid check_code
+                if (!holds_alternative<string>(t.get("source_code")))
+                {
+                    cerr << "[-] Inbound Transaction " << txnId << " (ADJUSTMENT_IN) missing required source_code.\n";
+                    return false;
+                }
+                string src = get<string>(t.get("source_code"));
+                if (src.empty() || !validCheckCodes.contains(src))
+                {
+                    cerr << "[-] Inbound Transaction " << txnId << " (ADJUSTMENT_IN) source_code (" << src
+                         << ") does not reference a valid inventory_check code.\n";
+                    return false;
+                }
+            }
         }
+
+        // Deliveries link to valid Inbound Transactions
         for (const auto& d : delTbl->getRows())
         {
             int txnId = get<int>(d.get("inbound_transaction_id"));
@@ -980,12 +1452,39 @@ namespace Generator
             }
         }
 
-        // 3. Verify Shipments link to valid Outbound Transactions
+        // 4. Verify Outbound Transactions & ADJUSTMENT_OUT rules
         HashMap<int, bool> validOutboundTxns;
         for (const auto& t : outTxnTbl->getRows())
         {
-            validOutboundTxns[get<int>(t.get("outbound_trainsaction_id"))] = true;
+            int txnId = get<int>(t.get("outbound_trainsaction_id"));
+            validOutboundTxns[txnId] = true;
+
+            string type = get<string>(t.get("type"));
+            if (type == "ADJUSTMENT_OUT")
+            {
+                // Must NOT have customer
+                if (!holds_alternative<monostate>(t.get("customer_id")))
+                {
+                    cerr << "[-] Outbound Transaction " << txnId << " (ADJUSTMENT_OUT) must NOT have customer_id.\n";
+                    return false;
+                }
+                // source_code MUST reference a valid check_code
+                if (!holds_alternative<string>(t.get("source_code")))
+                {
+                    cerr << "[-] Outbound Transaction " << txnId << " (ADJUSTMENT_OUT) missing required source_code.\n";
+                    return false;
+                }
+                string src = get<string>(t.get("source_code"));
+                if (src.empty() || !validCheckCodes.contains(src))
+                {
+                    cerr << "[-] Outbound Transaction " << txnId << " (ADJUSTMENT_OUT) source_code (" << src
+                         << ") does not reference a valid inventory_check code.\n";
+                    return false;
+                }
+            }
         }
+
+        // Shipments link to valid Outbound Transactions
         for (const auto& s : shipTbl->getRows())
         {
             int txnId = get<int>(s.get("sell_id"));
@@ -996,7 +1495,7 @@ namespace Generator
             }
         }
 
-        // 4. Verify actual_quantity constraints on detail tables
+        // 5. Verify actual_quantity constraints on detail tables
         Table* inDetTbl = db.getTable("inbound_detail");
         if (inDetTbl != nullptr)
         {
@@ -1057,6 +1556,55 @@ namespace Generator
             }
         }
 
+        // 6. Verify Inbound status history rule: old_status must ONLY be "" (NULL) or "OUT"
+        if (histTbl != nullptr)
+        {
+            for (const auto& row : histTbl->getRows())
+            {
+                string transType = "";
+                if (holds_alternative<string>(row.get("type")))
+                {
+                    transType = get<string>(row.get("type"));
+                }
+                if (transType == "INBOUND")
+                {
+                    string oldSt = "";
+                    if (holds_alternative<string>(row.get("old_status")))
+                    {
+                        oldSt = get<string>(row.get("old_status"));
+                    }
+                    if (oldSt != "" && oldSt != "OUT")
+                    {
+                        cerr << "[-] Status history violation: INBOUND operation had old_status = '" << oldSt
+                             << "' (only NULL or OUT permitted).\n";
+                        return false;
+                    }
+                }
+            }
+        }
+
+        // 7. Verify Product is_sold rule: if is_sold == false, total quantity must be 0
+        for (const auto& p : prodTbl->getRows())
+        {
+            bool isSold = true;
+            if (holds_alternative<bool>(p.get("is_sold")))
+            {
+                isSold = get<bool>(p.get("is_sold"));
+            }
+            if (!isSold)
+            {
+                int avail = get<int>(p.get("available_quantity"));
+                int warr = get<int>(p.get("warranty_quantity"));
+                int scrap = get<int>(p.get("scrapped_quantity"));
+                if (avail + warr + scrap != 0)
+                {
+                    cerr << "[-] Product " << get<int>(p.get("product_id"))
+                         << " has is_sold == FALSE but non-zero stock (" << (avail + warr + scrap) << ")\n";
+                    return false;
+                }
+            }
+        }
+
         return true;
     }
 
@@ -1069,8 +1617,25 @@ namespace Generator
         Table* outTxnTbl = db.getTable("outbound_transaction");
         Table* shipTbl = db.getTable("shipment");
         Table* histTbl = db.getTable("status_history");
+        Table* chkTbl = db.getTable("inventory_check");
 
         int totalProducts = prodTbl ? prodTbl->getRowCount() : 0;
+        int activeProducts = 0;
+        int inactiveProducts = 0;
+        if (prodTbl != nullptr)
+        {
+            for (const auto& p : prodTbl->getRows())
+            {
+                bool isSold = true;
+                if (holds_alternative<bool>(p.get("is_sold")))
+                {
+                    isSold = get<bool>(p.get("is_sold"));
+                }
+                if (isSold) activeProducts++;
+                else inactiveProducts++;
+            }
+        }
+
         int totalUnits = unitTbl ? unitTbl->getRowCount() : 0;
         int availableUnits = 0;
         int warrantyUnits = 0;
@@ -1092,7 +1657,8 @@ namespace Generator
         cout << "\n======================================================\n";
         cout << "             WAREHOUSE INVENTORY SUMMARY              \n";
         cout << "======================================================\n";
-        cout << "  - Total Master Products:        " << totalProducts << "\n";
+        cout << "  - Total Master Products:        " << totalProducts
+             << " (" << activeProducts << " active, " << inactiveProducts << " inactive)\n";
         cout << "  - Total Physical Units:         " << totalUnits << "\n";
         cout << "    * AVAILABLE in stock:         " << availableUnits << "\n";
         cout << "    * WARRANTY in inspection:     " << warrantyUnits << "\n";
@@ -1103,6 +1669,7 @@ namespace Generator
         cout << "  - Completed Deliveries:         " << (delTbl ? delTbl->getRowCount() : 0) << "\n";
         cout << "  - Outbound Transactions:        " << (outTxnTbl ? outTxnTbl->getRowCount() : 0) << "\n";
         cout << "  - Completed Shipments:          " << (shipTbl ? shipTbl->getRowCount() : 0) << "\n";
+        cout << "  - Inventory Checks:             " << (chkTbl ? chkTbl->getRowCount() : 0) << "\n";
         if (histTbl != nullptr)
         {
             cout << "  - Status History Transitions:   " << histTbl->getRowCount() << "\n";
@@ -1119,30 +1686,43 @@ namespace Generator
             return;
         }
 
-        cout << "\n" << setfill('=') << setw(90) << "" << setfill(' ') << "\n";
+        cout << "\n" << setfill('=') << setw(105) << "" << setfill(' ') << "\n";
         cout << setw(5) << "ID"
-             << setw(22) << "Code"
-             << setw(38) << "Product Name"
-             << setw(14) << "Category"
-             << setw(11) << "Stock" << "\n";
-        cout << setfill('-') << setw(90) << "" << setfill(' ') << "\n";
+             << setw(20) << "Code"
+             << setw(32) << "Product Name"
+             << setw(13) << "Category"
+             << setw(9) << "Avail"
+             << setw(9) << "Warr"
+             << setw(9) << "Scrap"
+             << setw(8) << "Active" << "\n";
+        cout << setfill('-') << setw(105) << "" << setfill(' ') << "\n";
 
         for (const auto& p : prodTbl->getRows())
         {
             int pid = get<int>(p.get("product_id"));
             string code = get<string>(p.get("product_code"));
             string name = get<string>(p.get("product_name"));
-            if (name.length() > 35) name = name.substr(0, 32) + "...";
-            string cat = get<string>(p.get("category"));
-            int stock = getAvailableStock(pid);
+            if (name.length() > 30) name = name.substr(0, 27) + "...";
+            string cat = holds_alternative<string>(p.get("category")) ? get<string>(p.get("category")) : "";
+            int avail = get<int>(p.get("available_quantity"));
+            int warr = get<int>(p.get("warranty_quantity"));
+            int scrap = get<int>(p.get("scrapped_quantity"));
+            bool isSold = true;
+            if (holds_alternative<bool>(p.get("is_sold")))
+            {
+                isSold = get<bool>(p.get("is_sold"));
+            }
 
             cout << setw(5) << pid
-                 << setw(22) << code
-                 << setw(38) << name
-                 << setw(14) << cat
-                 << setw(11) << stock << "\n";
+                 << setw(20) << code
+                 << setw(32) << name
+                 << setw(13) << cat
+                 << setw(9) << avail
+                 << setw(9) << warr
+                 << setw(9) << scrap
+                 << setw(8) << (isSold ? "YES" : "NO") << "\n";
         }
-        cout << setfill('=') << setw(90) << "" << setfill(' ') << "\n\n";
+        cout << setfill('=') << setw(105) << "" << setfill(' ') << "\n\n";
     }
 
     void DataGenerator::runConsoleInterface()
@@ -1155,11 +1735,13 @@ namespace Generator
             cout << "======================================================\n";
             cout << "  1. Generate Inbound Transaction (Receiving Flow)    \n";
             cout << "  2. Generate Outbound Transaction (Dispatch Flow)    \n";
-            cout << "  3. Display Products & Stock Levels                  \n";
-            cout << "  4. View Inventory & Transaction Summary             \n";
-            cout << "  5. Auto Generate Random Batch                       \n";
-            cout << "  6. Validate Database Referential Integrity          \n";
-            cout << "  7. Save Database Changes to CSV                     \n";
+            cout << "  3. Perform Inventory Check (Audit: QUAN or UNIT)    \n";
+            cout << "  4. Toggle Product is_sold Status                    \n";
+            cout << "  5. Display Products & Stock Levels                  \n";
+            cout << "  6. View Inventory & Transaction Summary             \n";
+            cout << "  7. Auto Generate Random Batch                       \n";
+            cout << "  8. Validate Database Referential Integrity          \n";
+            cout << "  9. Save Database Changes to CSV                     \n";
             cout << "  0. Exit                                             \n";
             cout << "======================================================\n";
             cout << "Enter your choice: ";
@@ -1183,7 +1765,7 @@ namespace Generator
                 // Inbound Generation Workflow
                 cout << "\n--- SELECT INBOUND TYPE ---\n";
                 cout << "  1. PURCHASING (Default supplier order)\n";
-                cout << "  2. ADJUSTMENT_IN (Stock correction)\n";
+                cout << "  2. ADJUSTMENT_IN (Stock correction increase)\n";
                 cout << "  3. WARRANTY_CHECKING (Customer return for RMA)\n";
                 cout << "  4. WARRANTY_REPLACEMENT (Replacement from vendor)\n";
                 cout << "  5. CUSTOMER_RETURN (Sale return)\n";
@@ -1196,6 +1778,16 @@ namespace Generator
                 else if (typeChoice == 3) inType = "WARRANTY_CHECKING";
                 else if (typeChoice == 4) inType = "WARRANTY_REPLACEMENT";
                 else if (typeChoice == 5) inType = "CUSTOMER_RETURN";
+
+                string sourceCode = "";
+                if (inType == "ADJUSTMENT_IN")
+                {
+                    cout << "[!] ADJUSTMENT_IN Notice: Customer is set to NULL per business rules.\n";
+                    cout << "Enter inventory check code (leave empty to auto-generate): ";
+                    string dummy;
+                    getline(cin, dummy); // Consume newline
+                    getline(cin, sourceCode);
+                }
 
                 printProductList();
 
@@ -1224,7 +1816,7 @@ namespace Generator
                 cin >> numDeliveries;
 
                 cout << "[+] Processing inbound transaction...\n";
-                int id = generateInbound(inType, items, numDeliveries);
+                int id = generateInbound(inType, items, numDeliveries, "", "", sourceCode);
                 if (id > 0)
                 {
                     cout << "[SUCCESS] Inbound transaction created with ID: " << id << "\n";
@@ -1248,6 +1840,16 @@ namespace Generator
                 else if (typeChoice == 3) outType = "RETURN_TO_SUPPLIER";
                 else if (typeChoice == 4) outType = "WARRANTY_RETURN";
                 else if (typeChoice == 5) outType = "WARRANTY_REPLACEMENT_TO_CUSTOMER";
+
+                string sourceCode = "";
+                if (outType == "ADJUSTMENT_OUT")
+                {
+                    cout << "[!] ADJUSTMENT_OUT Notice: Customer is set to NULL per business rules.\n";
+                    cout << "Enter inventory check code (leave empty to auto-generate): ";
+                    string dummy;
+                    getline(cin, dummy); // Consume newline
+                    getline(cin, sourceCode);
+                }
 
                 printProductList();
 
@@ -1278,7 +1880,7 @@ namespace Generator
                 cin >> numShipments;
 
                 cout << "[+] Processing outbound transaction...\n";
-                int id = generateOutbound(outType, items, numShipments);
+                int id = generateOutbound(outType, items, numShipments, "", "", sourceCode);
                 if (id > 0)
                 {
                     cout << "[SUCCESS] Outbound transaction created with ID: " << id << "\n";
@@ -1286,13 +1888,45 @@ namespace Generator
             }
             else if (choice == 3)
             {
-                printProductList();
+                // Perform Inventory Check
+                cout << "\n--- SELECT CHECK TYPE ---\n";
+                cout << "  1. QUAN (Quantity snapshot check)\n";
+                cout << "  2. UNIT (Detailed serial-level check)\n";
+                cout << "Select check type (1-2): ";
+                int ct = 1;
+                cin >> ct;
+                string checkType = (ct == 2) ? "UNIT" : "QUAN";
+
+                string code = generateInventoryCheck(checkType);
+                cout << "[SUCCESS] Created Inventory Check: " << code << "\n";
             }
             else if (choice == 4)
             {
-                printInventorySummary();
+                // Toggle Product is_sold
+                printProductList();
+                cout << "Enter Product ID to toggle is_sold: ";
+                int pid = 0;
+                cin >> pid;
+                cout << "Set is_sold to (1 = TRUE / Active, 0 = FALSE / Inactive): ";
+                int flag = 1;
+                cin >> flag;
+
+                cout << "Enter reason for status change: ";
+                string dummy, reason;
+                getline(cin, dummy);
+                getline(cin, reason);
+
+                updateProductIsSold(pid, flag == 1, 1, reason);
             }
             else if (choice == 5)
+            {
+                printProductList();
+            }
+            else if (choice == 6)
+            {
+                printInventorySummary();
+            }
+            else if (choice == 7)
             {
                 cout << "Enter number of Inbounds to generate: ";
                 int nIn = 5;
@@ -1311,14 +1945,15 @@ namespace Generator
                 cout << "  - Outbound Transactions:        " << summary.outboundTxnsGenerated << "\n";
                 cout << "  - Shipments Completed:          " << summary.shipmentsGenerated << "\n";
                 cout << "  - Units Dispatched (OUT):       " << summary.unitsShipped << "\n";
+                cout << "  - Inventory Checks Triggered:   " << summary.inventoryChecksGenerated << "\n";
                 cout << "======================================================\n";
             }
-            else if (choice == 6)
+            else if (choice == 8)
             {
                 bool valid = validateIntegrity();
                 cout << "\n[+] Integrity validation: " << (valid ? "[PASSED] 100% VALID" : "[FAILED]") << "\n";
             }
-            else if (choice == 7)
+            else if (choice == 9)
             {
                 cout << "[+] Saving database to 'data' folder...\n";
                 bool saved = DataIO::DatabaseIO::writeAll(db, "data");
@@ -1326,7 +1961,7 @@ namespace Generator
             }
             else
             {
-                cout << "[!] Invalid option. Please choose between 0 and 7.\n";
+                cout << "[!] Invalid option. Please choose between 0 and 9.\n";
             }
         }
     }

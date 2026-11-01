@@ -24,19 +24,20 @@ namespace Generator
         int outboundTxnsGenerated = 0;
         int shipmentsGenerated = 0;
         int unitsShipped = 0;
+        int inventoryChecksGenerated = 0;
     };
 
     /**
      * @brief Dedicated transaction & inventory-flow data generator for warehouse management.
      * 
-     * Complies strictly with project_rules.md (Rule 7) and QuanLyKhoHang_schema.json:
+     * Complies strictly with project_rules.md and QuanLyKhoHang_schema.json:
      * - Generates transaction-related test data ONLY (no master/reference data).
-     * - Does NOT generate products, brands, or categories (these come from crawler/master).
-     * - Does NOT modify or delete schema, database structure, or join tables.
-     * - Inbound Pipeline: InboundTransaction -> InboundDetail -> Delivery -> DeliveryUnitDetail -> UnitInventory -> StatusHistory
-     * - Outbound Pipeline: OutboundTransaction -> OutboundDetail -> Shipment -> ShipmentUnitDetail -> Unit status update -> StatusHistory
-     * - Status history is chronologically and logically consistent with valid state transitions.
-     * - Provides an interactive console interface per Rule 7.3 and CLI batch mode.
+     * - Inbound Pipeline: InboundTransaction -> InboundDetail -> Delivery -> DeliveryDetail -> UnitInventory -> StatusHistory
+     * - Outbound Pipeline: OutboundTransaction -> OutboundDetail -> Shipment -> ShipmentDetail -> Unit status update -> StatusHistory
+     * - Inbound operations ONLY process units whose old status is OUT or NULL.
+     * - ADJUSTMENT_IN and ADJUSTMENT_OUT transactions have NO customer (customer_id = NULL) and source_code MUST reference check_code.
+     * - Batch generation selects only active products (product.is_sold == TRUE).
+     * - Synchronizes both product_quantity and product table inventory counters.
      * - Strictly no STL containers or smart pointers (uses custom Vector, HashMap, Pair).
      */
     class DataGenerator
@@ -55,10 +56,18 @@ namespace Generator
         int nextShipmentId;
         int nextShipmentDetailId;
         int nextStatusHistoryId;
+        int nextInventoryCheckId;
+        int nextCheckQuantityId;
+        int nextCheckUnitId;
+        int nextAdjustmentMovementId;
+        int nextAdjustDetailId;
+        int nextIsSoldChangingId;
 
         // Sequence number counters for code generation
         HashMap<string, int> inboundTypeCounters;
         HashMap<string, int> outboundTypeCounters;
+        int nextCheckSeq;
+        int nextAdjustSeq;
 
         // Uniqueness tracking sets
         HashMap<string, bool> existingSerials;
@@ -88,36 +97,51 @@ namespace Generator
         void initialize();
 
         /**
+         * @brief Generate an inventory check record (CHK-QUAN or CHK-UNIT) with product snapshots.
+         * @param checkType "QUAN" or "UNIT".
+         * @param checkDate Date string (or current date if empty).
+         * @param productIds List of product IDs included in the audit.
+         * @return Generated check_code (e.g., CHK-QUAN-000001).
+         */
+        string generateInventoryCheck(const string& checkType = "QUAN",
+                                      const string& checkDate = "",
+                                      const Vector<int>& productIds = Vector<int>());
+
+        /**
          * @brief Generate an inbound transaction pipeline sequentially and consistently.
-         * InboundTransaction -> InboundDetail -> Delivery -> DeliveryUnitDetail -> UnitInventory -> (StatusHistory).
+         * InboundTransaction -> InboundDetail -> Delivery -> DeliveryDetail -> UnitInventory -> (StatusHistory).
          * @param inboundType PURCHASING, ADJUSTMENT_IN, WARRANTY_CHECKING, WARRANTY_REPLACEMENT, CUSTOMER_RETURN.
          * @param items Vector of Pairs (productId, orderedQuantity).
          * @param numDeliveries Number of deliveries required (>= 1).
          * @param orderDate Date in YYYY-MM-DD format (or generated if empty).
          * @param note Description note.
+         * @param sourceCode Check code reference (mandatory for ADJUSTMENT_IN; auto-generated if empty).
          * @return Inbound transaction ID, or -1 on error.
          */
         int generateInbound(const string& inboundType,
                             const Vector<Pair<int, int>>& items,
                             int numDeliveries = 1,
                             const string& orderDate = "",
-                            const string& note = "");
+                            const string& note = "",
+                            const string& sourceCode = "");
 
         /**
          * @brief Generate an outbound transaction pipeline sequentially and consistently.
-         * OutboundTransaction -> OutboundDetail -> Shipment -> ShipmentUnitDetail -> Unit status update -> (StatusHistory).
+         * OutboundTransaction -> OutboundDetail -> Shipment -> ShipmentDetail -> Unit status update -> (StatusHistory).
          * @param outboundType SELLING, ADJUSTMENT_OUT, RETURN_TO_SUPPLIER, WARRANTY_RETURN, WARRANTY_REPLACEMENT_TO_CUSTOMER.
          * @param items Vector of Pairs (productId, orderedQuantity).
          * @param numShipments Number of shipments required (>= 1).
          * @param orderDate Date in YYYY-MM-DD format (or generated if empty).
          * @param note Description note.
+         * @param sourceCode Check code reference (mandatory for ADJUSTMENT_OUT; auto-generated if empty).
          * @return Outbound transaction ID, or -1 on error.
          */
         int generateOutbound(const string& outboundType,
                              const Vector<Pair<int, int>>& items,
                              int numShipments = 1,
                              const string& orderDate = "",
-                             const string& note = "");
+                             const string& note = "",
+                             const string& sourceCode = "");
 
         /**
          * @brief Generate a batch of simulated transactions with random valid products and quantities.
@@ -136,7 +160,14 @@ namespace Generator
         int getAvailableStock(int productId) const;
 
         /**
-         * @brief Synchronize product.quantity with actual count of AVAILABLE units in unit_inventory.
+         * @brief Change is_sold status for a product. Only allowed to set false if total stock is 0.
+         * Logs change into is_sold_changing table.
+         * @return True if status successfully changed, false otherwise.
+         */
+        bool updateProductIsSold(int productId, bool newIsSold, int changedBy = 1, const string& reason = "");
+
+        /**
+         * @brief Synchronize product and product_quantity tables with actual counts in unit_inventory.
          */
         void syncProductQuantities();
 

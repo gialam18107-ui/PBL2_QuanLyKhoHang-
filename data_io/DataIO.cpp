@@ -143,6 +143,16 @@ namespace DataIO
         return writeDomain(db, "status_type");
     }
 
+    bool DataIO::readInventoryChecks(Database& db)
+    {
+        return readDomain(db, "inventory_check");
+    }
+
+    bool DataIO::writeInventoryChecks(const Database& db) const
+    {
+        return writeDomain(db, "inventory_check");
+    }
+
     // ========================================================
     // CATEGORY SPECIFICATIONS IO (Rule 10.4)
     // ========================================================

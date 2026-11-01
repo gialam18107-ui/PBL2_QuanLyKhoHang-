@@ -130,7 +130,24 @@ namespace DataIO
                     }
                     else
                     {
-                        record.set(colName, valStr);
+                        if (valStr.empty())
+                        {
+                            if (col->isNotNull())
+                            {
+                                if (!col->getDefaultValue().empty())
+                                {
+                                    record.set(colName, col->getDefaultValue());
+                                }
+                                else
+                                {
+                                    record.set(colName, string(""));
+                                }
+                            }
+                        }
+                        else
+                        {
+                            record.set(colName, valStr);
+                        }
                     }
                 }
                 else

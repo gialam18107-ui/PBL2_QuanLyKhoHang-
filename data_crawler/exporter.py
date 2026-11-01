@@ -21,6 +21,10 @@ from data_crawler.categories import (
     CUSTOMERS,
     INDIVIDUAL_INFO,
     BUSINESS_INFO,
+    CHECK_TYPES,
+    INVENTORY_CHECK_STATUSES,
+    REASONS,
+    ADJUSTMENT_STATUSES,
 )
 from data_crawler.crawler import DataCrawler
 
@@ -67,6 +71,20 @@ TABLE_DOMAINS: Dict[str, str] = {
     "outbound_type": "status_type",
     "outbound_status": "status_type",
     "shipment_status": "status_type",
+    "check_type": "status_type",
+    "inventory_check_status": "status_type",
+    "reason": "status_type",
+    "adjustment_status": "status_type",
+
+    # 10.3 Products (is_sold_changing)
+    "is_sold_changing": "products",
+
+    # 10.7 Inventory Check and Movements
+    "inventory_check": "inventory_check",
+    "inventory_check_quantity": "inventory_check",
+    "inventory_check_unit": "inventory_check",
+    "adjustment_movement": "inventory_check",
+    "adjust_movement_detail": "inventory_check",
 }
 
 # 10.4 Category Specifications sub-tables for each category
@@ -236,6 +254,9 @@ class SchemaExporter:
             "sku",
             "brand",
             "category",
+            "available_quantity",
+            "warranty_quantity",
+            "scrapped_quantity",
             "is_sold",
         ]
         self._write_csv("product.csv", prod_headers, crawler.products)
@@ -297,6 +318,7 @@ class SchemaExporter:
             {
                 "inbound_transaction_id": 1,
                 "inbound_code": "IN-PUR-000001",
+                "source_code": "",
                 "customer_id": 4,  # Business partner: FPT Information System
                 "order_at": "2026-09-01",
                 "type": "PURCHASING",
@@ -308,6 +330,7 @@ class SchemaExporter:
         inbound_txn_headers = [
             "inbound_transaction_id",
             "inbound_code",
+            "source_code",
             "customer_id",
             "order_at",
             "type",
@@ -379,6 +402,7 @@ class SchemaExporter:
             {
                 "outbound_trainsaction_id": 1,
                 "outbound_code": "OUT-SEL-000001",
+                "source_code": "",
                 "customer_id": 1,  # Individual customer: Nguyen Van An
                 "order_at": "2026-09-05",
                 "type": "SELLING",
@@ -390,6 +414,7 @@ class SchemaExporter:
         outbound_txn_headers = [
             "outbound_trainsaction_id",
             "outbound_code",
+            "source_code",
             "customer_id",
             "order_at",
             "type",
@@ -460,6 +485,60 @@ class SchemaExporter:
         hist_headers = ["history_id", "unit_id", "old_status", "curr_status", "transaction", "type"]
         self._write_csv("status_history.csv", hist_headers, crawler.status_history)
         summary["status_history"] = len(crawler.status_history)
+
+        # 33. IS_SOLD_CHANGING (products/)
+        is_sold_changing_headers = ["history_id", "product_id", "date", "old_status", "new_status"]
+        self._write_csv("is_sold_changing.csv", is_sold_changing_headers, [])
+        summary["is_sold_changing"] = 0
+
+        # 34. CHECK_TYPE (status_type/)
+        check_type_headers = ["type_id", "check_type", "next_code_no"]
+        self._write_csv("check_type.csv", check_type_headers, CHECK_TYPES)
+        summary["check_type"] = len(CHECK_TYPES)
+
+        # 35. INVENTORY_CHECK_STATUS (status_type/)
+        inv_check_status_headers = ["status_id", "status"]
+        self._write_csv("inventory_check_status.csv", inv_check_status_headers, INVENTORY_CHECK_STATUSES)
+        summary["inventory_check_status"] = len(INVENTORY_CHECK_STATUSES)
+
+        # 36. REASON (status_type/)
+        reason_headers = ["reason_id", "reason", "code", "next_code_no"]
+        self._write_csv("reason.csv", reason_headers, REASONS)
+        summary["reason"] = len(REASONS)
+
+        # 37. ADJUSTMENT_STATUS (status_type/)
+        adj_status_headers = ["status_id", "status"]
+        self._write_csv("adjustment_status.csv", adj_status_headers, ADJUSTMENT_STATUSES)
+        summary["adjustment_status"] = len(ADJUSTMENT_STATUSES)
+
+        # 38. INVENTORY_CHECK (inventory_check/)
+        inv_check_headers = ["check_id", "check_code", "check_type", "check_at", "status", "note"]
+        self._write_csv("inventory_check.csv", inv_check_headers, [])
+        summary["inventory_check"] = 0
+
+        # 39. INVENTORY_CHECK_QUANTITY (inventory_check/)
+        inv_check_qty_headers = [
+            "check_quantity_id", "check_id", "product_id",
+            "system_available_quan", "system_warranty_quan", "system_scrapped_quan",
+            "actual_available_quan", "actual_warranty_quan", "actual_scrapped_quan", "note"
+        ]
+        self._write_csv("inventory_check_quantity.csv", inv_check_qty_headers, [])
+        summary["inventory_check_quantity"] = 0
+
+        # 40. INVENTORY_CHECK_UNIT (inventory_check/)
+        inv_check_unit_headers = ["check_unit_id", "check_id", "check_quantity_id", "unit_id", "system_status", "scanned_status"]
+        self._write_csv("inventory_check_unit.csv", inv_check_unit_headers, [])
+        summary["inventory_check_unit"] = 0
+
+        # 41. ADJUSTMENT_MOVEMENT (inventory_check/)
+        adj_mov_headers = ["adjust_id", "adjust_code", "source_code", "reason", "adjusted_at", "status", "note"]
+        self._write_csv("adjustment_movement.csv", adj_mov_headers, [])
+        summary["adjustment_movement"] = 0
+
+        # 42. ADJUST_MOVEMENT_DETAIL (inventory_check/)
+        adj_mov_det_headers = ["adjust_detail_id", "adjust_id", "product_id", "from_status", "to_status", "adjust_quantity", "actual_quantity"]
+        self._write_csv("adjust_movement_detail.csv", adj_mov_det_headers, [])
+        summary["adjust_movement_detail"] = 0
 
         # Export Category Specifications (Section 10.4)
         specs_summary = self.export_category_specs(crawler)

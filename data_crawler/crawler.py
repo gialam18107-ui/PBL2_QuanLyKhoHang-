@@ -213,6 +213,9 @@ class DataCrawler:
                 "sku": sku,
                 "brand": brand_name,
                 "category": cat_name,
+                "available_quantity": initial_qty,
+                "warranty_quantity": 0,
+                "scrapped_quantity": 0,
                 "is_sold": "TRUE",
             }
             self.products.append(product_record)

@@ -158,7 +158,67 @@ namespace Schema
     }
 
     // ========================================================
-    // 11. INDIVIDUAL_INFO
+    // 11. CHECK_TYPE (From Schema JSON)
+    // ========================================================
+    Table* createCheckTypeTable()
+    {
+        auto table = new Table("check_type");
+        table->addColumn(Column("type_id", DataType::INTEGER, 0, true, true, true, true));
+        table->addColumn(Column("check_type", DataType::VARCHAR, 10, false, true, true));
+        table->addColumn(Column("next_code_no", DataType::INTEGER, 0, false, false, true, false, "0"));
+
+        table->addConstraint(new PrimaryKeyConstraint("pk_check_type", "type_id"));
+        table->addConstraint(new UniqueConstraint("uq_check_type", "check_type"));
+        return table;
+    }
+
+    // ========================================================
+    // 12. INVENTORY_CHECK_STATUS (From Schema JSON)
+    // ========================================================
+    Table* createInventoryCheckStatusTable()
+    {
+        auto table = new Table("inventory_check_status");
+        table->addColumn(Column("status_id", DataType::INTEGER, 0, true, true, true, true));
+        table->addColumn(Column("status", DataType::VARCHAR, 50, false, true, true));
+
+        table->addConstraint(new PrimaryKeyConstraint("pk_inventory_check_status", "status_id"));
+        table->addConstraint(new UniqueConstraint("uq_inventory_check_status", "status"));
+        return table;
+    }
+
+    // ========================================================
+    // 13. REASON (From Schema JSON)
+    // ========================================================
+    Table* createReasonTable()
+    {
+        auto table = new Table("reason");
+        table->addColumn(Column("reason_id", DataType::INTEGER, 0, true, true, true, true));
+        table->addColumn(Column("reason", DataType::VARCHAR, 50, false, true, true));
+        table->addColumn(Column("code", DataType::VARCHAR, 10, false, true, true));
+        table->addColumn(Column("next_code_no", DataType::INTEGER, 0, false, false, false, false, "0"));
+
+        table->addConstraint(new PrimaryKeyConstraint("pk_reason", "reason_id"));
+        table->addConstraint(new UniqueConstraint("uq_reason", "reason"));
+        table->addConstraint(new UniqueConstraint("uq_reason_code", "code"));
+        return table;
+    }
+
+    // ========================================================
+    // 14. ADJUSTMENT_STATUS (From Schema JSON)
+    // ========================================================
+    Table* createAdjustmentStatusTable()
+    {
+        auto table = new Table("adjustment_status");
+        table->addColumn(Column("status_id", DataType::INTEGER, 0, true, true, true, true));
+        table->addColumn(Column("status", DataType::VARCHAR, 50, false, true, true));
+
+        table->addConstraint(new PrimaryKeyConstraint("pk_adjustment_status", "status_id"));
+        table->addConstraint(new UniqueConstraint("uq_adjustment_status", "status"));
+        return table;
+    }
+
+    // ========================================================
+    // 15. INDIVIDUAL_INFO
     // ========================================================
     Table* createIndividualInfoTable()
     {
@@ -176,7 +236,7 @@ namespace Schema
     }
 
     // ========================================================
-    // 12. BUSINESS_INFO
+    // 16. BUSINESS_INFO
     // ========================================================
     Table* createBusinessInfoTable()
     {
@@ -196,19 +256,22 @@ namespace Schema
     }
 
     // ========================================================
-    // 13. PRODUCT
+    // 17. PRODUCT (Contains available_quantity, warranty_quantity, scrapped_quantity, is_sold)
     // ========================================================
     Table* createProductTable()
     {
         auto table = new Table("product");
-        table->addColumn(Column("product_id", DataType::INTEGER, 0, true, true, true));
+        table->addColumn(Column("product_id", DataType::INTEGER, 0, true, true, true, true));
         table->addColumn(Column("product_name", DataType::VARCHAR, 255, false, false, true));
         table->addColumn(Column("product_code", DataType::VARCHAR, 20, false, true, true));
         table->addColumn(Column("barcode", DataType::VARCHAR, 13, false, true, true));
         table->addColumn(Column("sku", DataType::VARCHAR, 20, false, true, true));
         table->addColumn(Column("brand", DataType::VARCHAR, 255, false, false, true));
         table->addColumn(Column("category", DataType::VARCHAR, 255, false, false, true));
-        table->addColumn(Column("is_sold", DataType::BOOLEAN, 0, false, false, true, false, "0"));
+        table->addColumn(Column("available_quantity", DataType::INTEGER, 0, false, false, true, false, "0"));
+        table->addColumn(Column("warranty_quantity", DataType::INTEGER, 0, false, false, true, false, "0"));
+        table->addColumn(Column("scrapped_quantity", DataType::INTEGER, 0, false, false, true, false, "0"));
+        table->addColumn(Column("is_sold", DataType::BOOLEAN, 0, false, false, true, false, "1"));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_product", "product_id"));
         table->addConstraint(new UniqueConstraint("uq_product_code", "product_code"));
@@ -221,7 +284,7 @@ namespace Schema
     }
 
     // ========================================================
-    // 14. PRODUCT_QUANTITY
+    // 18. PRODUCT_QUANTITY (For backward compatibility / view support)
     // ========================================================
     Table* createProductQuantityTable()
     {
@@ -237,7 +300,25 @@ namespace Schema
     }
 
     // ========================================================
-    // 15. CPU
+    // 19. IS_SOLD_CHANGING (From Schema JSON)
+    // ========================================================
+    Table* createIsSoldChangingTable()
+    {
+        auto table = new Table("is_sold_changing");
+        table->addColumn(Column("history_id", DataType::INTEGER, 0, true, true, true, true));
+        table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
+        table->addColumn(Column("date", DataType::DATE, 0, false, false, true));
+        table->addColumn(Column("old_status", DataType::BOOLEAN, 0, false, false, true));
+        table->addColumn(Column("new_status", DataType::BOOLEAN, 0, false, false, true));
+
+        table->addConstraint(new PrimaryKeyConstraint("pk_is_sold_changing", "history_id"));
+        table->addConstraint(new ForeignKeyConstraint("fk_is_sold_changing_product", "product_id", "product", "product_id"));
+        table->createIndex("avl_tree_date", "date", IndexType::AVL);
+        return table;
+    }
+
+    // ========================================================
+    // 20. CPU
     // ========================================================
     Table* createCpuTable()
     {
@@ -257,7 +338,7 @@ namespace Schema
     }
 
     // ========================================================
-    // 16. GPU
+    // 21. GPU
     // ========================================================
     Table* createGpuTable()
     {
@@ -277,14 +358,14 @@ namespace Schema
     }
 
     // ========================================================
-    // 17. MAINBOARD
+    // 22. MAINBOARD
     // ========================================================
     Table* createMainboardTable()
     {
         auto table = new Table("mainboard");
         table->addColumn(Column("mainboard_id", DataType::INTEGER, 0, true, true, true, true));
         table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("cpu_support", DataType::VARCHAR, 100, false, false, true));
+        table->addColumn(Column("cpu_support", DataType::VARCHAR, 50, false, false, true));
         table->addColumn(Column("socket", DataType::VARCHAR, 50, false, false, true));
         table->addColumn(Column("size", DataType::VARCHAR, 50, false, false, true));
         table->addColumn(Column("chipset", DataType::VARCHAR, 50, false, false, true));
@@ -301,7 +382,7 @@ namespace Schema
     }
 
     // ========================================================
-    // 18. RAM
+    // 23. RAM
     // ========================================================
     Table* createRamTable()
     {
@@ -322,7 +403,7 @@ namespace Schema
     }
 
     // ========================================================
-    // 19. SSD
+    // 24. SSD
     // ========================================================
     Table* createSsdTable()
     {
@@ -342,7 +423,7 @@ namespace Schema
     }
 
     // ========================================================
-    // 20. PSU
+    // 25. PSU
     // ========================================================
     Table* createPsuTable()
     {
@@ -362,7 +443,7 @@ namespace Schema
     }
 
     // ========================================================
-    // 21. COOLING
+    // 26. COOLING
     // ========================================================
     Table* createCoolingTable()
     {
@@ -378,7 +459,7 @@ namespace Schema
     }
 
     // ========================================================
-    // 22. CASE
+    // 27. CASE
     // ========================================================
     Table* createCaseTable()
     {
@@ -395,7 +476,7 @@ namespace Schema
     }
 
     // ========================================================
-    // 23. UNIT_INVENTORY
+    // 28. UNIT_INVENTORY
     // ========================================================
     Table* createUnitInventoryTable()
     {
@@ -414,14 +495,37 @@ namespace Schema
     }
 
     // ========================================================
-    // 24. INBOUND_TRANSACTION
+    // 29. INVENTORY_CHECK (From Schema JSON)
+    // ========================================================
+    Table* createInventoryCheckTable()
+    {
+        auto table = new Table("inventory_check");
+        table->addColumn(Column("check_id", DataType::INTEGER, 0, true, true, true, true));
+        table->addColumn(Column("check_code", DataType::VARCHAR, 20, false, true, true));
+        table->addColumn(Column("check_type", DataType::VARCHAR, 10, false, false, true));
+        table->addColumn(Column("check_at", DataType::DATE, 0, false, false, true));
+        table->addColumn(Column("status", DataType::VARCHAR, 50, false, false, true));
+        table->addColumn(Column("note", DataType::TEXT, 65535, false, false, false));
+
+        table->addConstraint(new PrimaryKeyConstraint("pk_inventory_check", "check_id"));
+        table->addConstraint(new UniqueConstraint("uq_inventory_check_code", "check_code"));
+        table->addConstraint(new ForeignKeyConstraint("fk_inventory_check_type", "check_type", "check_type", "check_type"));
+        table->addConstraint(new ForeignKeyConstraint("fk_inventory_check_status", "status", "inventory_check_status", "status"));
+        table->createIndex("avl_tree_check_at", "check_at", IndexType::AVL);
+        table->createIndex("hash_tree_status", "status", IndexType::HASH_TREE);
+        return table;
+    }
+
+    // ========================================================
+    // 30. INBOUND_TRANSACTION (Includes source_code, nullable customer_id)
     // ========================================================
     Table* createInboundTransactionTable()
     {
         auto table = new Table("inbound_transaction");
         table->addColumn(Column("inbound_transaction_id", DataType::INTEGER, 0, true, true, true, true));
         table->addColumn(Column("inbound_code", DataType::CHAR, 12, false, true, true));
-        table->addColumn(Column("customer_id", DataType::INTEGER, 0, false, false, true));
+        table->addColumn(Column("source_code", DataType::VARCHAR, 50, false, true, false)); // nullable, unique
+        table->addColumn(Column("customer_id", DataType::INTEGER, 0, false, false, false)); // nullable for ADJ
         table->addColumn(Column("order_at", DataType::DATE, 0, false, false, true));
         table->addColumn(Column("type", DataType::VARCHAR, 255, false, false, true));
         table->addColumn(Column("status", DataType::VARCHAR, 255, false, false, true));
@@ -430,6 +534,7 @@ namespace Schema
 
         table->addConstraint(new PrimaryKeyConstraint("pk_inbound_transaction", "inbound_transaction_id"));
         table->addConstraint(new UniqueConstraint("uq_inbound_transaction_code", "inbound_code"));
+        table->addConstraint(new UniqueConstraint("uq_inbound_source_code", "source_code"));
         table->addConstraint(new ForeignKeyConstraint("fk_inbound_transaction_customer", "customer_id", "customer", "customer_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_inbound_transaction_type", "type", "inbound_type", "type"));
         table->addConstraint(new ForeignKeyConstraint("fk_inbound_transaction_status", "status", "inbound_status", "status"));
@@ -440,7 +545,7 @@ namespace Schema
     }
 
     // ========================================================
-    // 25. INBOUND_DETAIL
+    // 31. INBOUND_DETAIL
     // ========================================================
     Table* createInboundDetailTable()
     {
@@ -458,7 +563,7 @@ namespace Schema
     }
 
     // ========================================================
-    // 26. DELIVERY
+    // 32. DELIVERY
     // ========================================================
     Table* createDeliveryTable()
     {
@@ -481,7 +586,7 @@ namespace Schema
     }
 
     // ========================================================
-    // 27. DELIVERY_DETAIL (From Schema JSON)
+    // 33. DELIVERY_DETAIL
     // ========================================================
     Table* createDeliveryDetailTable()
     {
@@ -499,15 +604,15 @@ namespace Schema
     }
 
     // ========================================================
-    // 28. OUTBOUND_TRANSACTION
+    // 34. OUTBOUND_TRANSACTION (Includes source_code, nullable customer_id)
     // ========================================================
     Table* createOutboundTransactionTable()
     {
         auto table = new Table("outbound_transaction");
-        // Column header in CSV/JSON is outbound_trainsaction_id
         table->addColumn(Column("outbound_trainsaction_id", DataType::INTEGER, 0, true, true, true, true));
         table->addColumn(Column("outbound_code", DataType::CHAR, 13, false, true, true));
-        table->addColumn(Column("customer_id", DataType::INTEGER, 0, false, false, true));
+        table->addColumn(Column("source_code", DataType::VARCHAR, 50, false, true, false)); // nullable, unique
+        table->addColumn(Column("customer_id", DataType::INTEGER, 0, false, false, false)); // nullable for ADJ
         table->addColumn(Column("order_at", DataType::DATE, 0, false, false, true));
         table->addColumn(Column("type", DataType::VARCHAR, 255, false, false, true));
         table->addColumn(Column("status", DataType::VARCHAR, 255, false, false, true));
@@ -516,6 +621,7 @@ namespace Schema
 
         table->addConstraint(new PrimaryKeyConstraint("pk_outbound_transaction", "outbound_trainsaction_id"));
         table->addConstraint(new UniqueConstraint("uq_outbound_transaction_code", "outbound_code"));
+        table->addConstraint(new UniqueConstraint("uq_outbound_source_code", "source_code"));
         table->addConstraint(new ForeignKeyConstraint("fk_outbound_transaction_customer", "customer_id", "customer", "customer_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_outbound_transaction_type", "type", "outbound_type", "type"));
         table->addConstraint(new ForeignKeyConstraint("fk_outbound_transaction_status", "status", "outbound_status", "status"));
@@ -526,7 +632,7 @@ namespace Schema
     }
 
     // ========================================================
-    // 29. OUTBOUND_DETAIL
+    // 35. OUTBOUND_DETAIL
     // ========================================================
     Table* createOutboundDetailTable()
     {
@@ -544,7 +650,7 @@ namespace Schema
     }
 
     // ========================================================
-    // 30. SHIPMENT
+    // 36. SHIPMENT
     // ========================================================
     Table* createShipmentTable()
     {
@@ -567,7 +673,7 @@ namespace Schema
     }
 
     // ========================================================
-    // 31. SHIPMENT_DETAIL (From Schema JSON)
+    // 37. SHIPMENT_DETAIL
     // ========================================================
     Table* createShipmentDetailTable()
     {
@@ -585,7 +691,7 @@ namespace Schema
     }
 
     // ========================================================
-    // 32. STATUS_HISTORY
+    // 38. STATUS_HISTORY
     // ========================================================
     Table* createStatusHistoryTable()
     {
@@ -601,6 +707,94 @@ namespace Schema
         table->addConstraint(new ForeignKeyConstraint("fk_status_history_unit", "unit_id", "unit_inventory", "unit_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_status_history_curr_status", "curr_status", "unit_status", "status"));
         table->createIndex("hash_tree_type", "type", IndexType::HASH_TREE);
+        return table;
+    }
+
+    // ========================================================
+    // 39. INVENTORY_CHECK_QUANTITY (From Schema JSON)
+    // ========================================================
+    Table* createInventoryCheckQuantityTable()
+    {
+        auto table = new Table("inventory_check_quantity");
+        table->addColumn(Column("check_quantity_id", DataType::INTEGER, 0, true, true, true, true));
+        table->addColumn(Column("check_id", DataType::INTEGER, 0, false, false, true));
+        table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
+        table->addColumn(Column("system_available_quan", DataType::INTEGER, 0, false, false, true));
+        table->addColumn(Column("system_warranty_quan", DataType::INTEGER, 0, false, false, true));
+        table->addColumn(Column("system_scrapped_quan", DataType::INTEGER, 0, false, false, true));
+        table->addColumn(Column("actual_available_quan", DataType::INTEGER, 0, false, false, true, false, "0"));
+        table->addColumn(Column("actual_warranty_quan", DataType::INTEGER, 0, false, false, true, false, "0"));
+        table->addColumn(Column("actual_scrapped_quan", DataType::INTEGER, 0, false, false, true, false, "0"));
+        table->addColumn(Column("note", DataType::TEXT, 65535, false, false, false));
+
+        table->addConstraint(new PrimaryKeyConstraint("pk_inv_check_quantity", "check_quantity_id"));
+        table->addConstraint(new ForeignKeyConstraint("fk_inv_check_quan_check", "check_id", "inventory_check", "check_id"));
+        table->addConstraint(new ForeignKeyConstraint("fk_inv_check_quan_product", "product_id", "product", "product_id"));
+        return table;
+    }
+
+    // ========================================================
+    // 40. INVENTORY_CHECK_UNIT (From Schema JSON)
+    // ========================================================
+    Table* createInventoryCheckUnitTable()
+    {
+        auto table = new Table("inventory_check_unit");
+        table->addColumn(Column("check_unit_id", DataType::INTEGER, 0, true, true, true, true));
+        table->addColumn(Column("check_id", DataType::INTEGER, 0, false, false, true));
+        table->addColumn(Column("check_quantity_id", DataType::INTEGER, 0, false, false, true));
+        table->addColumn(Column("unit_id", DataType::INTEGER, 0, false, false, true));
+        table->addColumn(Column("system_status", DataType::VARCHAR, 50, false, false, true));
+        table->addColumn(Column("scanned_status", DataType::VARCHAR, 50, false, false, true));
+
+        table->addConstraint(new PrimaryKeyConstraint("pk_inv_check_unit", "check_unit_id"));
+        table->addConstraint(new ForeignKeyConstraint("fk_inv_check_unit_check", "check_id", "inventory_check", "check_id"));
+        table->addConstraint(new ForeignKeyConstraint("fk_inv_check_unit_quan", "check_quantity_id", "inventory_check_quantity", "check_quantity_id"));
+        table->addConstraint(new ForeignKeyConstraint("fk_inv_check_unit_unit", "unit_id", "unit_inventory", "unit_id"));
+        table->addConstraint(new ForeignKeyConstraint("fk_inv_check_unit_sys_st", "system_status", "unit_status", "status"));
+        table->addConstraint(new ForeignKeyConstraint("fk_inv_check_unit_scan_st", "scanned_status", "unit_status", "status"));
+        return table;
+    }
+
+    // ========================================================
+    // 41. ADJUSTMENT_MOVEMENT (From Schema JSON)
+    // ========================================================
+    Table* createAdjustmentMovementTable()
+    {
+        auto table = new Table("adjustment_movement");
+        table->addColumn(Column("adjust_id", DataType::INTEGER, 0, true, true, true, true));
+        table->addColumn(Column("adjust_code", DataType::VARCHAR, 20, false, false, true));
+        table->addColumn(Column("source_code", DataType::VARCHAR, 50, false, true, false)); // nullable, unique
+        table->addColumn(Column("reason", DataType::VARCHAR, 50, false, false, true));
+        table->addColumn(Column("adjusted_at", DataType::DATE, 0, false, false, true));
+        table->addColumn(Column("status", DataType::VARCHAR, 255, false, false, true));
+        table->addColumn(Column("note", DataType::TEXT, 65535, false, false, false));
+
+        table->addConstraint(new PrimaryKeyConstraint("pk_adjustment_movement", "adjust_id"));
+        table->addConstraint(new UniqueConstraint("uq_adjustment_source_code", "source_code"));
+        table->addConstraint(new ForeignKeyConstraint("fk_adj_movement_reason", "reason", "reason", "reason"));
+        table->addConstraint(new ForeignKeyConstraint("fk_adj_movement_status", "status", "adjustment_status", "status"));
+        table->createIndex("avl_tree_adjusted_at", "adjusted_at", IndexType::AVL);
+        table->createIndex("hash_tree_status", "status", IndexType::HASH_TREE);
+        return table;
+    }
+
+    // ========================================================
+    // 42. ADJUST_MOVEMENT_DETAIL (From Schema JSON)
+    // ========================================================
+    Table* createAdjustMovementDetailTable()
+    {
+        auto table = new Table("adjust_movement_detail");
+        table->addColumn(Column("adjust_detail_id", DataType::INTEGER, 0, true, true, true, true));
+        table->addColumn(Column("adjust_id", DataType::INTEGER, 0, false, false, true));
+        table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
+        table->addColumn(Column("from_status", DataType::VARCHAR, 255, false, false, true));
+        table->addColumn(Column("to_status", DataType::VARCHAR, 255, false, false, true));
+        table->addColumn(Column("adjust_quantity", DataType::INTEGER, 0, false, false, true));
+        table->addColumn(Column("actual_quantity", DataType::INTEGER, 0, false, false, true, false, "0"));
+
+        table->addConstraint(new PrimaryKeyConstraint("pk_adjust_movement_detail", "adjust_detail_id"));
+        table->addConstraint(new ForeignKeyConstraint("fk_adj_mov_det_parent", "adjust_id", "adjustment_movement", "adjust_id"));
+        table->addConstraint(new ForeignKeyConstraint("fk_adj_mov_det_product", "product_id", "product", "product_id"));
         return table;
     }
 
@@ -633,15 +827,22 @@ namespace Schema
         if (tableName == "outbound_status") return createOutboundStatusTable();
         if (tableName == "shipment_status") return createShipmentStatusTable();
         if (tableName == "customer") return createCustomerTable();
+        if (tableName == "check_type") return createCheckTypeTable();
+        if (tableName == "inventory_check_status") return createInventoryCheckStatusTable();
+        if (tableName == "reason") return createReasonTable();
+        if (tableName == "adjustment_status") return createAdjustmentStatusTable();
 
-        // Level 2
+        // Level 2: Depends on Level 1
         if (tableName == "product") return createProductTable();
         if (tableName == "individual_info") return createIndividualInfoTable();
         if (tableName == "business_info") return createBusinessInfoTable();
+        if (tableName == "inventory_check") return createInventoryCheckTable();
         if (tableName == "inbound_transaction") return createInboundTransactionTable();
         if (tableName == "outbound_transaction") return createOutboundTransactionTable();
+        if (tableName == "adjustment_movement") return createAdjustmentMovementTable();
 
-        // Level 3
+        // Level 3: Depends on Level 2
+        if (tableName == "is_sold_changing") return createIsSoldChangingTable();
         if (tableName == "product_quantity") return createProductQuantityTable();
         if (tableName == "cpu") return createCpuTable();
         if (tableName == "gpu") return createGpuTable();
@@ -656,11 +857,14 @@ namespace Schema
         if (tableName == "delivery") return createDeliveryTable();
         if (tableName == "outbound_detail") return createOutboundDetailTable();
         if (tableName == "shipment") return createShipmentTable();
+        if (tableName == "inventory_check_quantity") return createInventoryCheckQuantityTable();
+        if (tableName == "adjust_movement_detail") return createAdjustMovementDetailTable();
 
-        // Level 4
+        // Level 4: Depends on Level 3
         if (tableName == "delivery_detail") return createDeliveryDetailTable();
         if (tableName == "shipment_detail") return createShipmentDetailTable();
         if (tableName == "status_history") return createStatusHistoryTable();
+        if (tableName == "inventory_check_unit") return createInventoryCheckUnitTable();
 
         return nullptr;
     }
@@ -679,15 +883,22 @@ namespace Schema
             "outbound_status",
             "shipment_status",
             "customer",
+            "check_type",
+            "inventory_check_status",
+            "reason",
+            "adjustment_status",
 
             // Level 2: Depends on Level 1
             "product",
             "individual_info",
             "business_info",
+            "inventory_check",
             "inbound_transaction",
             "outbound_transaction",
+            "adjustment_movement",
 
             // Level 3: Depends on Level 2
+            "is_sold_changing",
             "product_quantity",
             "cpu",
             "gpu",
@@ -702,11 +913,14 @@ namespace Schema
             "delivery",
             "outbound_detail",
             "shipment",
+            "inventory_check_quantity",
+            "adjust_movement_detail",
 
             // Level 4: Depends on Level 3
             "delivery_detail",
             "shipment_detail",
-            "status_history"
+            "status_history",
+            "inventory_check_unit"
         };
     }
 

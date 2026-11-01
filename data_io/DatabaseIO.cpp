@@ -33,7 +33,7 @@ namespace DataIO
         }
 
         // Section 10.3: Products
-        if (name == "product_quantity" || name == "product" ||
+        if (name == "product_quantity" || name == "product" || name == "is_sold_changing" ||
             name == "cpu" || name == "mainboard" || name == "gpu" ||
             name == "ram" || name == "ssd" || name == "psu" ||
             name == "cooling" || name == "case" || name == "brand" || name == "category")
@@ -50,9 +50,18 @@ namespace DataIO
         // Section 10.6: Status and Type Tables
         if (name == "unit_status" || name == "inbound_type" || name == "inbound_status" ||
             name == "delivery_status" || name == "outbound_type" || name == "outbound_status" ||
-            name == "shipment_status")
+            name == "shipment_status" || name == "inventory_check_status" ||
+            name == "adjustment_status" || name == "check_type" || name == "reason")
         {
             return "status_type";
+        }
+
+        // Section 10.7: Inventory Check
+        if (name == "inventory_check" || name == "inventory_check_quantity" ||
+            name == "inventory_check_unit" || name == "adjustment_movement" ||
+            name == "adjust_movement_detail")
+        {
+            return "inventory_check";
         }
 
         return "";
@@ -100,7 +109,7 @@ namespace DataIO
 
     Vector<string> DatabaseIO::getDomains()
     {
-        return {"transactions", "unit", "products", "customers", "status_type"};
+        return {"transactions", "unit", "products", "customers", "status_type", "inventory_check"};
     }
 
     Vector<string> DatabaseIO::getTablesInDomain(const string& domain)

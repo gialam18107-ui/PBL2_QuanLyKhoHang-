@@ -25,15 +25,22 @@ namespace Schema
     Table* createOutboundStatusTable();
     Table* createShipmentStatusTable();
     Table* createCustomerTable();
+    Table* createCheckTypeTable();
+    Table* createInventoryCheckStatusTable();
+    Table* createReasonTable();
+    Table* createAdjustmentStatusTable();
 
     // Level 2 tables
     Table* createProductTable();
     Table* createIndividualInfoTable();
     Table* createBusinessInfoTable();
+    Table* createInventoryCheckTable();
     Table* createInboundTransactionTable();
     Table* createOutboundTransactionTable();
+    Table* createAdjustmentMovementTable();
 
     // Level 3 tables
+    Table* createIsSoldChangingTable();
     Table* createProductQuantityTable();
     Table* createCpuTable();
     Table* createGpuTable();
@@ -48,12 +55,14 @@ namespace Schema
     Table* createDeliveryTable();
     Table* createOutboundDetailTable();
     Table* createShipmentTable();
+    Table* createInventoryCheckQuantityTable();
+    Table* createAdjustMovementDetailTable();
 
     // Level 4 tables
     Table* createDeliveryDetailTable();
     Table* createShipmentDetailTable();
     Table* createStatusHistoryTable();
-
+    Table* createInventoryCheckUnitTable();
 
     // Specification sub-tables (Rule 6 & Rule 10.4)
     Table* createSpecTable(const string& specName);
@@ -65,10 +74,10 @@ namespace Schema
     // Create a table by its name
     Table* createTable(const string& tableName);
 
-    // Get all 32 table names in topological dependency order
+    // Get all table names in topological dependency order
     Vector<string> getTableNames();
 
-    // Create all 32 tables in topological dependency order
+    // Create all tables in topological dependency order
     Vector<Table*> createAllTables();
 
     // Register all tables into a Database

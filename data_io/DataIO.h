@@ -68,6 +68,9 @@ namespace DataIO
         bool readStatusTypes(Database& db);
         bool writeStatusTypes(const Database& db) const;
 
+        bool readInventoryChecks(Database& db);
+        bool writeInventoryChecks(const Database& db) const;
+
         // ========================================================
         // CATEGORY SPECIFICATIONS IO (Rule 10.4)
         // ========================================================
