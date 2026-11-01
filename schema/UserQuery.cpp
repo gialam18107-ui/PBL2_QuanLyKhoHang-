@@ -2506,16 +2506,28 @@ void inventory_check_query(Database *db, Vector<Record> &results,
 	if (!chkTable) return;
 
 	string col = stripPrefix(indexedColumn, "inventory_check.");
+	Vector<Record> raw;
 	if (!col.empty()) {
-		results = Query::filterRecords(*chkTable, col, val);
+		raw = Query::filterRecords(*chkTable, col, val);
 	} else {
 		const auto &rows = chkTable->getRows();
-		results.reserve(rows.size());
+		raw.reserve(rows.size());
 		for (size_t i = 0; i < rows.size(); ++i) {
 			if (!chkTable->isRowDeleted(i)) {
-				results.push_back(rows[i]);
+				raw.push_back(rows[i]);
 			}
 		}
+	}
+
+	results.reserve(raw.size());
+	for (size_t i = 0; i < raw.size(); ++i) {
+		Record r = raw[i];
+		if (r.has("check_at") && !r.has("check_date")) {
+			r.set("check_date", r.get("check_at"));
+		} else if (r.has("check_date") && !r.has("check_at")) {
+			r.set("check_at", r.get("check_date"));
+		}
+		results.push_back(std::move(r));
 	}
 }
 

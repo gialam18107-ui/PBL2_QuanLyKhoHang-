@@ -288,7 +288,10 @@ void InventoryCheckDetailDialog::loadCheckInfo()
     checkCode = r->has("check_code") && std::holds_alternative<std::string>(r->get("check_code")) ? QString::fromStdString(std::get<std::string>(r->get("check_code"))) : "";
     checkType = r->has("check_type") && std::holds_alternative<std::string>(r->get("check_type")) ? QString::fromStdString(std::get<std::string>(r->get("check_type"))) : "";
     checkStatus = r->has("status") && std::holds_alternative<std::string>(r->get("status")) ? QString::fromStdString(std::get<std::string>(r->get("status"))) : "";
-    checkDate = r->has("check_date") && std::holds_alternative<std::string>(r->get("check_date")) ? QString::fromStdString(std::get<std::string>(r->get("check_date"))) : "";
+    checkDate = r->has("check_at") && std::holds_alternative<std::string>(r->get("check_at"))
+        ? QString::fromStdString(std::get<std::string>(r->get("check_at")))
+        : (r->has("check_date") && std::holds_alternative<std::string>(r->get("check_date"))
+            ? QString::fromStdString(std::get<std::string>(r->get("check_date"))) : "");
     checkNote = r->has("note") && std::holds_alternative<std::string>(r->get("note")) ? QString::fromStdString(std::get<std::string>(r->get("note"))) : "";
 }
 

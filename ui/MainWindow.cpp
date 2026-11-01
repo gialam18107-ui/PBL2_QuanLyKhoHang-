@@ -975,7 +975,7 @@ void MainWindow::setupPages()
     );
     inventoryCheckWidget->setColumns(
         {"Mã đợt kiểm", "Hình thức kiểm", "Ngày kiểm kho", "Trạng thái", "Ghi chú"},
-        {"inventory_check.check_code", "inventory_check.check_type", "inventory_check.check_date", "inventory_check.status", "inventory_check.note"}
+        {"inventory_check.check_code", "inventory_check.check_type", "inventory_check.check_at", "inventory_check.status", "inventory_check.note"}
     );
     inventoryCheckWidget->setFilterColumns({
         {"Mã đợt kiểm (check_code)", "check_code", FilterType::EXACT_TEXT, {}},
@@ -1744,7 +1744,7 @@ void MainWindow::setupSidebar()
 
     // Connect list selection changes
     connect(warehouseList, &QListWidget::currentRowChanged, [this](int row) {
-        if (row >= 0 && row < 11) {
+        if (row >= 0 && row < 17) {
             selectWarehouseQuery(row);
         }
     });

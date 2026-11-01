@@ -1977,7 +1977,7 @@ namespace user_create
                 }
                 if (!movements.empty()) {
                     OperationResult rMov = createAdjustmentMovement(
-                        db, checkCode, "PERIODIC_CHECK", actionDate, movements,
+                        db, checkCode, "STOCKTAKE_DIFF", actionDate, movements,
                         "Điều chuyển trạng thái linh kiện từ đợt kiểm kho " + checkCode
                     );
                     if (rMov.success) {
