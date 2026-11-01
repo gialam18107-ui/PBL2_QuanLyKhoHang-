@@ -111,8 +111,8 @@
     {
       "id": "2oMmRhDGdm83MGAwblPMi",
       "name": "PRODUCT",
-      "x": 842.1315180235391,
-      "y": -315.104915920009,
+      "x": 855.7832820725981,
+      "y": -516.1570621793808,
       "locked": false,
       "fields": [
         {
@@ -210,6 +210,48 @@
           "values": []
         },
         {
+          "id": "gEaj1_RGlxCwwIxwBFHG9",
+          "name": "available_quantity",
+          "type": "INTEGER",
+          "default": "0",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": "",
+          "values": []
+        },
+        {
+          "id": "eK7u16XzxECIHksiKQIEn",
+          "name": "warranty_quantity",
+          "type": "INTEGER",
+          "default": "0",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": "",
+          "values": []
+        },
+        {
+          "id": "EWH0MQOe7pIrQNl79Bdwm",
+          "name": "scrapped_quantity",
+          "type": "INTEGER",
+          "default": "0",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": "",
+          "values": []
+        },
+        {
           "id": "ohajNxQPOZsVgJrydmDMo",
           "name": "is_sold",
           "type": "BOOLEAN",
@@ -231,14 +273,14 @@
       "collapsed": false
     },
     {
-      "id": "hTmdCULdaAbC_jdiQ4P6q",
-      "name": "PRODUCT_QUANTITY",
-      "x": 842.8694593031807,
-      "y": -551.4472223774553,
+      "id": "8yhH0Vr3S0WI_G0YbomiK",
+      "name": "IS_SOLD_CHANGING",
+      "x": 1123.1518911013782,
+      "y": 257.97380718745194,
       "locked": false,
       "fields": [
         {
-          "name": "product_id",
+          "name": "history_id",
           "type": "INTEGER",
           "default": "",
           "check": "",
@@ -248,11 +290,11 @@
           "notNull": true,
           "increment": true,
           "comment": "",
-          "id": "ItKQqfktmk2KwjtTh_dTy"
+          "id": "gsNMF5qL-kI1zNQnvB-RJ"
         },
         {
-          "id": "Q8L4vX8UiIVOLbP4TtrTH",
-          "name": "available_quan",
+          "id": "OYVtNe_X1v0Twz_OfZLqe",
+          "name": "product_id",
           "type": "INTEGER",
           "default": "",
           "check": "",
@@ -265,9 +307,9 @@
           "values": []
         },
         {
-          "id": "KwDn-MmPr68lWgOfvInKx",
-          "name": "warranty_quan",
-          "type": "INTEGER",
+          "id": "A2IhkSFWRyHbU64SslSoM",
+          "name": "date",
+          "type": "DATE",
           "default": "",
           "check": "",
           "primary": false,
@@ -279,9 +321,23 @@
           "values": []
         },
         {
-          "id": "cNYBAP5jh0M911oqnHw3Z",
-          "name": "scrapped_quan",
-          "type": "INTEGER",
+          "id": "jCYgBOZY78KUM0Z7tKK-1",
+          "name": "old_status",
+          "type": "BOOLEAN",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": "",
+          "values": []
+        },
+        {
+          "id": "YnnfcD6tI0jO98TFiP8Zr",
+          "name": "new_status",
+          "type": "BOOLEAN",
           "default": "",
           "check": "",
           "primary": false,
@@ -302,8 +358,8 @@
     {
       "id": "R58QWjKvAjv8HhhWKotOd",
       "name": "UNIT_INVENTORY",
-      "x": 1182.706602342327,
-      "y": -435.14854045629414,
+      "x": 1223.1031692024399,
+      "y": -466.4233371743886,
       "locked": false,
       "fields": [
         {
@@ -358,7 +414,7 @@
           "notNull": true,
           "increment": false,
           "comment": "",
-          "size": 255
+          "size": 50
         }
       ],
       "comment": "",
@@ -370,8 +426,8 @@
     {
       "id": "3qibWmtTpGRjEnBCEbjqt",
       "name": "UNIT_STATUS",
-      "x": 1196.9472466511706,
-      "y": -134.21021336563612,
+      "x": 1177.4005111298413,
+      "y": -105.54165799236935,
       "locked": false,
       "fields": [
         {
@@ -398,7 +454,7 @@
           "notNull": true,
           "increment": false,
           "comment": "AVAILABLE\nWARRANTY\nOUT\nSCRAPPED",
-          "size": 255
+          "size": 50
         }
       ],
       "comment": "",
@@ -535,6 +591,20 @@
           "size": 12
         },
         {
+          "id": "7xKcnRFfr0SiRtM7_0n9b",
+          "name": "source_code",
+          "type": "VARCHAR",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": true,
+          "notNull": false,
+          "increment": false,
+          "comment": "",
+          "size": 50,
+          "values": []
+        },
+        {
           "id": "f2zW8YV8Ru9Q2LP7HpNqn",
           "name": "customer_id",
           "type": "INTEGER",
@@ -573,7 +643,7 @@
           "notNull": true,
           "increment": false,
           "comment": "",
-          "size": 255
+          "size": 50
         },
         {
           "id": "38lWqgXnZMSC_aocBTBHz",
@@ -586,7 +656,7 @@
           "notNull": true,
           "increment": false,
           "comment": "",
-          "size": 255
+          "size": 50
         },
         {
           "id": "hlScY2vo9rNd_tNBg0WCX",
@@ -612,7 +682,7 @@
           "unique": false,
           "notNull": false,
           "increment": false,
-          "comment": "",
+          "comment": "Thông thường thì đây là chỗ tham chiếu đến các hóa đơn mua  bán, kiểm kê,... Nhưng vì ở đây chỉ có kiểm kê nên là chỉ có giá trị khi nó tham chiếu đến kiểm kê\nMột đơn nhập, xuất, điều chỉnh chỉ đi được với một kiểm kê (có thể có 1 đơn nhập, một đơn xuất cùng tham chiếu vào một đơn kiểm kê, nhưng không thể có 2 đơn xuất cùng trỏ vào một đơn kiểm kê)",
           "size": 65535
         }
       ],
@@ -652,8 +722,8 @@
           "unique": true,
           "notNull": true,
           "increment": false,
-          "comment": "PURCHASING → PUR\nADJUSTMENT_IN → ADJ\nWARRANTY_CHECKING  → WCK\nWARRANTY_REPLACEMENT → WRP\nCUSTOMER_RETURN → CRT",
-          "size": 255
+          "comment": "PURCHASING → PUR\nWARRANTY_CHECKING  → WCK\nWARRANTY_REPLACEMENT → WRP\nCUSTOMER_RETURN → CRT\nADJUSTMENT_IN -> ADJ\nOTHER -> OTR",
+          "size": 50
         },
         {
           "id": "3oDtjP41ZqB9CTPrcsadE",
@@ -693,8 +763,8 @@
     {
       "id": "N4I6XmxP4b6OerjiaQ6Uu",
       "name": "INBOUND_STATUS",
-      "x": 1705.980856393552,
-      "y": -297.2334237958756,
+      "x": 1707.2219000292225,
+      "y": -248.83198819162388,
       "locked": false,
       "fields": [
         {
@@ -720,8 +790,8 @@
           "unique": false,
           "notNull": true,
           "increment": false,
-          "comment": "PENDING\nPROCESSING PARTIALLY_CONFIRMED\nCONFIRMED\nCANCELLED",
-          "size": 255
+          "comment": "PENDING\nPROCESSING\nCONFIRMED\nCANCELLED",
+          "size": 50
         }
       ],
       "comment": "",
@@ -733,8 +803,8 @@
     {
       "id": "bcIiQK-lK8a7ybjN2cK8T",
       "name": "INBOUND_DETAIL",
-      "x": 1717.468718017464,
-      "y": -882.7471807818691,
+      "x": 1721.1919436100366,
+      "y": -959.6930460915695,
       "locked": false,
       "fields": [
         {
@@ -1067,6 +1137,20 @@
           "size": 13
         },
         {
+          "id": "_lJlH3IbofcChPLXJfTjF",
+          "name": "source_code",
+          "type": "VARCHAR",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": true,
+          "notNull": false,
+          "increment": false,
+          "comment": "Thông thường thì đây là chỗ tham chiếu đến các hóa đơn mua  bán, kiểm kê,... Nhưng vì ở đây chỉ có kiểm kê nên là chỉ có giá trị khi nó tham chiếu đến kiểm kê\nMột đơn nhập, xuất, điều chỉnh chỉ đi được với một kiểm kê (có thể có 1 đơn nhập, một đơn xuất cùng tham chiếu vào một đơn kiểm kê, nhưng không thể có 2 đơn xuất cùng trỏ vào một đơn kiểm kê)",
+          "size": 50,
+          "values": []
+        },
+        {
           "id": "3LlGPuqpIiPJKFVPRweLb",
           "name": "customer_id",
           "type": "INTEGER",
@@ -1105,7 +1189,7 @@
           "notNull": true,
           "increment": false,
           "comment": "",
-          "size": 255
+          "size": 50
         },
         {
           "id": "YYp4CpVrT9Hee-DxL_CUH",
@@ -1118,7 +1202,7 @@
           "notNull": true,
           "increment": false,
           "comment": "",
-          "size": 255
+          "size": 50
         },
         {
           "id": "6Rt0PbN2VgRo-U2GUmKhl",
@@ -1184,8 +1268,8 @@
           "unique": true,
           "notNull": true,
           "increment": false,
-          "comment": "PENDING\nPROCESSING\nCONFIRMED\nPARTIALLY_CONFIRMED\nCANCELLED",
-          "size": 255
+          "comment": "PENDING\nPROCESSING\nCONFIRMED\nCANCELLED",
+          "size": 50
         }
       ],
       "comment": "",
@@ -1307,8 +1391,8 @@
           "unique": true,
           "notNull": true,
           "increment": false,
-          "comment": "SELLING → SEL\nADJUSTMENT_OUT  → ADJ\nRETURN_TO_SUPPLIER → RTS\nWARRANTY_RETURN → WRT\nWARRANTY_REPLACEMENT_TO_CUSTOMER → WRC",
-          "size": 255
+          "comment": "SELLING → SEL\nRETURN_TO_SUPPLIER → RTS\nWARRANTY_RETURN → WRT\nWARRANTY_REPLACEMENT_TO_CUSTOMER → WRC\nADJUSMENT_OUT -> ADJ\nOTHER -> OTR",
+          "size": 50
         },
         {
           "id": "xskcWyw0CJZA_afaVa9no",
@@ -1431,7 +1515,7 @@
           "notNull": true,
           "increment": false,
           "comment": "",
-          "size": 255
+          "size": 50
         }
       ],
       "comment": "",
@@ -1443,8 +1527,8 @@
     {
       "id": "pOkVvzvkZYBmWuQ-Db8sB",
       "name": "SHIPMENT_DETAIL",
-      "x": 2308.973762416998,
-      "y": -92.41490289120168,
+      "x": 2013.1665379621495,
+      "y": 28.774847399056114,
       "locked": false,
       "fields": [
         {
@@ -1554,7 +1638,7 @@
           "notNull": true,
           "increment": false,
           "comment": "PENDING\nPICKING\nCOMPLETED\nCANCELLED",
-          "size": 255
+          "size": 50
         }
       ],
       "comment": "",
@@ -3362,9 +3446,783 @@
       "uniqueConstraints": [],
       "color": "#7a1717",
       "collapsed": false
+    },
+    {
+      "id": "YIhUf6rxSztyLT5HmjhmQ",
+      "name": "INVENTORY_CHECK_STATUS",
+      "x": 2220.8542622946247,
+      "y": 1414.7789871910281,
+      "locked": false,
+      "fields": [
+        {
+          "name": "status_id",
+          "type": "INTEGER",
+          "default": "",
+          "check": "",
+          "primary": true,
+          "unique": false,
+          "unsigned": true,
+          "notNull": true,
+          "increment": true,
+          "comment": "",
+          "id": "GgGW-iezQVpFsPRRcSfSS"
+        },
+        {
+          "id": "bfWNZuujKINAG-3yI4pSS",
+          "name": "status",
+          "type": "VARCHAR",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "PENDING\nIN_PROCESS\nCOMPLETED\nCANCELLED",
+          "size": 50
+        }
+      ],
+      "comment": "",
+      "indices": [],
+      "uniqueConstraints": [],
+      "color": "#175e7a",
+      "collapsed": false
+    },
+    {
+      "id": "U_nQArYoZTa_RJE-nYNbJ",
+      "name": "ADJUSTMENT_STATUS",
+      "x": 1248.3089188551892,
+      "y": 956.5500578707046,
+      "locked": false,
+      "fields": [
+        {
+          "name": "status_id",
+          "type": "INTEGER",
+          "default": "",
+          "check": "",
+          "primary": true,
+          "unique": false,
+          "unsigned": true,
+          "notNull": true,
+          "increment": true,
+          "comment": "",
+          "id": "jV2m32Bu8kLroud9ibdfE"
+        },
+        {
+          "id": "Zcp_hb2H6JG7i-4pqgn_J",
+          "name": "status",
+          "type": "VARCHAR",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "PENDING\nCOMPLETED\nPARTLY_COMPLETED\nCANCELLED",
+          "size": 50
+        }
+      ],
+      "comment": "",
+      "indices": [],
+      "uniqueConstraints": [],
+      "color": "#175e7a",
+      "collapsed": false
+    },
+    {
+      "id": "e2eTpzAew5G2xCe85xhUN",
+      "name": "INVENTORY_CHECK",
+      "x": 1911.3793823393685,
+      "y": 893.5772017203864,
+      "locked": false,
+      "fields": [
+        {
+          "name": "check_id",
+          "type": "INTEGER",
+          "default": "",
+          "check": "",
+          "primary": true,
+          "unique": false,
+          "unsigned": true,
+          "notNull": true,
+          "increment": true,
+          "comment": "",
+          "id": "fvFiDOzftHkm4R_AmVEiW"
+        },
+        {
+          "id": "EjgYGS1IJvKMhGxQ4pkLH",
+          "name": "check_code",
+          "type": "VARCHAR",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": true,
+          "notNull": true,
+          "increment": false,
+          "comment": "CHK-<type>-<xxxxxx>\nCHK-QUAN-000001\nCHK-UNIT-000001",
+          "size": 16
+        },
+        {
+          "id": "8IJtamrsF-f-1GCnxsA5w",
+          "name": "check_type",
+          "type": "VARCHAR",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": 4
+        },
+        {
+          "id": "lryBKGy92_A7IAolkP0FH",
+          "name": "check_at",
+          "type": "DATE",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": "",
+          "values": []
+        },
+        {
+          "id": "OIdmVSIaE2awPr58jqg87",
+          "name": "status",
+          "type": "VARCHAR",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": 50
+        },
+        {
+          "id": "hj3thtrWa7urCURHMJ_gY",
+          "name": "note",
+          "type": "TEXT",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "",
+          "size": 65535
+        }
+      ],
+      "comment": "",
+      "indices": [],
+      "uniqueConstraints": [],
+      "color": "#175e7a",
+      "collapsed": false
+    },
+    {
+      "id": "d-_8pzbJhz-TKjsak85-Y",
+      "name": "inventory_check_quantity",
+      "x": 1513.6665293491774,
+      "y": 895.0442175461523,
+      "locked": false,
+      "fields": [
+        {
+          "name": "check_quantity_id",
+          "type": "INTEGER",
+          "default": "",
+          "check": "",
+          "primary": true,
+          "unique": false,
+          "unsigned": true,
+          "notNull": true,
+          "increment": true,
+          "comment": "",
+          "id": "goP_0JtTgSenMpeZEMKK2"
+        },
+        {
+          "id": "hUDvEixa7L_pl7zRxrWqv",
+          "name": "check_id",
+          "type": "INTEGER",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": "",
+          "values": []
+        },
+        {
+          "id": "ShBeh7yOCnrxjFAzDA56r",
+          "name": "product_id",
+          "type": "INTEGER",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": "",
+          "values": []
+        },
+        {
+          "id": "LpJjE24DJD5j6YRirEhk1",
+          "name": "system_available_quan",
+          "type": "INTEGER",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "Số lượng lấy ra từ product quantity tại thời điểm đơn được tạo",
+          "size": "",
+          "values": []
+        },
+        {
+          "id": "DfOJjf-oKJC1_5grV1xAg",
+          "name": "system_warranty_quan ",
+          "type": "INTEGER",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "Số lượng lấy ra từ product quantity tại thời điểm đơn được tạo",
+          "size": "",
+          "values": []
+        },
+        {
+          "id": "B09Ar-pkeOfOBMVsukFkU",
+          "name": "system_scrapped_quan ",
+          "type": "INTEGER",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "Số lượng lấy ra từ product quantity tại thời điểm đơn được tạo",
+          "size": "",
+          "values": []
+        },
+        {
+          "id": "xXi4fG7sOB1XGPZKtjuAe",
+          "name": "actual_available_quan ",
+          "type": "INTEGER",
+          "default": "0",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": "",
+          "values": []
+        },
+        {
+          "id": "MfctIXwUXj4c8J7y4G2V_",
+          "name": "actual_warranty_quan ",
+          "type": "INTEGER",
+          "default": "0",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": "",
+          "values": []
+        },
+        {
+          "id": "BKUixL044julZnuc25TpF",
+          "name": "actual_scrapped_quan ",
+          "type": "INTEGER",
+          "default": "0",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": "",
+          "values": []
+        },
+        {
+          "id": "ZPDh6g3pslXTSFFPMnmqO",
+          "name": "note",
+          "type": "TEXT",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "",
+          "size": 65535
+        }
+      ],
+      "comment": "",
+      "indices": [],
+      "uniqueConstraints": [],
+      "color": "#175e7a",
+      "collapsed": false
+    },
+    {
+      "id": "I0dPf3kmxfulm9p1KV92r",
+      "name": "inventory_check_unit",
+      "x": 2393.815308793095,
+      "y": 888.7142225801448,
+      "locked": false,
+      "fields": [
+        {
+          "name": "check_unit_id",
+          "type": "INTEGER",
+          "default": "",
+          "check": "",
+          "primary": true,
+          "unique": false,
+          "unsigned": true,
+          "notNull": true,
+          "increment": true,
+          "comment": "",
+          "id": "pPyVSopmFioURerHs4Q2G"
+        },
+        {
+          "id": "g2du6D4UwYjfm6ga-8Wts",
+          "name": "check_id",
+          "type": "INTEGER",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": "",
+          "values": []
+        },
+        {
+          "id": "YS18jKN5PMnG4hk3D7Kvi",
+          "name": "check_quantity_id",
+          "type": "INTEGER",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": "",
+          "values": []
+        },
+        {
+          "id": "yGS5nfn4ts-wTsW4if8Js",
+          "name": "unit_id ",
+          "type": "INTEGER",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": "",
+          "values": []
+        },
+        {
+          "id": "QEr60IKALBSuVIqJySUGV",
+          "name": "system_status ",
+          "type": "VARCHAR",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": 50
+        },
+        {
+          "id": "Tg-XcuNxirNqrNlbwohJP",
+          "name": "scanned_status ",
+          "type": "VARCHAR",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "Mặc định của scanned_status là system_status",
+          "size": 50
+        }
+      ],
+      "comment": "",
+      "indices": [],
+      "uniqueConstraints": [],
+      "color": "#175e7a",
+      "collapsed": false
+    },
+    {
+      "id": "Kw23TaMs2ry52DcXfLC5c",
+      "name": "ADJUSTMENT_MOVEMENT",
+      "x": 1150.1594419157207,
+      "y": 1269.1004640819847,
+      "locked": false,
+      "fields": [
+        {
+          "name": "adjust_id",
+          "type": "INTEGER",
+          "default": "",
+          "check": "",
+          "primary": true,
+          "unique": false,
+          "unsigned": true,
+          "notNull": true,
+          "increment": true,
+          "comment": "",
+          "id": "3QPZtT2viQKSj42Y1_TDW"
+        },
+        {
+          "id": "h7MvrwHWgXUNI0dP4f7S4",
+          "name": "adjust_code",
+          "type": "VARCHAR",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "ADJ-<reason code>-<xxxxxx>",
+          "size": 15
+        },
+        {
+          "id": "EXeOcGY3aQrLHFzv8ixKg",
+          "name": "source_code",
+          "type": "VARCHAR",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": true,
+          "notNull": false,
+          "increment": false,
+          "comment": "Thông thường thì đây là chỗ tham chiếu đến các hóa đơn mua  bán, kiểm kê,... Nhưng vì ở đây chỉ có kiểm kê nên là chỉ có giá trị khi nó tham chiếu đến kiểm kê\nMột đơn nhập, xuất, điều chỉnh chỉ đi được với một kiểm kê (có thể có 1 đơn nhập, một đơn xuất cùng tham chiếu vào một đơn kiểm kê, nhưng không thể có 2 đơn xuất cùng trỏ vào một đơn kiểm kê)",
+          "size": 50,
+          "values": []
+        },
+        {
+          "id": "tuu3GR1G7X8eiHYDYtT8M",
+          "name": "reason ",
+          "type": "VARCHAR",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": 50
+        },
+        {
+          "id": "B0k-kJmB97Zy0ekTjffYD",
+          "name": "adjusted_at ",
+          "type": "DATE",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": "",
+          "values": []
+        },
+        {
+          "id": "9s8RJp_5K2z5_3IIzyovm",
+          "name": "status ",
+          "type": "VARCHAR",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": 255
+        },
+        {
+          "id": "dy8tw7TZ74OKIcXw3I29w",
+          "name": "note ",
+          "type": "TEXT",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "",
+          "size": 65535
+        }
+      ],
+      "comment": "",
+      "indices": [],
+      "uniqueConstraints": [],
+      "color": "#175e7a",
+      "collapsed": false
+    },
+    {
+      "id": "RTRd0BKLZfnFqiKKlsgGW",
+      "name": "ADJUST_MOVEMENT_DETAIL",
+      "x": 1767.7737928669444,
+      "y": 1229.945000036017,
+      "locked": false,
+      "fields": [
+        {
+          "name": "adjust_detail_id",
+          "type": "INTEGER",
+          "default": "",
+          "check": "",
+          "primary": true,
+          "unique": false,
+          "unsigned": true,
+          "notNull": true,
+          "increment": true,
+          "comment": "",
+          "id": "CXxugvRnL_2gtL5l2huAE"
+        },
+        {
+          "id": "JQ8Kuvt5F8UsGOqakwBn7",
+          "name": "adjust_id",
+          "type": "INTEGER",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": "",
+          "values": []
+        },
+        {
+          "id": "ecQ7PqJGNB1H70oJoLct2",
+          "name": "product_id",
+          "type": "INTEGER",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": "",
+          "values": []
+        },
+        {
+          "id": "nTIHnT9VPaCGbVSZINpi2",
+          "name": "from_status",
+          "type": "VARCHAR",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": 255
+        },
+        {
+          "id": "4sU1sr7nGf7VNsyIP46kH",
+          "name": "to_status",
+          "type": "VARCHAR",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": 255
+        },
+        {
+          "id": "BYtfFbplI8S3hJnA_9I-O",
+          "name": "adjust_quantity",
+          "type": "INTEGER",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": "",
+          "values": []
+        },
+        {
+          "id": "05Om3o2MGIAIv8ZtrpSgx",
+          "name": "actual_quantity",
+          "type": "INTEGER",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": "",
+          "values": []
+        }
+      ],
+      "comment": "",
+      "indices": [],
+      "uniqueConstraints": [],
+      "color": "#175e7a",
+      "collapsed": false
+    },
+    {
+      "id": "dL6ZBnDlpYDv4QKrRvNUc",
+      "name": "CHECK_TYPE",
+      "x": 2229.077268153473,
+      "y": 1231.2481952733096,
+      "locked": false,
+      "fields": [
+        {
+          "name": "type_id",
+          "type": "INTEGER",
+          "default": "",
+          "check": "",
+          "primary": true,
+          "unique": false,
+          "unsigned": true,
+          "notNull": true,
+          "increment": true,
+          "comment": "",
+          "id": "9z5GmsQTxrBNPwGLA2ZZV"
+        },
+        {
+          "id": "SZ3tPcr_NoUzbF5PCvejG",
+          "name": "check_type",
+          "type": "VARCHAR",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": true,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": 4
+        },
+        {
+          "id": "a4Z4dWEjfKC9ey_zxNdIQ",
+          "name": "next_code_no",
+          "type": "INTEGER",
+          "default": "0",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": "",
+          "values": []
+        }
+      ],
+      "comment": "",
+      "indices": [],
+      "uniqueConstraints": [],
+      "color": "#175e7a",
+      "collapsed": false
+    },
+    {
+      "id": "cyWrNcEank0CbzHKrNMaN",
+      "name": "REASON",
+      "x": 1513.0907040764903,
+      "y": 1440.5991980630881,
+      "locked": false,
+      "fields": [
+        {
+          "name": "reason_id",
+          "type": "INTEGER",
+          "default": "",
+          "check": "",
+          "primary": true,
+          "unique": false,
+          "unsigned": true,
+          "notNull": true,
+          "increment": true,
+          "comment": "",
+          "id": "u60r5sLJKSaluCtDTKsXf"
+        },
+        {
+          "id": "2zG8L6rTHCY5qewGG6n_U",
+          "name": "reason",
+          "type": "VARCHAR",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": true,
+          "notNull": true,
+          "increment": false,
+          "comment": "STOCKTAKE_DIFF ->STD\nDAMAGED -> DMG\nDATA_ERROR -> DTE\nOTHER ->OTH",
+          "size": 50
+        },
+        {
+          "id": "xgLiqQDZhheXaw-1KitG1",
+          "name": "code",
+          "type": "VARCHAR",
+          "default": "",
+          "check": "",
+          "primary": false,
+          "unique": true,
+          "notNull": true,
+          "increment": false,
+          "comment": "",
+          "size": 3
+        },
+        {
+          "id": "I2IMEKfsuaJtZSAUw_PIc",
+          "name": "next_code_no",
+          "type": "INTEGER",
+          "default": "0",
+          "check": "",
+          "primary": false,
+          "unique": false,
+          "notNull": false,
+          "increment": false,
+          "comment": "",
+          "size": "",
+          "values": []
+        }
+      ],
+      "comment": "",
+      "indices": [],
+      "uniqueConstraints": [],
+      "color": "#175e7a",
+      "collapsed": false
     }
   ],
   "relationships": [
+    {
+      "startTableId": "Kw23TaMs2ry52DcXfLC5c",
+      "startFieldId": "tuu3GR1G7X8eiHYDYtT8M",
+      "endTableId": "cyWrNcEank0CbzHKrNMaN",
+      "endFieldId": "2zG8L6rTHCY5qewGG6n_U",
+      "cardinality": "one_to_one",
+      "fields": [
+        {
+          "startFieldId": "tuu3GR1G7X8eiHYDYtT8M",
+          "endFieldId": "2zG8L6rTHCY5qewGG6n_U"
+        }
+      ],
+      "updateConstraint": "No action",
+      "deleteConstraint": "No action",
+      "name": "fk_ADJUSTMENT_MOVEMENT_reason _REASON",
+      "id": "d4gZ3uRNH74h1YQNrLHXr"
+    },
     {
       "startTableId": "FAcYfxqJsyGcuEM0f-28F",
       "startFieldId": "2Q5L1MUr1bAC6X657cdPL",
@@ -3774,23 +4632,6 @@
       "id": "PfCmfSE-yTkAvA0hstxJ3"
     },
     {
-      "startTableId": "2oMmRhDGdm83MGAwblPMi",
-      "startFieldId": "gojMWrJdA_gwbFlrUqETT",
-      "endTableId": "hTmdCULdaAbC_jdiQ4P6q",
-      "endFieldId": "ItKQqfktmk2KwjtTh_dTy",
-      "cardinality": "one_to_one",
-      "fields": [
-        {
-          "startFieldId": "gojMWrJdA_gwbFlrUqETT",
-          "endFieldId": "ItKQqfktmk2KwjtTh_dTy"
-        }
-      ],
-      "updateConstraint": "No action",
-      "deleteConstraint": "No action",
-      "name": "fk_PRODUCT_product_id_PRODUCT_QUANTITY",
-      "id": "yNbC2-vKroCZ8D5R330mX"
-    },
-    {
       "startTableId": "R58QWjKvAjv8HhhWKotOd",
       "startFieldId": "aVD0Cl7qupAgmmtRLxfzD",
       "endTableId": "yqtueMd0aL5eUajlGMVjX",
@@ -4010,6 +4851,210 @@
       "deleteConstraint": "No action",
       "name": "fk_INBOUND_TRANSACTION_customer_id_CUSTOMER",
       "id": "HYqu0wPaMJeXMW-myl84m"
+    },
+    {
+      "startTableId": "2oMmRhDGdm83MGAwblPMi",
+      "startFieldId": "gojMWrJdA_gwbFlrUqETT",
+      "endTableId": "8yhH0Vr3S0WI_G0YbomiK",
+      "endFieldId": "OYVtNe_X1v0Twz_OfZLqe",
+      "cardinality": "one_to_many",
+      "fields": [
+        {
+          "startFieldId": "gojMWrJdA_gwbFlrUqETT",
+          "endFieldId": "OYVtNe_X1v0Twz_OfZLqe"
+        }
+      ],
+      "updateConstraint": "No action",
+      "deleteConstraint": "No action",
+      "name": "fk_PRODUCT_product_id_IS_SOLD_CHANGING",
+      "id": "j-PXsL-vnDPpiaj6DQZXt"
+    },
+    {
+      "startTableId": "e2eTpzAew5G2xCe85xhUN",
+      "startFieldId": "8IJtamrsF-f-1GCnxsA5w",
+      "endTableId": "dL6ZBnDlpYDv4QKrRvNUc",
+      "endFieldId": "SZ3tPcr_NoUzbF5PCvejG",
+      "cardinality": "many_to_one",
+      "fields": [
+        {
+          "startFieldId": "8IJtamrsF-f-1GCnxsA5w",
+          "endFieldId": "SZ3tPcr_NoUzbF5PCvejG"
+        }
+      ],
+      "updateConstraint": "No action",
+      "deleteConstraint": "No action",
+      "name": "fk_INVENTORY_CHECK_check_type_CHECK_TYPE",
+      "id": "o7_5kqdt2eNALiflqsy60"
+    },
+    {
+      "startTableId": "YIhUf6rxSztyLT5HmjhmQ",
+      "startFieldId": "bfWNZuujKINAG-3yI4pSS",
+      "endTableId": "e2eTpzAew5G2xCe85xhUN",
+      "endFieldId": "OIdmVSIaE2awPr58jqg87",
+      "cardinality": "one_to_one",
+      "fields": [
+        {
+          "startFieldId": "bfWNZuujKINAG-3yI4pSS",
+          "endFieldId": "OIdmVSIaE2awPr58jqg87"
+        }
+      ],
+      "updateConstraint": "No action",
+      "deleteConstraint": "No action",
+      "name": "fk_INVENTORY_CHECK_STATUS_status_INVENTORY_CHECK",
+      "id": "LHSdRXO_ikYmBUhLJ7cbv"
+    },
+    {
+      "startTableId": "e2eTpzAew5G2xCe85xhUN",
+      "startFieldId": "fvFiDOzftHkm4R_AmVEiW",
+      "endTableId": "I0dPf3kmxfulm9p1KV92r",
+      "endFieldId": "g2du6D4UwYjfm6ga-8Wts",
+      "cardinality": "one_to_many",
+      "fields": [
+        {
+          "startFieldId": "fvFiDOzftHkm4R_AmVEiW",
+          "endFieldId": "g2du6D4UwYjfm6ga-8Wts"
+        }
+      ],
+      "updateConstraint": "No action",
+      "deleteConstraint": "No action",
+      "name": "fk_INVENTORY_CHECK_check_id_inventory_check_unit",
+      "id": "cwsjri1-KvbUMBEYBSDCJ"
+    },
+    {
+      "startTableId": "3qibWmtTpGRjEnBCEbjqt",
+      "startFieldId": "pUziuJGxImb132xW733bz",
+      "endTableId": "I0dPf3kmxfulm9p1KV92r",
+      "endFieldId": "QEr60IKALBSuVIqJySUGV",
+      "cardinality": "one_to_many",
+      "fields": [
+        {
+          "startFieldId": "pUziuJGxImb132xW733bz",
+          "endFieldId": "QEr60IKALBSuVIqJySUGV"
+        }
+      ],
+      "updateConstraint": "No action",
+      "deleteConstraint": "No action",
+      "name": "fk_UNIT_STATUS_status_inventory_check_unit",
+      "id": "pl-kfFMx01qQEBuiPjDSU"
+    },
+    {
+      "startTableId": "3qibWmtTpGRjEnBCEbjqt",
+      "startFieldId": "pUziuJGxImb132xW733bz",
+      "endTableId": "I0dPf3kmxfulm9p1KV92r",
+      "endFieldId": "Tg-XcuNxirNqrNlbwohJP",
+      "cardinality": "one_to_many",
+      "fields": [
+        {
+          "startFieldId": "pUziuJGxImb132xW733bz",
+          "endFieldId": "Tg-XcuNxirNqrNlbwohJP"
+        }
+      ],
+      "updateConstraint": "No action",
+      "deleteConstraint": "No action",
+      "name": "fk_UNIT_STATUS_status_inventory_check_unit",
+      "id": "GvGGh4YNxhKWL7ZoKwdRx"
+    },
+    {
+      "startTableId": "I0dPf3kmxfulm9p1KV92r",
+      "startFieldId": "yGS5nfn4ts-wTsW4if8Js",
+      "endTableId": "R58QWjKvAjv8HhhWKotOd",
+      "endFieldId": "aVD0Cl7qupAgmmtRLxfzD",
+      "cardinality": "many_to_one",
+      "fields": [
+        {
+          "startFieldId": "yGS5nfn4ts-wTsW4if8Js",
+          "endFieldId": "aVD0Cl7qupAgmmtRLxfzD"
+        }
+      ],
+      "updateConstraint": "No action",
+      "deleteConstraint": "No action",
+      "name": "fk_inventory_check_unit_unit_id _UNIT_INVENTORY",
+      "id": "bQ6C-WPB2cyw5Uo1GAENx"
+    },
+    {
+      "startTableId": "d-_8pzbJhz-TKjsak85-Y",
+      "startFieldId": "ShBeh7yOCnrxjFAzDA56r",
+      "endTableId": "2oMmRhDGdm83MGAwblPMi",
+      "endFieldId": "gojMWrJdA_gwbFlrUqETT",
+      "cardinality": "many_to_one",
+      "fields": [
+        {
+          "startFieldId": "ShBeh7yOCnrxjFAzDA56r",
+          "endFieldId": "gojMWrJdA_gwbFlrUqETT"
+        }
+      ],
+      "updateConstraint": "No action",
+      "deleteConstraint": "No action",
+      "name": "fk_inventory_check_quantity_product_id_PRODUCT",
+      "id": "xf6y9EyHL_YF9TaLu85La"
+    },
+    {
+      "startTableId": "d-_8pzbJhz-TKjsak85-Y",
+      "startFieldId": "hUDvEixa7L_pl7zRxrWqv",
+      "endTableId": "e2eTpzAew5G2xCe85xhUN",
+      "endFieldId": "fvFiDOzftHkm4R_AmVEiW",
+      "cardinality": "many_to_one",
+      "fields": [
+        {
+          "startFieldId": "hUDvEixa7L_pl7zRxrWqv",
+          "endFieldId": "fvFiDOzftHkm4R_AmVEiW"
+        }
+      ],
+      "updateConstraint": "No action",
+      "deleteConstraint": "No action",
+      "name": "fk_inventory_check_quantity_check_id_INVENTORY_CHECK",
+      "id": "T3eSEGuM4Jp_SGkz-LN-c"
+    },
+    {
+      "startTableId": "I0dPf3kmxfulm9p1KV92r",
+      "startFieldId": "YS18jKN5PMnG4hk3D7Kvi",
+      "endTableId": "d-_8pzbJhz-TKjsak85-Y",
+      "endFieldId": "goP_0JtTgSenMpeZEMKK2",
+      "cardinality": "many_to_one",
+      "fields": [
+        {
+          "startFieldId": "YS18jKN5PMnG4hk3D7Kvi",
+          "endFieldId": "goP_0JtTgSenMpeZEMKK2"
+        }
+      ],
+      "updateConstraint": "No action",
+      "deleteConstraint": "No action",
+      "name": "fk_inventory_check_unit_check_quantity_id_inventory_check_quantity",
+      "id": "YyO7h7QZWCV378d2o6_OM"
+    },
+    {
+      "startTableId": "RTRd0BKLZfnFqiKKlsgGW",
+      "startFieldId": "JQ8Kuvt5F8UsGOqakwBn7",
+      "endTableId": "Kw23TaMs2ry52DcXfLC5c",
+      "endFieldId": "3QPZtT2viQKSj42Y1_TDW",
+      "cardinality": "many_to_one",
+      "fields": [
+        {
+          "startFieldId": "JQ8Kuvt5F8UsGOqakwBn7",
+          "endFieldId": "3QPZtT2viQKSj42Y1_TDW"
+        }
+      ],
+      "updateConstraint": "No action",
+      "deleteConstraint": "No action",
+      "name": "fk_ADJUST_MOVEMENT_DETAIL_adjust_id_ADJUSTMENT_MOVEMENT",
+      "id": "vCP51Nyo23fjFwGaFj0-o"
+    },
+    {
+      "startTableId": "RTRd0BKLZfnFqiKKlsgGW",
+      "startFieldId": "ecQ7PqJGNB1H70oJoLct2",
+      "endTableId": "2oMmRhDGdm83MGAwblPMi",
+      "endFieldId": "gojMWrJdA_gwbFlrUqETT",
+      "cardinality": "many_to_one",
+      "fields": [
+        {
+          "startFieldId": "ecQ7PqJGNB1H70oJoLct2",
+          "endFieldId": "gojMWrJdA_gwbFlrUqETT"
+        }
+      ],
+      "updateConstraint": "No action",
+      "deleteConstraint": "No action",
+      "name": "fk_ADJUST_MOVEMENT_DETAIL_product_id_PRODUCT",
+      "id": "iO53CWBYMaQla_ZWILCGM"
     }
   ],
   "notes": [
@@ -4037,39 +5082,6 @@
     },
     {
       "id": 2,
-      "x": -47.54341332939293,
-      "y": -502.01558040082693,
-      "title": "note_3",
-      "content": "The queries of these 8 categories include product_name + product_code and all attribute of each category (except id)",
-      "locked": false,
-      "color": "#fcf7ac",
-      "height": 114,
-      "width": 360.10885410000014
-    },
-    {
-      "id": 3,
-      "x": 336.4009258545348,
-      "y": -497.3071849853437,
-      "title": "note_3",
-      "content": "Tên sản phẩm, thông số sản phẩm được phép tự do đổi",
-      "locked": false,
-      "color": "#fcf7ac",
-      "height": 90,
-      "width": 391.276128461836
-    },
-    {
-      "id": 4,
-      "x": 323.72260119426113,
-      "y": -649.8300809217768,
-      "title": "note_5",
-      "content": "Nếu đã có liên kết với các bảng khác thì không được phép xóa, đặc biệt là product, inbound, outbound, delivery, shipment.",
-      "locked": false,
-      "color": "#fcf7ac",
-      "height": 114,
-      "width": 397.1859502369924
-    },
-    {
-      "id": 5,
       "x": 1150.7743394180493,
       "y": 82.15072283898621,
       "title": "note_6",
@@ -4080,29 +5092,7 @@
       "width": 270.1247820711329
     },
     {
-      "id": 6,
-      "x": 3722.3774700805716,
-      "y": 226.00008269151448,
-      "title": "QUERY_REPORT_1 - Báo cáo nhập/xuất (theo tháng/năm)",
-      "content": "- Theo từng loại inbound/outbound, đến số phiếu inbound/outbound + tổng số sản phẩm inbound/outbound\n- So sánh, đối chiếu truy vấn trên với thực nhận thông qua delivery và shipment\n- Tiếp tục như thế đối với từng product và category",
-      "locked": false,
-      "color": "#fcf7ac",
-      "height": 162,
-      "width": 518.3372966276955
-    },
-    {
-      "id": 7,
-      "x": 3709.127959190699,
-      "y": 454.24364444825085,
-      "title": "QUERY_REPORT_2 - Báo cáo tồn (Theo ngày/tháng)",
-      "content": "- Tính tổng số lượng tồn, số lượng available, warranty, scrapped theo từng product/category",
-      "locked": false,
-      "color": "#fcf7ac",
-      "height": 90,
-      "width": 479.9234550891799
-    },
-    {
-      "id": 8,
+      "id": 3,
       "x": 3457.1273148912824,
       "y": -1180.0309740433777,
       "title": "note_9",
@@ -4111,17 +5101,6 @@
       "color": "#fcf7ac",
       "height": 162,
       "width": 415.8018888287345
-    },
-    {
-      "id": 9,
-      "x": -314.8031897561047,
-      "y": -924.3861464418753,
-      "title": "Folder",
-      "content": "-all inbound/outbound transactions, delivery and shipment go to transactions folder\n-status_history, unit_inventory go to unit folder\n-product_quantity, product, cpu, mainboard, gpu, ram, ssd, psu, cooling, case, brand, category go to products folder\n-each cat_specs folder contains some sub tables (with only 2 columns, one is id(key), others is spec) for its specs. For example: ssd_specs has 3 sub table: type, gen, capacity\n-customer, individual_infor and business_info go to customers folder\n-all type and status table go to status_type folder",
-      "locked": false,
-      "color": "#fcf7ac",
-      "height": 306,
-      "width": 460.7165343199221
     }
   ],
   "subjectAreas": [
@@ -4193,6 +5172,16 @@
       "width": 741.1064762299397,
       "height": 611.5786212274893,
       "color": "#177a26",
+      "locked": false
+    },
+    {
+      "id": 7,
+      "name": "INTERNAL",
+      "x": 1477.9392907816077,
+      "y": 875.990638206819,
+      "width": 1248.0526678161427,
+      "height": 761.3413841500832,
+      "color": "#175e7a",
       "locked": false
     }
   ],
