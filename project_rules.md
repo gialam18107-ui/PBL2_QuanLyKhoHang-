@@ -169,6 +169,9 @@ Unit status transitions must adhere strictly to the business rules of each trans
   - **`WRC` (Warranty Replacement to Customer - Xuất trả hàng đổi bảo hành cho khách)**:
     - Precondition: Selected units must have current status `AVAILABLE` or `WARRANTY`.
     - Transition: `AVAILABLE / WARRANTY -> OUT`.
+  - **`RTS` (Return to Supplier - Xuất trả hàng cho nhà cung cấp)**:
+    - Precondition: Selected units must currently exist in warehouse (status `AVAILABLE`, `WARRANTY`, or `SCRAPPED`). Strictly prohibits units currently outside the warehouse (`OUT -> OUT` is prohibited).
+    - Transition: `AVAILABLE / WARRANTY / SCRAPPED -> OUT`.
   - **`ADJ` (Adjustment Out - Xuất điều chỉnh / kiểm kê giảm kho)**:
     - Precondition: Selected units must currently exist in warehouse (status `AVAILABLE`, `WARRANTY`, or `SCRAPPED`).
     - Transition: `AVAILABLE / WARRANTY / SCRAPPED -> OUT`.
@@ -261,8 +264,10 @@ The warehouse audit system provides two distinct inventory check types defined i
   - **Deficit Discrepancy ($\Delta < 0$)**: The user may generate an **Outbound Adjustment Transaction (`ADJUSTMENT_OUT`, `OUT-ADJ-xxxxxx`)** for the missing quantity.
   - **Explicit User Confirmation Gate (Chỉ tạo đơn nếu người dùng bấm xác nhận tạo)**:
     - The generation of adjustment orders is **never automatic**. The system only creates the transaction if the user explicitly reviews the calculated discrepancies and clicks the confirmation button ("Xác nhận tạo đơn điều chỉnh").
-  - **Scope Limitation**:
-    - Quantity inventory check **can only generate Inbound or Outbound adjustment transactions** based on quantity variance. It **cannot** generate internal status adjustment movements (`ADJUSTMENT_MOVEMENT`) because individual serial units are not tracked in quantity checks.
+  - **Permitted Internal Adjustment Movement (`ADJUSTMENT_MOVEMENT`) from `CHK-QUAN`**:
+    - `CHK-QUAN` audits are **fully permitted** to generate an internal status adjustment movement (`ADJUSTMENT_MOVEMENT`) when discrepancies across status categories are observed (e.g., `available` decreased while `scrapped` increased).
+    - The creation is performed via explicit user configuration (manual form where user declares the status shift lines `product_id`, `from_status`, `to_status`, `adjust_quantity` with `source_code = check_code`).
+    - **Single-Check Cardinality Invariant**: Obeying Section 5.5, a single `CHK-QUAN` record can be referenced by at most **one** Inbound Adjustment, at most **one** Outbound Adjustment, and at most **one** Adjustment Movement.
 
 ### 5.3 Detailed / Unit Inventory Check (`CHK-UNIT`) Workflow & Unit Adjustment Orders
 - **Initial Lifecycle State & Candidate Unit Verification**:

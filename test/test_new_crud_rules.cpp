@@ -158,6 +158,10 @@ int main() {
     // "Đối với type adj, cả nhập và xuất đều ko có khách hàng và source_code tham chiếu check_code"
     // --------------------------------------------------------
     printHeader("TEST 3: Generate Adjustments from Check Discrepancy");
+    // Transition check to COMPLETED to satisfy Rule 5.2 Mandatory Completed Status Gate
+    OperationResult rCompQuan = user_update::completeInventoryCheck(&db, chkId);
+    assert(rCompQuan.success);
+
     OperationResult rGenAdj = user_create::createAdjustmentsFromCheck(&db, chkId, "2026-11-01");
     cout << "[+] createAdjustmentsFromCheck result: " << rGenAdj.message << endl;
     assert(rGenAdj.success);

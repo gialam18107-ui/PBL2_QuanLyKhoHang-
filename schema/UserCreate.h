@@ -299,8 +299,8 @@ namespace user_create
     /// Generate unique check_code format: CHK-{TYPE}-{SEQ:6}
     std::string generateUniqueCheckCode(Database* db, const std::string& checkType);
 
-    /// Generate unique adjust_code format: ADJ-{SEQ:6}
-    std::string generateUniqueAdjustCode(Database* db);
+    /// Generate unique adjust_code format: ADJ-{REASON_CODE}-{SEQ:6}
+    std::string generateUniqueAdjustCode(Database* db, const std::string& reason = "STOCKTAKE_DIFF");
 }
 
 #endif // USER_CREATE_H

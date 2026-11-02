@@ -1657,14 +1657,35 @@ namespace user_create
         return std::string(buf);
     }
 
-    std::string generateUniqueAdjustCode(Database* db) {
+    std::string generateUniqueAdjustCode(Database* db, const std::string& reason) {
+        std::string rCode = "STD";
+        if (reason == "DAMAGED" || reason == "DMG") rCode = "DMG";
+        else if (reason == "DATA_ERROR" || reason == "DTE") rCode = "DTE";
+        else if (reason == "OTHER" || reason == "OTH") rCode = "OTH";
+        else if (reason == "STOCKTAKE_DIFF" || reason == "STD") rCode = "STD";
+        else if (db) {
+            Table* rsnTbl = db->getTable("reason");
+            if (rsnTbl) {
+                for (const auto& r : rsnTbl->getRows()) {
+                    if (r.has("reason") && std::holds_alternative<std::string>(r.get("reason")) &&
+                        std::get<std::string>(r.get("reason")) == reason) {
+                        if (r.has("code") && std::holds_alternative<std::string>(r.get("code"))) {
+                            rCode = std::get<std::string>(r.get("code"));
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        std::string prefix = "ADJ-" + rCode + "-";
         Table* tbl = db ? db->getTable("adjustment_movement") : nullptr;
         int maxSeq = 0;
         if (tbl) {
             for (const auto& r : tbl->getRows()) {
                 if (r.has("adjust_code") && std::holds_alternative<std::string>(r.get("adjust_code"))) {
                     std::string c = std::get<std::string>(r.get("adjust_code"));
-                    // Format: ADJ-{SEQ:6}
+                    // Supports format ADJ-{REASON_CODE}-{SEQ:6} and fallback ADJ-{SEQ:6}
                     size_t pos = c.rfind('-');
                     if (pos != std::string::npos && pos + 1 < c.length()) {
                         try {
@@ -1676,7 +1697,7 @@ namespace user_create
             }
         }
         char buf[32];
-        std::snprintf(buf, sizeof(buf), "ADJ-%06d", maxSeq + 1);
+        std::snprintf(buf, sizeof(buf), "%s%06d", prefix.c_str(), maxSeq + 1);
         return std::string(buf);
     }
 
@@ -1849,7 +1870,7 @@ namespace user_create
         }
 
         int adjId = getNextTableId(db, "adjustment_movement");
-        std::string adjCode = generateUniqueAdjustCode(db);
+        std::string adjCode = generateUniqueAdjustCode(db, reason);
 
         Record adjRec;
         adjRec.set("adjust_id", adjId);

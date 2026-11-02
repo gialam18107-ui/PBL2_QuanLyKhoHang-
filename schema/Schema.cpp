@@ -10,7 +10,7 @@ namespace Schema
     Table* createCategoryTable()
     {
         auto table = new Table("category");
-        table->addColumn(Column("category_id", DataType::INTEGER, 0, true, true, true));
+        table->addColumn(Column("category_id", DataType::INTEGER, 0, true, true, true, true));
         table->addColumn(Column("category_name", DataType::VARCHAR, 50, false, true, true));
         table->addColumn(Column("code", DataType::VARCHAR, 20, false, true, true));
 
@@ -507,7 +507,7 @@ namespace Schema
     {
         auto table = new Table("inbound_transaction");
         table->addColumn(Column("inbound_transaction_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("inbound_code", DataType::CHAR, 12, false, true, true));
+        table->addColumn(Column("inbound_code", DataType::VARCHAR, 20, false, true, true));
         table->addColumn(Column("source_code", DataType::VARCHAR, 50, false, true, false)); // nullable, unique
         table->addColumn(Column("customer_id", DataType::INTEGER, 0, false, false, false)); // nullable for ADJ
         table->addColumn(Column("order_at", DataType::DATE, 0, false, false, true));
@@ -553,11 +553,11 @@ namespace Schema
     {
         auto table = new Table("delivery");
         table->addColumn(Column("delivery_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("delivery_code", DataType::CHAR, 16, false, true, true));
+        table->addColumn(Column("delivery_code", DataType::VARCHAR, 20, false, true, true));
         table->addColumn(Column("inbound_transaction_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("expected_at", DataType::DATE, 0, false, false, true));
         table->addColumn(Column("delivery_at", DataType::DATE, 0, false, false, false));
-        table->addColumn(Column("status", DataType::VARCHAR, 10, false, false, true));
+        table->addColumn(Column("status", DataType::VARCHAR, 20, false, false, true));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_delivery", "delivery_id"));
         table->addConstraint(new UniqueConstraint("uq_delivery_code", "delivery_code"));
@@ -594,7 +594,7 @@ namespace Schema
     {
         auto table = new Table("outbound_transaction");
         table->addColumn(Column("outbound_trainsaction_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("outbound_code", DataType::CHAR, 13, false, true, true));
+        table->addColumn(Column("outbound_code", DataType::VARCHAR, 20, false, true, true));
         table->addColumn(Column("source_code", DataType::VARCHAR, 50, false, true, false)); // nullable, unique
         table->addColumn(Column("customer_id", DataType::INTEGER, 0, false, false, false)); // nullable for ADJ
         table->addColumn(Column("order_at", DataType::DATE, 0, false, false, true));
@@ -640,7 +640,7 @@ namespace Schema
     {
         auto table = new Table("shipment");
         table->addColumn(Column("shipment_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("shipment_code", DataType::CHAR, 17, false, true, true));
+        table->addColumn(Column("shipment_code", DataType::VARCHAR, 20, false, true, true));
         table->addColumn(Column("sell_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("expected_at", DataType::DATE, 0, false, false, true));
         table->addColumn(Column("ship_at", DataType::DATE, 0, false, false, false));
@@ -746,7 +746,7 @@ namespace Schema
     {
         auto table = new Table("adjustment_movement");
         table->addColumn(Column("adjust_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("adjust_code", DataType::VARCHAR, 20, false, false, true));
+        table->addColumn(Column("adjust_code", DataType::VARCHAR, 20, false, true, true));
         table->addColumn(Column("source_code", DataType::VARCHAR, 50, false, true, false)); // nullable, unique
         table->addColumn(Column("reason", DataType::VARCHAR, 50, false, false, true));
         table->addColumn(Column("adjusted_at", DataType::DATE, 0, false, false, true));
@@ -754,6 +754,7 @@ namespace Schema
         table->addColumn(Column("note", DataType::TEXT, 65535, false, false, false));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_adjustment_movement", "adjust_id"));
+        table->addConstraint(new UniqueConstraint("uq_adjustment_code", "adjust_code"));
         table->addConstraint(new UniqueConstraint("uq_adjustment_source_code", "source_code"));
         table->addConstraint(new ForeignKeyConstraint("fk_adj_movement_reason", "reason", "reason", "reason"));
         table->addConstraint(new ForeignKeyConstraint("fk_adj_movement_status", "status", "adjustment_status", "status"));
