@@ -16,6 +16,8 @@
 #include <QTimer>
 #include <QProgressBar>
 #include <QTextEdit>
+#include <QCloseEvent>
+#include <QDateTime>
 #include <vector>
 #include <string>
 
@@ -495,8 +497,12 @@ public:
     std::vector<std::pair<int, QString>> getOrderProductsList() const;
     const std::vector<BatchItemOverview>& getBatchItems() const { return batchItems; }
 
+    bool recordPendingInboundSerial(int productId, const QString& serial, const QString& status, QString& outErrMsg);
+
 protected:
     void resizeEvent(QResizeEvent* event) override;
+    void closeEvent(QCloseEvent* event) override;
+    void reject() override;
 
 private:
     struct StagedUnit {
@@ -511,6 +517,19 @@ private:
         int historyId = 0;
         bool isModified = false;
     };
+
+    struct PendingInboundUnit {
+        int productId = 0;
+        QString productCode;
+        QString productName;
+        std::string serial;
+        std::string status;
+        QString addedTime;
+    };
+
+    int getPendingCountForProduct(int productId) const;
+    bool isSerialInPending(const std::string& sn) const;
+    void removePendingUnitBySerial(const std::string& sn);
 
     void setupUI();
     void loadBatchData();
@@ -530,7 +549,6 @@ private:
     void onInboundProductComboChanged(int index);
     void onRecordInboundSerial();
     void onBatchPasteSerials();
-    void onQuickGenerateInboundSerial();
 
     QStringList getAllowedStatusOptions() const;
 
@@ -567,7 +585,7 @@ private:
     QLineEdit* inboundSerialInput = nullptr;
     QPushButton* recordInboundSerialBtn = nullptr;
     QPushButton* batchPasteSerialsBtn = nullptr;
-    QPushButton* quickGenerateSerialBtn = nullptr;
+    QPushButton* openSimFromTab1Btn = nullptr;
     QLabel* inboundFeedbackLabel = nullptr;
 
     QTableWidget* prodUnitsTable = nullptr;
@@ -595,6 +613,7 @@ private:
     SimulationToolDialog* simulationDialog = nullptr;
 
     std::vector<StagedUnit> stagedUnits;
+    std::vector<PendingInboundUnit> pendingInboundUnits;
     std::vector<int> recentUnitIds; // Up to 3 most recently entered/updated units
     std::vector<BatchItemOverview> batchItems;
 };
