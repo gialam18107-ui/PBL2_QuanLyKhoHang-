@@ -1805,7 +1805,7 @@ namespace user_create
                 std::string st = (u.has("status") && std::holds_alternative<std::string>(u.get("status"))) ? std::get<std::string>(u.get("status")) : "";
                 if (st == "OUT") continue; // Only inspect physical units in warehouse
 
-                int uId = std::get<int>(u.get("unit_id"));
+                std::string sn = (u.has("serial") && std::holds_alternative<std::string>(u.get("serial"))) ? std::get<std::string>(u.get("serial")) : "";
                 int cqId = pidToCqId.contains(pid) ? pidToCqId[pid] : 0;
 
                 int cuId = getNextTableId(db, "inventory_check_unit");
@@ -1813,7 +1813,7 @@ namespace user_create
                 cuRec.set("check_unit_id", cuId);
                 cuRec.set("check_id", checkId);
                 cuRec.set("check_quantity_id", cqId);
-                cuRec.set("unit_id", uId);
+                cuRec.set("serial", sn);
                 cuRec.set("system_status", st);
                 cuRec.set("scanned_status", Value{});
 

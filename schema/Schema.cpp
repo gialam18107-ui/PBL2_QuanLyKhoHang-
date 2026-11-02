@@ -726,16 +726,16 @@ namespace Schema
         table->addColumn(Column("check_unit_id", DataType::INTEGER, 0, true, true, true, true));
         table->addColumn(Column("check_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("check_quantity_id", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("unit_id", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("system_status", DataType::VARCHAR, 50, false, false, true));
+        table->addColumn(Column("serial", DataType::VARCHAR, 100, false, false, true));
+        table->addColumn(Column("system_status", DataType::VARCHAR, 50, false, false, false));
         table->addColumn(Column("scanned_status", DataType::VARCHAR, 50, false, false, false));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_inv_check_unit", "check_unit_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_inv_check_unit_check", "check_id", "inventory_check", "check_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_inv_check_unit_quan", "check_quantity_id", "inventory_check_quantity", "check_quantity_id"));
-        table->addConstraint(new ForeignKeyConstraint("fk_inv_check_unit_unit", "unit_id", "unit_inventory", "unit_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_inv_check_unit_sys_st", "system_status", "unit_status", "status"));
         table->addConstraint(new ForeignKeyConstraint("fk_inv_check_unit_scan_st", "scanned_status", "unit_status", "status"));
+        table->createIndex("hash_tree_inv_check_unit_serial", "serial", IndexType::HASH_TREE);
         return table;
     }
 

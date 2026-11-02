@@ -3822,8 +3822,8 @@
         },
         {
           "id": "yGS5nfn4ts-wTsW4if8Js",
-          "name": "unit_id ",
-          "type": "INTEGER",
+          "name": "serial",
+          "type": "VARCHAR",
           "default": "",
           "check": "",
           "primary": false,
@@ -3831,8 +3831,7 @@
           "notNull": true,
           "increment": false,
           "comment": "",
-          "size": "",
-          "values": []
+          "size": 100
         },
         {
           "id": "QEr60IKALBSuVIqJySUGV",
@@ -3842,7 +3841,7 @@
           "check": "",
           "primary": false,
           "unique": false,
-          "notNull": true,
+          "notNull": false,
           "increment": false,
           "comment": "",
           "size": 50
@@ -4953,23 +4952,6 @@
       "deleteConstraint": "No action",
       "name": "fk_UNIT_STATUS_status_inventory_check_unit",
       "id": "GvGGh4YNxhKWL7ZoKwdRx"
-    },
-    {
-      "startTableId": "I0dPf3kmxfulm9p1KV92r",
-      "startFieldId": "yGS5nfn4ts-wTsW4if8Js",
-      "endTableId": "R58QWjKvAjv8HhhWKotOd",
-      "endFieldId": "aVD0Cl7qupAgmmtRLxfzD",
-      "cardinality": "many_to_one",
-      "fields": [
-        {
-          "startFieldId": "yGS5nfn4ts-wTsW4if8Js",
-          "endFieldId": "aVD0Cl7qupAgmmtRLxfzD"
-        }
-      ],
-      "updateConstraint": "No action",
-      "deleteConstraint": "No action",
-      "name": "fk_inventory_check_unit_unit_id _UNIT_INVENTORY",
-      "id": "bQ6C-WPB2cyw5Uo1GAENx"
     },
     {
       "startTableId": "d-_8pzbJhz-TKjsak85-Y",

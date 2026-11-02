@@ -584,14 +584,14 @@ namespace Generator
                     string st = get<string>(u.get("status"));
                     if (st == "OUT") continue; // Chỉ kiểm kê các đơn vị hiện vật đang thực tế tồn tại trong kho
 
-                    int uId = get<int>(u.get("unit_id"));
+                    string sn = get<string>(u.get("serial"));
                     int cqId = pidToCqId.contains(pid) ? pidToCqId[pid] : 1;
 
                     Record uRec;
                     uRec.set("check_unit_id", nextCheckUnitId++);
                     uRec.set("check_id", chkId);
                     uRec.set("check_quantity_id", cqId);
-                    uRec.set("unit_id", uId);
+                    uRec.set("serial", sn);
                     uRec.set("system_status", st);
                     uRec.set("scanned_status", st);
                     chkUnitTbl->insert(uRec);

@@ -167,6 +167,22 @@ namespace user_update
         const std::string& scannedStatus
     );
 
+    /**
+     * @brief Ghi nhận linh kiện thừa vào inventory_check_unit (Rule 5.3.1).
+     * Áp dụng cho:
+     * - Type 1 (Rediscovered OUT): system_status = "OUT"
+     * - Type 2 (Brand-New Unrecorded): system_status = "" (lưu NULL trong CSDL)
+     * Tự động đồng bộ lại các cột actual_*_quan trên inventory_check_quantity.
+     */
+    OperationResult recordSurplusCheckUnit(
+        Database* db,
+        int checkId,
+        int checkQuantityId,
+        const std::string& serial,
+        const std::string& systemStatus,
+        const std::string& scannedStatus
+    );
+
     OperationResult completeInventoryCheck(
         Database* db,
         int checkId

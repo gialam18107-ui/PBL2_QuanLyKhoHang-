@@ -2652,7 +2652,7 @@ void inventory_check_unit_query(Database *db, int checkId, Vector<Record> &resul
 	if (!db) return;
 	Table *cuTable = db->getTable("inventory_check_unit");
 	Table *chkTable = db->getTable("inventory_check");
-	Table *uTable = db->getTable("unit_inventory");
+	Table *cqTable = db->getTable("inventory_check_quantity");
 	Table *pTable = db->getTable("product");
 	if (!cuTable) return;
 
@@ -2666,12 +2666,12 @@ void inventory_check_unit_query(Database *db, int checkId, Vector<Record> &resul
 		}
 	}
 
-	HashMap<Value, const Record*> uMap;
-	if (uTable) {
-		const auto &uRows = uTable->getRows();
-		for (size_t i = 0; i < uRows.size(); ++i) {
-			if (!uTable->isRowDeleted(i) && uRows[i].has("unit_id")) {
-				uMap[uRows[i].get("unit_id")] = &uRows[i];
+	HashMap<Value, const Record*> cqMap;
+	if (cqTable) {
+		const auto &cqRows = cqTable->getRows();
+		for (size_t i = 0; i < cqRows.size(); ++i) {
+			if (!cqTable->isRowDeleted(i) && cqRows[i].has("check_quantity_id")) {
+				cqMap[cqRows[i].get("check_quantity_id")] = &cqRows[i];
 			}
 		}
 	}
@@ -2709,13 +2709,12 @@ void inventory_check_unit_query(Database *db, int checkId, Vector<Record> &resul
 			if (chk.has("check_type")) r.set("check_type", chk.get("check_type"));
 		}
 
-		int uId = safeGetInt(cu, "unit_id");
-		auto uIt = uMap.find(Value(uId));
-		if (uIt != uMap.end()) {
-			const Record &u = *(uIt->second);
-			if (u.has("serial")) r.set("serial", u.get("serial"));
-			if (u.has("product_id")) {
-				int pid = safeGetInt(u, "product_id");
+		int cqId = safeGetInt(cu, "check_quantity_id");
+		auto cqIt = cqMap.find(Value(cqId));
+		if (cqIt != cqMap.end()) {
+			const Record &cq = *(cqIt->second);
+			if (cq.has("product_id")) {
+				int pid = safeGetInt(cq, "product_id");
 				r.set("product_id", pid);
 				auto pIt = pMap.find(Value(pid));
 				if (pIt != pMap.end()) {
@@ -2730,8 +2729,15 @@ void inventory_check_unit_query(Database *db, int checkId, Vector<Record> &resul
 			? std::get<std::string>(cu.get("system_status")) : "";
 		std::string scanSt = cu.has("scanned_status") && std::holds_alternative<std::string>(cu.get("scanned_status"))
 			? std::get<std::string>(cu.get("scanned_status")) : "";
-		if (scanSt.empty() || scanSt == "UNCHECKED") {
+
+		if (sysSt.empty()) {
+			r.set("match_result", std::string("Thừa mới (" + scanSt + ")"));
+		} else if (sysSt == "OUT") {
+			r.set("match_result", std::string("Tái phát hiện (" + scanSt + ")"));
+		} else if (scanSt.empty() || scanSt == "UNCHECKED") {
 			r.set("match_result", std::string("Chưa quét"));
+		} else if (scanSt == "OUT") {
+			r.set("match_result", std::string("Mất/Thiếu"));
 		} else if (scanSt == sysSt) {
 			r.set("match_result", std::string("Khớp (" + sysSt + ")"));
 		} else {

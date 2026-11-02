@@ -1,4 +1,5 @@
 #include "UserUpdate.h"
+#include "UserCreate.h"
 #include "query/Query.h"
 #include "database/Constraint.h"
 #include <iostream>
@@ -1078,6 +1079,94 @@ namespace user_update
 
         db->commit();
         return OperationResult{true, "Cập nhật trạng thái quét linh kiện và đồng bộ số lượng kiểm kho thành công!", 2};
+    }
+
+    OperationResult recordSurplusCheckUnit(
+        Database* db,
+        int checkId,
+        int checkQuantityId,
+        const std::string& serial,
+        const std::string& systemStatus,
+        const std::string& scannedStatus
+    ) {
+        if (!db || checkId <= 0 || checkQuantityId <= 0 || serial.empty()) {
+            return OperationResult{false, "Tham số không hợp lệ.", 0};
+        }
+        Table* cuTbl = db->getTable("inventory_check_unit");
+        Table* cqTbl = db->getTable("inventory_check_quantity");
+        if (!cuTbl || !cqTbl) return OperationResult{false, "Bảng kiểm kê không tồn tại.", 0};
+
+        // Format check
+        if (!user_create::isValidSerialFormat(serial)) {
+            return OperationResult{false, "Mã serial '" + serial + "' không đúng định dạng chuẩn SN-XXXXXXX (Rule 5.5).", 0};
+        }
+
+        // Composite uniqueness check: cannot have duplicate (check_id, serial)
+        Vector<Record> existing = Query::filterRecords(*cuTbl, "check_id", Value(checkId));
+        for (size_t i = 0; i < existing.size(); ++i) {
+            if (existing[i].has("serial") && std::holds_alternative<std::string>(existing[i].get("serial")) &&
+                std::get<std::string>(existing[i].get("serial")) == serial) {
+                return OperationResult{false, "Mã serial '" + serial + "' đã tồn tại trong đợt kiểm kê này rồi.", 0};
+            }
+        }
+
+        if (!db->beginTransaction()) return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
+
+        int cuId = 1;
+        for (const auto& r : cuTbl->getRows()) {
+            if (r.has("check_unit_id") && std::holds_alternative<int>(r.get("check_unit_id"))) {
+                int id = std::get<int>(r.get("check_unit_id"));
+                if (id >= cuId) cuId = id + 1;
+            }
+        }
+
+        Record cuRec;
+        cuRec.set("check_unit_id", cuId);
+        cuRec.set("check_id", checkId);
+        cuRec.set("check_quantity_id", checkQuantityId);
+        cuRec.set("serial", serial);
+        if (systemStatus.empty()) {
+            cuRec.set("system_status", Value{}); // NULL for brand new unrecorded unit
+        } else {
+            cuRec.set("system_status", systemStatus);
+        }
+        cuRec.set("scanned_status", scannedStatus);
+
+        OperationResult rIns = db->insertRecord("inventory_check_unit", cuRec);
+        if (!rIns) { db->rollback(); return rIns; }
+
+        // Recalculate actual counts for this check_quantity
+        Vector<Record> allUnitsForCq = Query::filterRecords(*cuTbl, "check_quantity_id", Value(checkQuantityId));
+        int actAvail = 0, actWarr = 0, actScrap = 0;
+        for (size_t i = 0; i < allUnitsForCq.size(); ++i) {
+            const auto& u = allUnitsForCq[i];
+            std::string st = (u.has("scanned_status") && std::holds_alternative<std::string>(u.get("scanned_status")))
+                                ? std::get<std::string>(u.get("scanned_status")) : "";
+            if (st == "AVAILABLE") actAvail++;
+            else if (st == "WARRANTY") actWarr++;
+            else if (st == "SCRAPPED") actScrap++;
+        }
+
+        Record cqUp;
+        cqUp.set("actual_available_quan", actAvail);
+        cqUp.set("actual_warranty_quan", actWarr);
+        cqUp.set("actual_scrapped_quan", actScrap);
+
+        OperationResult rCq = db->update("inventory_check_quantity", checkQuantityId, cqUp);
+        if (!rCq) { db->rollback(); return rCq; }
+
+        Table* chkTbl = db->getTable("inventory_check");
+        if (chkTbl) {
+            const Record* chk = chkTbl->getRecordById(checkId);
+            if (chk && chk->has("status") && std::holds_alternative<std::string>(chk->get("status")) && std::get<std::string>(chk->get("status")) == "PENDING") {
+                Record chkUp;
+                chkUp.set("status", std::string("IN_PROCESS"));
+                db->update("inventory_check", checkId, chkUp);
+            }
+        }
+
+        db->commit();
+        return OperationResult{true, "Ghi nhận linh kiện thừa vào đợt kiểm kho thành công!", 2};
     }
 
     OperationResult completeInventoryCheck(

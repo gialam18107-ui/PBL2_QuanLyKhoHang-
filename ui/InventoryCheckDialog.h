@@ -8,6 +8,9 @@
 #include <QSpinBox>
 #include <QCheckBox>
 #include <QPushButton>
+#include <QRadioButton>
+#include <QButtonGroup>
+#include <QTimer>
 #include <QTableWidget>
 #include <QLabel>
 #include <QTabWidget>
@@ -81,23 +84,33 @@ private:
 class UnrecordedSurplusDialog : public QDialog
 {
 public:
-    UnrecordedSurplusDialog(Database* database, int checkId, const std::vector<std::pair<int, QString>>& products, QWidget* parent = nullptr);
+    UnrecordedSurplusDialog(Database* database, int checkId, const std::vector<std::pair<int, QString>>& products, int defaultPid = 0, QWidget* parent = nullptr);
     ~UnrecordedSurplusDialog() override = default;
 
     bool wasRecorded() const { return recorded; }
+    int getSelectedProductId() const { return selectedPid; }
+    QString getSelectedCondition() const { return selectedCondition; }
+    std::vector<QString> getEnteredSerials() const { return enteredSerials; }
 
 private:
     void setupUI();
     void onConfirm();
+    void onGenerateSerial();
 
     Database* db;
     int checkId;
     std::vector<std::pair<int, QString>> productList;
+    int defaultProductId;
     bool recorded;
+
+    int selectedPid = 0;
+    QString selectedCondition;
+    std::vector<QString> enteredSerials;
 
     QComboBox* productCombo;
     QComboBox* conditionCombo;
-    QSpinBox* quantitySpin;
+    QLineEdit* serialEdit;
+    QPushButton* genSerialBtn;
     QLineEdit* noteEdit;
     QPushButton* confirmBtn;
     QPushButton* cancelBtn;
@@ -214,13 +227,18 @@ private:
     std::vector<StatusShiftUnitItem> statusShiftUnitList;
 };
 
+class InventoryCheckDetailDialog;
+class InventoryCheckSimulationDialog;
+
 /**
  * @brief Detailed modal dialog to conduct and manage an inventory check.
  * Redesigned for CHK-UNIT to feature:
  * - Master-Detail Split View (Master: Product Progress Matrix, Detail: Serial Reconciliation)
- * - Unified Scan Bar with Out-of-Scope Rejection and Rediscovered OUT Prompt
- * - Unrecorded Surplus Registration (+ Ghi nhận hàng thừa chưa định danh)
+ * - Soft-Staging Architecture with In-Memory Preview & Delete Before Save (identical to Inbound)
+ * - Unified Continuous Scan Bar with Out-of-Scope Rejection and Rediscovered OUT Prompt
+ * - Unrecorded Strange Unit Registration with Physical Serial Tracking (Rule 5.3.1)
  * - Color-Coded Discrepancy Badges (Matched, Missing, Surplus, Status Shift)
+ * - High-Performance Simulation & Hardware Test Companion Window
  * - Integrated 3-Tier Post-Completion Reconciliation Funnel
  */
 class InventoryCheckDetailDialog : public QDialog
@@ -230,15 +248,51 @@ public:
     ~InventoryCheckDetailDialog() override = default;
 
     bool wasModified() const { return dataModified; }
+    void showToast(const QString& message, bool isSuccess = true);
+
+    struct StagedCheckUnit {
+        int checkUnitId = 0;
+        int checkQuantityId = 0;
+        int productId = 0;
+        QString serial;
+        QString productCode;
+        QString productName;
+        QString systemStatus;       // empty string if brand new unrecorded unit (NULL in DB)
+        QString savedScannedStatus; // status saved in DB
+        QString currentScannedStatus; // status staged on UI
+        bool isNew = false;         // newly added in this session (can be deleted before saving)
+        bool isModified = false;    // modified in memory
+        QString addedTime;
+    };
+
+    // Methods for Simulation Companion Dialog communication
+    void onOpenSimulationToolsDialog();
+    void fillSerialInput(const QString& sn);
+    bool recordSingleSerialFromSim(const QString& sn, int pid, const QString& status, QString& outErr);
+    void applyBatchSimulationUpdates(const std::vector<std::pair<QString, QString>>& statusUpdates, const std::vector<StagedCheckUnit>& newUnits);
+    std::vector<std::pair<int, QString>> getCheckProductsList() const;
+    const std::vector<StagedCheckUnit>& getStagedUnits() const { return stagedUnits; }
+
+protected:
+    void resizeEvent(QResizeEvent* event) override;
+    void closeEvent(QCloseEvent* event) override;
+    void reject() override;
 
 private:
     void setupUI();
     void loadCheckInfo();
     void loadQuantityData();
     void loadUnitData();
+    void refreshUnitTable();
+    void refreshQuantityTablePreview();
+    void updateSaveButtonState();
+    bool hasPendingChanges() const;
+    int getPendingNewCount() const;
+    int getModifiedCount() const;
+
+    void onSaveChanges();
     void onSaveQuantityCounts();
     void onRecordUnitStatus();
-    void onOpenBatchDialog();
     void onAddUnrecordedSurplus();
     void onOpenReconciliationDialog();
     void onCompleteCheck();
@@ -249,6 +303,7 @@ private:
     void applyUnitTableFilters();
     bool processUnitScan(const QString& sn, const QString& chosenMode, QLabel* feedbackLabel, QLineEdit* inputLine);
     void updateRecentUnitsBox();
+    void removeStagedUnitBySerial(const QString& sn);
 
     Database* db;
     int checkId;
@@ -258,6 +313,10 @@ private:
     QString checkDate;
     QString checkNote;
     bool dataModified;
+
+    // Toast overlay
+    QLabel* toastOverlayLabel = nullptr;
+    QTimer* toastTimer = nullptr;
 
     // Header info labels
     QLabel* codeLabel;
@@ -302,11 +361,15 @@ private:
     QGroupBox* recentUnitsGroup;
     QTableWidget* recentUnitsTable;
 
-    // Bottom action buttons
+    // Bottom action controls
+    QLabel* pendingStatusSummaryLabel;
+    QPushButton* saveChangesBtn;
     QPushButton* refreshBtn;
     QPushButton* reconciliationBtn;
     QPushButton* completeCheckBtn;
     QPushButton* closeBtn;
+
+    InventoryCheckSimulationDialog* simulationDialog = nullptr;
 
     struct RecentScannedUnit {
         int checkUnitId;
@@ -317,62 +380,102 @@ private:
     };
     std::vector<RecentScannedUnit> recentScannedUnits;
 
-    struct CandidateUnit {
-        int checkUnitId;
+    std::vector<StagedCheckUnit> stagedUnits;
+
+    struct ProductCheckItem {
+        int checkQuantityId;
         int productId;
-        QString serial;
         QString productCode;
         QString productName;
-        QString systemStatus;
-        QString scannedStatus;
+        int sysAvail;
+        int sysWarr;
+        int sysScrap;
+        int actAvail;
+        int actWarr;
+        int actScrap;
+        QString note;
     };
-    std::vector<CandidateUnit> checkCandidateUnits;
+    std::vector<ProductCheckItem> checkProductItems;
 
     int currentFilterProductId;
 };
 
 /**
- * @brief Batch selection & simulation tool for unit inventory checks (testing & rapid processing).
+ * @brief Standalone companion window for Testing & Hardware Simulation (Rule 7.2).
+ * Runs parallel/side-by-side with InventoryCheckDetailDialog:
+ * - Tab 1: Candidate units picker with multi-select and batch status application.
+ * - Tab 2: Single random serial generator & batch auto-simulation (100% matched, realistic discrepancy, strange unit inject).
  */
-class UnitCheckBatchDialog : public QDialog
+class InventoryCheckSimulationDialog : public QDialog
 {
 public:
-    UnitCheckBatchDialog(Database* database, int checkId, QWidget* parent = nullptr);
-    ~UnitCheckBatchDialog() override = default;
+    InventoryCheckSimulationDialog(
+        Database* database,
+        int checkId,
+        const std::vector<std::pair<int, QString>>& products,
+        InventoryCheckDetailDialog* parentDialog,
+        QWidget* parent = nullptr
+    );
+    ~InventoryCheckSimulationDialog() override = default;
 
-    int getUpdatedCount() const { return updatedCount; }
+    void refreshCandidateList();
 
 private:
+    struct SimCandidateItem {
+        int checkUnitId;
+        QString serial;
+        int productId;
+        QString productCode;
+        QString productName;
+        QString systemStatus;
+        QString currentStatus;
+    };
+
     void setupUI();
-    void loadUnits();
+    void loadCandidates();
+    void filterTable();
     void onSelectAll(bool select);
     void onSelectUncheckedOnly();
-    void onApplyBatch();
+    void onApplyBatchCandidates();
+
+    // Tab 2 actions
+    void onGenerateSingleSerial();
+    void onFillSerialToEntry();
+    void onDirectRecordGeneratedSerial();
+    void onRunFullAutoSimulation();
 
     Database* db;
     int checkId;
-    int updatedCount;
+    std::vector<std::pair<int, QString>> products;
+    InventoryCheckDetailDialog* checkDialog;
 
+    // Tab 1 controls
+    QComboBox* productFilterCombo;
+    QComboBox* statusFilterCombo;
     QLineEdit* searchEdit;
     QPushButton* selectAllBtn;
     QPushButton* deselectAllBtn;
     QPushButton* selectUncheckedBtn;
-    QLabel* countSelectedLabel;
-
-    QTableWidget* unitBatchTable;
+    QTableWidget* candidateTable;
+    QLabel* selectionSummaryLabel;
     QComboBox* targetModeCombo;
-    QPushButton* applyBtn;
-    QPushButton* cancelBtn;
+    QPushButton* applyBatchBtn;
 
-    struct UnitBatchItem {
-        int checkUnitId;
-        QString serial;
-        QString productCode;
-        QString productName;
-        QString systemStatus;
-        QString scannedStatus;
-    };
-    std::vector<UnitBatchItem> unitItems;
+    // Tab 2 controls
+    QLineEdit* generatedSerialDisplay;
+    QComboBox* genProductCombo;
+    QComboBox* genStatusCombo;
+    QPushButton* genSingleBtn;
+    QPushButton* fillToEntryBtn;
+    QPushButton* recordNowBtn;
+
+    QLabel* autoSimSummaryLabel;
+    class QRadioButton* presetMatchedRadio = nullptr;
+    class QRadioButton* presetRealisticRadio = nullptr;
+    class QRadioButton* presetStrangeRadio = nullptr;
+    QPushButton* runAutoSimBtn;
+
+    std::vector<SimCandidateItem> candidateList;
 };
 
 #endif // INVENTORY_CHECK_DIALOG_H
