@@ -47,6 +47,7 @@ private:
     Database* db;
     QComboBox* reasonCombo;
     QComboBox* sourceCheckCombo;
+    QPushButton* viewCheckBtn;
     QDateEdit* dateEdit;
     QLineEdit* noteEdit;
 
@@ -110,8 +111,51 @@ private:
     QLabel* noteLabel;
 
     QTableWidget* detailTable;
-    QPushButton* executeBtn;
     QPushButton* closeBtn;
+
+    // Unit-by-unit push & staging controls (Transaction style)
+    struct StagedUnit {
+        int adjustDetailId;
+        int productId;
+        QString productCode;
+        QString productName;
+        QString serial;
+        QString fromStatus;
+        QString toStatus;
+    };
+
+    struct DetailLine {
+        int adjustDetailId;
+        int productId;
+        QString productCode;
+        QString productName;
+        QString fromStatus;
+        QString toStatus;
+        int adjustQuantity;
+        int actualQuantity;
+    };
+
+    std::vector<DetailLine> detailLines;
+    std::vector<StagedUnit> stagedUnits;
+
+    QComboBox* targetLineCombo;
+    QLineEdit* scanSerialEdit;
+    QPushButton* addSerialBtn;
+    QComboBox* availableUnitsCombo;
+    QPushButton* pickAvailableBtn;
+    QPushButton* autoPickAllBtn;
+    QTableWidget* stagedUnitsTable;
+    QPushButton* confirmSaveUnitsBtn;
+
+    void refreshTargetLineCombo();
+    void refreshAvailableUnitsCombo();
+    void refreshStagedUnitsTable();
+    void onAddSerial();
+    void onPickAvailableUnit();
+    void onAutoPickAll();
+    void onRemoveStagedUnit(int row);
+    void onConfirmSaveUnits();
+    void preloadUnitsFromCheck();
 };
 
 #endif // ADJUSTMENT_MOVEMENT_DIALOG_H

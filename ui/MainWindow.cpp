@@ -3752,34 +3752,6 @@ void MainWindow::onDeleteAuxSpecOrBrand(const Record& rec)
         ? QString::fromStdString(get<std::string>(rec.get("spec"))) : "";
     if (specId <= 0) return;
 
-    // Check referential usage in category hardware table before deleting
-    int underscoreIdx = tbl.indexOf('_');
-    if (underscoreIdx > 0) {
-        std::string catTblName = tbl.left(underscoreIdx).toStdString();
-        std::string colName = tbl.mid(underscoreIdx + 1).toStdString();
-        Table* catTbl = db->getTable(catTblName);
-        if (catTbl) {
-            bool isIntCol = (tbl == "gpu_vram" || tbl == "psu_capacity");
-            for (size_t i = 0; i < catTbl->getRows().size(); ++i) {
-                if (catTbl->isRowDeleted(i)) continue;
-                const Record& cr = catTbl->getRows()[i];
-                if (!cr.has(colName)) continue;
-                bool inUse = false;
-                if (isIntCol && holds_alternative<int>(cr.get(colName))) {
-                    inUse = (QString::number(get<int>(cr.get(colName))) == specVal);
-                } else if (holds_alternative<std::string>(cr.get(colName))) {
-                    inUse = (QString::fromStdString(get<std::string>(cr.get(colName))) == specVal);
-                }
-                if (inUse) {
-                    QMessageBox::critical(this, "Không thể xóa thông số đang sử dụng",
-                        QString("Giá trị thông số \"%1\" đang được sử dụng bởi sản phẩm trong bảng [%2].\n"
-                                "Không thể xóa để đảm bảo toàn vẹn dữ liệu!").arg(specVal, QString::fromStdString(catTblName)));
-                    return;
-                }
-            }
-        }
-    }
-
     auto reply = QMessageBox::question(
         this,
         "Xác nhận xóa thông số",

@@ -192,6 +192,17 @@ namespace user_update
         Database* db,
         int adjustId
     );
+
+    struct AdjustUnitEntry {
+        int adjustDetailId;
+        std::string serial;
+    };
+
+    OperationResult executeAdjustmentMovementUnits(
+        Database* db,
+        int adjustId,
+        const Vector<AdjustUnitEntry>& stagedUnits
+    );
 }
 
 #endif // USER_UPDATE_H

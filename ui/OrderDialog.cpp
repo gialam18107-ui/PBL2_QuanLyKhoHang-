@@ -1,5 +1,6 @@
 #include "OrderDialog.h"
 #include "CustomerDialog.h"
+#include "InventoryCheckDialog.h"
 #include "TableClipboardHelper.h"
 
 #include <QVBoxLayout>
@@ -335,8 +336,47 @@ QWidget* OrderDialog::createStep1Widget()
     }
     sourceCodeLabel->setVisible(false);
     sourceCodeCombo->setVisible(false);
+
+    viewCheckBtn = new QPushButton("👁️ Xem chi tiết đợt kiểm", headerGroup);
+    viewCheckBtn->setStyleSheet("background-color: #f1f5f9; color: #0f172a; border: 1px solid #cbd5e1; font-weight: 600; padding: 4px 12px; border-radius: 4px;");
+    viewCheckBtn->setVisible(false);
+
+    auto* srcRow = new QHBoxLayout();
+    srcRow->addWidget(sourceCodeCombo, 1);
+    srcRow->addWidget(viewCheckBtn);
+
     grid->addWidget(sourceCodeLabel, 2, 0);
-    grid->addWidget(sourceCodeCombo, 2, 1, 1, 3);
+    grid->addLayout(srcRow, 2, 1, 1, 3);
+
+    connect(viewCheckBtn, &QPushButton::clicked, [this]() {
+        QString srcCode = sourceCodeCombo ? sourceCodeCombo->currentData().toString().trimmed() : "";
+        if (srcCode.isEmpty() && sourceCodeCombo) srcCode = sourceCodeCombo->currentText().trimmed();
+        int sep = srcCode.indexOf(" ");
+        if (sep > 0) srcCode = srcCode.left(sep).trimmed();
+        if (srcCode.isEmpty()) {
+            QMessageBox::warning(this, "Chưa chọn đợt kiểm", "Vui lòng chọn hoặc nhập mã đợt kiểm kho (CHK-...) để xem chi tiết.");
+            return;
+        }
+        InventoryCheckInspectDialog dlg(db, srcCode, this);
+        if (dlg.exec() == QDialog::Accepted && dlg.getSelectedProductId() > 0) {
+            int pid = dlg.getSelectedProductId();
+            if (productCombo) {
+                for (int i = 0; i < productCombo->count(); ++i) {
+                    if (productCombo->itemData(i).toInt() == pid) {
+                        productCombo->setCurrentIndex(i);
+                        break;
+                    }
+                }
+            }
+            int diffAvail = dlg.getSelectedDiffAvailable();
+            int diffWarr = dlg.getSelectedDiffWarranty();
+            int diffScrap = dlg.getSelectedDiffScrapped();
+            int absDiff = std::max({std::abs(diffAvail), std::abs(diffWarr), std::abs(diffScrap)});
+            if (absDiff > 0 && quantitySpin) {
+                quantitySpin->setValue(absDiff);
+            }
+        }
+    });
 
     QDate today = QDate::currentDate();
     orderDateEdit = new QDateEdit(today, headerGroup);
@@ -893,6 +933,7 @@ void OrderDialog::onOrderTypeChanged(int)
     if (customerContainer) customerContainer->setVisible(!isAdj);
     if (sourceCodeLabel) sourceCodeLabel->setVisible(isAdj);
     if (sourceCodeCombo) sourceCodeCombo->setVisible(isAdj);
+    if (viewCheckBtn) viewCheckBtn->setVisible(isAdj);
 
     updateProductStockHint(productCombo ? productCombo->currentIndex() : -1);
 }
@@ -3503,16 +3544,18 @@ UnitEntryDialog::UnitEntryDialog(
     if (db && !isLogisticsCompleted && stagedUnits.empty() && pendingInboundUnits.empty() && pendingOutboundUnits.empty()) {
         std::string orderCodeStd = parentOrderCodeStr.toStdString();
         std::string srcCode;
-        Table* ordTbl = db->getTable(hubType == HubType::INBOUND ? "inbound_order" : "outbound_order");
+        Table* ordTbl = db->getTable(hubType == HubType::INBOUND ? "inbound_transaction" : "outbound_transaction");
+        std::string codeCol = (hubType == HubType::INBOUND ? "inbound_code" : "outbound_code");
         if (ordTbl) {
-            Vector<Record> ordRecs = Query::filterRecords(*ordTbl, "order_code", Value(orderCodeStd));
-            if (!ordRecs.empty() && ordRecs[0].has("source_code") && std::holds_alternative<std::string>(ordRecs[0].get("source_code"))) {
+            Vector<Record> ordRecs = Query::filterRecords(*ordTbl, codeCol, Value(orderCodeStd));
+            if (!ordRecs.empty() && ordRecs[0].has("source_code") && !isNull(ordRecs[0].get("source_code")) && std::holds_alternative<std::string>(ordRecs[0].get("source_code"))) {
                 srcCode = std::get<std::string>(ordRecs[0].get("source_code"));
             }
         }
 
         if (!srcCode.empty() && srcCode.rfind("CHK-", 0) == 0) {
             Table* chkTbl = db->getTable("inventory_check");
+            Table* chkQuanTbl = db->getTable("inventory_check_quantity");
             Table* chkUnitTbl = db->getTable("inventory_check_unit");
             Table* uTbl = db->getTable("unit_inventory");
             if (chkTbl && chkUnitTbl && uTbl) {
@@ -3520,34 +3563,42 @@ UnitEntryDialog::UnitEntryDialog(
                 if (!chkRecs.empty()) {
                     int chkId = chkRecs[0].has("check_id") && std::holds_alternative<int>(chkRecs[0].get("check_id"))
                                 ? std::get<int>(chkRecs[0].get("check_id")) : 0;
+
+                    std::unordered_map<int, int> quanIdToProdId;
+                    if (chkQuanTbl) {
+                        Vector<Record> quanRecs = Query::filterRecords(*chkQuanTbl, "check_id", Value(chkId));
+                        for (size_t i = 0; i < quanRecs.size(); ++i) {
+                            int qid = quanRecs[i].has("check_quantity_id") && std::holds_alternative<int>(quanRecs[i].get("check_quantity_id"))
+                                      ? std::get<int>(quanRecs[i].get("check_quantity_id")) : 0;
+                            int pid = quanRecs[i].has("product_id") && std::holds_alternative<int>(quanRecs[i].get("product_id"))
+                                      ? std::get<int>(quanRecs[i].get("product_id")) : 0;
+                            if (qid > 0 && pid > 0) quanIdToProdId[qid] = pid;
+                        }
+                    }
+
                     Vector<Record> chkUnits = Query::filterRecords(*chkUnitTbl, "check_id", Value(chkId));
                     if (hubType == HubType::INBOUND) {
                         int preloadedCount = 0;
                         for (size_t i = 0; i < chkUnits.size(); ++i) {
                             const auto& cu = chkUnits[i];
-                            std::string scannedSt = cu.has("scanned_status") && std::holds_alternative<std::string>(cu.get("scanned_status"))
-                                                    ? std::get<std::string>(cu.get("scanned_status")) : "";
-                            int uid = cu.has("unit_id") && std::holds_alternative<int>(cu.get("unit_id"))
-                                      ? std::get<int>(cu.get("unit_id")) : 0;
-                            std::string sn = cu.has("serial") && std::holds_alternative<std::string>(cu.get("serial"))
-                                             ? std::get<std::string>(cu.get("serial")) : "";
+                            int qid = cu.has("check_quantity_id") && std::holds_alternative<int>(cu.get("check_quantity_id"))
+                                      ? std::get<int>(cu.get("check_quantity_id")) : 0;
                             int pid = cu.has("product_id") && std::holds_alternative<int>(cu.get("product_id"))
                                       ? std::get<int>(cu.get("product_id")) : 0;
-                            if (scannedSt != "MISSING") {
-                                bool existsActive = false;
-                                if (!sn.empty()) {
-                                    Vector<Record> uRecs = Query::filterRecords(*uTbl, "serial", Value(sn));
-                                    if (!uRecs.empty()) {
-                                        std::string st = uRecs[0].has("status") && std::holds_alternative<std::string>(uRecs[0].get("status"))
-                                                         ? std::get<std::string>(uRecs[0].get("status")) : "";
-                                        if (st != "OUT") existsActive = true;
-                                    }
-                                }
-                                if (uid == 0 || !existsActive) {
-                                    QString errMsg;
-                                    if (recordPendingInboundSerial(pid, QString::fromStdString(sn), QString::fromStdString(scannedSt), errMsg)) {
-                                        preloadedCount++;
-                                    }
+                            if (pid == 0 && quanIdToProdId.count(qid)) pid = quanIdToProdId[qid];
+
+                            std::string sysSt = cu.has("system_status") && !isNull(cu.get("system_status")) && std::holds_alternative<std::string>(cu.get("system_status"))
+                                                ? std::get<std::string>(cu.get("system_status")) : "";
+                            std::string scannedSt = cu.has("scanned_status") && !isNull(cu.get("scanned_status")) && std::holds_alternative<std::string>(cu.get("scanned_status"))
+                                                    ? std::get<std::string>(cu.get("scanned_status")) : "";
+                            std::string sn = cu.has("serial") && std::holds_alternative<std::string>(cu.get("serial"))
+                                             ? std::get<std::string>(cu.get("serial")) : "";
+
+                            bool isSurplus = (sysSt.empty() || sysSt == "OUT") && (!scannedSt.empty() && scannedSt != "MISSING");
+                            if (isSurplus && pid > 0 && !sn.empty()) {
+                                QString errMsg;
+                                if (recordPendingInboundSerial(pid, QString::fromStdString(sn), QString::fromStdString(scannedSt), errMsg)) {
+                                    preloadedCount++;
                                 }
                             }
                         }
@@ -3559,25 +3610,24 @@ UnitEntryDialog::UnitEntryDialog(
                         int preloadedCount = 0;
                         for (size_t i = 0; i < chkUnits.size(); ++i) {
                             const auto& cu = chkUnits[i];
-                            std::string scannedSt = cu.has("scanned_status") && std::holds_alternative<std::string>(cu.get("scanned_status"))
+                            int qid = cu.has("check_quantity_id") && std::holds_alternative<int>(cu.get("check_quantity_id"))
+                                      ? std::get<int>(cu.get("check_quantity_id")) : 0;
+                            int pid = cu.has("product_id") && std::holds_alternative<int>(cu.get("product_id"))
+                                      ? std::get<int>(cu.get("product_id")) : 0;
+                            if (pid == 0 && quanIdToProdId.count(qid)) pid = quanIdToProdId[qid];
+
+                            std::string sysSt = cu.has("system_status") && !isNull(cu.get("system_status")) && std::holds_alternative<std::string>(cu.get("system_status"))
+                                                ? std::get<std::string>(cu.get("system_status")) : "";
+                            std::string scannedSt = cu.has("scanned_status") && !isNull(cu.get("scanned_status")) && std::holds_alternative<std::string>(cu.get("scanned_status"))
                                                     ? std::get<std::string>(cu.get("scanned_status")) : "";
-                            if (scannedSt == "MISSING") {
-                                std::string sn = cu.has("serial") && std::holds_alternative<std::string>(cu.get("serial"))
-                                                 ? std::get<std::string>(cu.get("serial")) : "";
-                                int pid = cu.has("product_id") && std::holds_alternative<int>(cu.get("product_id"))
-                                          ? std::get<int>(cu.get("product_id")) : 0;
-                                if (!sn.empty()) {
-                                    Vector<Record> uRecs = Query::filterRecords(*uTbl, "serial", Value(sn));
-                                    if (!uRecs.empty()) {
-                                        std::string st = uRecs[0].has("status") && std::holds_alternative<std::string>(uRecs[0].get("status"))
-                                                         ? std::get<std::string>(uRecs[0].get("status")) : "";
-                                        if (st != "OUT") {
-                                            QString errMsg;
-                                            if (recordPendingOutboundSerial(pid, QString::fromStdString(sn), errMsg)) {
-                                                preloadedCount++;
-                                            }
-                                        }
-                                    }
+                            std::string sn = cu.has("serial") && std::holds_alternative<std::string>(cu.get("serial"))
+                                             ? std::get<std::string>(cu.get("serial")) : "";
+
+                            bool isMissing = (!sysSt.empty() && sysSt != "OUT") && (scannedSt.empty() || scannedSt == "MISSING");
+                            if (isMissing && pid > 0 && !sn.empty()) {
+                                QString errMsg;
+                                if (recordPendingOutboundSerial(pid, QString::fromStdString(sn), errMsg)) {
+                                    preloadedCount++;
                                 }
                             }
                         }
@@ -3591,6 +3641,9 @@ UnitEntryDialog::UnitEntryDialog(
         }
     }
 
+    refreshBatchOverviewTable();
+    refreshRecentUnitsTable();
+    refreshAllUnitsTable();
     if (hubType == HubType::INBOUND) {
         refreshProductEntryTab();
         mainTabWidget->setCurrentIndex(0);

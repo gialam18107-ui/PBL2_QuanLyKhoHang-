@@ -40,6 +40,7 @@ namespace DataIO
         }
 
         ifstream file(filePath);
+        table.clear();
         if (!file.is_open())
         {
             cerr << "[TableIO Error] Cannot open file for reading: " << filePath << endl;

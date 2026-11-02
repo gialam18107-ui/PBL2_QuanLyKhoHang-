@@ -464,4 +464,79 @@ private:
     std::vector<SimCandidateItem> candidateList;
 };
 
+/**
+ * @brief Modal dialog to inspect inventory check discrepancy and details
+ * during order creation or adjustment creation.
+ */
+class InventoryCheckInspectDialog : public QDialog
+{
+public:
+    InventoryCheckInspectDialog(Database* database, const QString& checkCodeOrId, QWidget* parent = nullptr);
+    ~InventoryCheckInspectDialog() override = default;
+
+    int getSelectedProductId() const { return selectedPid; }
+    QString getSelectedProductCode() const { return selectedPCode; }
+    QString getSelectedProductName() const { return selectedPName; }
+    int getSelectedDiffAvailable() const { return selectedDiffAvail; }
+    int getSelectedDiffWarranty() const { return selectedDiffWarr; }
+    int getSelectedDiffScrapped() const { return selectedDiffScrap; }
+
+private:
+    void setupUI();
+    void loadCheckData();
+    void renderMatrixTable();
+    void renderUnitTable();
+
+    Database* db;
+    QString targetCheckCode;
+    int checkId = 0;
+    QString checkCode;
+    QString checkType;
+    QString checkStatus;
+    QString checkedAt;
+    QString note;
+
+    QLabel* infoLabel = nullptr;
+    QCheckBox* diffOnlyCheck = nullptr;
+    QTableWidget* matrixTable = nullptr;
+    QTableWidget* unitTable = nullptr;
+    QTabWidget* tabWidget = nullptr;
+    QPushButton* fillBtn = nullptr;
+    QPushButton* closeBtn = nullptr;
+
+    struct MatrixItem {
+        int productId;
+        QString code;
+        QString name;
+        int sysAvail;
+        int actAvail;
+        int diffAvail;
+        int sysWarr;
+        int actWarr;
+        int diffWarr;
+        int sysScrap;
+        int actScrap;
+        int diffScrap;
+    };
+    std::vector<MatrixItem> matrixList;
+
+    struct UnitItem {
+        QString serial;
+        int productId;
+        QString pCode;
+        QString pName;
+        QString sysStatus;
+        QString actStatus;
+        QString eval;
+    };
+    std::vector<UnitItem> unitList;
+
+    int selectedPid = 0;
+    QString selectedPCode;
+    QString selectedPName;
+    int selectedDiffAvail = 0;
+    int selectedDiffWarr = 0;
+    int selectedDiffScrap = 0;
+};
+
 #endif // INVENTORY_CHECK_DIALOG_H

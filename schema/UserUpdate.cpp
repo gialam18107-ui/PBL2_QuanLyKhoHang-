@@ -1345,4 +1345,162 @@ namespace user_update
         db->commit();
         return OperationResult{true, "Thực hiện điều chuyển trạng thái linh kiện thành công!", totalAffected};
     }
+
+    OperationResult executeAdjustmentMovementUnits(
+        Database* db,
+        int adjustId,
+        const Vector<AdjustUnitEntry>& stagedUnits
+    ) {
+        if (!db || adjustId <= 0 || stagedUnits.empty()) {
+            return OperationResult{false, "Danh sách linh kiện điều chuyển trống hoặc tham số không hợp lệ.", 0};
+        }
+        Table* adjTbl = db->getTable("adjustment_movement");
+        Table* detTbl = db->getTable("adjust_movement_detail");
+        Table* prodTbl = db->getTable("product");
+        Table* unitTbl = db->getTable("unit_inventory");
+        Table* histTbl = db->getTable("status_history");
+
+        if (!adjTbl || !detTbl || !prodTbl || !unitTbl || !histTbl) {
+            return OperationResult{false, "Các bảng dữ liệu điều chuyển không đầy đủ.", 0};
+        }
+
+        const Record* adjRec = adjTbl->getRecordById(adjustId);
+        if (!adjRec) return OperationResult{false, "Không tìm thấy phiếu điều chuyển ID " + std::to_string(adjustId), 0};
+
+        std::string adjStatus = std::get<std::string>(adjRec->get("status"));
+        if (adjStatus == "COMPLETED" || adjStatus == "CANCELLED") {
+            return OperationResult{false, "Phiếu điều chuyển đã ở trạng thái " + adjStatus + ", không thể thực hiện.", 0};
+        }
+
+        if (!db->beginTransaction()) return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
+
+        // Group staged units by detailId
+        HashMap<int, Vector<std::string>> unitsByDetail;
+        for (size_t i = 0; i < stagedUnits.size(); ++i) {
+            unitsByDetail[stagedUnits[i].adjustDetailId].push_back(stagedUnits[i].serial);
+        }
+
+        int totalAffected = 0;
+        Vector<Record> allDetails = Query::filterRecords(*detTbl, "adjust_id", Value(adjustId));
+
+        for (size_t i = 0; i < allDetails.size(); ++i) {
+            const auto& det = allDetails[i];
+            int detId = std::get<int>(det.get("adjust_detail_id"));
+            if (!unitsByDetail.contains(detId)) continue;
+
+            const auto& serials = unitsByDetail[detId];
+            int pid = std::get<int>(det.get("product_id"));
+            std::string fromSt = std::get<std::string>(det.get("from_status"));
+            std::string toSt = std::get<std::string>(det.get("to_status"));
+            int adjQty = std::get<int>(det.get("adjust_quantity"));
+            int curAct = det.has("actual_quantity") && std::holds_alternative<int>(det.get("actual_quantity"))
+                         ? std::get<int>(det.get("actual_quantity")) : 0;
+
+            if (curAct + static_cast<int>(serials.size()) > adjQty) {
+                db->rollback();
+                return OperationResult{false, "Số lượng linh kiện chuyển vượt quá kế hoạch đã khai báo cho sản phẩm ID " + std::to_string(pid), 0};
+            }
+
+            int movedForLine = 0;
+            for (size_t k = 0; k < serials.size(); ++k) {
+                const std::string& sn = serials[k];
+                Vector<Record> uMatch = Query::filterRecords(*unitTbl, "serial", Value(sn));
+                if (uMatch.empty()) {
+                    db->rollback();
+                    return OperationResult{false, "Không tìm thấy linh kiện có mã serial " + sn, 0};
+                }
+                const auto& uRec = uMatch[0];
+                int uId = std::get<int>(uRec.get("unit_id"));
+                int uPid = std::get<int>(uRec.get("product_id"));
+                std::string uSt = std::get<std::string>(uRec.get("status"));
+
+                if (uPid != pid) {
+                    db->rollback();
+                    return OperationResult{false, "Linh kiện " + sn + " không thuộc sản phẩm ID " + std::to_string(pid), 0};
+                }
+                if (uSt != fromSt) {
+                    db->rollback();
+                    return OperationResult{false, "Linh kiện " + sn + " hiện có trạng thái '" + uSt + "' thay vì '" + fromSt + "'", 0};
+                }
+
+                Record uUp;
+                uUp.set("status", toSt);
+                OperationResult rU = db->update("unit_inventory", uId, uUp);
+                if (!rU) { db->rollback(); return rU; }
+
+                int maxHId = 1;
+                for (const auto& h : histTbl->getRows()) {
+                    if (h.has("history_id") && std::holds_alternative<int>(h.get("history_id"))) {
+                        int hid = std::get<int>(h.get("history_id"));
+                        if (hid >= maxHId) maxHId = hid + 1;
+                    }
+                }
+                Record hRec;
+                hRec.set("history_id", maxHId);
+                hRec.set("unit_id", uId);
+                hRec.set("old_status", fromSt);
+                hRec.set("curr_status", toSt);
+                hRec.set("transaction", adjustId);
+                hRec.set("type", std::string("ADJUSTMENT"));
+                OperationResult rH = db->insertRecord("status_history", hRec);
+                if (!rH) { db->rollback(); return rH; }
+
+                movedForLine++;
+                totalAffected++;
+            }
+
+            // Update product stock counters
+            const Record* pRec = prodTbl->getRecordById(pid);
+            if (pRec) {
+                int avail = (pRec->has("available_quantity") && std::holds_alternative<int>(pRec->get("available_quantity")))
+                          ? std::get<int>(pRec->get("available_quantity")) : 0;
+                int warr = (pRec->has("warranty_quantity") && std::holds_alternative<int>(pRec->get("warranty_quantity")))
+                         ? std::get<int>(pRec->get("warranty_quantity")) : 0;
+                int scrap = (pRec->has("scrapped_quantity") && std::holds_alternative<int>(pRec->get("scrapped_quantity")))
+                          ? std::get<int>(pRec->get("scrapped_quantity")) : 0;
+
+                if (fromSt == "AVAILABLE") avail = std::max(0, avail - movedForLine);
+                else if (fromSt == "WARRANTY") warr = std::max(0, warr - movedForLine);
+                else if (fromSt == "SCRAPPED") scrap = std::max(0, scrap - movedForLine);
+
+                if (toSt == "AVAILABLE") avail += movedForLine;
+                else if (toSt == "WARRANTY") warr += movedForLine;
+                else if (toSt == "SCRAPPED") scrap += movedForLine;
+
+                Record pUp;
+                pUp.set("available_quantity", avail);
+                pUp.set("warranty_quantity", warr);
+                pUp.set("scrapped_quantity", scrap);
+                OperationResult rP = db->update("product", pid, pUp);
+                if (!rP) { db->rollback(); return rP; }
+                totalAffected++;
+            }
+
+            Record detUp;
+            detUp.set("actual_quantity", curAct + movedForLine);
+            db->update("adjust_movement_detail", detId, detUp);
+        }
+
+        // Refresh detail records to check completion
+        Vector<Record> updatedDetails = Query::filterRecords(*detTbl, "adjust_id", Value(adjustId));
+        bool allCompleted = true;
+        for (size_t i = 0; i < updatedDetails.size(); ++i) {
+            int adjQ = std::get<int>(updatedDetails[i].get("adjust_quantity"));
+            int actQ = updatedDetails[i].has("actual_quantity") && std::holds_alternative<int>(updatedDetails[i].get("actual_quantity"))
+                       ? std::get<int>(updatedDetails[i].get("actual_quantity")) : 0;
+            if (actQ < adjQ) {
+                allCompleted = false;
+                break;
+            }
+        }
+
+        Record adjUp;
+        adjUp.set("status", std::string(allCompleted ? "COMPLETED" : "IN_PROCESS"));
+        OperationResult rAdj = db->update("adjustment_movement", adjustId, adjUp);
+        if (!rAdj) { db->rollback(); return rAdj; }
+        totalAffected++;
+
+        db->commit();
+        return OperationResult{true, "Đã điều chuyển trạng thái cho " + std::to_string(stagedUnits.size()) + " linh kiện thành công!", totalAffected};
+    }
 }

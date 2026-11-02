@@ -314,7 +314,6 @@ namespace Schema
         table->addColumn(Column("series", DataType::VARCHAR, 100, false, false, true));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_cpu", "cpu_id"));
-        table->addConstraint(new ForeignKeyConstraint("fk_cpu_product", "product_id", "product", "product_id"));
         table->createIndex("hash_tree_socket", "socket", IndexType::HASH_TREE);
         table->createIndex("hash_tree_tier", "tier", IndexType::HASH_TREE);
         table->createIndex("hash_tree_series", "series", IndexType::HASH_TREE);
@@ -334,7 +333,6 @@ namespace Schema
         table->addColumn(Column("vram", DataType::INTEGER, 0, false, false, true));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_gpu", "gpu_id"));
-        table->addConstraint(new ForeignKeyConstraint("fk_gpu_product", "product_id", "product", "product_id"));
         table->createIndex("hash_tree_series", "series", IndexType::HASH_TREE);
         table->createIndex("hash_tree_producer", "producer", IndexType::HASH_TREE);
         table->createIndex("hash_tree_vram", "vram", IndexType::HASH_TREE);
@@ -356,7 +354,6 @@ namespace Schema
         table->addColumn(Column("ram_support", DataType::VARCHAR, 50, false, false, true));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_mainboard", "mainboard_id"));
-        table->addConstraint(new ForeignKeyConstraint("fk_mainboard_product", "product_id", "product", "product_id"));
         table->createIndex("hash_tree_cpu_support", "cpu_support", IndexType::HASH_TREE);
         table->createIndex("hash_tree_socket", "socket", IndexType::HASH_TREE);
         table->createIndex("hash_tree_size", "size", IndexType::HASH_TREE);
@@ -379,7 +376,6 @@ namespace Schema
         table->addColumn(Column("bus", DataType::VARCHAR, 50, false, false, true));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_ram", "ram_id"));
-        table->addConstraint(new ForeignKeyConstraint("fk_ram_product", "product_id", "product", "product_id"));
         table->createIndex("hash_tree_generation", "generation", IndexType::HASH_TREE);
         table->createIndex("hash_tree_capacity", "capacity", IndexType::HASH_TREE);
         table->createIndex("hash_tree_bus", "bus", IndexType::HASH_TREE);
@@ -399,7 +395,6 @@ namespace Schema
         table->addColumn(Column("capacity", DataType::VARCHAR, 50, false, false, true));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_ssd", "ssd_id"));
-        table->addConstraint(new ForeignKeyConstraint("fk_ssd_product", "product_id", "product", "product_id"));
         table->createIndex("hash_tree_type", "type", IndexType::HASH_TREE);
         table->createIndex("hash_tree_gen", "gen", IndexType::HASH_TREE);
         table->createIndex("hash_tree_capacity", "capacity", IndexType::HASH_TREE);
@@ -419,7 +414,6 @@ namespace Schema
         table->addColumn(Column("size", DataType::VARCHAR, 50, false, false, false));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_psu", "psu_id"));
-        table->addConstraint(new ForeignKeyConstraint("fk_psu_product", "product_id", "product", "product_id"));
         table->createIndex("hash_tree_quality", "quality", IndexType::HASH_TREE);
         table->createIndex("hash_tree_capacity", "capacity", IndexType::HASH_TREE);
         table->createIndex("hash_tree_size", "size", IndexType::HASH_TREE);
@@ -437,7 +431,6 @@ namespace Schema
         table->addColumn(Column("type", DataType::VARCHAR, 100, false, false, true));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_cooling", "cooling_id"));
-        table->addConstraint(new ForeignKeyConstraint("fk_cooling_product", "product_id", "product", "product_id"));
         table->createIndex("hash_tree_type", "type", IndexType::HASH_TREE);
         return table;
     }
@@ -454,7 +447,6 @@ namespace Schema
         table->addColumn(Column("size", DataType::VARCHAR, 50, false, false, true));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_case", "case_id"));
-        table->addConstraint(new ForeignKeyConstraint("fk_case_product", "product_id", "product", "product_id"));
         table->createIndex("hash_tree_size", "size", IndexType::HASH_TREE);
         return table;
     }

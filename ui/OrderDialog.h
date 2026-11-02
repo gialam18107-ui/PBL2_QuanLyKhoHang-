@@ -105,6 +105,7 @@ private:
     QPushButton* addCustomerBtn;
     QLabel* sourceCodeLabel;
     QComboBox* sourceCodeCombo;
+    QPushButton* viewCheckBtn;
     QDateEdit* orderDateEdit;
     QDateEdit* expectedDateEdit;
     QLineEdit* noteEdit;

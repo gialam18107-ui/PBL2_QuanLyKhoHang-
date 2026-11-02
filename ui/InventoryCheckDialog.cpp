@@ -1667,6 +1667,7 @@ void InventoryCheckDetailDialog::setupUI()
 
     reconciliationBtn = new QPushButton("⚖️ Báo Cáo Đối Soát (ADJ)", this);
     reconciliationBtn->setStyleSheet("background-color: #d97706; color: #ffffff; font-weight: 600; padding: 8px 16px; border-radius: 6px;");
+    reconciliationBtn->setVisible(checkType == "UNIT");
 
     completeCheckBtn = new QPushButton("🏁 Hoàn thành kiểm kho", this);
     completeCheckBtn->setStyleSheet("background-color: #16a34a; color: #ffffff; font-weight: 600; padding: 8px 16px; border-radius: 6px;");
@@ -2946,12 +2947,16 @@ void InventoryCheckDetailDialog::onCompleteCheck()
         if (abnormalOnlyCheck) abnormalOnlyCheck->setChecked(true);
     }
 
-    QMessageBox::information(this, "Hoàn tất kiểm kho",
-        "Đợt kiểm kho đã được chuyển sang trạng thái HOÀN THÀNH (COMPLETED) thành công!\n\n"
-        "Bây giờ hệ thống sẽ hiển thị Báo Cáo Bất Thường 3 Tầng để bạn kiểm tra và tạo các chứng từ điều chỉnh.");
-
-    // Automatically open 3-Tier Reconciliation Dialog as required by Rule 5.3.2
-    onOpenReconciliationDialog();
+    if (checkType == "UNIT") {
+        QMessageBox::information(this, "Hoàn tất kiểm kho",
+            "Đợt kiểm kho UNIT đã được chuyển sang trạng thái HOÀN THÀNH (COMPLETED) thành công!\n\n"
+            "Bây giờ hệ thống sẽ hiển thị Báo Cáo Đối Soát 3 Rổ để bạn kiểm tra và tạo các chứng từ điều chỉnh tương ứng.");
+        onOpenReconciliationDialog();
+    } else {
+        QMessageBox::information(this, "Hoàn tất kiểm kho",
+            "Đợt kiểm kho SỐ LƯỢNG đã được chuyển sang trạng thái HOÀN THÀNH (COMPLETED) thành công!\n\n"
+            "Biên bản kiểm kê đã được lưu lại. Bạn có thể tham chiếu mã đợt kiểm kê này khi tạo các đơn Nhập / Xuất / Điều chuyển kho.");
+    }
 }
 
 void InventoryCheckDetailDialog::closeEvent(QCloseEvent* event)
@@ -3543,4 +3548,322 @@ void InventoryCheckSimulationDialog::onRunFullAutoSimulation()
                 "- %1 linh kiện đã được cập nhật trạng thái.\n"
                 "- %2 linh kiện lạ đã được thêm vào hàng đợi.\n\n"
                 "👉 Dữ liệu hiện đang ở trạng thái Soft-staging (Chưa lưu CSDL).").arg(updates.size()).arg(newStrangeUnits.size()));
+}
+
+// ========================================================
+// 5. InventoryCheckInspectDialog
+// ========================================================
+InventoryCheckInspectDialog::InventoryCheckInspectDialog(Database* database, const QString& checkCodeOrId, QWidget* parent)
+    : QDialog(parent), db(database), targetCheckCode(checkCodeOrId.trimmed())
+{
+    setWindowTitle(QString("Chi tiết & Đối soát Đợt Kiểm Kê: %1").arg(targetCheckCode));
+    resize(1000, 600);
+    setupUI();
+    loadCheckData();
+}
+
+void InventoryCheckInspectDialog::setupUI()
+{
+    auto* mainLayout = new QVBoxLayout(this);
+    mainLayout->setContentsMargins(14, 14, 14, 14);
+    mainLayout->setSpacing(10);
+
+    infoLabel = new QLabel(this);
+    infoLabel->setStyleSheet("background-color: #f1f5f9; padding: 10px 14px; border-radius: 6px; font-size: 13px; color: #1e293b; border: 1px solid #cbd5e1;");
+    mainLayout->addWidget(infoLabel);
+
+    tabWidget = new QTabWidget(this);
+
+    // Tab 1: Product Discrepancy Matrix
+    auto* tab1 = new QWidget();
+    auto* t1Layout = new QVBoxLayout(tab1);
+    t1Layout->setContentsMargins(8, 8, 8, 8);
+    t1Layout->setSpacing(8);
+
+    diffOnlyCheck = new QCheckBox("Chỉ hiển thị sản phẩm có chênh lệch tồn kho (Δ ≠ 0)", tab1);
+    diffOnlyCheck->setChecked(false);
+    diffOnlyCheck->setStyleSheet("font-weight: 600; color: #0f172a;");
+    t1Layout->addWidget(diffOnlyCheck);
+
+    matrixTable = new QTableWidget(tab1);
+    matrixTable->setColumnCount(11);
+    matrixTable->setHorizontalHeaderLabels({
+        "Mã SP", "Tên sản phẩm",
+        "HT (Khả dụng)", "Thực (Khả dụng)", "Lệch KD",
+        "HT (Bảo hành)", "Thực (Bảo hành)", "Lệch BH",
+        "HT (Phế phẩm)", "Thực (Phế phẩm)", "Lệch PP"
+    });
+    matrixTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    matrixTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    for (int c = 2; c < 11; ++c) {
+        matrixTable->horizontalHeader()->setSectionResizeMode(c, QHeaderView::ResizeToContents);
+    }
+    matrixTable->setAlternatingRowColors(true);
+    matrixTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    matrixTable->setSelectionMode(QAbstractItemView::SingleSelection);
+    t1Layout->addWidget(matrixTable);
+    tabWidget->addTab(tab1, "📊 Bảng Chênh Lệch Sản Phẩm");
+
+    // Tab 2: Unit details (for UNIT checks)
+    auto* tab2 = new QWidget();
+    auto* t2Layout = new QVBoxLayout(tab2);
+    t2Layout->setContentsMargins(8, 8, 8, 8);
+    unitTable = new QTableWidget(tab2);
+    unitTable->setColumnCount(7);
+    unitTable->setHorizontalHeaderLabels({
+        "Mã Serial", "Mã SP", "Tên sản phẩm", "Trạng thái HT", "Trạng thái Quét", "Phân loại", "Ghi chú"
+    });
+    unitTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    unitTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+    unitTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
+    for (int c = 3; c < 7; ++c) {
+        unitTable->horizontalHeader()->setSectionResizeMode(c, QHeaderView::ResizeToContents);
+    }
+    unitTable->setAlternatingRowColors(true);
+    t2Layout->addWidget(unitTable);
+    tabWidget->addTab(tab2, "🔍 Chi Tiết Từng Linh Kiện (Unit)");
+
+    mainLayout->addWidget(tabWidget, 1);
+
+    // Bottom buttons
+    auto* bottomBar = new QHBoxLayout();
+    fillBtn = new QPushButton("➕ Điền sản phẩm đã chọn vào đơn", this);
+    fillBtn->setStyleSheet("background-color: #2563eb; color: #ffffff; font-weight: 600; padding: 8px 16px; border-radius: 6px;");
+    fillBtn->setEnabled(false);
+
+    closeBtn = new QPushButton("Đóng", this);
+    closeBtn->setStyleSheet("padding: 8px 16px;");
+
+    bottomBar->addWidget(fillBtn);
+    bottomBar->addStretch();
+    bottomBar->addWidget(closeBtn);
+    mainLayout->addLayout(bottomBar);
+
+    connect(diffOnlyCheck, &QCheckBox::toggled, this, &InventoryCheckInspectDialog::renderMatrixTable);
+    connect(matrixTable, &QTableWidget::itemSelectionChanged, [this]() {
+        int r = matrixTable->currentRow();
+        if (r >= 0 && matrixTable->item(r, 0)) {
+            int pid = matrixTable->item(r, 0)->data(Qt::UserRole).toInt();
+            for (const auto& m : matrixList) {
+                if (m.productId == pid) {
+                    selectedPid = m.productId;
+                    selectedPCode = m.code;
+                    selectedPName = m.name;
+                    selectedDiffAvail = m.diffAvail;
+                    selectedDiffWarr = m.diffWarr;
+                    selectedDiffScrap = m.diffScrap;
+                    fillBtn->setEnabled(true);
+                    return;
+                }
+            }
+        }
+        fillBtn->setEnabled(false);
+    });
+    connect(fillBtn, &QPushButton::clicked, this, &QDialog::accept);
+    connect(closeBtn, &QPushButton::clicked, this, &QDialog::reject);
+}
+
+void InventoryCheckInspectDialog::loadCheckData()
+{
+    if (!db) return;
+    matrixList.clear();
+    unitList.clear();
+
+    Table* chkTbl = db->getTable("inventory_check");
+    if (!chkTbl) return;
+
+    const Record* cRec = nullptr;
+    for (size_t i = 0; i < chkTbl->getRows().size(); ++i) {
+        if (chkTbl->isRowDeleted(i)) continue;
+        const auto& r = chkTbl->getRows()[i];
+        if (r.has("check_code") && std::holds_alternative<std::string>(r.get("check_code"))) {
+            if (QString::fromStdString(std::get<std::string>(r.get("check_code"))) == targetCheckCode) {
+                cRec = &r;
+                break;
+            }
+        }
+        if (r.has("check_id") && std::holds_alternative<int>(r.get("check_id"))) {
+            if (QString::number(std::get<int>(r.get("check_id"))) == targetCheckCode) {
+                cRec = &r;
+                break;
+            }
+        }
+    }
+
+    if (!cRec) {
+        infoLabel->setText(QString("<b style='color:#dc2626;'>Không tìm thấy thông tin đợt kiểm kê '%1'.</b>").arg(targetCheckCode));
+        return;
+    }
+
+    checkId = std::get<int>(cRec->get("check_id"));
+    checkCode = QString::fromStdString(std::get<std::string>(cRec->get("check_code")));
+    checkType = cRec->has("check_type") && std::holds_alternative<std::string>(cRec->get("check_type")) ? QString::fromStdString(std::get<std::string>(cRec->get("check_type"))) : "";
+    checkStatus = cRec->has("status") && std::holds_alternative<std::string>(cRec->get("status")) ? QString::fromStdString(std::get<std::string>(cRec->get("status"))) : "";
+    checkedAt = cRec->has("checked_at") && std::holds_alternative<std::string>(cRec->get("checked_at")) ? QString::fromStdString(std::get<std::string>(cRec->get("checked_at"))) : "";
+    note = cRec->has("note") && std::holds_alternative<std::string>(cRec->get("note")) ? QString::fromStdString(std::get<std::string>(cRec->get("note"))) : "";
+
+    QString stColor = (checkStatus == "COMPLETED") ? "#16a34a" : "#ca8a04";
+    infoLabel->setText(QString("<b>Mã đợt:</b> %1 &nbsp;&nbsp;|&nbsp;&nbsp; <b>Loại kiểm:</b> %2 &nbsp;&nbsp;|&nbsp;&nbsp; <b>Trạng thái:</b> <span style='color:%3; font-weight:bold;'>%4</span> &nbsp;&nbsp;|&nbsp;&nbsp; <b>Ngày kiểm:</b> %5 &nbsp;&nbsp;|&nbsp;&nbsp; <b>Ghi chú:</b> %6")
+        .arg(checkCode, checkType, stColor, checkStatus, checkedAt, note.isEmpty() ? "(Không)" : note));
+
+    // Tab 2 visibility
+    if (tabWidget) {
+        tabWidget->setTabVisible(1, checkType == "UNIT");
+    }
+
+    // Load quantity matrix
+    Table* qTbl = db->getTable("inventory_check_quantity");
+    Table* pTbl = db->getTable("product");
+    if (qTbl && pTbl) {
+        Vector<Record> qRecs = Query::filterRecords(*qTbl, "check_id", Value(checkId));
+        for (size_t i = 0; i < qRecs.size(); ++i) {
+            const auto& qr = qRecs[i];
+            int pid = qr.has("product_id") && std::holds_alternative<int>(qr.get("product_id")) ? std::get<int>(qr.get("product_id")) : 0;
+            const Record* pr = pTbl->getRecordById(pid);
+
+            MatrixItem mi;
+            mi.productId = pid;
+            mi.code = (pr && pr->has("product_code") && std::holds_alternative<std::string>(pr->get("product_code"))) ? QString::fromStdString(std::get<std::string>(pr->get("product_code"))) : QString("SP-%1").arg(pid);
+            mi.name = (pr && pr->has("product_name") && std::holds_alternative<std::string>(pr->get("product_name"))) ? QString::fromStdString(std::get<std::string>(pr->get("product_name"))) : "";
+            mi.sysAvail = qr.has("system_available_quan") && std::holds_alternative<int>(qr.get("system_available_quan")) ? std::get<int>(qr.get("system_available_quan")) : 0;
+            mi.actAvail = qr.has("actual_available_quan") && std::holds_alternative<int>(qr.get("actual_available_quan")) ? std::get<int>(qr.get("actual_available_quan")) : 0;
+            mi.diffAvail = mi.actAvail - mi.sysAvail;
+
+            mi.sysWarr = qr.has("system_warranty_quan") && std::holds_alternative<int>(qr.get("system_warranty_quan")) ? std::get<int>(qr.get("system_warranty_quan")) : 0;
+            mi.actWarr = qr.has("actual_warranty_quan") && std::holds_alternative<int>(qr.get("actual_warranty_quan")) ? std::get<int>(qr.get("actual_warranty_quan")) : 0;
+            mi.diffWarr = mi.actWarr - mi.sysWarr;
+
+            mi.sysScrap = qr.has("system_scrapped_quan") && std::holds_alternative<int>(qr.get("system_scrapped_quan")) ? std::get<int>(qr.get("system_scrapped_quan")) : 0;
+            mi.actScrap = qr.has("actual_scrapped_quan") && std::holds_alternative<int>(qr.get("actual_scrapped_quan")) ? std::get<int>(qr.get("actual_scrapped_quan")) : 0;
+            mi.diffScrap = mi.actScrap - mi.sysScrap;
+
+            matrixList.push_back(mi);
+        }
+    }
+
+    // Load unit details
+    if (checkType == "UNIT") {
+        Table* uChk = db->getTable("inventory_check_unit");
+        Table* qChk = db->getTable("inventory_check_quantity");
+        std::unordered_map<int, int> qIdToPid;
+        if (qChk) {
+            Vector<Record> qRecs = Query::filterRecords(*qChk, "check_id", Value(checkId));
+            for (size_t i = 0; i < qRecs.size(); ++i) {
+                int qid = qRecs[i].has("check_quantity_id") && std::holds_alternative<int>(qRecs[i].get("check_quantity_id")) ? std::get<int>(qRecs[i].get("check_quantity_id")) : 0;
+                int pid = qRecs[i].has("product_id") && std::holds_alternative<int>(qRecs[i].get("product_id")) ? std::get<int>(qRecs[i].get("product_id")) : 0;
+                if (qid > 0 && pid > 0) qIdToPid[qid] = pid;
+            }
+        }
+
+        if (uChk && pTbl) {
+            Vector<Record> uRecs = Query::filterRecords(*uChk, "check_id", Value(checkId));
+            for (size_t i = 0; i < uRecs.size(); ++i) {
+                const auto& ur = uRecs[i];
+                int qid = ur.has("check_quantity_id") && std::holds_alternative<int>(ur.get("check_quantity_id")) ? std::get<int>(ur.get("check_quantity_id")) : 0;
+                int pid = ur.has("product_id") && std::holds_alternative<int>(ur.get("product_id")) ? std::get<int>(ur.get("product_id")) : 0;
+                if (pid == 0 && qIdToPid.count(qid)) pid = qIdToPid[qid];
+
+                const Record* pr = pTbl->getRecordById(pid);
+
+                UnitItem ui;
+                ui.serial = ur.has("serial") && std::holds_alternative<std::string>(ur.get("serial")) ? QString::fromStdString(std::get<std::string>(ur.get("serial"))) : "";
+                ui.productId = pid;
+                ui.pCode = (pr && pr->has("product_code") && std::holds_alternative<std::string>(pr->get("product_code"))) ? QString::fromStdString(std::get<std::string>(pr->get("product_code"))) : QString("SP-%1").arg(pid);
+                ui.pName = (pr && pr->has("product_name") && std::holds_alternative<std::string>(pr->get("product_name"))) ? QString::fromStdString(std::get<std::string>(pr->get("product_name"))) : "";
+                ui.sysStatus = ur.has("system_status") && !isNull(ur.get("system_status")) && std::holds_alternative<std::string>(ur.get("system_status")) ? QString::fromStdString(std::get<std::string>(ur.get("system_status"))) : "(Không có)";
+                ui.actStatus = ur.has("scanned_status") && !isNull(ur.get("scanned_status")) && std::holds_alternative<std::string>(ur.get("scanned_status")) ? QString::fromStdString(std::get<std::string>(ur.get("scanned_status"))) : "(Chưa quét / Mất)";
+
+                if (ui.sysStatus == "(Không có)" || ui.sysStatus == "OUT") {
+                    ui.eval = "Hàng thừa / Lạ";
+                } else if (ui.actStatus.startsWith("(Chưa") || ui.actStatus == "MISSING") {
+                    ui.eval = "Hàng thiếu (Mất)";
+                } else if (ui.sysStatus != ui.actStatus) {
+                    ui.eval = QString("Lệch TT (%1 -> %2)").arg(ui.sysStatus, ui.actStatus);
+                } else {
+                    ui.eval = "Khớp";
+                }
+
+                unitList.push_back(ui);
+            }
+        }
+    }
+
+    renderMatrixTable();
+    renderUnitTable();
+}
+
+void InventoryCheckInspectDialog::renderMatrixTable()
+{
+    if (!matrixTable) return;
+    bool diffOnly = diffOnlyCheck && diffOnlyCheck->isChecked();
+
+    std::vector<MatrixItem> displayList;
+    for (const auto& m : matrixList) {
+        if (!diffOnly || (m.diffAvail != 0 || m.diffWarr != 0 || m.diffScrap != 0)) {
+            displayList.push_back(m);
+        }
+    }
+
+    matrixTable->setRowCount(static_cast<int>(displayList.size()));
+    for (int r = 0; r < static_cast<int>(displayList.size()); ++r) {
+        const auto& m = displayList[r];
+
+        auto* codeItem = new QTableWidgetItem(m.code);
+        codeItem->setData(Qt::UserRole, m.productId);
+        matrixTable->setItem(r, 0, codeItem);
+        matrixTable->setItem(r, 1, new QTableWidgetItem(m.name));
+
+        auto setCell = [this, r](int col, int val, int diff) {
+            auto* item = new QTableWidgetItem(QString::number(val));
+            item->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+            if (col == 4 || col == 7 || col == 10) {
+                if (diff > 0) {
+                    item->setText("+" + QString::number(diff));
+                    item->setForeground(QBrush(QColor("#16a34a"))); // Green
+                    item->setFont(QFont("Segoe UI", 9, QFont::Bold));
+                } else if (diff < 0) {
+                    item->setText(QString::number(diff));
+                    item->setForeground(QBrush(QColor("#dc2626"))); // Red
+                    item->setFont(QFont("Segoe UI", 9, QFont::Bold));
+                } else {
+                    item->setForeground(QBrush(QColor("#64748b"))); // Grey
+                }
+            }
+            matrixTable->setItem(r, col, item);
+        };
+
+        setCell(2, m.sysAvail, 0);
+        setCell(3, m.actAvail, 0);
+        setCell(4, m.diffAvail, m.diffAvail);
+
+        setCell(5, m.sysWarr, 0);
+        setCell(6, m.actWarr, 0);
+        setCell(7, m.diffWarr, m.diffWarr);
+
+        setCell(8, m.sysScrap, 0);
+        setCell(9, m.actScrap, 0);
+        setCell(10, m.diffScrap, m.diffScrap);
+    }
+}
+
+void InventoryCheckInspectDialog::renderUnitTable()
+{
+    if (!unitTable) return;
+    unitTable->setRowCount(static_cast<int>(unitList.size()));
+    for (int r = 0; r < static_cast<int>(unitList.size()); ++r) {
+        const auto& u = unitList[r];
+        unitTable->setItem(r, 0, new QTableWidgetItem(u.serial));
+        unitTable->setItem(r, 1, new QTableWidgetItem(u.pCode));
+        unitTable->setItem(r, 2, new QTableWidgetItem(u.pName));
+        unitTable->setItem(r, 3, new QTableWidgetItem(u.sysStatus));
+        unitTable->setItem(r, 4, new QTableWidgetItem(u.actStatus));
+
+        auto* evalItem = new QTableWidgetItem(u.eval);
+        if (u.eval.contains("thừa")) evalItem->setForeground(QBrush(QColor("#2563eb")));
+        else if (u.eval.contains("thiếu")) evalItem->setForeground(QBrush(QColor("#dc2626")));
+        else if (u.eval.contains("Lệch")) evalItem->setForeground(QBrush(QColor("#d97706")));
+        else evalItem->setForeground(QBrush(QColor("#16a34a")));
+        unitTable->setItem(r, 5, evalItem);
+        unitTable->setItem(r, 6, new QTableWidgetItem(""));
+    }
 }
