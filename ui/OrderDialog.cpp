@@ -3607,8 +3607,7 @@ void UnitEntryDialog::showToast(const QString& message, bool isSuccess)
     QString bgColor = isSuccess ? "#16a34a" : "#dc2626";
     toastOverlayLabel->setStyleSheet(
         QString("QLabel { background-color: %1; color: #ffffff; font-weight: 600; font-size: 13px; "
-                "border-radius: 8px; padding: 10px 16px; border: 1px solid rgba(255,255,255,0.25); "
-                "box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }").arg(bgColor)
+                "border-radius: 8px; padding: 10px 16px; border: 1px solid rgba(255,255,255,0.25); }").arg(bgColor)
     );
     toastOverlayLabel->setText(message);
     toastOverlayLabel->adjustSize();

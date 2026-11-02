@@ -41,10 +41,45 @@ namespace {
         return 0;
     }
 
+    QString commonDialogStyleSheet() {
+        return
+            "QDialog { background-color: #f8fafc; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; }"
+            "QGroupBox {"
+            "  font-weight: 600;"
+            "  font-size: 13px;"
+            "  color: #1e293b;"
+            "  border: 1px solid #cbd5e1;"
+            "  border-radius: 8px;"
+            "  margin-top: 10px;"
+            "  padding: 14px 14px 12px 14px;"
+            "  background-color: #ffffff;"
+            "}"
+            "QGroupBox::title {"
+            "  subcontrol-origin: margin;"
+            "  subcontrol-position: top left;"
+            "  padding: 0 6px;"
+            "  color: #2563eb;"
+            "}"
+            "QLabel { color: #334155; font-size: 12px; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; }"
+            "QLineEdit, QComboBox, QSpinBox, QDateEdit {"
+            "  background-color: #ffffff;"
+            "  border: 1px solid #cbd5e1;"
+            "  border-radius: 6px;"
+            "  padding: 6px 10px;"
+            "  font-size: 12px;"
+            "  color: #0f172a;"
+            "  font-family: 'Segoe UI', Tahoma, Arial, sans-serif;"
+            "}"
+            "QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDateEdit:focus { border: 1.5px solid #2563eb; }"
+            "QTableWidget { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; font-size: 12px; }"
+            "QHeaderView::section { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; font-weight: 600; font-size: 12px; }";
+    }
+
     QTableWidgetItem* makeItem(const QString& txt, Qt::Alignment align = Qt::AlignLeft | Qt::AlignVCenter) {
         auto* it = new QTableWidgetItem(txt);
         it->setTextAlignment(align);
         it->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
+        it->setFont(QFont("Segoe UI", 9));
         return it;
     }
 }
@@ -63,6 +98,7 @@ InventoryCheckCreateDialog::InventoryCheckCreateDialog(Database* database, QWidg
     } else {
         resize(1100, 750);
     }
+    setStyleSheet(commonDialogStyleSheet());
     setupUI();
     loadProducts();
 }
@@ -301,6 +337,7 @@ UnrecordedSurplusDialog::UnrecordedSurplusDialog(Database* database, int id, con
 {
     setWindowTitle("➕ Ghi Nhận Hàng Thừa Chưa Định Danh (Rule 5.3.1 Type 2 Surplus)");
     resize(580, 360);
+    setStyleSheet(commonDialogStyleSheet());
     setupUI();
 }
 
@@ -421,6 +458,7 @@ InventoryCheckReconciliationDialog::InventoryCheckReconciliationDialog(Database*
     setWindowTitle("Báo Cáo Bất Thường & Lập Chứng Từ Điều Chỉnh Kho (Rule 5.3.2 3-Tier Funnel)");
     setWindowFlags(windowFlags() | Qt::WindowMaximizeButtonHint | Qt::WindowMinimizeButtonHint);
     resize(1150, 780);
+    setStyleSheet(commonDialogStyleSheet());
 
     Table* chkTbl = db ? db->getTable("inventory_check") : nullptr;
     if (chkTbl && checkId > 0) {
@@ -1256,6 +1294,9 @@ InventoryCheckDetailDialog::InventoryCheckDetailDialog(Database* database, int i
     } else {
         resize(1280, 850);
     }
+    setMinimumSize(1080, 700);
+    setStyleSheet(commonDialogStyleSheet());
+
     loadCheckInfo();
     setupUI();
     loadQuantityData();
@@ -1289,6 +1330,7 @@ void InventoryCheckDetailDialog::loadCheckInfo()
 void InventoryCheckDetailDialog::setupUI()
 {
     auto* mainLayout = new QVBoxLayout(this);
+    mainLayout->setSizeConstraint(QLayout::SetNoConstraint);
     mainLayout->setContentsMargins(14, 14, 14, 14);
     mainLayout->setSpacing(10);
 
@@ -1459,6 +1501,7 @@ void InventoryCheckDetailDialog::setupUI()
         sMainLayout->addLayout(sRow1);
 
         serialFeedbackLabel = new QLabel("⚪ Sẵn sàng quét mã Serial linh kiện...", scanGroup);
+        serialFeedbackLabel->setWordWrap(true);
         serialFeedbackLabel->setStyleSheet("font-size: 12px; color: #64748b; font-weight: 600; padding: 2px 0px;");
         sMainLayout->addWidget(serialFeedbackLabel);
 
@@ -1466,11 +1509,12 @@ void InventoryCheckDetailDialog::setupUI()
 
         // Filter Bar for Detail Table
         auto* dFilterBar = new QHBoxLayout();
-        filterScopeLabel = new QLabel("Phạm vi hiển thị: <b>Tất cả sản phẩm</b>", detailWidget);
+        filterScopeLabel = new QLabel("Phạm vi: <b>Tất cả sản phẩm</b>", detailWidget);
         filterScopeLabel->setStyleSheet("color: #0f172a; font-size: 12px;");
+        filterScopeLabel->setMaximumWidth(280);
         dFilterBar->addWidget(filterScopeLabel);
 
-        clearProductFilterBtn = new QPushButton("❌ Bỏ lọc SP", detailWidget);
+        clearProductFilterBtn = new QPushButton("✕ Bỏ lọc", detailWidget);
         clearProductFilterBtn->setStyleSheet("background-color: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; border-radius: 4px; padding: 2px 8px; font-size: 11px;");
         clearProductFilterBtn->setVisible(false);
         connect(clearProductFilterBtn, &QPushButton::clicked, [this]() {
@@ -1478,18 +1522,19 @@ void InventoryCheckDetailDialog::setupUI()
         });
         dFilterBar->addWidget(clearProductFilterBtn);
 
-        dFilterBar->addSpacing(16);
+        dFilterBar->addSpacing(12);
         unitSearchEdit = new QLineEdit(detailWidget);
         unitSearchEdit->setPlaceholderText("🔍 Tìm Serial / Tên SP...");
         unitSearchEdit->setClearButtonEnabled(true);
-        unitSearchEdit->setMaximumWidth(220);
+        unitSearchEdit->setMaximumWidth(180);
         dFilterBar->addWidget(unitSearchEdit);
 
         unitStatusFilterCombo = new QComboBox(detailWidget);
-        unitStatusFilterCombo->addItem("Tất cả trạng thái", "ALL");
-        unitStatusFilterCombo->addItem("Chưa kiểm tra (Unverified)", "UNCHECKED");
-        unitStatusFilterCombo->addItem("Khớp hoàn toàn", "MATCHED");
-        unitStatusFilterCombo->addItem("Bất thường (Lệch/Thiếu/Thừa)", "ABNORMAL");
+        unitStatusFilterCombo->addItem("✅ Đã kiểm đếm (Mặc định)", "CHECKED");
+        unitStatusFilterCombo->addItem("Tất cả (Bao gồm chưa kiểm)", "ALL");
+        unitStatusFilterCombo->addItem("⚪ Chưa kiểm đếm", "UNCHECKED");
+        unitStatusFilterCombo->addItem("🟢 Khớp hoàn toàn", "MATCHED");
+        unitStatusFilterCombo->addItem("⚠️ Bất thường (Thừa/Lệch/Thiếu)", "ABNORMAL");
         dFilterBar->addWidget(unitStatusFilterCombo);
 
         abnormalOnlyCheck = new QCheckBox("Chỉ hiện bất thường", detailWidget);
@@ -1589,6 +1634,8 @@ void InventoryCheckDetailDialog::setupUI()
     // Bottom Action Bar
     auto* bottomBar = new QHBoxLayout();
     pendingStatusSummaryLabel = new QLabel(this);
+    pendingStatusSummaryLabel->setWordWrap(true);
+    pendingStatusSummaryLabel->setMaximumWidth(380);
     pendingStatusSummaryLabel->setStyleSheet("font-size: 13px; font-weight: 500; color: #475569;");
     bottomBar->addWidget(pendingStatusSummaryLabel);
     bottomBar->addStretch();
@@ -1610,10 +1657,10 @@ void InventoryCheckDetailDialog::setupUI()
 
     refreshBtn = new QPushButton("🔄 Làm mới", this);
 
-    reconciliationBtn = new QPushButton("⚖️ Báo Cáo Bất Thường & Lập Chứng Từ Điều Chỉnh (ADJ)", this);
+    reconciliationBtn = new QPushButton("⚖️ Báo Cáo Đối Soát (ADJ)", this);
     reconciliationBtn->setStyleSheet("background-color: #d97706; color: #ffffff; font-weight: 600; padding: 8px 16px; border-radius: 6px;");
 
-    completeCheckBtn = new QPushButton("🏁 Hoàn thành Đợt kiểm kho (COMPLETED)", this);
+    completeCheckBtn = new QPushButton("🏁 Hoàn thành kiểm kho", this);
     completeCheckBtn->setStyleSheet("background-color: #16a34a; color: #ffffff; font-weight: 600; padding: 8px 16px; border-radius: 6px;");
     completeCheckBtn->setEnabled(!isLocked);
 
@@ -1649,10 +1696,13 @@ void InventoryCheckDetailDialog::filterUnitsByProduct(int pid, const QString& pC
     currentFilterProductId = pid;
     if (filterScopeLabel) {
         if (pid > 0) {
-            filterScopeLabel->setText(QString("Đang lọc theo: <b>[%1] %2</b>").arg(pCode, pName));
+            QString shortName = pName.length() > 30 ? (pName.left(27) + "...") : pName;
+            filterScopeLabel->setText(QString("Lọc: <b>[%1] %2</b>").arg(pCode, shortName));
+            filterScopeLabel->setToolTip(QString("[%1] %2").arg(pCode, pName));
             if (clearProductFilterBtn) clearProductFilterBtn->setVisible(true);
         } else {
-            filterScopeLabel->setText("Phạm vi hiển thị: <b>Tất cả sản phẩm</b>");
+            filterScopeLabel->setText("Phạm vi: <b>Tất cả sản phẩm</b>");
+            filterScopeLabel->setToolTip("");
             if (clearProductFilterBtn) clearProductFilterBtn->setVisible(false);
         }
     }
@@ -1691,6 +1741,7 @@ void InventoryCheckDetailDialog::refreshQuantityTablePreview()
 {
     if (!quantityTable) return;
 
+    quantityTable->setUpdatesEnabled(false);
     quantityTable->blockSignals(true);
     quantityTable->setRowCount(static_cast<int>(checkProductItems.size()));
     bool isLocked = (checkStatus == "COMPLETED" || checkStatus == "CANCELLED");
@@ -1848,6 +1899,7 @@ void InventoryCheckDetailDialog::refreshQuantityTablePreview()
     }
 
     quantityTable->blockSignals(false);
+    quantityTable->setUpdatesEnabled(true);
     if (quantitySummaryLabel) {
         quantitySummaryLabel->setText(
             QString("📊 <b>TIẾN ĐỘ SẢN PHẨM (%1 MẶT HÀNG)</b> (Click vào một dòng để lọc danh sách linh kiện bên dưới):")
@@ -1900,11 +1952,12 @@ void InventoryCheckDetailDialog::refreshUnitTable()
 {
     if (!unitTable) return;
 
+    unitTable->setUpdatesEnabled(false);
     unitTable->blockSignals(true);
     unitTable->setRowCount(0);
 
     QString search = unitSearchEdit ? unitSearchEdit->text().trimmed().toLower() : "";
-    QString stFilter = unitStatusFilterCombo ? unitStatusFilterCombo->currentData().toString() : "ALL";
+    QString stFilter = unitStatusFilterCombo ? unitStatusFilterCombo->currentData().toString() : "CHECKED";
     bool abnormalOnly = abnormalOnlyCheck ? abnormalOnlyCheck->isChecked() : false;
     bool isCompleted = (checkStatus == "COMPLETED");
 
@@ -1934,6 +1987,7 @@ void InventoryCheckDetailDialog::refreshUnitTable()
         bool isMatched = (!isUnchecked && !isSurplus && u.currentScannedStatus == u.systemStatus);
         bool isShift = (!isUnchecked && !isSurplus && u.currentScannedStatus != u.systemStatus && u.currentScannedStatus != "OUT");
         bool isAbnormal = (isSurplus || isMissing || isShift);
+        bool isChecked = (!isUnchecked || u.isNew);
 
         if (isMatched) matchedCount++;
         if (isMissing) missingCount++;
@@ -1941,7 +1995,8 @@ void InventoryCheckDetailDialog::refreshUnitTable()
         if (isShift) shiftCount++;
 
         if (abnormalOnly && !isAbnormal) continue;
-        if (stFilter == "UNCHECKED" && !isUnchecked) continue;
+        if (stFilter == "CHECKED" && !isChecked) continue;
+        if (stFilter == "UNCHECKED" && isChecked) continue;
         if (stFilter == "MATCHED" && !isMatched) continue;
         if (stFilter == "ABNORMAL" && !isAbnormal) continue;
 
@@ -1995,7 +2050,7 @@ void InventoryCheckDetailDialog::refreshUnitTable()
 
         auto* badgeItem = makeItem(badgeText);
         badgeItem->setForeground(badgeCol);
-        badgeItem->setFont(QFont("", -1, QFont::Bold));
+        badgeItem->setFont(QFont("Segoe UI", 9, QFont::Bold));
         unitTable->setItem(row, 5, badgeItem);
 
         // 6: Chuyển nhanh (QComboBox)
@@ -2043,7 +2098,7 @@ void InventoryCheckDetailDialog::refreshUnitTable()
         }
         auto* stageItem = makeItem(stageText);
         stageItem->setForeground(stageCol);
-        stageItem->setFont(QFont("", -1, QFont::Bold));
+        stageItem->setFont(QFont("Segoe UI", 9, QFont::Bold));
         unitTable->setItem(row, 7, stageItem);
 
         // 8: Thao tác (Delete button for soft-staged new units)
@@ -2070,12 +2125,14 @@ void InventoryCheckDetailDialog::refreshUnitTable()
     }
 
     unitTable->blockSignals(false);
+    unitTable->setUpdatesEnabled(true);
 
     if (unitSummaryLabel) {
+        int checkedCount = matchedCount + surplusCount + shiftCount + (isCompleted ? missingCount : 0);
         unitSummaryLabel->setText(
-            QString("Hiển thị %1 / %2 linh kiện | Khớp: %3, Thiếu: %4, Thừa: %5, Lệch TT: %6")
-                .arg(shownCount).arg(stagedUnits.size())
-                .arg(matchedCount).arg(missingCount).arg(surplusCount).arg(shiftCount)
+            QString("Hiển thị %1 / %2 đã kiểm (Tổng đợt: %3) | Khớp: %4, Thừa: %5, Lệch: %6, Thiếu: %7")
+                .arg(shownCount).arg(checkedCount).arg(stagedUnits.size())
+                .arg(matchedCount).arg(surplusCount).arg(shiftCount).arg(missingCount)
         );
     }
 }
@@ -2461,8 +2518,11 @@ bool InventoryCheckDetailDialog::recordSingleSerialFromSim(const QString& sn, in
         if (u.serial.compare(cleanSn, Qt::CaseInsensitive) == 0) {
             u.currentScannedStatus = status;
             u.isModified = (u.currentScannedStatus != u.savedScannedStatus);
+            recentScannedUnits.insert(recentScannedUnits.begin(), {u.checkUnitId, u.serial, u.productCode, u.productName, u.currentScannedStatus});
+            if (recentScannedUnits.size() > 3) recentScannedUnits.resize(3);
             refreshUnitTable();
             refreshQuantityTablePreview();
+            updateRecentUnitsBox();
             updateSaveButtonState();
             showToast(QString("⚡ [Mô phỏng] Đã ghi nhận [%1] -> %2 (Chờ lưu)").arg(cleanSn, status), true);
             return true;
@@ -2501,8 +2561,11 @@ bool InventoryCheckDetailDialog::recordSingleSerialFromSim(const QString& sn, in
     nu.addedTime = QDateTime::currentDateTime().toString("HH:mm:ss");
 
     stagedUnits.insert(stagedUnits.begin(), nu);
+    recentScannedUnits.insert(recentScannedUnits.begin(), {0, nu.serial, nu.productCode, nu.productName, nu.currentScannedStatus});
+    if (recentScannedUnits.size() > 3) recentScannedUnits.resize(3);
     refreshUnitTable();
     refreshQuantityTablePreview();
+    updateRecentUnitsBox();
     updateSaveButtonState();
     showToast(QString("⚡ [Mô phỏng] Đã chèn linh kiện lạ [%1] vào hàng đợi!").arg(cleanSn), true);
     return true;
@@ -2520,6 +2583,8 @@ void InventoryCheckDetailDialog::applyBatchSimulationUpdates(
                     u.currentScannedStatus = upd.second;
                     u.isModified = (u.currentScannedStatus != u.savedScannedStatus);
                     modCount++;
+                    recentScannedUnits.insert(recentScannedUnits.begin(), {u.checkUnitId, u.serial, u.productCode, u.productName, u.currentScannedStatus});
+                    if (recentScannedUnits.size() > 3) recentScannedUnits.resize(3);
                 }
                 break;
             }
@@ -2538,10 +2603,13 @@ void InventoryCheckDetailDialog::applyBatchSimulationUpdates(
             }
         }
         stagedUnits.insert(stagedUnits.begin(), nu);
+        recentScannedUnits.insert(recentScannedUnits.begin(), {0, nu.serial, nu.productCode, nu.productName, nu.currentScannedStatus});
+        if (recentScannedUnits.size() > 3) recentScannedUnits.resize(3);
     }
 
     refreshUnitTable();
     refreshQuantityTablePreview();
+    updateRecentUnitsBox();
     updateSaveButtonState();
     showToast(QString("🚀 [Mô phỏng] Đã áp dụng %1 cập nhật và %2 linh kiện mới vào hàng đợi (Chưa lưu)!")
         .arg(modCount).arg(newUnits.size()), true);
@@ -3024,8 +3092,7 @@ void InventoryCheckDetailDialog::showToast(const QString& message, bool isSucces
     QString bgColor = isSuccess ? "#16a34a" : "#dc2626";
     toastOverlayLabel->setStyleSheet(
         QString("QLabel { background-color: %1; color: #ffffff; font-weight: 600; font-size: 13px; "
-                "border-radius: 8px; padding: 10px 16px; border: 1px solid rgba(255,255,255,0.25); "
-                "box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }").arg(bgColor)
+                "border-radius: 8px; padding: 10px 16px; border: 1px solid rgba(255,255,255,0.25); }").arg(bgColor)
     );
     toastOverlayLabel->setText(message);
     toastOverlayLabel->adjustSize();
@@ -3077,11 +3144,8 @@ InventoryCheckSimulationDialog::InventoryCheckSimulationDialog(
 {
     setWindowTitle("🧪 Bộ Công Cụ Giả Lập & Kiểm Thử Kiểm Kê - Rule 7.2");
     setWindowFlags(windowFlags() | Qt::WindowMaximizeButtonHint | Qt::WindowMinimizeButtonHint);
-    if (parent) {
-        resize(parent->size() * 0.9);
-    } else {
-        resize(1000, 680);
-    }
+    setStyleSheet(commonDialogStyleSheet());
+    resize(980, 640);
     setMinimumSize(850, 520);
 
     setupUI();
@@ -3091,6 +3155,7 @@ InventoryCheckSimulationDialog::InventoryCheckSimulationDialog(
 void InventoryCheckSimulationDialog::setupUI()
 {
     auto* mainLayout = new QVBoxLayout(this);
+    mainLayout->setSizeConstraint(QLayout::SetNoConstraint);
     mainLayout->setContentsMargins(14, 14, 14, 14);
     mainLayout->setSpacing(10);
 
@@ -3329,6 +3394,7 @@ void InventoryCheckSimulationDialog::filterTable()
     if (!candidateTable) return;
 
     candidateTable->blockSignals(true);
+    candidateTable->setUpdatesEnabled(false);
     candidateTable->setRowCount(0);
 
     int selPid = productFilterCombo ? productFilterCombo->currentData().toInt() : 0;
@@ -3369,6 +3435,7 @@ void InventoryCheckSimulationDialog::filterTable()
         candidateTable->setItem(r, 5, makeItem(QString::number(itm.checkUnitId)));
     }
 
+    candidateTable->setUpdatesEnabled(true);
     candidateTable->blockSignals(false);
 }
 
@@ -3432,10 +3499,8 @@ void InventoryCheckSimulationDialog::onApplyBatchCandidates()
 
 void InventoryCheckSimulationDialog::onGenerateSingleSerial()
 {
-    static int simSeq = 100;
-    simSeq++;
-    qint64 t = QDateTime::currentSecsSinceEpoch();
-    QString sn = QString("SN-SIM-%1-%2").arg(t % 100000, 5, 10, QChar('0')).arg(simSeq);
+    std::string validSn = user_create::generateUniqueSerial(db);
+    QString sn = QString::fromStdString(validSn);
     if (generatedSerialDisplay) {
         generatedSerialDisplay->setText(sn);
     }
@@ -3513,7 +3578,6 @@ void InventoryCheckSimulationDialog::onRunFullAutoSimulation()
         // Generate 3 strange units within check scope
         auto prodList = checkDialog->getCheckProductsList();
         if (!prodList.empty()) {
-            qint64 t = QDateTime::currentSecsSinceEpoch();
             for (int k = 1; k <= 3; ++k) {
                 int pIdx = (k - 1) % prodList.size();
                 int pid = prodList[pIdx].first;
@@ -3522,7 +3586,7 @@ void InventoryCheckSimulationDialog::onRunFullAutoSimulation()
                 nu.checkUnitId = 0;
                 nu.checkQuantityId = 0;
                 nu.productId = pid;
-                nu.serial = QString("SN-STRANGE-%1-%2").arg(t % 10000, 4, 10, QChar('0')).arg(k);
+                nu.serial = QString::fromStdString(user_create::generateUniqueSerial(db));
                 nu.systemStatus = ""; // NULL in DB
                 nu.savedScannedStatus = "";
                 nu.currentScannedStatus = (k % 2 == 0) ? "AVAILABLE" : "WARRANTY";
