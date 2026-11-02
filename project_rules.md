@@ -233,6 +233,13 @@ The warehouse audit system provides two distinct inventory check types defined i
   - It is **strictly prohibited to add, remove, or modify** products in the audit scope of that inventory check.
   - In detailed unit checks (`CHK-UNIT`), candidate units verified in `inventory_check_unit` must strictly belong to the products declared in `inventory_check_quantity`.
 
+### 5.1.2 Core Separation of Stocktake Snapshot and Ledger Adjustment (Nguyên tắc tách biệt Phiếu Kiểm Kê và Chứng Từ Điều Chỉnh)
+- **Non-Mutating Audit Worksheet Principle**:
+  - `INVENTORY_CHECK`, `inventory_check_quantity`, and `inventory_check_unit` act strictly as **point-in-time stocktake snapshots and reconciliation worksheets**.
+  - Recording physical counts or scanning unit serials during an inventory check (`PENDING` / `IN_PROCESS` / `COMPLETED`) **must never directly mutate** `product` inventory counters (`available_quantity`, `warranty_quantity`, `scrapped_quantity`) or `unit_inventory.status`.
+- **Mandatory Document-Driven Reconciliation**:
+  - Every stock quantity or unit status correction uncovered by an audit must be executed **exclusively** through official post-check adjustment documents (`ADJUSTMENT_IN`, `ADJUSTMENT_OUT`, or `ADJUSTMENT_MOVEMENT`) linked via `source_code = check_code`, preserving a complete immutable audit trail in `status_history`.
+
 ### 5.2 Quantity Inventory Check (`CHK-QUAN`) Workflow & Discrepancy Adjustment Orders
 - **Initial Lifecycle State**:
   - Upon creation, every `INVENTORY_CHECK` starts strictly in the **`PENDING`** status.
@@ -260,7 +267,7 @@ The warehouse audit system provides two distinct inventory check types defined i
 ### 5.3 Detailed / Unit Inventory Check (`CHK-UNIT`) Workflow & Unit Adjustment Orders
 - **Initial Lifecycle State & Candidate Unit Verification**:
   - Upon creation, the check starts strictly in status **`PENDING`**.
-  - All candidate units in warehouse for the declared products are registered into `inventory_check_unit` with `scanned_status = NULL` (unverified).
+  - All candidate units in warehouse (`AVAILABLE`, `WARRANTY`, `SCRAPPED`) for the declared products are registered into `inventory_check_unit` with `scanned_status = NULL` (unverified).
   - The UI does **not pre-populate** units as verified; only when the user scans or inputs a specific serial number does that unit appear in the verified unit list, subsequently updating product counts and audit progress.
 - **Data Capture in `inventory_check_quantity` & `inventory_check_unit`**:
   - Product-level snapshot is recorded in `inventory_check_quantity`.
@@ -280,6 +287,42 @@ The warehouse audit system provides two distinct inventory check types defined i
     - All three types of orders (`ADJUSTMENT_IN`, `ADJUSTMENT_OUT`, `ADJUSTMENT_MOVEMENT`) can **ONLY** be generated after the inventory check has transitioned to **`COMPLETED`**.
   - **Explicit User Confirmation Gate (Chỉ tạo đơn nếu người dùng bấm xác nhận)**:
     - All three types of orders (`ADJUSTMENT_IN`, `ADJUSTMENT_OUT`, `ADJUSTMENT_MOVEMENT`) are created **only upon explicit user confirmation** ("nếu người dùng bấm xác nhận").
+
+#### 5.3.1 Unit-Level Discrepancy Classification & Scanning Rules (Quy tắc xử lý từng trường hợp Unit khi kiểm kê chi tiết)
+- **Out-of-Scope Scan Rejection (Chặn quét sản phẩm ngoài phạm vi kiểm kê)**:
+  - If the user scans a serial belonging to a `product_id` that was **not** declared in `inventory_check_quantity` for the active check, the system must immediately reject the scan with an explicit error alert (*"Sản phẩm không thuộc phạm vi đợt kiểm kê này"*).
+- **Normal Matched Unit (Unit khớp hoàn toàn)**:
+  - Precondition: Candidate unit has `system_status` in `{AVAILABLE, WARRANTY, SCRAPPED}` and is physically verified with `scanned_status == system_status`.
+  - Behavior: Marked as **Matched (`Khớp`)** and increments the corresponding `actual_*_quan` counter in `inventory_check_quantity`.
+- **Missing / Deficit Unit (Unit bị thiếu / vắng mặt)**:
+  - Precondition: Candidate unit has `system_status` in `{AVAILABLE, WARRANTY, SCRAPPED}`, and upon finalizing (`COMPLETED`) its `scanned_status` remains `NULL` (never scanned/found physically).
+  - Behavior: Flagged as **Missing (`Thiếu`, `-1`)**. Missing units **must never be deleted** from `unit_inventory`; instead, they are queued for an **`ADJUSTMENT_OUT`** transaction transitioning `system_status -> OUT`.
+- **Surplus / Overage Unit (Unit bị dư / thừa)** — strictly distinguishes two operational scenarios:
+  1. **Type 1 — Rediscovered `OUT` Unit (Tái phát hiện Unit đã xuất trên sổ `system_status == OUT`)**:
+     - When scanning an existing serial in `unit_inventory` whose current status is `OUT` (and whose `product_id` is within check scope), the system prompts a confirmation dialog notifying that the unit is recorded as `OUT` on ledger and asks the user to select its actual physical condition (`AVAILABLE`, `WARRANTY`, or `SCRAPPED`).
+     - Upon confirmation, a record is inserted into `inventory_check_unit` with `system_status = "OUT"` and `scanned_status = <selected_status>`, incrementing the corresponding `actual_*_quan` in `inventory_check_quantity`.
+  2. **Type 2 — Brand-New Unrecorded Unit (Hàng dư mới tinh chưa từng có mã Serial trong hệ thống `old_status == NULL`)**:
+     - Because internal serials (`SN-xxxxxxx`) are only minted upon official warehouse intake, **no draft or premature `unit_inventory` record may be created during `CHK-UNIT` counting** (preventing orphan serials if the check is later cancelled or edited).
+     - Unrecorded surplus units found physically are recorded at the product level via a **"+ Ghi nhận hàng thừa chưa định danh"** action on the product's `inventory_check_quantity` row, incrementing `actual_available_quan`, `actual_warranty_quan`, or `actual_scrapped_quan` beyond verified existing serials.
+     - Official `SN-xxxxxxx` serial generation and `unit_inventory` registration occur strictly during `Delivery` fulfillment of the subsequent **`ADJUSTMENT_IN`** transaction (`NULL -> AVAILABLE / WARRANTY / SCRAPPED`).
+- **Quality / Status Mismatch Unit (Unit có mặt nhưng lệch phẩm chất / trạng thái)**:
+  - Precondition: Candidate unit has `system_status` in `{AVAILABLE, WARRANTY, SCRAPPED}` and is physically verified with `scanned_status` in `{AVAILABLE, WARRANTY, SCRAPPED}` where `scanned_status != system_status`.
+  - Behavior: Total physical warehouse count remains unchanged ($\Delta_{\text{total}} = 0$), `actual_<scanned_status>_quan` is incremented instead of `system_status`, and the unit is flagged as **Status Shift (`Lệch trạng thái`)**, queued for **`ADJUSTMENT_MOVEMENT`** (`from_status = system_status -> to_status = scanned_status`).
+
+#### 5.3.2 Post-Check Abnormal Unit Summarization Funnel (Quy tắc tổng kết các Unit bất thường sau kiểm kê chi tiết)
+Once a `CHK-UNIT` audit transitions to `COMPLETED` (or enters reconciliation review), abnormal units must be summarized using a **3-Tier Reconciliation Funnel**:
+1. **Tier 1 — High-Level KPI Summary & Discrepancy Filter**:
+   - Displays check-wide totals: **System Stock**, **Actual Counted**, **Matched (`Khớp`)**, **Missing (`Thiếu -`)**, **Surplus (`Thừa +`: Rediscovered `OUT` + Unrecorded New)**, and **Status Shift (`Lệch trạng thái ⇄`)**.
+   - Provides a **`"Chỉ hiển thị bất thường"` (Show Discrepancies Only)** toggle (enabled by default upon check completion) to hide fully matched rows.
+2. **Tier 2 — Product-Level Reconciliation Matrix & Strict No-Netting Invariant (Quy tắc KHÔNG bù trừ ngang)**:
+   - Summarizes discrepancies per `product_id` with explicit separate columns: `Matched`, `Surplus (+)`, `Missing (-)`, and `Status Shift (⇄)`.
+   - **Strict No-Netting Rule in `CHK-UNIT` (Cấm cấn trừ ngang Thừa - Thiếu trên cùng sản phẩm)**: If a single product simultaneously has $+m$ surplus units (e.g., rediscovered `SN-999` or unrecorded item) and $-n$ missing units (e.g., absent `SN-001`), the system **must never net them off** into $(m - n)$ (even when $m == n$ yields zero net quantity difference). Both `+m Surplus` (requiring `ADJUSTMENT_IN`) and `-n Missing` (requiring `ADJUSTMENT_OUT`) must remain distinct so that individual serial identities in `unit_inventory` are accurately reconciled.
+3. **Tier 3 — Action-Oriented Grouping into 3 Reconciliation Buckets (Gom rổ theo 3 hướng xử lý chứng từ)**:
+   - All abnormal units/counts are automatically partitioned into 3 dedicated action tabs/buckets matching the 3 adjustment workflows:
+     - **Bucket 1 — Missing Units (`Cần Xuất Điều Chỉnh -> ADJUSTMENT_OUT`)**: Lists every unit with `system_status` in `{AVAILABLE, WARRANTY, SCRAPPED}` and `scanned_status == NULL`, grouped by product to generate `OUT-ADJ-xxxxxx`.
+     - **Bucket 2 — Surplus Units (`Cần Nhập Điều Chỉnh -> ADJUSTMENT_IN`)**: Lists all rediscovered `OUT` units (`system_status == "OUT"`, `scanned_status != NULL`) alongside unrecorded surplus quantities per product/condition to generate `IN-ADJ-xxxxxx`.
+     - **Bucket 3 — Status Shift Units (`Cần Điều Chỉnh Nội Bộ -> ADJUSTMENT_MOVEMENT`)**: Aggregates status-mismatched units by transition tuple `(product_id, from_status, to_status)` with `adjust_quantity` and expandable serial lists underneath, ready to generate `ADJ-<reason>-xxxxxx`.
+   - **Idempotent Action Locking**: Once an order for a bucket has been generated (linked via `source_code = check_code`), that bucket's creation button is permanently disabled and displays the linked document code (e.g., `"Đã lập phiếu: OUT-ADJ-000001"`).
 
 ### 5.4 Internal Status Adjustment Movement (`ADJUSTMENT_MOVEMENT`)
 - Used exclusively for shifting the status of existing warehouse units internally without moving them in or out of the warehouse.
@@ -444,9 +487,19 @@ All auto-generated codes and user inputs must strictly conform to `QuanLyKhoHang
        - Displays calculated discrepancy.
        - Features an explicit action button: **"Xác nhận tạo đơn điều chỉnh"**. Clicking this button creates the corresponding `ADJUSTMENT_IN` or `ADJUSTMENT_OUT` transaction (with `source_code = check_code`, `customer_id = NULL`).
     2. **Kiểm kho chi tiết (`CHK-UNIT`)**:
-       - Uses `inventory_check_quantity` as the high-level progress tracker showing how many units have been audited vs. system stock.
-       - Displays unit-by-unit verification list in `inventory_check_unit` (`system_status` and `scanned_status`).
-       - Features explicit action buttons: **"Tạo đơn nhập điều chỉnh (ADJ-IN)"**, **"Tạo đơn xuất điều chỉnh (ADJ-OUT)"**, and **"Tạo đơn điều chỉnh nội bộ (Movement)"**. Each order is generated **only upon user confirmation**.
+       - **Master–Detail Split View Layout**:
+         - *Top / Master Table (`inventory_check_quantity`)*: High-level progress tracker per product showing System Snapshot vs. Actual Verified counts, audit progress, and separate `Surplus (+)` / `Missing (-)` / `Status Shift (⇄)` indicators (strictly without netting off surplus against missing on the same SKU).
+         - *Bottom / Detail Panel (`inventory_check_unit` + Unified Scan Bar)*: Continuous barcode/serial scan bar alongside unit-by-unit reconciliation rows (`Serial | System Status | Scanned Status | Discrepancy Badge`).
+       - **Color-Coded Discrepancy Badges & Scan Prompts**:
+         - `Khớp (Matched)`: Green badge (`scanned_status == system_status`).
+         - `Thiếu (Missing)`: Red/Orange badge upon completion when `scanned_status == NULL`.
+         - `Thừa - Tái phát hiện (Surplus - Rediscovered OUT)`: Blue/Amber badge when scanning an `OUT` serial; opens a confirmation prompt to pick physical status (`AVAILABLE` / `WARRANTY` / `SCRAPPED`).
+         - `Thừa - Chưa định danh (Surplus - Unrecorded)`: Recorded per product via **"+ Ghi nhận hàng thừa chưa định danh"** without creating premature `unit_inventory` rows before `ADJUSTMENT_IN` delivery.
+         - `Lệch trạng thái (Status Shift)`: Purple/Amber badge when `scanned_status != system_status` within warehouse statuses.
+         - Scanning any serial outside the declared product scope triggers an immediate warning popup (*"Sản phẩm không thuộc phạm vi đợt kiểm kê này"*).
+       - **Post-Completion 3-Tier Abnormal Summary Dialog / View**:
+         - Displays top KPI summary cards (System, Counted, Matched, Missing, Surplus, Status Shift) and auto-enables the **`[✓] Chỉ hiển thị bất thường`** filter toggle.
+         - Organizes discrepancies into **3 Action-Oriented Tabs** corresponding to the 3 explicit action buttons: **"Tạo đơn xuất điều chỉnh (ADJ-OUT)"**, **"Tạo đơn nhập điều chỉnh (ADJ-IN)"**, and **"Tạo đơn điều chỉnh nội bộ (Movement)"**. Each order is generated **only upon user confirmation**, after which its button locks and displays the generated document code.
 - **Internal Adjustment Movement Interface (Điều Chỉnh Nội Bộ)**:
   - **Upfront Detail Declaration**: When creating an adjustment movement, users must configure all item shift details (`product_id`, `from_status`, `to_status`, `adjust_quantity`) upfront. Once confirmed and saved, the detail rows in `adjust_movement_detail` are permanently locked (no adding, editing, or deleting lines).
   - Displays records from `ADJUSTMENT_MOVEMENT` and `adjust_movement_detail`.
