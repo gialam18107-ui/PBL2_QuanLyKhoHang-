@@ -25,6 +25,18 @@ namespace Generator
         int shipmentsGenerated = 0;
         int unitsShipped = 0;
         int inventoryChecksGenerated = 0;
+        int adjustmentMovementsGenerated = 0;
+    };
+
+    /**
+     * @brief An item declaration for internal status adjustment movements.
+     */
+    struct AdjustItem
+    {
+        int productId = 0;
+        string fromStatus;
+        string toStatus;
+        int quantity = 0;
     };
 
     /**
@@ -142,6 +154,21 @@ namespace Generator
                              const string& orderDate = "",
                              const string& note = "",
                              const string& sourceCode = "");
+
+        /**
+         * @brief Generate an internal adjustment movement (ADJUSTMENT_MOVEMENT and adjust_movement_detail).
+         * @param reason STD (STOCKTAKE_DIFF), DMG (DAMAGED), DTE (DATA_ERROR), OTH (OTHER).
+         * @param items List of status shift lines (productId, fromStatus, toStatus, quantity).
+         * @param adjustDate Date string (or generated if empty).
+         * @param sourceCode Check code reference (mandatory per Rule 5.5; auto-generated if empty).
+         * @param note Description note.
+         * @return Generated adjust_id, or -1 on error.
+         */
+        int generateAdjustmentMovement(const string& reason,
+                                       const Vector<AdjustItem>& items,
+                                       const string& adjustDate = "",
+                                       const string& sourceCode = "",
+                                       const string& note = "");
 
         /**
          * @brief Generate a batch of simulated transactions with random valid products and quantities.

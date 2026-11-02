@@ -122,6 +122,7 @@ try
     cout << "  - Shipments Completed:            " << summary.shipmentsGenerated << "\n";
     cout << "  - Inventory Units Shipped (OUT):  " << summary.unitsShipped << "\n";
     cout << "  - Inventory Checks Triggered:     " << summary.inventoryChecksGenerated << "\n";
+    cout << "  - Adjustment Movements Created:   " << summary.adjustmentMovementsGenerated << "\n";
     cout << "======================================================\n";
 
     // 5. Validate Integrity

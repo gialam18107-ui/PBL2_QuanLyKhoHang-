@@ -995,7 +995,7 @@ namespace Generator
                     {
                         if (st == "AVAILABLE" || st == "WARRANTY") eligibleCount++;
                     }
-                    else if (outboundType == "RETURN_TO_SUPPLIER")
+                    else if (outboundType == "RETURN_TO_SUPPLIER" || outboundType == "RTS")
                     {
                         if (st == "AVAILABLE" || st == "WARRANTY" || st == "SCRAPPED") eligibleCount++;
                     }
@@ -1017,9 +1017,9 @@ namespace Generator
         // Determine Type Code
         string typeCode = "SEL";
         if (outboundType == "ADJUSTMENT_OUT") typeCode = "ADJ";
-        else if (outboundType == "RETURN_TO_SUPPLIER") typeCode = "RTS";
-        else if (outboundType == "WARRANTY_RETURN") typeCode = "WRT";
-        else if (outboundType == "WARRANTY_REPLACEMENT_TO_CUSTOMER") typeCode = "WRC";
+        else if (outboundType == "RETURN_TO_SUPPLIER" || outboundType == "RTS") typeCode = "RTS";
+        else if (outboundType == "WARRANTY_RETURN" || outboundType == "WRT") typeCode = "WRT";
+        else if (outboundType == "WARRANTY_REPLACEMENT_TO_CUSTOMER" || outboundType == "WRC") typeCode = "WRC";
 
         int seq = (outboundTypeCounters.contains(typeCode) ? outboundTypeCounters[typeCode] : 0) + 1;
         outboundTypeCounters[typeCode] = seq;
@@ -1034,7 +1034,7 @@ namespace Generator
         {
             customerVal = Value{}; // NULL
         }
-        else if (outboundType == "WARRANTY_RETURN" || outboundType == "RETURN_TO_SUPPLIER")
+        else if (outboundType == "WARRANTY_RETURN" || outboundType == "RETURN_TO_SUPPLIER" || outboundType == "RTS")
         {
             customerVal = 4; // Supplier / Business
         }
@@ -1151,7 +1151,7 @@ namespace Generator
                         {
                             isEligible = (currentStatus == "AVAILABLE" || currentStatus == "WARRANTY");
                         }
-                        else if (outboundType == "RETURN_TO_SUPPLIER")
+                        else if (outboundType == "RETURN_TO_SUPPLIER" || outboundType == "RTS")
                         {
                             isEligible = (currentStatus == "AVAILABLE" || currentStatus == "WARRANTY" || currentStatus == "SCRAPPED");
                         }
@@ -1227,6 +1227,107 @@ namespace Generator
         return txnId;
     }
 
+    int DataGenerator::generateAdjustmentMovement(const string& reason,
+                                                  const Vector<AdjustItem>& items,
+                                                  const string& adjustDate,
+                                                  const string& sourceCode,
+                                                  const string& note)
+    {
+        Table* adjTbl = db.getTable("adjustment_movement");
+        Table* adjDetTbl = db.getTable("adjust_movement_detail");
+        Table* unitTbl = db.getTable("unit_inventory");
+        Table* histTbl = db.getTable("status_history");
+        Table* prodTbl = db.getTable("product");
+
+        if (!adjTbl || !adjDetTbl)
+        {
+            cerr << "[Generator Error] adjustment_movement or adjust_movement_detail table missing.\n";
+            return -1;
+        }
+
+        string fullReason = "STOCKTAKE_DIFF";
+        string reasonCode = "STD";
+        if (reason == "DAMAGED" || reason == "DMG") { fullReason = "DAMAGED"; reasonCode = "DMG"; }
+        else if (reason == "DATA_ERROR" || reason == "DTE") { fullReason = "DATA_ERROR"; reasonCode = "DTE"; }
+        else if (reason == "OTHER" || reason == "OTH") { fullReason = "OTHER"; reasonCode = "OTH"; }
+        else { fullReason = "STOCKTAKE_DIFF"; reasonCode = "STD"; }
+
+        string date = adjustDate.empty() ? getCurrentDate() : adjustDate;
+
+        string finalSource = sourceCode;
+        if (finalSource.empty())
+        {
+            Vector<int> pids;
+            for (size_t i = 0; i < items.size(); ++i) pids.push_back(items[i].productId);
+            finalSource = generateInventoryCheck("QUAN", date, pids);
+        }
+
+        int adjId = nextAdjustmentMovementId++;
+        string adjCode = "ADJ-" + reasonCode + "-" + formatNumber(nextAdjustSeq++, 6);
+
+        Record adjRec;
+        adjRec.set("adjust_id", adjId);
+        adjRec.set("adjust_code", adjCode);
+        adjRec.set("source_code", finalSource);
+        adjRec.set("reason", fullReason);
+        adjRec.set("adjusted_at", date);
+        adjRec.set("status", string("COMPLETED"));
+        adjRec.set("note", note.empty() ? string("Internal adjustment movement " + adjCode) : note);
+        adjTbl->insert(adjRec);
+
+        for (size_t i = 0; i < items.size(); ++i)
+        {
+            const auto& item = items[i];
+            int detId = nextAdjustDetailId++;
+
+            int moved = 0;
+            if (unitTbl)
+            {
+                auto& uRows = unitTbl->getRows();
+                for (size_t u = 0; u < uRows.size() && moved < item.quantity; ++u)
+                {
+                    if (get<int>(uRows[u].get("product_id")) == item.productId &&
+                        get<string>(uRows[u].get("status")) == item.fromStatus)
+                    {
+                        uRows[u].set("status", item.toStatus);
+                        int uId = get<int>(uRows[u].get("unit_id"));
+
+                        if (histTbl)
+                        {
+                            Record hRec;
+                            hRec.set("history_id", nextStatusHistoryId++);
+                            hRec.set("unit_id", uId);
+                            hRec.set("old_status", item.fromStatus);
+                            hRec.set("curr_status", item.toStatus);
+                            hRec.set("transaction", adjId);
+                            hRec.set("type", string("ADJUSTMENT"));
+                            histTbl->insert(hRec);
+                        }
+                        moved++;
+                    }
+                }
+            }
+
+            Record dRec;
+            dRec.set("adjust_detail_id", detId);
+            dRec.set("adjust_id", adjId);
+            dRec.set("product_id", item.productId);
+            dRec.set("from_status", item.fromStatus);
+            dRec.set("to_status", item.toStatus);
+            dRec.set("adjust_quantity", item.quantity);
+            dRec.set("actual_quantity", moved);
+            adjDetTbl->insert(dRec);
+        }
+
+        if (prodTbl)
+        {
+            syncProductQuantities();
+        }
+
+        cout << "[+] Generated Adjustment Movement: " << adjCode << " (ID: " << adjId << ")\n";
+        return adjId;
+    }
+
     GenerationSummary DataGenerator::generateBatch(int numInbound, int numOutbound, int numChecks, const string& startDate)
     {
         GenerationSummary summary;
@@ -1295,10 +1396,10 @@ namespace Generator
         }
 
         // Generate Outbound Transactions
-        const string outboundTypes[] = {"SELLING", "ADJUSTMENT_OUT", "SELLING"};
+        const string outboundTypes[] = {"SELLING", "ADJUSTMENT_OUT", "SELLING", "RETURN_TO_SUPPLIER"};
         for (int i = 0; i < numOutbound; i++)
         {
-            string outType = outboundTypes[nextRandom() % 3];
+            string outType = outboundTypes[nextRandom() % 4];
             int numItems = 1 + (nextRandom() % 2);
             int numShipments = 1;
 
@@ -1363,6 +1464,19 @@ namespace Generator
                 summary.inventoryChecksGenerated++;
             }
             curDate = advanceDate(curDate, 1);
+        }
+
+        // Optionally generate an adjustment movement linked to stock inspection
+        if (numChecks > 0 && !productIds.empty())
+        {
+            int pid = productIds[nextRandom() % productIds.size()];
+            Vector<AdjustItem> adjItems;
+            adjItems.push_back({pid, "AVAILABLE", "SCRAPPED", 1});
+            int movId = generateAdjustmentMovement("DAMAGED", adjItems, curDate);
+            if (movId > 0)
+            {
+                summary.adjustmentMovementsGenerated++;
+            }
         }
 
         return summary;
@@ -1620,6 +1734,89 @@ namespace Generator
             }
         }
 
+        // 8. Verify Adjustment Movements & single-check uniqueness (Rule 5.4 & 5.5)
+        Table* adjTbl = db.getTable("adjustment_movement");
+        Table* adjDetTbl = db.getTable("adjust_movement_detail");
+        if (adjTbl != nullptr)
+        {
+            HashMap<string, bool> seenAdjustCodes;
+            HashMap<string, bool> seenSourceCodes;
+            for (const auto& row : adjTbl->getRows())
+            {
+                if (holds_alternative<string>(row.get("adjust_code")))
+                {
+                    string code = get<string>(row.get("adjust_code"));
+                    if (seenAdjustCodes.contains(code))
+                    {
+                        cerr << "[-] Duplicate adjust_code in adjustment_movement: " << code << "\n";
+                        return false;
+                    }
+                    seenAdjustCodes[code] = true;
+                }
+
+                if (holds_alternative<string>(row.get("source_code")))
+                {
+                    string src = get<string>(row.get("source_code"));
+                    if (!src.empty())
+                    {
+                        if (seenSourceCodes.contains(src))
+                        {
+                            cerr << "[-] Duplicate source_code in adjustment_movement: " << src << "\n";
+                            return false;
+                        }
+                        seenSourceCodes[src] = true;
+
+                        if (!validCheckCodes.contains(src))
+                        {
+                            cerr << "[-] AdjustmentMovement references invalid check_code: " << src << "\n";
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (adjDetTbl != nullptr && adjTbl != nullptr)
+        {
+            HashMap<int, bool> validAdjustIds;
+            for (const auto& a : adjTbl->getRows())
+            {
+                validAdjustIds[get<int>(a.get("adjust_id"))] = true;
+            }
+
+            for (const auto& row : adjDetTbl->getRows())
+            {
+                int aId = get<int>(row.get("adjust_id"));
+                if (!validAdjustIds.contains(aId))
+                {
+                    cerr << "[-] AdjustMovementDetail references invalid adjust_id: " << aId << "\n";
+                    return false;
+                }
+                int pid = get<int>(row.get("product_id"));
+                if (!validProductIds.contains(pid))
+                {
+                    cerr << "[-] AdjustMovementDetail references invalid product_id: " << pid << "\n";
+                    return false;
+                }
+                int adjQty = get<int>(row.get("adjust_quantity"));
+                int actQty = get<int>(row.get("actual_quantity"));
+                if (actQty > adjQty)
+                {
+                    cerr << "[-] AdjustMovementDetail actual_quantity exceeds adjust_quantity\n";
+                    return false;
+                }
+                if (holds_alternative<string>(row.get("to_status")))
+                {
+                    string toSt = get<string>(row.get("to_status"));
+                    if (toSt == "OUT")
+                    {
+                        cerr << "[-] AdjustMovementDetail to_status must not be OUT (Rule 5.4)\n";
+                        return false;
+                    }
+                }
+            }
+        }
+
         return true;
     }
 
@@ -1751,12 +1948,13 @@ namespace Generator
             cout << "  1. Generate Inbound Transaction (Receiving Flow)    \n";
             cout << "  2. Generate Outbound Transaction (Dispatch Flow)    \n";
             cout << "  3. Perform Inventory Check (Audit: QUAN or UNIT)    \n";
-            cout << "  4. Toggle Product is_sold Status                    \n";
-            cout << "  5. Display Products & Stock Levels                  \n";
-            cout << "  6. View Inventory & Transaction Summary             \n";
-            cout << "  7. Auto Generate Random Batch                       \n";
-            cout << "  8. Validate Database Referential Integrity          \n";
-            cout << "  9. Save Database Changes to CSV                     \n";
+            cout << "  4. Generate Adjustment Movement (Internal Shift)    \n";
+            cout << "  5. Toggle Product is_sold Status                    \n";
+            cout << "  6. Display Products & Stock Levels                  \n";
+            cout << "  7. View Inventory & Transaction Summary             \n";
+            cout << "  8. Auto Generate Random Batch                       \n";
+            cout << "  9. Validate Database Referential Integrity          \n";
+            cout << " 10. Save Database Changes to CSV                     \n";
             cout << "  0. Exit                                             \n";
             cout << "======================================================\n";
             cout << "Enter your choice: ";
@@ -1917,6 +2115,59 @@ namespace Generator
             }
             else if (choice == 4)
             {
+                // Generate Adjustment Movement
+                cout << "\n--- GENERATE ADJUSTMENT MOVEMENT ---\n";
+                cout << "Select Reason:\n";
+                cout << "  1. STOCKTAKE_DIFF (Discrepancy from stock count)\n";
+                cout << "  2. DAMAGED (Damaged goods reclassified)\n";
+                cout << "  3. DATA_ERROR (Correction of data input error)\n";
+                cout << "  4. OTHER (Other warehouse reclassification)\n";
+                cout << "Enter choice (1-4): ";
+                int rChoice = 1;
+                cin >> rChoice;
+                string rsn = "STOCKTAKE_DIFF";
+                if (rChoice == 2) rsn = "DAMAGED";
+                else if (rChoice == 3) rsn = "DATA_ERROR";
+                else if (rChoice == 4) rsn = "OTHER";
+
+                printProductList();
+                cout << "Enter Product ID: ";
+                int pid = 0;
+                cin >> pid;
+
+                cout << "From Status (1=AVAILABLE, 2=WARRANTY, 3=SCRAPPED): ";
+                int fromStChoice = 1;
+                cin >> fromStChoice;
+                string fromSt = "AVAILABLE";
+                if (fromStChoice == 2) fromSt = "WARRANTY";
+                else if (fromStChoice == 3) fromSt = "SCRAPPED";
+
+                cout << "To Status (1=AVAILABLE, 2=WARRANTY, 3=SCRAPPED): ";
+                int toStChoice = 3;
+                cin >> toStChoice;
+                string toSt = "SCRAPPED";
+                if (toStChoice == 1) toSt = "AVAILABLE";
+                else if (toStChoice == 2) toSt = "WARRANTY";
+
+                cout << "Quantity to adjust: ";
+                int qty = 1;
+                cin >> qty;
+
+                cout << "Enter Source Check Code (leave empty to auto-generate): ";
+                string dummy, srcCode;
+                getline(cin, dummy);
+                getline(cin, srcCode);
+
+                Vector<AdjustItem> adjItems;
+                adjItems.push_back({pid, fromSt, toSt, qty});
+                int id = generateAdjustmentMovement(rsn, adjItems, "", srcCode);
+                if (id > 0)
+                {
+                    cout << "[SUCCESS] Adjustment Movement created with ID: " << id << "\n";
+                }
+            }
+            else if (choice == 5)
+            {
                 // Toggle Product is_sold
                 printProductList();
                 cout << "Enter Product ID to toggle is_sold: ";
@@ -1933,15 +2184,15 @@ namespace Generator
 
                 updateProductIsSold(pid, flag == 1, 1, reason);
             }
-            else if (choice == 5)
+            else if (choice == 6)
             {
                 printProductList();
             }
-            else if (choice == 6)
+            else if (choice == 7)
             {
                 printInventorySummary();
             }
-            else if (choice == 7)
+            else if (choice == 8)
             {
                 cout << "Enter number of Inbounds to generate: ";
                 int nIn = 5;
@@ -1964,14 +2215,15 @@ namespace Generator
                 cout << "  - Shipments Completed:          " << summary.shipmentsGenerated << "\n";
                 cout << "  - Units Dispatched (OUT):       " << summary.unitsShipped << "\n";
                 cout << "  - Inventory Checks Triggered:   " << summary.inventoryChecksGenerated << "\n";
+                cout << "  - Adjustment Movements Created: " << summary.adjustmentMovementsGenerated << "\n";
                 cout << "======================================================\n";
             }
-            else if (choice == 8)
+            else if (choice == 9)
             {
                 bool valid = validateIntegrity();
                 cout << "\n[+] Integrity validation: " << (valid ? "[PASSED] 100% VALID" : "[FAILED]") << "\n";
             }
-            else if (choice == 9)
+            else if (choice == 10)
             {
                 cout << "[+] Saving database to 'data' folder...\n";
                 bool saved = DataIO::DatabaseIO::writeAll(db, "data");
@@ -1979,7 +2231,7 @@ namespace Generator
             }
             else
             {
-                cout << "[!] Invalid option. Please choose between 0 and 9.\n";
+                cout << "[!] Invalid option. Please choose between 0 and 10.\n";
             }
         }
     }
