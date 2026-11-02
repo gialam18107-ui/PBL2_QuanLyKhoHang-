@@ -556,6 +556,7 @@ private:
     void refreshAllUnitsTable();
     void refreshRecentUnitsTable();
     void refreshBatchOverviewTable();
+    void updateSaveButtonState();
 
     void onDirectSerialEntered();
     void onOpenProductUnitPicker(int productId, const QString& pCode, const QString& pName, int missingQty);

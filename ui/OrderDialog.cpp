@@ -3505,6 +3505,7 @@ UnitEntryDialog::UnitEntryDialog(
     } else {
         mainTabWidget->setCurrentIndex(0);
     }
+    updateSaveButtonState();
 }
 
 UnitEntryDialog::~UnitEntryDialog()
@@ -4195,6 +4196,99 @@ void UnitEntryDialog::refreshBatchOverviewTable()
     batchOverviewTable->setUpdatesEnabled(true);
 }
 
+void UnitEntryDialog::updateSaveButtonState()
+{
+    if (!saveChangesBtn) return;
+    if (isLogisticsCompleted) {
+        saveChangesBtn->setEnabled(false);
+        saveChangesBtn->setVisible(false);
+        return;
+    }
+
+    int modCount = 0;
+    for (const auto& u : stagedUnits) {
+        if (u.isModified) modCount++;
+    }
+
+    int pendingInCount = static_cast<int>(pendingInboundUnits.size());
+    int pendingOutCount = static_cast<int>(pendingOutboundUnits.size());
+    int totalPending = (hubType == HubType::INBOUND) ? pendingInCount : pendingOutCount;
+
+    bool hasWork = (modCount > 0 || totalPending > 0);
+    saveChangesBtn->setEnabled(hasWork);
+
+    if (hubType == HubType::INBOUND) {
+        if (pendingInCount > 0) {
+            saveChangesBtn->setText(QString("💾 Xác nhận lưu kết quả (%1 unit chờ lưu)").arg(pendingInCount));
+        } else if (modCount > 0) {
+            saveChangesBtn->setText(QString("💾 Xác nhận lưu kết quả (%1 thay đổi)").arg(modCount));
+        } else {
+            saveChangesBtn->setText("💾 Xác nhận lưu kết quả");
+        }
+    } else {
+        if (pendingOutCount > 0) {
+            saveChangesBtn->setText(QString("💾 Xác nhận xuất kho (%1 unit chờ xuất)").arg(pendingOutCount));
+        } else if (modCount > 0) {
+            saveChangesBtn->setText(QString("💾 Xác nhận xuất kho (%1 thay đổi)").arg(modCount));
+        } else {
+            saveChangesBtn->setText("💾 Xác nhận xuất kho");
+        }
+    }
+
+    if (hasWork) {
+        saveChangesBtn->setStyleSheet(
+            "QPushButton {"
+            "  background-color: #2563eb;"
+            "  color: #ffffff;"
+            "  font-weight: bold;"
+            "  padding: 7px 20px;"
+            "  border-radius: 6px;"
+            "  border: none;"
+            "  font-size: 13px;"
+            "}"
+            "QPushButton:hover { background-color: #1d4ed8; }"
+            "QPushButton:pressed { background-color: #1e40af; }"
+        );
+        saveChangesBtn->setCursor(Qt::PointingHandCursor);
+    } else {
+        saveChangesBtn->setStyleSheet(
+            "QPushButton {"
+            "  background-color: #e2e8f0;"
+            "  color: #94a3b8;"
+            "  font-weight: bold;"
+            "  padding: 7px 20px;"
+            "  border-radius: 6px;"
+            "  border: 1px solid #cbd5e1;"
+            "  font-size: 13px;"
+            "}"
+        );
+        saveChangesBtn->setCursor(Qt::ArrowCursor);
+    }
+
+    if (statusSummaryLabel) {
+        if (hasWork) {
+            QString actionWord = (hubType == HubType::INBOUND) ? "lưu kết quả" : "xuất kho";
+            QStringList parts;
+            if (totalPending > 0) {
+                parts << QString("<b>%1</b> linh kiện chờ %2").arg(totalPending).arg(hubType == HubType::INBOUND ? "lưu" : "xuất");
+            }
+            if (modCount > 0) {
+                parts << QString("<b>%1</b> cập nhật trạng thái").arg(modCount);
+            }
+            statusSummaryLabel->setText(
+                QString("⚠️ Có %1 (chưa ghi CSDL). Bấm <b>Xác nhận %2</b> để ghi nhận.")
+                    .arg(parts.join(" và ")).arg(actionWord)
+            );
+            statusSummaryLabel->setStyleSheet("color: #b45309; font-weight: 600; font-size: 13px;");
+        } else {
+            statusSummaryLabel->setText(
+                QString("Tổng cộng: %1 linh kiện đã ghi nhận chính thức trong đợt này.").arg(stagedUnits.size())
+            );
+            statusSummaryLabel->setStyleSheet("color: #475569; font-weight: 500; font-size: 13px;");
+        }
+    }
+}
+
 void UnitEntryDialog::onOpenProductUnitPicker(int productId, const QString& pCode, const QString& pName, int missingQty)
 {
     if (!db || isLogisticsCompleted) return;
@@ -4223,10 +4317,7 @@ void UnitEntryDialog::onOpenProductUnitPicker(int productId, const QString& pCod
             hasModifiedUnits = true;
             refreshBatchOverviewTable();
             refreshAllUnitsTable();
-            if (saveChangesBtn) {
-                saveChangesBtn->setText(QString("💾 Xác nhận xuất kho (%1 unit chờ xuất)").arg(pendingOutboundUnits.size()));
-                saveChangesBtn->setEnabled(true);
-            }
+            updateSaveButtonState();
             showToast(QString("✅ Đã chọn mềm %1 unit chờ xuất cho [%2]! (Nhớ bấm 'Xác nhận xuất kho')").arg(addedCount).arg(pCode), true);
         } else if (!lastErr.isEmpty()) {
             showToast(QString("❌ Không thể chọn: %1").arg(lastErr), false);
@@ -4259,14 +4350,7 @@ void UnitEntryDialog::removePendingUnitBySerial(const std::string& sn)
     if (it != pendingInboundUnits.end()) {
         pendingInboundUnits.erase(it);
         refreshProductEntryTab();
-        if (saveChangesBtn) {
-            if (!pendingInboundUnits.empty()) {
-                saveChangesBtn->setText(QString("💾 Xác nhận lưu kết quả (%1 unit chờ lưu)").arg(pendingInboundUnits.size()));
-                saveChangesBtn->setStyleSheet("QPushButton { background-color: #2563eb; color: #ffffff; font-weight: bold; padding: 7px 20px; border-radius: 6px; border: none; font-size: 13px; } QPushButton:hover { background-color: #1d4ed8; }");
-            } else {
-                saveChangesBtn->setText("💾 Xác nhận lưu kết quả");
-            }
-        }
+        updateSaveButtonState();
         showToast(QString("🗑️ Đã xóa linh kiện [%1] khỏi danh sách chờ lưu.").arg(QString::fromStdString(sn)), true);
         if (inboundFeedbackLabel) {
             inboundFeedbackLabel->setText(QString("🗑️ Đã xóa [%1] khỏi danh sách chờ lưu.").arg(QString::fromStdString(sn)));
@@ -4336,10 +4420,7 @@ bool UnitEntryDialog::recordPendingInboundSerial(int productId, const QString& s
     pendingInboundUnits.push_back(pending);
 
     refreshProductEntryTab();
-    if (saveChangesBtn) {
-        saveChangesBtn->setText(QString("💾 Xác nhận lưu kết quả (%1 unit chờ lưu)").arg(pendingInboundUnits.size()));
-        saveChangesBtn->setStyleSheet("QPushButton { background-color: #2563eb; color: #ffffff; font-weight: bold; padding: 7px 20px; border-radius: 6px; border: none; font-size: 13px; } QPushButton:hover { background-color: #1d4ed8; }");
-    }
+    updateSaveButtonState();
 
     showToast(QString("⚡ Đã thêm [%1] vào danh sách chờ lưu cho '%2'!").arg(sn, itm.productName), true);
     if (inboundFeedbackLabel) {
@@ -4376,15 +4457,7 @@ void UnitEntryDialog::removePendingOutboundUnitBySerial(const std::string& sn)
         hasModifiedUnits = true;
         refreshBatchOverviewTable();
         refreshAllUnitsTable();
-        if (saveChangesBtn) {
-            if (!pendingOutboundUnits.empty()) {
-                saveChangesBtn->setText(QString("💾 Xác nhận xuất kho (%1 unit chờ xuất)").arg(pendingOutboundUnits.size()));
-                saveChangesBtn->setEnabled(true);
-            } else {
-                saveChangesBtn->setText("💾 Xác nhận xuất kho");
-                saveChangesBtn->setEnabled(false);
-            }
-        }
+        updateSaveButtonState();
         showToast(QString("🗑️ Đã bỏ chọn linh kiện [%1]").arg(QString::fromStdString(sn)), true);
     }
 }
@@ -4981,6 +5054,7 @@ void UnitEntryDialog::onInboundProductComboChanged(int index)
                         pending.status = newSt.toStdString();
                         hasModifiedUnits = true;
                         refreshBatchOverviewTable();
+                        updateSaveButtonState();
                         break;
                     }
                 }
@@ -5407,6 +5481,7 @@ void UnitEntryDialog::refreshAllUnitsTable()
                     pending.status = newSt.toStdString();
                     hasModifiedUnits = true;
                     refreshBatchOverviewTable();
+                    updateSaveButtonState();
                     break;
                 }
             }
@@ -5516,28 +5591,7 @@ void UnitEntryDialog::onUnitStatusChanged(int unitId, const QString& newStatus)
     refreshRecentUnitsTable();
     refreshAllUnitsTable();
     if (hubType == HubType::INBOUND) refreshProductEntryTab();
-
-    int modCount = 0;
-    for (const auto& u : stagedUnits) {
-        if (u.isModified) modCount++;
-    }
-    int pendingCount = (hubType == HubType::INBOUND)
-        ? static_cast<int>(pendingInboundUnits.size())
-        : static_cast<int>(pendingOutboundUnits.size());
-
-    if (modCount > 0 || pendingCount > 0) {
-        QString actionWord = (hubType == HubType::INBOUND) ? "lưu kết quả" : "xuất kho";
-        statusSummaryLabel->setText(
-            QString("⚠️ Có <b>%1</b> thay đổi / linh kiện chờ lưu. Bấm <b>Xác nhận %2</b> để ghi nhận.").arg(modCount + pendingCount).arg(actionWord)
-        );
-        statusSummaryLabel->setStyleSheet("color: #b45309; font-weight: 600; font-size: 13px;");
-        if (saveChangesBtn) saveChangesBtn->setEnabled(true);
-    } else {
-        statusSummaryLabel->setText(
-            QString("Tổng cộng: %1 linh kiện đã ghi nhận trong đợt này.").arg(stagedUnits.size())
-        );
-        statusSummaryLabel->setStyleSheet("color: #475569; font-weight: 500; font-size: 13px;");
-    }
+    updateSaveButtonState();
 }
 
 void UnitEntryDialog::onSaveChanges()
@@ -5707,10 +5761,7 @@ void UnitEntryDialog::onSaveChanges()
     refreshAllUnitsTable();
     if (hubType == HubType::INBOUND) refreshProductEntryTab();
 
-    if (saveChangesBtn) {
-        saveChangesBtn->setText(hubType == HubType::INBOUND ? "💾 Xác nhận lưu kết quả" : "💾 Xác nhận xuất kho");
-        saveChangesBtn->setEnabled(false);
-    }
+    updateSaveButtonState();
 
     QString successMsg = "✅ Đã lưu thành công ";
     if (savedPendingInCount > 0 && modCount > 0) {
@@ -5804,10 +5855,7 @@ void UnitEntryDialog::onDirectSerialEntered()
             unifiedSerialInput->setFocus();
             refreshBatchOverviewTable();
             refreshAllUnitsTable();
-            if (saveChangesBtn) {
-                saveChangesBtn->setText(QString("💾 Xác nhận xuất kho (%1 unit chờ xuất)").arg(pendingOutboundUnits.size()));
-                saveChangesBtn->setEnabled(true);
-            }
+            updateSaveButtonState();
             showToast(QString("✅ Đã chọn mềm [%1] cho '%2' (Chờ xác nhận xuất kho)").arg(inputSn, batchItems[itemIdx].productName), true);
             return;
         }
@@ -6038,10 +6086,7 @@ bool UnitEntryDialog::recordCustomSerial(const QString& serial, QString& outErrM
             }
             refreshBatchOverviewTable();
             refreshAllUnitsTable();
-            if (saveChangesBtn) {
-                saveChangesBtn->setText(QString("💾 Xác nhận xuất kho (%1 unit chờ xuất)").arg(pendingOutboundUnits.size()));
-                saveChangesBtn->setEnabled(true);
-            }
+            updateSaveButtonState();
             showToast(QString("✅ Đã chọn mềm [%1] cho '%2' (Chờ xác nhận xuất kho)").arg(inputSn, batchItems[itemIdx].productName), true);
             return true;
         }
@@ -6159,10 +6204,7 @@ void UnitEntryDialog::onCandidateSerialsSelected(const Vector<std::string>& seri
             hasModifiedUnits = true;
             refreshBatchOverviewTable();
             refreshAllUnitsTable();
-            if (saveChangesBtn) {
-                saveChangesBtn->setText(QString("💾 Xác nhận xuất kho (%1 unit chờ xuất)").arg(pendingOutboundUnits.size()));
-                saveChangesBtn->setEnabled(true);
-            }
+            updateSaveButtonState();
             showToast(QString("✅ Đã chọn mềm %1 linh kiện chờ xuất kho!").arg(added), true);
         } else if (!lastErr.isEmpty()) {
             showToast(QString("❌ %1").arg(lastErr), false);
@@ -6302,10 +6344,7 @@ void UnitEntryDialog::onBatchAutoGenerateUnits()
 
         if (totalCreated > 0) {
             refreshProductEntryTab();
-            if (saveChangesBtn) {
-                saveChangesBtn->setText(QString("💾 Xác nhận lưu kết quả (%1 unit chờ lưu)").arg(pendingInboundUnits.size()));
-                saveChangesBtn->setStyleSheet("QPushButton { background-color: #2563eb; color: #ffffff; font-weight: bold; padding: 7px 20px; border-radius: 6px; border: none; font-size: 13px; } QPushButton:hover { background-color: #1d4ed8; }");
-            }
+            updateSaveButtonState();
             showToast(QString("⚡ Đã giả lập tạo %1 linh kiện mới vào danh sách chờ lưu!").arg(totalCreated), true);
         }
         return;
@@ -6354,10 +6393,7 @@ void UnitEntryDialog::onBatchAutoGenerateUnits()
             hasModifiedUnits = true;
             refreshBatchOverviewTable();
             refreshAllUnitsTable();
-            if (saveChangesBtn) {
-                saveChangesBtn->setText(QString("💾 Xác nhận xuất kho (%1 unit chờ xuất)").arg(pendingOutboundUnits.size()));
-                saveChangesBtn->setEnabled(true);
-            }
+            updateSaveButtonState();
             showToast(QString("⚡ Đã tự động chọn mềm %1 linh kiện từ kho vào danh sách chờ xuất!").arg(totalPicked), true);
         } else {
             showToast("⚠️ Không tìm thấy đủ linh kiện hợp lệ trong kho để tự động chọn.", false);
