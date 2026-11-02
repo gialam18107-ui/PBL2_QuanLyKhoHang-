@@ -176,11 +176,9 @@ void AdjustmentMovementCreateDialog::populateReasons()
         }
     }
     if (reasonCombo->count() == 0) {
-        reasonCombo->addItem("INVENTORY_AUDIT", "INVENTORY_AUDIT");
-        reasonCombo->addItem("BROKEN", "BROKEN");
-        reasonCombo->addItem("EXPIRED", "EXPIRED");
-        reasonCombo->addItem("LOST", "LOST");
-        reasonCombo->addItem("FOUND", "FOUND");
+        reasonCombo->addItem("STOCKTAKE_DIFF", "STOCKTAKE_DIFF");
+        reasonCombo->addItem("DAMAGED", "DAMAGED");
+        reasonCombo->addItem("DATA_ERROR", "DATA_ERROR");
         reasonCombo->addItem("OTHER", "OTHER");
     }
 }
@@ -408,13 +406,14 @@ void AdjustmentMovementDetailDialog::setupUI()
     auto* dLayout = new QVBoxLayout(detailGroup);
 
     detailTable = new QTableWidget(detailGroup);
-    detailTable->setColumnCount(5);
-    detailTable->setHorizontalHeaderLabels({"Mã SP", "Tên sản phẩm", "Trạng thái nguồn (Từ)", "Trạng thái đích (Sang)", "Số lượng"});
+    detailTable->setColumnCount(6);
+    detailTable->setHorizontalHeaderLabels({"Mã SP", "Tên sản phẩm", "Trạng thái nguồn (Từ)", "Trạng thái đích (Sang)", "SL Kế hoạch", "SL Thực tế"});
     detailTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
     detailTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
     detailTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
     detailTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
     detailTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
+    detailTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::ResizeToContents);
     detailTable->setAlternatingRowColors(true);
     dLayout->addWidget(detailTable);
 
@@ -454,16 +453,21 @@ void AdjustmentMovementDetailDialog::loadMovementDetails()
         QString pName = rec.has("product_name") && std::holds_alternative<std::string>(rec.get("product_name")) ? QString::fromStdString(std::get<std::string>(rec.get("product_name"))) : "";
         QString fromSt = rec.has("from_status") && std::holds_alternative<std::string>(rec.get("from_status")) ? QString::fromStdString(std::get<std::string>(rec.get("from_status"))) : "";
         QString toSt = rec.has("to_status") && std::holds_alternative<std::string>(rec.get("to_status")) ? QString::fromStdString(std::get<std::string>(rec.get("to_status"))) : "";
-        int qty = rec.has("actual_quantity") && std::holds_alternative<int>(rec.get("actual_quantity")) ? std::get<int>(rec.get("actual_quantity")) : 0;
+        int adjQty = rec.has("adjust_quantity") && std::holds_alternative<int>(rec.get("adjust_quantity")) ? std::get<int>(rec.get("adjust_quantity")) : 0;
+        int actQty = rec.has("actual_quantity") && std::holds_alternative<int>(rec.get("actual_quantity")) ? std::get<int>(rec.get("actual_quantity")) : 0;
 
         detailTable->setItem(r, 0, new QTableWidgetItem(pCode));
         detailTable->setItem(r, 1, new QTableWidgetItem(pName));
         detailTable->setItem(r, 2, new QTableWidgetItem(fromSt));
         detailTable->setItem(r, 3, new QTableWidgetItem(toSt));
 
-        auto* qItem = new QTableWidgetItem(QString::number(qty));
-        qItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        detailTable->setItem(r, 4, qItem);
+        auto* adjItem = new QTableWidgetItem(QString::number(adjQty));
+        adjItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        detailTable->setItem(r, 4, adjItem);
+
+        auto* actItem = new QTableWidgetItem(QString::number(actQty));
+        actItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        detailTable->setItem(r, 5, actItem);
     }
 }
 
@@ -487,6 +491,12 @@ void AdjustmentMovementDetailDialog::onExecuteMovement()
     isExecuted = true;
     QMessageBox::information(this, "Thành công", QString::fromStdString(res.message));
     loadMovementInfo();
-    setupUI();
+    if (statusLabel) {
+        statusLabel->setText(QString("<b>Trạng thái:</b> <span style='color:%1; font-weight:bold;'>%2</span>")
+            .arg(adjustStatus == "COMPLETED" ? "#16a34a" : "#ca8a04", adjustStatus));
+    }
+    if (executeBtn) {
+        executeBtn->setEnabled(adjustStatus != "COMPLETED" && adjustStatus != "CANCELLED");
+    }
     loadMovementDetails();
 }

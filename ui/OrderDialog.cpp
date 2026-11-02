@@ -3499,6 +3499,98 @@ UnitEntryDialog::UnitEntryDialog(
     refreshRecentUnitsTable();
     refreshAllUnitsTable();
 
+    // Auto-preload verified units from check if this is an adjustment order
+    if (db && !isLogisticsCompleted && stagedUnits.empty() && pendingInboundUnits.empty() && pendingOutboundUnits.empty()) {
+        std::string orderCodeStd = parentOrderCodeStr.toStdString();
+        std::string srcCode;
+        Table* ordTbl = db->getTable(hubType == HubType::INBOUND ? "inbound_order" : "outbound_order");
+        if (ordTbl) {
+            Vector<Record> ordRecs = Query::filterRecords(*ordTbl, "order_code", Value(orderCodeStd));
+            if (!ordRecs.empty() && ordRecs[0].has("source_code") && std::holds_alternative<std::string>(ordRecs[0].get("source_code"))) {
+                srcCode = std::get<std::string>(ordRecs[0].get("source_code"));
+            }
+        }
+
+        if (!srcCode.empty() && srcCode.rfind("CHK-", 0) == 0) {
+            Table* chkTbl = db->getTable("inventory_check");
+            Table* chkUnitTbl = db->getTable("inventory_check_unit");
+            Table* uTbl = db->getTable("unit_inventory");
+            if (chkTbl && chkUnitTbl && uTbl) {
+                Vector<Record> chkRecs = Query::filterRecords(*chkTbl, "check_code", Value(srcCode));
+                if (!chkRecs.empty()) {
+                    int chkId = chkRecs[0].has("check_id") && std::holds_alternative<int>(chkRecs[0].get("check_id"))
+                                ? std::get<int>(chkRecs[0].get("check_id")) : 0;
+                    Vector<Record> chkUnits = Query::filterRecords(*chkUnitTbl, "check_id", Value(chkId));
+                    if (hubType == HubType::INBOUND) {
+                        int preloadedCount = 0;
+                        for (size_t i = 0; i < chkUnits.size(); ++i) {
+                            const auto& cu = chkUnits[i];
+                            std::string scannedSt = cu.has("scanned_status") && std::holds_alternative<std::string>(cu.get("scanned_status"))
+                                                    ? std::get<std::string>(cu.get("scanned_status")) : "";
+                            int uid = cu.has("unit_id") && std::holds_alternative<int>(cu.get("unit_id"))
+                                      ? std::get<int>(cu.get("unit_id")) : 0;
+                            std::string sn = cu.has("serial") && std::holds_alternative<std::string>(cu.get("serial"))
+                                             ? std::get<std::string>(cu.get("serial")) : "";
+                            int pid = cu.has("product_id") && std::holds_alternative<int>(cu.get("product_id"))
+                                      ? std::get<int>(cu.get("product_id")) : 0;
+                            if (scannedSt != "MISSING") {
+                                bool existsActive = false;
+                                if (!sn.empty()) {
+                                    Vector<Record> uRecs = Query::filterRecords(*uTbl, "serial", Value(sn));
+                                    if (!uRecs.empty()) {
+                                        std::string st = uRecs[0].has("status") && std::holds_alternative<std::string>(uRecs[0].get("status"))
+                                                         ? std::get<std::string>(uRecs[0].get("status")) : "";
+                                        if (st != "OUT") existsActive = true;
+                                    }
+                                }
+                                if (uid == 0 || !existsActive) {
+                                    QString errMsg;
+                                    if (recordPendingInboundSerial(pid, QString::fromStdString(sn), QString::fromStdString(scannedSt), errMsg)) {
+                                        preloadedCount++;
+                                    }
+                                }
+                            }
+                        }
+                        if (preloadedCount > 0) {
+                            showToast(QString("⚡ Tự động nạp %1 linh kiện thừa từ đợt kiểm kê %2 vào danh sách chờ lưu.")
+                                      .arg(preloadedCount).arg(QString::fromStdString(srcCode)), true);
+                        }
+                    } else { // OUTBOUND
+                        int preloadedCount = 0;
+                        for (size_t i = 0; i < chkUnits.size(); ++i) {
+                            const auto& cu = chkUnits[i];
+                            std::string scannedSt = cu.has("scanned_status") && std::holds_alternative<std::string>(cu.get("scanned_status"))
+                                                    ? std::get<std::string>(cu.get("scanned_status")) : "";
+                            if (scannedSt == "MISSING") {
+                                std::string sn = cu.has("serial") && std::holds_alternative<std::string>(cu.get("serial"))
+                                                 ? std::get<std::string>(cu.get("serial")) : "";
+                                int pid = cu.has("product_id") && std::holds_alternative<int>(cu.get("product_id"))
+                                          ? std::get<int>(cu.get("product_id")) : 0;
+                                if (!sn.empty()) {
+                                    Vector<Record> uRecs = Query::filterRecords(*uTbl, "serial", Value(sn));
+                                    if (!uRecs.empty()) {
+                                        std::string st = uRecs[0].has("status") && std::holds_alternative<std::string>(uRecs[0].get("status"))
+                                                         ? std::get<std::string>(uRecs[0].get("status")) : "";
+                                        if (st != "OUT") {
+                                            QString errMsg;
+                                            if (recordPendingOutboundSerial(pid, QString::fromStdString(sn), errMsg)) {
+                                                preloadedCount++;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if (preloadedCount > 0) {
+                            showToast(QString("⚡ Tự động nạp %1 linh kiện hao hụt từ đợt kiểm kê %2 vào danh sách chờ xuất kho.")
+                                      .arg(preloadedCount).arg(QString::fromStdString(srcCode)), true);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     if (hubType == HubType::INBOUND) {
         refreshProductEntryTab();
         mainTabWidget->setCurrentIndex(0);
@@ -3631,7 +3723,7 @@ QStringList UnitEntryDialog::getAllowedStatusOptions() const
         return QStringList{"WARRANTY"};
     }
     if (transactionType == "WARRANTY_REPLACEMENT" || transactionType == "WRP") {
-        return QStringList{"AVAILABLE", "WARRANTY"};
+        return QStringList{"WARRANTY"};
     }
     return QStringList{"AVAILABLE", "WARRANTY", "SCRAPPED"};
 }
@@ -4391,9 +4483,35 @@ bool UnitEntryDialog::recordPendingInboundSerial(int productId, const QString& s
         return false;
     }
 
+    bool allowExistingOutUnit = (transactionType == "ADJUSTMENT_IN" || transactionType == "ADJ" ||
+                                 transactionType == "CUSTOMER_RETURN" || transactionType == "CRT" ||
+                                 transactionType == "WARRANTY_CHECKING" || transactionType == "WCK");
+
     if (!user_create::isSerialUnique(db, snStd)) {
-        outErrMsg = QString("Mã serial '%1' đã tồn tại trong CSDL kho hàng.").arg(sn);
-        return false;
+        if (allowExistingOutUnit) {
+            Table* uTbl = db ? db->getTable("unit_inventory") : nullptr;
+            if (uTbl) {
+                Vector<Record> exRecs = Query::filterRecords(*uTbl, "serial", Value(snStd));
+                if (!exRecs.empty()) {
+                    std::string curStatus = exRecs[0].has("status") && std::holds_alternative<std::string>(exRecs[0].get("status"))
+                                            ? std::get<std::string>(exRecs[0].get("status")) : "";
+                    if (curStatus != "OUT") {
+                        outErrMsg = QString("Mã serial '%1' đã tồn tại trong kho với trạng thái '%2' (chỉ chấp nhận mã có trạng thái 'OUT' khi nhập trả/điều chỉnh).")
+                                    .arg(sn, QString::fromStdString(curStatus));
+                        return false;
+                    }
+                } else {
+                    outErrMsg = QString("Mã serial '%1' đã tồn tại trong CSDL kho hàng.").arg(sn);
+                    return false;
+                }
+            } else {
+                outErrMsg = QString("Mã serial '%1' đã tồn tại trong CSDL kho hàng.").arg(sn);
+                return false;
+            }
+        } else {
+            outErrMsg = QString("Mã serial '%1' đã tồn tại trong CSDL kho hàng.").arg(sn);
+            return false;
+        }
     }
 
     for (const auto& u : stagedUnits) {
@@ -5864,36 +5982,19 @@ void UnitEntryDialog::onDirectSerialEntered()
             transactionType == "WARRANTY_REPLACEMENT" || transactionType == "WRP") {
             targetSt = "WARRANTY";
         }
-        OperationResult res = user_create::receiveUnitsForDelivery(db, logId, pid, targetSt.toStdString(), 1, {serialStd});
 
-        if (!res.success) {
-            showToast(QString("❌ Lỗi: %1").arg(QString::fromStdString(res.message)), false);
+        QString errMsg;
+        if (!recordPendingInboundSerial(pid, inputSn, targetSt, errMsg)) {
+            showToast(QString("❌ %1").arg(errMsg), false);
             return;
         }
 
-        hasModifiedUnits = true;
         unifiedSerialInput->clear();
         unifiedSerialInput->setFocus();
-
-        loadBatchData();
-        loadAllUnitsData();
-
-        for (const auto& u : stagedUnits) {
-            if (u.serial == serialStd) {
-                auto itRec = std::find(recentUnitIds.begin(), recentUnitIds.end(), u.unitId);
-                if (itRec != recentUnitIds.end()) recentUnitIds.erase(itRec);
-                recentUnitIds.insert(recentUnitIds.begin(), u.unitId);
-                if (recentUnitIds.size() > 3) recentUnitIds.resize(3);
-                break;
-            }
-        }
-
         refreshBatchOverviewTable();
-        refreshRecentUnitsTable();
         refreshAllUnitsTable();
-        if (hubType == HubType::INBOUND) refreshProductEntryTab();
-
-        showToast(QString("✅ Đã ghi nhận [%1] cho '%2'").arg(inputSn, batchItems[itemIdx].productName), true);
+        updateSaveButtonState();
+        showToast(QString("✅ Đã ghi nhận mềm [%1] cho '%2' (Chờ xác nhận lưu)").arg(inputSn, batchItems[itemIdx].productName), true);
     } else {
         if (hubType == HubType::OUTBOUND) {
             showToast(QString("❌ Mã '%1' không tồn tại trong kho để xuất!").arg(inputSn), false);
@@ -5942,37 +6043,18 @@ void UnitEntryDialog::onDirectSerialEntered()
             targetSt = "WARRANTY";
         }
 
-        OperationResult res = user_create::receiveUnitsForDelivery(
-            db, logId, pid, targetSt.toStdString(), 1, {serialStd}
-        );
-        if (!res.success) {
-            showToast(QString("❌ Lỗi tạo mới: %1").arg(QString::fromStdString(res.message)), false);
+        QString errMsg;
+        if (!recordPendingInboundSerial(pid, inputSn, targetSt, errMsg)) {
+            showToast(QString("❌ %1").arg(errMsg), false);
             return;
         }
 
-        hasModifiedUnits = true;
         unifiedSerialInput->clear();
         unifiedSerialInput->setFocus();
-
-        loadBatchData();
-        loadAllUnitsData();
-
-        for (const auto& u : stagedUnits) {
-            if (u.serial == serialStd) {
-                auto itRec = std::find(recentUnitIds.begin(), recentUnitIds.end(), u.unitId);
-                if (itRec != recentUnitIds.end()) recentUnitIds.erase(itRec);
-                recentUnitIds.insert(recentUnitIds.begin(), u.unitId);
-                if (recentUnitIds.size() > 3) recentUnitIds.resize(3);
-                break;
-            }
-        }
-
         refreshBatchOverviewTable();
-        refreshRecentUnitsTable();
         refreshAllUnitsTable();
-        if (hubType == HubType::INBOUND) refreshProductEntryTab();
-
-        showToast(QString("✅ Đã tạo mới và nhận [%1] cho '%2'").arg(inputSn, batchItems[itemIdx].productName), true);
+        updateSaveButtonState();
+        showToast(QString("✅ Đã ghi nhận mềm [%1] cho '%2' (Chờ xác nhận lưu)").arg(inputSn, batchItems[itemIdx].productName), true);
     }
 }
 
@@ -6225,58 +6307,35 @@ void UnitEntryDialog::onCandidateSerialsSelected(const Vector<std::string>& seri
         int pid = user_query::get_product_id_by_serial(db, sn);
         if (pid <= 0) continue;
 
-        bool hasQuota = false;
-        for (const auto& itm : batchItems) {
-            if (itm.productId == pid && itm.actualQty < itm.batchQty) {
-                hasQuota = true;
-                break;
-            }
-        }
-        if (!hasQuota) continue;
-
-        OperationResult res;
         if (hubType == HubType::OUTBOUND) {
-            res = user_update::dispatchUnitsForShipment(db, logId, pid, {sn});
+            QString recErr;
+            if (recordPendingOutboundSerial(pid, QString::fromStdString(sn), recErr)) {
+                successCount++;
+            } else {
+                errMsg = recErr.toStdString();
+            }
         } else {
             QString targetSt = "AVAILABLE";
             if (transactionType == "WARRANTY_CHECKING" || transactionType == "WCK" ||
                 transactionType == "WARRANTY_REPLACEMENT" || transactionType == "WRP") {
                 targetSt = "WARRANTY";
             }
-            res = user_create::receiveUnitsForDelivery(db, logId, pid, targetSt.toStdString(), 1, {sn});
-        }
-
-        if (res.success) {
-            successCount++;
-            loadBatchData();
-        } else {
-            errMsg = res.message;
+            QString recErr;
+            if (recordPendingInboundSerial(pid, QString::fromStdString(sn), targetSt, recErr)) {
+                successCount++;
+            } else {
+                errMsg = recErr.toStdString();
+            }
         }
     }
 
     if (successCount > 0) {
         hasModifiedUnits = true;
-        loadBatchData();
-        loadAllUnitsData();
-
-        for (size_t s = 0; s < serials.size(); ++s) {
-            for (const auto& u : stagedUnits) {
-                if (u.serial == serials[s]) {
-                    auto itRec = std::find(recentUnitIds.begin(), recentUnitIds.end(), u.unitId);
-                    if (itRec != recentUnitIds.end()) recentUnitIds.erase(itRec);
-                    recentUnitIds.insert(recentUnitIds.begin(), u.unitId);
-                    break;
-                }
-            }
-        }
-        if (recentUnitIds.size() > 3) recentUnitIds.resize(3);
-
         refreshBatchOverviewTable();
-        refreshRecentUnitsTable();
         refreshAllUnitsTable();
         if (hubType == HubType::INBOUND) refreshProductEntryTab();
-
-        showToast(QString("✅ Đã ghi nhận thành công %1 linh kiện từ kho!").arg(successCount), true);
+        updateSaveButtonState();
+        showToast(QString("✅ Đã chọn mềm thành công %1 linh kiện! (Nhớ bấm 'Xác nhận lưu kết quả')").arg(successCount), true);
     } else if (!errMsg.empty()) {
         showToast(QString("❌ Lỗi: %1").arg(QString::fromStdString(errMsg)), false);
     }

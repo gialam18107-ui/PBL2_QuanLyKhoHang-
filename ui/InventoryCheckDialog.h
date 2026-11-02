@@ -302,83 +302,69 @@ private:
     void filterUnitsByProduct(int pid, const QString& pCode, const QString& pName);
     void applyUnitTableFilters();
     bool processUnitScan(const QString& sn, const QString& chosenMode, QLabel* feedbackLabel, QLineEdit* inputLine);
-    void updateRecentUnitsBox();
     void removeStagedUnitBySerial(const QString& sn);
 
-    Database* db;
-    int checkId;
+    Database* db = nullptr;
+    int checkId = 0;
     QString checkCode;
     QString checkType;
     QString checkStatus;
     QString checkDate;
     QString checkNote;
-    bool dataModified;
+    bool dataModified = false;
 
     // Toast overlay
     QLabel* toastOverlayLabel = nullptr;
     QTimer* toastTimer = nullptr;
 
     // Header info labels
-    QLabel* codeLabel;
-    QLabel* typeLabel;
-    QLabel* statusLabel;
-    QLabel* dateLabel;
-    QLabel* noteLabel;
-    QPushButton* editCheckNoteBtn;
+    QLabel* codeLabel = nullptr;
+    QLabel* typeLabel = nullptr;
+    QLabel* statusLabel = nullptr;
+    QLabel* dateLabel = nullptr;
+    QLabel* noteLabel = nullptr;
+    QPushButton* editCheckNoteBtn = nullptr;
 
     // Splitter for UNIT mode Master-Detail View
-    QSplitter* masterDetailSplitter;
+    QSplitter* masterDetailSplitter = nullptr;
 
     // Master Product Table & Controls
-    QWidget* masterWidget;
-    QTableWidget* quantityTable;
-    QPushButton* saveQuantityBtn;
-    QPushButton* editRowNoteBtn;
-    QPushButton* addUnrecordedSurplusBtn;
-    QPushButton* showAllProductsBtn;
-    QLabel* quantitySummaryLabel;
+    QWidget* masterWidget = nullptr;
+    QTableWidget* quantityTable = nullptr;
+    QPushButton* saveQuantityBtn = nullptr;
+    QPushButton* editRowNoteBtn = nullptr;
+    QPushButton* addUnrecordedSurplusBtn = nullptr;
+    QPushButton* showAllProductsBtn = nullptr;
+    QLabel* quantitySummaryLabel = nullptr;
 
     // Detail Unit Panel & Controls
-    QWidget* detailWidget;
-    QGroupBox* scanGroup;
-    QLineEdit* serialSearchInput;
-    QLabel* serialFeedbackLabel;
-    QComboBox* unitStatusCombo;
-    QPushButton* applyUnitStatusBtn;
-    QPushButton* batchTestBtn;
+    QWidget* detailWidget = nullptr;
+    QGroupBox* scanGroup = nullptr;
+    QLineEdit* serialSearchInput = nullptr;
+    QLabel* serialFeedbackLabel = nullptr;
+    QComboBox* unitStatusCombo = nullptr;
+    QPushButton* applyUnitStatusBtn = nullptr;
+    QPushButton* batchTestBtn = nullptr;
 
     // Detail Filter Bar
-    QLabel* filterScopeLabel;
-    QPushButton* clearProductFilterBtn;
-    QLineEdit* unitSearchEdit;
-    QComboBox* unitStatusFilterCombo;
-    QCheckBox* abnormalOnlyCheck;
-    QLabel* unitSummaryLabel;
+    QLabel* filterScopeLabel = nullptr;
+    QPushButton* clearProductFilterBtn = nullptr;
+    QLineEdit* unitSearchEdit = nullptr;
+    QComboBox* unitStatusFilterCombo = nullptr;
+    QCheckBox* abnormalOnlyCheck = nullptr;
+    QLabel* unitSummaryLabel = nullptr;
 
-    QTableWidget* unitTable;
-
-    // Recent units box
-    QGroupBox* recentUnitsGroup;
-    QTableWidget* recentUnitsTable;
+    QTableWidget* unitTable = nullptr;
 
     // Bottom action controls
-    QLabel* pendingStatusSummaryLabel;
-    QPushButton* saveChangesBtn;
-    QPushButton* refreshBtn;
-    QPushButton* reconciliationBtn;
-    QPushButton* completeCheckBtn;
-    QPushButton* closeBtn;
+    QLabel* pendingStatusSummaryLabel = nullptr;
+    QPushButton* saveChangesBtn = nullptr;
+    QPushButton* refreshBtn = nullptr;
+    QPushButton* reconciliationBtn = nullptr;
+    QPushButton* completeCheckBtn = nullptr;
+    QPushButton* closeBtn = nullptr;
 
     InventoryCheckSimulationDialog* simulationDialog = nullptr;
-
-    struct RecentScannedUnit {
-        int checkUnitId;
-        QString serial;
-        QString productCode;
-        QString productName;
-        QString scannedStatus;
-    };
-    std::vector<RecentScannedUnit> recentScannedUnits;
 
     std::vector<StagedCheckUnit> stagedUnits;
 

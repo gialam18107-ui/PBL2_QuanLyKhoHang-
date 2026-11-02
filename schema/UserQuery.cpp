@@ -1754,9 +1754,10 @@ void periodic_inventory_report(Database *db, int month, int year,
 	snprintf(endBuf, sizeof(endBuf), "%04d-%02d-%02d", year, month, daysInMonth);
 	string endDate(endBuf);
 
-	// 1. Phân loại delivery trước tháng và trong tháng
+	// 1. Phân loại delivery trước tháng, trong tháng và sau tháng
 	HashMap<Value, bool> validDelBefore;
 	HashMap<Value, bool> validDelMonth;
+	HashMap<Value, bool> validDelAfter;
 	const auto &delRows = delTable->getRows();
 	for (size_t i = 0; i < delRows.size(); ++i) {
 		if (delTable->isRowDeleted(i))
@@ -1772,15 +1773,19 @@ void periodic_inventory_report(Database *db, int month, int year,
 			validDelBefore[dId] = true;
 		} else if (dAt <= endDate) {
 			validDelMonth[dId] = true;
+		} else {
+			validDelAfter[dId] = true;
 		}
 	}
 
 	// 2. Thu thập bản ghi chi tiết nhập hàng để gọi Query::sum gom theo product_id
 	Vector<Record> delRecsBefore;
 	Vector<Record> delRecsMonth;
+	Vector<Record> delRecsAfter;
 	const auto &delDetailRows = delDetailTable->getRows();
 	delRecsBefore.reserve(delDetailRows.size() / 2);
 	delRecsMonth.reserve(delDetailRows.size() / 2);
+	delRecsAfter.reserve(delDetailRows.size() / 2);
 
 	for (size_t i = 0; i < delDetailRows.size(); ++i) {
 		if (delDetailTable->isRowDeleted(i))
@@ -1791,7 +1796,8 @@ void periodic_inventory_report(Database *db, int month, int year,
 		Value dId = r.get("delivery_id");
 		bool inBefore = (validDelBefore.find(dId) != validDelBefore.end());
 		bool inMonth = (validDelMonth.find(dId) != validDelMonth.end());
-		if (!inBefore && !inMonth)
+		bool inAfter = (validDelAfter.find(dId) != validDelAfter.end());
+		if (!inBefore && !inMonth && !inAfter)
 			continue;
 
 		Record rec;
@@ -1801,12 +1807,14 @@ void periodic_inventory_report(Database *db, int month, int year,
 		if (inBefore)
 			delRecsBefore.push_back(rec);
 		if (inMonth)
-			delRecsMonth.push_back(std::move(rec));
+			delRecsMonth.push_back(rec);
+		if (inAfter)
+			delRecsAfter.push_back(std::move(rec));
 	}
 
-	// Gọi hàm sum của Query
 	Vector<Record> summedInBefore = Query::sum(delRecsBefore, "product_id", "actual_quantity");
 	Vector<Record> summedInMonth = Query::sum(delRecsMonth, "product_id", "actual_quantity");
+	Vector<Record> summedInAfter = Query::sum(delRecsAfter, "product_id", "actual_quantity");
 
 	HashMap<Value, int> inBeforeMap;
 	for (size_t i = 0; i < summedInBefore.size(); ++i) {
@@ -1818,9 +1826,15 @@ void periodic_inventory_report(Database *db, int month, int year,
 		inMonthMap[summedInMonth[i].get("product_id")] = safeGetInt(summedInMonth[i], "sum_actual_quantity");
 	}
 
-	// 3. Phân loại shipment trước tháng và trong tháng
+	HashMap<Value, int> inAfterMap;
+	for (size_t i = 0; i < summedInAfter.size(); ++i) {
+		inAfterMap[summedInAfter[i].get("product_id")] = safeGetInt(summedInAfter[i], "sum_actual_quantity");
+	}
+
+	// 3. Phân loại shipment trước tháng, trong tháng và sau tháng
 	HashMap<Value, bool> validShipBefore;
 	HashMap<Value, bool> validShipMonth;
+	HashMap<Value, bool> validShipAfter;
 	const auto &shipRows = shipTable->getRows();
 	for (size_t i = 0; i < shipRows.size(); ++i) {
 		if (shipTable->isRowDeleted(i))
@@ -1836,15 +1850,19 @@ void periodic_inventory_report(Database *db, int month, int year,
 			validShipBefore[sId] = true;
 		} else if (sAt <= endDate) {
 			validShipMonth[sId] = true;
+		} else {
+			validShipAfter[sId] = true;
 		}
 	}
 
 	// 4. Thu thập chi tiết xuất hàng để gọi Query::sum gom theo product_id
 	Vector<Record> shipRecsBefore;
 	Vector<Record> shipRecsMonth;
+	Vector<Record> shipRecsAfter;
 	const auto &shipDetailRows = shipDetailTable->getRows();
 	shipRecsBefore.reserve(shipDetailRows.size() / 2);
 	shipRecsMonth.reserve(shipDetailRows.size() / 2);
+	shipRecsAfter.reserve(shipDetailRows.size() / 2);
 
 	for (size_t i = 0; i < shipDetailRows.size(); ++i) {
 		if (shipDetailTable->isRowDeleted(i))
@@ -1855,7 +1873,8 @@ void periodic_inventory_report(Database *db, int month, int year,
 		Value sId = r.get("shipment_id");
 		bool inBefore = (validShipBefore.find(sId) != validShipBefore.end());
 		bool inMonth = (validShipMonth.find(sId) != validShipMonth.end());
-		if (!inBefore && !inMonth)
+		bool inAfter = (validShipAfter.find(sId) != validShipAfter.end());
+		if (!inBefore && !inMonth && !inAfter)
 			continue;
 
 		Record rec;
@@ -1865,12 +1884,14 @@ void periodic_inventory_report(Database *db, int month, int year,
 		if (inBefore)
 			shipRecsBefore.push_back(rec);
 		if (inMonth)
-			shipRecsMonth.push_back(std::move(rec));
+			shipRecsMonth.push_back(rec);
+		if (inAfter)
+			shipRecsAfter.push_back(std::move(rec));
 	}
 
-	// Gọi hàm sum của Query
 	Vector<Record> summedOutBefore = Query::sum(shipRecsBefore, "product_id", "actual_quantity");
 	Vector<Record> summedOutMonth = Query::sum(shipRecsMonth, "product_id", "actual_quantity");
+	Vector<Record> summedOutAfter = Query::sum(shipRecsAfter, "product_id", "actual_quantity");
 
 	HashMap<Value, int> outBeforeMap;
 	for (size_t i = 0; i < summedOutBefore.size(); ++i) {
@@ -1882,13 +1903,12 @@ void periodic_inventory_report(Database *db, int month, int year,
 		outMonthMap[summedOutMonth[i].get("product_id")] = safeGetInt(summedOutMonth[i], "sum_actual_quantity");
 	}
 
+	HashMap<Value, int> outAfterMap;
+	for (size_t i = 0; i < summedOutAfter.size(); ++i) {
+		outAfterMap[summedOutAfter[i].get("product_id")] = safeGetInt(summedOutAfter[i], "sum_actual_quantity");
+	}
 
-
-	// 6. Tính toán cho từng sản phẩm
-	// Theo Rule 9.1: Duyệt qua tất cả sản phẩm (không phụ thuộc vào is_sold).
-	// Loại trừ những sản phẩm mà trong tháng đó:
-	// (1) Không phát sinh transaction (inMonth == 0 && outMonth == 0)
-	// (2) Tổng tồn kho = 0 (available + warranty + scrapped == 0)
+	// 5. Tính toán cho từng sản phẩm (Rule 10.1)
 	int sumOpening = 0;
 	int sumInbound = 0;
 	int sumOutbound = 0;
@@ -1904,43 +1924,54 @@ void periodic_inventory_report(Database *db, int month, int year,
 		Value pId = p.get("product_id");
 		int inBefore = inBeforeMap.find(pId) != inBeforeMap.end() ? inBeforeMap[pId] : 0;
 		int outBefore = outBeforeMap.find(pId) != outBeforeMap.end() ? outBeforeMap[pId] : 0;
-		int openingStock = inBefore - outBefore;
-
 		int inMonth = inMonthMap.find(pId) != inMonthMap.end() ? inMonthMap[pId] : 0;
 		int outMonth = outMonthMap.find(pId) != outMonthMap.end() ? outMonthMap[pId] : 0;
+		int inAfter = inAfterMap.find(pId) != inAfterMap.end() ? inAfterMap[pId] : 0;
+		int outAfter = outAfterMap.find(pId) != outAfterMap.end() ? outAfterMap[pId] : 0;
 
-		int avail = safeGetInt(p, "available_quantity");
-		int warr = safeGetInt(p, "warranty_quantity");
-		int scrap = safeGetInt(p, "scrapped_quantity");
-		int totalCurrent = avail + warr + scrap;
+		int curAvail = safeGetInt(p, "available_quantity");
+		int curWarr = safeGetInt(p, "warranty_quantity");
+		int curScrap = safeGetInt(p, "scrapped_quantity");
+		int totalCurrent = curAvail + curWarr + curScrap;
 
-		if (openingStock <= 0 || (openingStock + inMonth - outMonth < 0)) {
-			openingStock = totalCurrent - inMonth + outMonth;
-			if (openingStock < 0)
-				openingStock = 0;
-		}
-
-		int closingStock = openingStock + inMonth - outMonth;
+		// Tính ngược tồn cuối kỳ từ tồn hiện tại trừ các biến động phát sinh sau kỳ
+		int closingStock = totalCurrent - inAfter + outAfter;
 		if (closingStock < 0)
 			closingStock = 0;
 
-		if (avail + warr + scrap != closingStock) {
-			if (closingStock == 0) {
-				avail = warr = scrap = 0;
-			} else if (closingStock >= (warr + scrap)) {
-				avail = closingStock - (warr + scrap);
-			} else {
+		// Tồn đầu kỳ = Tồn cuối kỳ - Nhập trong kỳ + Xuất trong kỳ
+		int openingStock = closingStock - inMonth + outMonth;
+		if (openingStock < 0)
+			openingStock = 0;
+
+		// Nếu không có phát sinh nào trước và trong kỳ
+		if (inBefore == 0 && inMonth == 0 && outBefore == 0 && outMonth == 0 && closingStock == 0) {
+			openingStock = 0;
+		}
+
+		// Quy tắc loại trừ (Rule 10.1):
+		// Ẩn các sản phẩm mà cả đầu kỳ, trong kỳ và cuối kỳ đều bằng 0
+		if (openingStock == 0 && inMonth == 0 && outMonth == 0 && closingStock == 0) {
+			return;
+		}
+
+		int avail = curAvail;
+		int warr = curWarr;
+		int scrap = curScrap;
+		if (closingStock == 0) {
+			avail = 0;
+			warr = 0;
+			scrap = 0;
+		} else if (totalCurrent > 0 && closingStock != totalCurrent) {
+			double factor = static_cast<double>(closingStock) / totalCurrent;
+			warr = static_cast<int>(curWarr * factor);
+			scrap = static_cast<int>(curScrap * factor);
+			avail = closingStock - warr - scrap;
+			if (avail < 0) {
 				avail = closingStock;
 				warr = 0;
 				scrap = 0;
 			}
-		}
-
-		// Quy tắc loại trừ (Rule 9.1):
-		// Loại trừ các sản phẩm không phát sinh transaction và tổng tồn kho = 0 trong tháng báo cáo
-		int totalStock = avail + warr + scrap;
-		if (inMonth == 0 && outMonth == 0 && totalStock == 0) {
-			return;
 		}
 
 		Record out;

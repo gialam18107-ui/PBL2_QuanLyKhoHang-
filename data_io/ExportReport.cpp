@@ -2,6 +2,7 @@
 #include "CSVHelper.h"
 #include <fstream>
 #include <cstdio>
+#include <filesystem>
 
 using namespace std;
 
@@ -13,9 +14,17 @@ bool export_periodic_inventory_report_csv(int month, int year,
                                           const string &outPath) {
   string path = outPath;
   if (path.empty()) {
+    std::filesystem::create_directories("report");
     char fname[128];
     snprintf(fname, sizeof(fname), "report/BaoCao_Thang_%02d_Nam_%04d.csv", month, year);
     path = fname;
+  } else {
+    try {
+      std::filesystem::path p(path);
+      if (p.has_parent_path()) {
+        std::filesystem::create_directories(p.parent_path());
+      }
+    } catch (...) {}
   }
 
   ofstream outFile(path);

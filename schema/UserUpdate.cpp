@@ -291,10 +291,9 @@ namespace user_update
                             Record hRec;
                             hRec.set("history_id", hId);
                             hRec.set("product_id", recordId);
-                            hRec.set("old_is_sold", oldSold);
-                            hRec.set("new_is_sold", newSold);
-                            hRec.set("changed_at", std::string(buf));
-                            hRec.set("reason", std::string("Cập nhật thông tin sản phẩm"));
+                            hRec.set("date", std::string(buf));
+                            hRec.set("old_status", oldSold);
+                            hRec.set("new_status", newSold);
                             db->insertRecord("is_sold_changing", hRec);
                         }
                     }
@@ -1215,6 +1214,18 @@ namespace user_update
 
         if (!db->beginTransaction()) return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
 
+        std::string sourceCode = (adjRec->has("source_code") && std::holds_alternative<std::string>(adjRec->get("source_code")))
+            ? std::get<std::string>(adjRec->get("source_code")) : "";
+        int checkId = 0;
+        Table* chkTbl = db->getTable("inventory_check");
+        Table* chkUnitTbl = db->getTable("inventory_check_unit");
+        if (chkTbl && !sourceCode.empty()) {
+            Vector<Record> cRecs = Query::filterRecords(*chkTbl, "check_code", Value(sourceCode));
+            if (!cRecs.empty() && cRecs[0].has("check_id") && std::holds_alternative<int>(cRecs[0].get("check_id"))) {
+                checkId = std::get<int>(cRecs[0].get("check_id"));
+            }
+        }
+
         int totalAffected = 0;
         for (size_t i = 0; i < details.size(); ++i) {
             const auto& det = details[i];
@@ -1224,12 +1235,43 @@ namespace user_update
             std::string toSt = std::get<std::string>(det.get("to_status"));
             int reqQty = std::get<int>(det.get("adjust_quantity"));
 
-            // Find candidates in unit_inventory
+            // Prioritize units recorded with this exact status shift in inventory_check_unit (CHK-UNIT)
             Vector<Record> candidates;
-            for (const auto& u : unitTbl->getRows()) {
-                if (std::get<int>(u.get("product_id")) == pid && std::get<std::string>(u.get("status")) == fromSt) {
-                    candidates.push_back(u);
-                    if (static_cast<int>(candidates.size()) == reqQty) break;
+            HashMap<int, bool> pickedUnitIds;
+
+            if (checkId > 0 && chkUnitTbl) {
+                for (const auto& cu : chkUnitTbl->getRows()) {
+                    if (cu.has("check_id") && std::holds_alternative<int>(cu.get("check_id")) && std::get<int>(cu.get("check_id")) == checkId) {
+                        std::string cuSys = cu.has("system_status") && std::holds_alternative<std::string>(cu.get("system_status")) ? std::get<std::string>(cu.get("system_status")) : "";
+                        std::string cuScan = cu.has("scanned_status") && std::holds_alternative<std::string>(cu.get("scanned_status")) ? std::get<std::string>(cu.get("scanned_status")) : "";
+                        std::string sn = cu.has("serial") && std::holds_alternative<std::string>(cu.get("serial")) ? std::get<std::string>(cu.get("serial")) : "";
+                        if (cuSys == fromSt && cuScan == toSt && !sn.empty()) {
+                            Vector<Record> uMatch = Query::filterRecords(*unitTbl, "serial", Value(sn));
+                            if (!uMatch.empty()) {
+                                const auto& uRec = uMatch[0];
+                                int uPid = uRec.has("product_id") && std::holds_alternative<int>(uRec.get("product_id")) ? std::get<int>(uRec.get("product_id")) : 0;
+                                std::string uSt = uRec.has("status") && std::holds_alternative<std::string>(uRec.get("status")) ? std::get<std::string>(uRec.get("status")) : "";
+                                int uId = std::get<int>(uRec.get("unit_id"));
+                                if (uPid == pid && uSt == fromSt && !pickedUnitIds.contains(uId)) {
+                                    candidates.push_back(uRec);
+                                    pickedUnitIds[uId] = true;
+                                    if (static_cast<int>(candidates.size()) == reqQty) break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Fill remainder if needed from unit_inventory
+            if (static_cast<int>(candidates.size()) < reqQty) {
+                for (const auto& u : unitTbl->getRows()) {
+                    int uId = std::get<int>(u.get("unit_id"));
+                    if (!pickedUnitIds.contains(uId) && std::get<int>(u.get("product_id")) == pid && std::get<std::string>(u.get("status")) == fromSt) {
+                        candidates.push_back(u);
+                        pickedUnitIds[uId] = true;
+                        if (static_cast<int>(candidates.size()) == reqQty) break;
+                    }
                 }
             }
 

@@ -1192,9 +1192,9 @@ void MainWindow::setupPages()
     );
     adjustmentMovementWidget->setFilterColumns({
         {"Mã phiếu (adjust_code)", "adjust_code", FilterType::EXACT_TEXT, {}},
-        {"Lý do điều chuyển", "reason", FilterType::SELECT_OR_TYPE, {"INVENTORY_AUDIT", "BROKEN", "EXPIRED", "LOST", "FOUND", "OTHER"}},
+        {"Lý do điều chuyển", "reason", FilterType::SELECT_OR_TYPE, {"STOCKTAKE_DIFF", "DAMAGED", "DATA_ERROR", "OTHER"}},
         {"Đợt kiểm gốc (source_code)", "source_code", FilterType::EXACT_TEXT, {}},
-        {"Trạng thái", "status", FilterType::SELECT_OR_TYPE, {"PENDING", "IN_PROCESS", "COMPLETED", "CANCELLED"}}
+        {"Trạng thái", "status", FilterType::SELECT_OR_TYPE, {"PENDING", "IN_PROCESS", "PARTLY_COMPLETED", "COMPLETED", "CANCELLED"}}
     });
     adjustmentMovementWidget->setRefreshCallback([this]() { refreshQuery(14); });
     adjustmentMovementWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
@@ -1258,8 +1258,8 @@ void MainWindow::setupPages()
         this
     );
     adjustMovementDetailWidget->setColumns(
-        {"Mã phiếu", "Mã sản phẩm", "Tên sản phẩm", "Từ trạng thái", "Sang trạng thái", "Số lượng"},
-        {"adjust_code", "product_code", "product_name", "from_status", "to_status", "actual_quantity"}
+        {"Mã phiếu", "Mã sản phẩm", "Tên sản phẩm", "Từ trạng thái", "Sang trạng thái", "SL Kế hoạch", "SL Thực tế"},
+        {"adjust_code", "product_code", "product_name", "from_status", "to_status", "adjust_quantity", "actual_quantity"}
     );
     adjustMovementDetailWidget->setFilterColumns({
         {"Mã phiếu (adjust_code)", "adjust_code", FilterType::EXACT_TEXT, {}},
@@ -1294,12 +1294,12 @@ void MainWindow::setupPages()
         this
     );
     isSoldChangingWidget->setColumns(
-        {"Mã sản phẩm", "Tên sản phẩm", "Trạng thái cũ", "Trạng thái mới", "Ngày thay đổi", "Lý do"},
-        {"product_code", "product_name", "old_is_sold", "new_is_sold", "changed_at", "reason"}
+        {"Mã sản phẩm", "Tên sản phẩm", "Ngày thay đổi", "Trạng thái cũ", "Trạng thái mới"},
+        {"product_code", "product_name", "date", "old_status", "new_status"}
     );
     isSoldChangingWidget->setFilterColumns({
         {"Mã sản phẩm", "product_code", FilterType::EXACT_TEXT, {}},
-        {"Ngày thay đổi", "changed_at", FilterType::EXACT_TEXT, {}}
+        {"Ngày thay đổi", "date", FilterType::EXACT_TEXT, {}}
     });
     isSoldChangingWidget->setRefreshCallback([this]() { refreshQuery(16); });
     isSoldChangingWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
@@ -2239,7 +2239,7 @@ void MainWindow::selectReportQuery()
     reportList->setCurrentRow(0);
     reportList->blockSignals(false);
 
-    stackedWidget->setCurrentIndex(22);
+    stackedWidget->setCurrentWidget(reportPageWidget);
 
     // Rule 9.6: Ban đầu không hiển thị thông tin gì cả; chỉ hiển thị khi đã cache và dữ liệu chưa bị thay đổi
     if (reportDataCached) {
@@ -2273,7 +2273,7 @@ void MainWindow::setupReportPage()
 
     auto* titleLabel = new QLabel("📈 BÁO CÁO XUẤT - NHẬP - TỒN ĐỊNH KỲ (PERIODIC INVENTORY REPORT)", headerFrame);
     titleLabel->setStyleSheet("font-size: 16px; font-weight: bold; color: #0f172a;");
-    auto* descLabel = new QLabel("Thống kê biến động nhập, xuất và số lượng tồn kho theo tháng đối với các sản phẩm đang kinh doanh (is_sold = TRUE). Dữ liệu được tính toán dựa trên actual_quantity.", headerFrame);
+    auto* descLabel = new QLabel("Thống kê biến động nhập, xuất và số lượng tồn kho theo tháng đối với các sản phẩm trong danh mục (Rule 10.1). Dữ liệu được tính toán dựa trên actual_quantity.", headerFrame);
     descLabel->setStyleSheet("font-size: 12px; color: #64748b;");
     headerLayout->addWidget(titleLabel);
     headerLayout->addWidget(descLabel);
@@ -2877,7 +2877,8 @@ bool MainWindow::isEditableSpecSubTable(const QString& tableName)
         "category",
         "inbound_type", "inbound_status", "delivery_status",
         "outbound_type", "outbound_status", "shipment_status",
-        "unit_status"
+        "unit_status",
+        "inventory_check_status", "adjustment_status", "check_type", "reason"
     };
 
     return !readOnlyMasterTables.contains(tableName);

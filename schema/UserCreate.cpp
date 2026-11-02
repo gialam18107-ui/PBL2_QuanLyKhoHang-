@@ -551,8 +551,10 @@ namespace user_create
             if (!pRec) {
                 return OperationResult{false, "Sản phẩm ID " + std::to_string(pid) + " không tồn tại trong danh mục.", 0};
             }
-            if (pRec->has("is_sold") && std::holds_alternative<bool>(pRec->get("is_sold")) && !std::get<bool>(pRec->get("is_sold"))) {
-                return OperationResult{false, "Sản phẩm ID " + std::to_string(pid) + " đã ngừng kinh doanh (is_sold = FALSE), không thể nhập kho (Rule 4.2).", 0};
+            if (inboundType != "ADJUSTMENT_IN" && inboundType != "ADJ") {
+                if (pRec->has("is_sold") && std::holds_alternative<bool>(pRec->get("is_sold")) && !std::get<bool>(pRec->get("is_sold"))) {
+                    return OperationResult{false, "Sản phẩm ID " + std::to_string(pid) + " đã ngừng kinh doanh (is_sold = FALSE), không thể nhập kho (Rule 4.2).", 0};
+                }
             }
         }
 
@@ -698,8 +700,10 @@ namespace user_create
             if (!pRec) {
                 return OperationResult{false, "Sản phẩm ID " + std::to_string(pid) + " không tồn tại trong danh mục.", 0};
             }
-            if (pRec->has("is_sold") && std::holds_alternative<bool>(pRec->get("is_sold")) && !std::get<bool>(pRec->get("is_sold"))) {
-                return OperationResult{false, "Sản phẩm ID " + std::to_string(pid) + " đã ngừng kinh doanh (is_sold = FALSE), không thể xuất kho (Rule 4.2).", 0};
+            if (outboundType != "ADJUSTMENT_OUT" && outboundType != "ADJ") {
+                if (pRec->has("is_sold") && std::holds_alternative<bool>(pRec->get("is_sold")) && !std::get<bool>(pRec->get("is_sold"))) {
+                    return OperationResult{false, "Sản phẩm ID " + std::to_string(pid) + " đã ngừng kinh doanh (is_sold = FALSE), không thể xuất kho (Rule 4.2).", 0};
+                }
             }
 
             // Rule 4.3: Outbound order quantity is permitted to exceed current stock (allowing backorder/pre-order).
@@ -926,8 +930,10 @@ namespace user_create
             if (qty <= 0) return OperationResult{false, "Số lượng đặt của sản phẩm ID " + std::to_string(pid) + " phải lớn hơn 0.", 0};
             const Record* pRec = prodTable->getRecordById(pid);
             if (!pRec) return OperationResult{false, "Sản phẩm ID " + std::to_string(pid) + " không tồn tại.", 0};
-            if (pRec->has("is_sold") && std::holds_alternative<bool>(pRec->get("is_sold")) && !std::get<bool>(pRec->get("is_sold"))) {
-                return OperationResult{false, "Sản phẩm ID " + std::to_string(pid) + " đã ngừng kinh doanh (Rule 4.2).", 0};
+            if (inboundType != "ADJUSTMENT_IN" && inboundType != "ADJ") {
+                if (pRec->has("is_sold") && std::holds_alternative<bool>(pRec->get("is_sold")) && !std::get<bool>(pRec->get("is_sold"))) {
+                    return OperationResult{false, "Sản phẩm ID " + std::to_string(pid) + " đã ngừng kinh doanh (Rule 4.2).", 0};
+                }
             }
             orderedMap[pid] = qty;
         }
@@ -1103,8 +1109,10 @@ namespace user_create
             if (qty <= 0) return OperationResult{false, "Số lượng xuất của sản phẩm ID " + std::to_string(pid) + " phải lớn hơn 0.", 0};
             const Record* pRec = prodTable->getRecordById(pid);
             if (!pRec) return OperationResult{false, "Sản phẩm ID " + std::to_string(pid) + " không tồn tại.", 0};
-            if (pRec->has("is_sold") && std::holds_alternative<bool>(pRec->get("is_sold")) && !std::get<bool>(pRec->get("is_sold"))) {
-                return OperationResult{false, "Sản phẩm ID " + std::to_string(pid) + " đã ngừng kinh doanh (Rule 4.2).", 0};
+            if (outboundType != "ADJUSTMENT_OUT" && outboundType != "ADJ") {
+                if (pRec->has("is_sold") && std::holds_alternative<bool>(pRec->get("is_sold")) && !std::get<bool>(pRec->get("is_sold"))) {
+                    return OperationResult{false, "Sản phẩm ID " + std::to_string(pid) + " đã ngừng kinh doanh (Rule 4.2).", 0};
+                }
             }
 
             // Rule 4.3: Outbound order quantity is permitted to exceed current stock.
@@ -1403,7 +1411,11 @@ namespace user_create
                 }
 
                 if (targetUnitId != -1) {
-                    // Existing unit transition: any status -> effTarget
+                    if (currentUnitStatus != "OUT") {
+                        db->rollback();
+                        return OperationResult{false, "Đơn nhập điều chỉnh (ADJ) chỉ được nhận linh kiện có old_status là 'OUT' (tái phát hiện) hoặc 'NULL' (hàng mới). Linh kiện '" + sn + "' hiện đang có trạng thái '" + currentUnitStatus + "' trong kho (Rule 4.4.1).", 0};
+                    }
+                    // Existing unit transition: OUT -> effTarget
                     Record uUp;
                     uUp.set("status", effTarget);
                     OperationResult rU = db->update("unit_inventory", targetUnitId, uUp);
@@ -1423,12 +1435,7 @@ namespace user_create
                     if (!rH) { db->rollback(); return rH; }
                     totalAffected++;
 
-                    // Adjust bucket: decrement previous bucket if it was internal
-                    if (currentUnitStatus == "AVAILABLE") curAvail--;
-                    else if (currentUnitStatus == "WARRANTY") curWarr--;
-                    else if (currentUnitStatus == "SCRAPPED") curScrap--;
-
-                    // Increment new bucket
+                    // Old status was OUT, so no internal bucket to decrement
                     if (effTarget == "AVAILABLE") curAvail++;
                     else if (effTarget == "WARRANTY") curWarr++;
                     else if (effTarget == "SCRAPPED") curScrap++;
@@ -1937,18 +1944,94 @@ namespace user_create
         Vector<Record> cqRows = Query::filterRecords(*cqTbl, "check_id", Value(checkId));
         Vector<Pair<int, int>> inboundItems;
         Vector<Pair<int, int>> outboundItems;
+        Vector<AdjustMovementItem> movements;
 
-        for (size_t i = 0; i < cqRows.size(); ++i) {
-            const auto& r = cqRows[i];
-            int pid = std::get<int>(r.get("product_id"));
-            int sysTotal = std::get<int>(r.get("system_available_quan")) + std::get<int>(r.get("system_warranty_quan")) + std::get<int>(r.get("system_scrapped_quan"));
-            int actTotal = std::get<int>(r.get("actual_available_quan")) + std::get<int>(r.get("actual_warranty_quan")) + std::get<int>(r.get("actual_scrapped_quan"));
-            int diff = actTotal - sysTotal;
+        if (checkType == "UNIT") {
+            Table* cuTbl = db->getTable("inventory_check_unit");
+            HashMap<int, int> inMap;
+            HashMap<int, int> outMap;
+            struct ShiftKey {
+                int pid;
+                std::string fromSt;
+                std::string toSt;
+                bool operator==(const ShiftKey& o) const {
+                    return pid == o.pid && fromSt == o.fromSt && toSt == o.toSt;
+                }
+            };
+            struct ShiftHash {
+                size_t operator()(const ShiftKey& k) const {
+                    return std::hash<int>()(k.pid) ^ (std::hash<std::string>()(k.fromSt) << 1) ^ (std::hash<std::string>()(k.toSt) << 2);
+                }
+            };
+            Vector<ShiftKey> shiftKeys;
+            Vector<int> shiftCounts;
 
-            if (diff > 0) {
-                inboundItems.push_back({pid, diff});
-            } else if (diff < 0) {
-                outboundItems.push_back({pid, -diff});
+            if (cuTbl) {
+                Vector<Record> cuRows = Query::filterRecords(*cuTbl, "check_id", Value(checkId));
+                for (size_t i = 0; i < cuRows.size(); ++i) {
+                    const auto& cu = cuRows[i];
+                    std::string sysSt = (cu.has("system_status") && std::holds_alternative<std::string>(cu.get("system_status")))
+                                      ? std::get<std::string>(cu.get("system_status")) : "";
+                    std::string scanSt = (cu.has("scanned_status") && std::holds_alternative<std::string>(cu.get("scanned_status")))
+                                       ? std::get<std::string>(cu.get("scanned_status")) : "";
+
+                    int cqId = cu.has("check_quantity_id") && std::holds_alternative<int>(cu.get("check_quantity_id"))
+                             ? std::get<int>(cu.get("check_quantity_id")) : 0;
+                    const Record* qRec = cqTbl->getRecordById(cqId);
+                    int pid = qRec && qRec->has("product_id") && std::holds_alternative<int>(qRec->get("product_id"))
+                            ? std::get<int>(qRec->get("product_id")) : 0;
+                    if (pid <= 0) continue;
+
+                    // Strict No-Netting Classification (Rule 5.3.2)
+                    if (sysSt == "OUT" || sysSt.empty()) {
+                        // Surplus unit (Type 1 or Type 2)
+                        if (!scanSt.empty() && scanSt != "OUT") {
+                            inMap[pid] = (inMap.contains(pid) ? inMap[pid] : 0) + 1;
+                        }
+                    } else if (scanSt.empty() || scanSt == "OUT") {
+                        // Missing unit
+                        outMap[pid] = (outMap.contains(pid) ? outMap[pid] : 0) + 1;
+                    } else if (sysSt != scanSt) {
+                        // Status shift internal to warehouse
+                        bool found = false;
+                        for (size_t sk = 0; sk < shiftKeys.size(); ++sk) {
+                            if (shiftKeys[sk].pid == pid && shiftKeys[sk].fromSt == sysSt && shiftKeys[sk].toSt == scanSt) {
+                                shiftCounts[sk]++;
+                                found = true;
+                                break;
+                            }
+                        }
+                        if (!found) {
+                            shiftKeys.push_back({pid, sysSt, scanSt});
+                            shiftCounts.push_back(1);
+                        }
+                    }
+                }
+            }
+
+            for (const auto& kv : inMap) {
+                if (kv.second > 0) inboundItems.push_back({kv.first, kv.second});
+            }
+            for (const auto& kv : outMap) {
+                if (kv.second > 0) outboundItems.push_back({kv.first, kv.second});
+            }
+            for (size_t sk = 0; sk < shiftKeys.size(); ++sk) {
+                movements.push_back({shiftKeys[sk].pid, shiftKeys[sk].fromSt, shiftKeys[sk].toSt, shiftCounts[sk]});
+            }
+        } else {
+            // QUAN Check: net calculation per product
+            for (size_t i = 0; i < cqRows.size(); ++i) {
+                const auto& r = cqRows[i];
+                int pid = std::get<int>(r.get("product_id"));
+                int sysTotal = std::get<int>(r.get("system_available_quan")) + std::get<int>(r.get("system_warranty_quan")) + std::get<int>(r.get("system_scrapped_quan"));
+                int actTotal = std::get<int>(r.get("actual_available_quan")) + std::get<int>(r.get("actual_warranty_quan")) + std::get<int>(r.get("actual_scrapped_quan"));
+                int diff = actTotal - sysTotal;
+
+                if (diff > 0) {
+                    inboundItems.push_back({pid, diff});
+                } else if (diff < 0) {
+                    outboundItems.push_back({pid, -diff});
+                }
             }
         }
 
@@ -1981,40 +2064,16 @@ namespace user_create
             }
         }
 
-        // If UNIT check: check for internal status discrepancies to create adjustment movement
-        if (checkType == "UNIT") {
-            Table* cuTbl = db->getTable("inventory_check_unit");
-            if (cuTbl) {
-                Vector<Record> cuRows = Query::filterRecords(*cuTbl, "check_id", Value(checkId));
-                Vector<AdjustMovementItem> movements;
-                for (size_t i = 0; i < cuRows.size(); ++i) {
-                    const auto& cu = cuRows[i];
-                    std::string sysSt = (cu.has("system_status") && std::holds_alternative<std::string>(cu.get("system_status")))
-                                      ? std::get<std::string>(cu.get("system_status")) : "";
-                    std::string scanSt = (cu.has("scanned_status") && std::holds_alternative<std::string>(cu.get("scanned_status")))
-                                       ? std::get<std::string>(cu.get("scanned_status")) : "";
-                    if (!scanSt.empty() && scanSt != sysSt && scanSt != "OUT" && sysSt != "OUT") {
-                        // Internal status shift!
-                        int cqId = std::get<int>(cu.get("check_quantity_id"));
-                        const Record* qRec = cqTbl->getRecordById(cqId);
-                        int pid = qRec ? std::get<int>(qRec->get("product_id")) : 0;
-                        if (pid > 0) {
-                            movements.push_back({pid, sysSt, scanSt, 1});
-                        }
-                    }
-                }
-                if (!movements.empty()) {
-                    OperationResult rMov = createAdjustmentMovement(
-                        db, checkCode, "STOCKTAKE_DIFF", actionDate, movements,
-                        "Điều chuyển trạng thái linh kiện từ đợt kiểm kho " + checkCode
-                    );
-                    if (rMov.success) {
-                        createdCount++;
-                        resultMsg += "- Đã tạo phiếu điều chuyển trạng thái (ADJUSTMENT_MOVEMENT).\\n";
-                    } else {
-                        resultMsg += "- Lỗi tạo phiếu điều chuyển: " + rMov.message + "\\n";
-                    }
-                }
+        if (!movements.empty()) {
+            OperationResult rMov = createAdjustmentMovement(
+                db, checkCode, "STOCKTAKE_DIFF", actionDate, movements,
+                "Điều chuyển trạng thái linh kiện từ đợt kiểm kho " + checkCode
+            );
+            if (rMov.success) {
+                createdCount++;
+                resultMsg += "- Đã tạo phiếu điều chuyển trạng thái (ADJUSTMENT_MOVEMENT).\\n";
+            } else {
+                resultMsg += "- Lỗi tạo phiếu điều chuyển: " + rMov.message + "\\n";
             }
         }
 
