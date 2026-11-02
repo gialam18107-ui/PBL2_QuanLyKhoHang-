@@ -14,6 +14,8 @@
 #include <QTableWidget>
 #include <QLabel>
 #include <QTimer>
+#include <QProgressBar>
+#include <QTextEdit>
 #include <vector>
 #include <string>
 
@@ -523,6 +525,13 @@ private:
     void onUnitStatusChanged(int unitId, const QString& newStatus);
     void onSaveChanges();
 
+    void setupProductEntryTab();
+    void refreshProductEntryTab();
+    void onInboundProductComboChanged(int index);
+    void onRecordInboundSerial();
+    void onBatchPasteSerials();
+    void onQuickGenerateInboundSerial();
+
     QStringList getAllowedStatusOptions() const;
 
     HubType hubType;
@@ -538,10 +547,31 @@ private:
     QLabel* toastOverlayLabel = nullptr;
     QTimer* toastTimer = nullptr;
 
-    // 2-Tab Structure
+    // Structure
     QTabWidget* mainTabWidget;
     QWidget* tabAllUnits;
     QWidget* tabBatchOverview;
+    QWidget* tabProductEntry = nullptr;
+
+    // Inbound Product Entry Tab controls
+    QComboBox* inboundProductCombo = nullptr;
+    QComboBox* inboundTargetStatusCombo = nullptr;
+    QFrame* prodProgressCard = nullptr;
+    QLabel* prodTargetQtyLabel = nullptr;
+    QLabel* prodActualQtyLabel = nullptr;
+    QLabel* prodRemQtyLabel = nullptr;
+    QProgressBar* prodProgressBar = nullptr;
+    QLabel* prodProgressBadge = nullptr;
+    QLabel* overallBatchProgressLabel = nullptr;
+
+    QLineEdit* inboundSerialInput = nullptr;
+    QPushButton* recordInboundSerialBtn = nullptr;
+    QPushButton* batchPasteSerialsBtn = nullptr;
+    QPushButton* quickGenerateSerialBtn = nullptr;
+    QLabel* inboundFeedbackLabel = nullptr;
+
+    QTableWidget* prodUnitsTable = nullptr;
+    QLabel* prodUnitsCountLabel = nullptr;
 
     // Tab 1 controls
     QLineEdit* serialSearchInput;

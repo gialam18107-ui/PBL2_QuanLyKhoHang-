@@ -12,6 +12,7 @@
 #include <QMessageBox>
 #include <QInputDialog>
 #include <QDate>
+#include <QRegularExpression>
 #include <algorithm>
 
 #include "schema/UserCreate.h"
@@ -3400,8 +3401,12 @@ UnitEntryDialog::UnitEntryDialog(
     refreshRecentUnitsTable();
     refreshAllUnitsTable();
 
-    // Default to Tab 2 (Tiến độ & Số lượng đợt)
-    mainTabWidget->setCurrentIndex(1);
+    if (hubType == HubType::INBOUND) {
+        refreshProductEntryTab();
+        mainTabWidget->setCurrentIndex(0);
+    } else {
+        mainTabWidget->setCurrentIndex(0);
+    }
 }
 
 UnitEntryDialog::~UnitEntryDialog()
@@ -3570,10 +3575,8 @@ void UnitEntryDialog::setupUI()
     TableClipboardHelper::setupClipboardForTable(allUnitsTable);
     tab1Layout->addWidget(allUnitsTable, 1);
 
-    mainTabWidget->addTab(tabAllUnits, "📋 Danh sách các unit trong đơn hiện tại (1)");
-
     // ==========================================
-    // TAB 2: Tiến độ & Số lượng đợt (DEFAULT)
+    // TAB 2: Tiến độ & Số lượng đợt
     // ==========================================
     tabBatchOverview = new QWidget(mainTabWidget);
     auto* tab2Layout = new QVBoxLayout(tabBatchOverview);
@@ -3716,7 +3719,15 @@ void UnitEntryDialog::setupUI()
     recentBox->setMaximumHeight(165);
     tab2Layout->addWidget(recentBox, 0);
 
-    mainTabWidget->addTab(tabBatchOverview, "📊 Tiến độ & Số lượng đợt (2)");
+    if (hubType == HubType::INBOUND) {
+        setupProductEntryTab();
+        mainTabWidget->addTab(tabProductEntry, "📥 1. Nhập Unit theo Sản phẩm (*)");
+        mainTabWidget->addTab(tabBatchOverview, "📊 2. Tiến độ & Số lượng đợt");
+        mainTabWidget->addTab(tabAllUnits, "📋 3. Toàn bộ Unit trong đợt");
+    } else {
+        mainTabWidget->addTab(tabBatchOverview, "📊 1. Tiến độ & Số lượng đợt");
+        mainTabWidget->addTab(tabAllUnits, "📋 2. Danh sách các unit trong đơn hiện tại");
+    }
 
     mainLayout->addWidget(mainTabWidget, 1);
 
@@ -4044,6 +4055,605 @@ void UnitEntryDialog::onOpenProductUnitPicker(int productId, const QString& pCod
     }
 }
 
+void UnitEntryDialog::setupProductEntryTab()
+{
+    tabProductEntry = new QWidget(mainTabWidget);
+    auto* mainLayout = new QVBoxLayout(tabProductEntry);
+    mainLayout->setContentsMargins(12, 12, 12, 12);
+    mainLayout->setSpacing(10);
+
+    // 1. Selector Group
+    auto* selectGroup = new QGroupBox("1. Chọn mặt hàng đang nhập hàng về kho", tabProductEntry);
+    auto* selectLayout = new QHBoxLayout(selectGroup);
+    selectLayout->setContentsMargins(12, 10, 12, 10);
+    selectLayout->setSpacing(12);
+
+    auto* prodLbl = new QLabel("Sản phẩm (*):", selectGroup);
+    prodLbl->setStyleSheet("font-weight: 600; font-size: 13px; color: #1e293b;");
+    selectLayout->addWidget(prodLbl);
+
+    inboundProductCombo = new QComboBox(selectGroup);
+    inboundProductCombo->setMinimumHeight(38);
+    inboundProductCombo->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    inboundProductCombo->setStyleSheet(
+        "QComboBox { font-size: 13px; font-weight: 600; padding: 4px 12px; background-color: #ffffff; border: 1.5px solid #94a3b8; border-radius: 6px; }"
+        "QComboBox:focus { border: 1.5px solid #2563eb; }"
+    );
+    connect(inboundProductCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &UnitEntryDialog::onInboundProductComboChanged);
+    selectLayout->addWidget(inboundProductCombo, 2);
+
+    auto* stLbl = new QLabel("Trạng thái khi nhập (*):", selectGroup);
+    stLbl->setStyleSheet("font-weight: 600; font-size: 13px; color: #1e293b;");
+    selectLayout->addWidget(stLbl);
+
+    inboundTargetStatusCombo = new QComboBox(selectGroup);
+    inboundTargetStatusCombo->setMinimumHeight(38);
+    inboundTargetStatusCombo->addItem("AVAILABLE — Khả dụng / Mới 100%", "AVAILABLE");
+    inboundTargetStatusCombo->addItem("WARRANTY — Hàng đang bảo hành", "WARRANTY");
+    inboundTargetStatusCombo->addItem("SCRAPPED — Lỗi khi nhận / Phế phẩm", "SCRAPPED");
+    inboundTargetStatusCombo->setStyleSheet(
+        "QComboBox { font-size: 13px; font-weight: 600; padding: 4px 10px; background-color: #ffffff; border: 1.5px solid #94a3b8; border-radius: 6px; }"
+    );
+    if (transactionType == "WARRANTY_CHECKING" || transactionType == "WCK" ||
+        transactionType == "WARRANTY_REPLACEMENT" || transactionType == "WRP") {
+        inboundTargetStatusCombo->setCurrentIndex(1);
+    }
+    inboundTargetStatusCombo->setEnabled(!isLogisticsCompleted);
+    selectLayout->addWidget(inboundTargetStatusCombo, 1);
+
+    mainLayout->addWidget(selectGroup);
+
+    // 2. Real-time Product Progress Card (As requested: "hiện luôn cả tiến độ khi nhập sản phẩm này nữa")
+    prodProgressCard = new QFrame(tabProductEntry);
+    prodProgressCard->setObjectName("prodProgressCard");
+    prodProgressCard->setStyleSheet(
+        "QFrame#prodProgressCard {"
+        "  background-color: #f8fafc;"
+        "  border: 1.5px solid #cbd5e1;"
+        "  border-radius: 8px;"
+        "  padding: 10px 14px;"
+        "}"
+    );
+    auto* cardLayout = new QVBoxLayout(prodProgressCard);
+    cardLayout->setContentsMargins(10, 8, 10, 8);
+    cardLayout->setSpacing(8);
+
+    auto* cardHeaderRow = new QHBoxLayout();
+    auto* cardTitle = new QLabel("📊 <b>Tiến độ nhận hàng của sản phẩm đang chọn:</b>", prodProgressCard);
+    cardTitle->setStyleSheet("font-size: 13px; color: #1e293b;");
+    cardHeaderRow->addWidget(cardTitle);
+    cardHeaderRow->addStretch();
+
+    prodProgressBadge = new QLabel("ĐANG NHẬP HÀNG", prodProgressCard);
+    prodProgressBadge->setStyleSheet("background-color: #eff6ff; color: #2563eb; font-weight: bold; border-radius: 4px; padding: 3px 10px; font-size: 11px; border: 1px solid #bfdbfe;");
+    cardHeaderRow->addWidget(prodProgressBadge);
+    cardLayout->addLayout(cardHeaderRow);
+
+    auto* statRow = new QHBoxLayout();
+    statRow->setSpacing(16);
+
+    prodTargetQtyLabel = new QLabel("Kế hoạch: <b>0</b> unit", prodProgressCard);
+    prodTargetQtyLabel->setStyleSheet("font-size: 13px; color: #334155;");
+    prodActualQtyLabel = new QLabel("Đã nhận: <b style='color:#16a34a;'>0</b> unit", prodProgressCard);
+    prodActualQtyLabel->setStyleSheet("font-size: 13px; color: #334155;");
+    prodRemQtyLabel = new QLabel("Còn thiếu: <b style='color:#ea580c;'>0</b> unit", prodProgressCard);
+    prodRemQtyLabel->setStyleSheet("font-size: 13px; color: #334155;");
+
+    statRow->addWidget(prodTargetQtyLabel);
+    statRow->addWidget(new QLabel("|", prodProgressCard));
+    statRow->addWidget(prodActualQtyLabel);
+    statRow->addWidget(new QLabel("|", prodProgressCard));
+    statRow->addWidget(prodRemQtyLabel);
+    statRow->addStretch();
+
+    cardLayout->addLayout(statRow);
+
+    // Progress Bar
+    prodProgressBar = new QProgressBar(prodProgressCard);
+    prodProgressBar->setRange(0, 100);
+    prodProgressBar->setValue(0);
+    prodProgressBar->setTextVisible(true);
+    prodProgressBar->setFormat("%p% (%v / %m unit)");
+    prodProgressBar->setMinimumHeight(22);
+    prodProgressBar->setStyleSheet(
+        "QProgressBar {"
+        "  border: 1px solid #cbd5e1;"
+        "  border-radius: 6px;"
+        "  text-align: center;"
+        "  font-weight: 600;"
+        "  font-size: 11px;"
+        "  color: #1e293b;"
+        "  background-color: #f1f5f9;"
+        "}"
+        "QProgressBar::chunk {"
+        "  background-color: #16a34a;"
+        "  border-radius: 5px;"
+        "}"
+    );
+    cardLayout->addWidget(prodProgressBar);
+
+    overallBatchProgressLabel = new QLabel("Tổng tiến độ toàn đợt nhận: Đã nhận 0 / 0 unit.", prodProgressCard);
+    overallBatchProgressLabel->setStyleSheet("font-size: 12px; color: #64748b; font-style: italic;");
+    cardLayout->addWidget(overallBatchProgressLabel);
+
+    mainLayout->addWidget(prodProgressCard);
+
+    // 3. Serial Input and Quick Actions
+    auto* scanGroup = new QGroupBox("2. Quét hoặc nhập mã Serial cho sản phẩm này", tabProductEntry);
+    auto* scanLayout = new QVBoxLayout(scanGroup);
+    scanLayout->setContentsMargins(12, 10, 12, 10);
+    scanLayout->setSpacing(8);
+
+    auto* inputRow = new QHBoxLayout();
+    inputRow->setSpacing(8);
+
+    inboundSerialInput = new QLineEdit(scanGroup);
+    inboundSerialInput->setPlaceholderText("Quét mã vạch hoặc nhập mã Serial (SN-XXXXXXX) rồi nhấn Enter...");
+    inboundSerialInput->setClearButtonEnabled(true);
+    inboundSerialInput->setMinimumHeight(36);
+    inboundSerialInput->setStyleSheet("font-size: 13px; font-weight: 600; padding: 2px 8px; border: 1.5px solid #94a3b8; border-radius: 6px;");
+    inboundSerialInput->setEnabled(!isLogisticsCompleted);
+    connect(inboundSerialInput, &QLineEdit::returnPressed, this, &UnitEntryDialog::onRecordInboundSerial);
+    inputRow->addWidget(inboundSerialInput, 1);
+
+    recordInboundSerialBtn = new QPushButton("➕ Ghi nhận Unit", scanGroup);
+    recordInboundSerialBtn->setCursor(Qt::PointingHandCursor);
+    recordInboundSerialBtn->setMinimumHeight(36);
+    recordInboundSerialBtn->setStyleSheet(
+        "QPushButton { background-color: #16a34a; border: none; border-radius: 6px; padding: 6px 18px; font-size: 13px; font-weight: 600; color: #ffffff; }"
+        "QPushButton:hover { background-color: #15803d; }"
+        "QPushButton:disabled { background-color: #94a3b8; }"
+    );
+    recordInboundSerialBtn->setEnabled(!isLogisticsCompleted);
+    connect(recordInboundSerialBtn, &QPushButton::clicked, this, &UnitEntryDialog::onRecordInboundSerial);
+    inputRow->addWidget(recordInboundSerialBtn);
+
+    batchPasteSerialsBtn = new QPushButton("📋 Dán nhiều Serial...", scanGroup);
+    batchPasteSerialsBtn->setCursor(Qt::PointingHandCursor);
+    batchPasteSerialsBtn->setMinimumHeight(36);
+    batchPasteSerialsBtn->setStyleSheet(
+        "QPushButton { background-color: #f8fafc; border: 1.5px solid #7c3aed; border-radius: 6px; padding: 6px 14px; font-size: 12px; font-weight: 600; color: #7c3aed; }"
+        "QPushButton:hover { background-color: #f5f3ff; }"
+        "QPushButton:disabled { background-color: #f1f5f9; color: #94a3b8; border-color: #cbd5e1; }"
+    );
+    batchPasteSerialsBtn->setEnabled(!isLogisticsCompleted);
+    connect(batchPasteSerialsBtn, &QPushButton::clicked, this, &UnitEntryDialog::onBatchPasteSerials);
+    inputRow->addWidget(batchPasteSerialsBtn);
+
+    quickGenerateSerialBtn = new QPushButton("🎲 Sinh mã tự động (Test)", scanGroup);
+    quickGenerateSerialBtn->setCursor(Qt::PointingHandCursor);
+    quickGenerateSerialBtn->setMinimumHeight(36);
+    quickGenerateSerialBtn->setStyleSheet(
+        "QPushButton { background-color: #f8fafc; border: 1.5px solid #2563eb; border-radius: 6px; padding: 6px 14px; font-size: 12px; font-weight: 600; color: #2563eb; }"
+        "QPushButton:hover { background-color: #eff6ff; }"
+        "QPushButton:disabled { background-color: #f1f5f9; color: #94a3b8; border-color: #cbd5e1; }"
+    );
+    quickGenerateSerialBtn->setEnabled(!isLogisticsCompleted);
+    connect(quickGenerateSerialBtn, &QPushButton::clicked, this, &UnitEntryDialog::onQuickGenerateInboundSerial);
+    inputRow->addWidget(quickGenerateSerialBtn);
+
+    scanLayout->addLayout(inputRow);
+
+    inboundFeedbackLabel = new QLabel("⚪ Sẵn sàng quét mã Serial cho sản phẩm...", scanGroup);
+    inboundFeedbackLabel->setStyleSheet("font-size: 12px; color: #64748b; font-weight: 500;");
+    scanLayout->addWidget(inboundFeedbackLabel);
+
+    mainLayout->addWidget(scanGroup);
+
+    // 4. Units Table for this selected product
+    auto* tableHeaderRow = new QHBoxLayout();
+    auto* tblTitle = new QLabel("📋 <b>Danh sách Unit đã nhận của sản phẩm này trong đợt:</b>", tabProductEntry);
+    tblTitle->setStyleSheet("font-size: 13px; color: #1e293b;");
+    tableHeaderRow->addWidget(tblTitle);
+    tableHeaderRow->addStretch();
+
+    prodUnitsCountLabel = new QLabel("(0 unit)", tabProductEntry);
+    prodUnitsCountLabel->setStyleSheet("font-size: 12px; color: #64748b; font-weight: 600;");
+    tableHeaderRow->addWidget(prodUnitsCountLabel);
+    mainLayout->addLayout(tableHeaderRow);
+
+    prodUnitsTable = new QTableWidget(tabProductEntry);
+    prodUnitsTable->setColumnCount(5);
+    prodUnitsTable->setHorizontalHeaderLabels({"STT", "Số Serial (SN)", "Trạng thái ghi nhận", "Thời gian ghi nhận", "Trạng thái mới"});
+    prodUnitsTable->setAlternatingRowColors(true);
+    prodUnitsTable->verticalHeader()->setVisible(false);
+    prodUnitsTable->verticalHeader()->setDefaultSectionSize(32);
+    prodUnitsTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    prodUnitsTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    prodUnitsTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+    prodUnitsTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+    prodUnitsTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
+    prodUnitsTable->setStyleSheet(
+        "QTableWidget { background-color: #ffffff; alternate-background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 12px; }"
+        "QHeaderView::section { background-color: #f1f5f9; color: #334155; font-weight: 600; padding: 6px 8px; border: none; border-bottom: 1px solid #cbd5e1; }"
+    );
+    mainLayout->addWidget(prodUnitsTable, 1);
+}
+
+void UnitEntryDialog::refreshProductEntryTab()
+{
+    if (hubType != HubType::INBOUND || !inboundProductCombo) return;
+
+    inboundProductCombo->blockSignals(true);
+    int currentPid = inboundProductCombo->currentData().toInt();
+    inboundProductCombo->clear();
+
+    int totalBatchUnits = 0;
+    int totalActualUnits = 0;
+
+    for (const auto& itm : batchItems) {
+        totalBatchUnits += itm.batchQty;
+        totalActualUnits += itm.actualQty;
+        int rem = itm.batchQty - itm.actualQty;
+        if (rem < 0) rem = 0;
+
+        QString itemText = QString("[%1] %2 — SL: %3 | Đã nhận: %4 | Còn thiếu: %5")
+            .arg(itm.productCode, itm.productName)
+            .arg(itm.batchQty).arg(itm.actualQty).arg(rem);
+        if (rem == 0) itemText += "  ✅ ĐÃ ĐỦ";
+
+        inboundProductCombo->addItem(itemText, itm.productId);
+    }
+
+    int restoreIdx = 0;
+    if (currentPid > 0) {
+        for (int i = 0; i < inboundProductCombo->count(); ++i) {
+            if (inboundProductCombo->itemData(i).toInt() == currentPid) {
+                restoreIdx = i;
+                break;
+            }
+        }
+    }
+    if (inboundProductCombo->count() > 0) {
+        inboundProductCombo->setCurrentIndex(restoreIdx);
+    }
+    inboundProductCombo->blockSignals(false);
+
+    if (overallBatchProgressLabel) {
+        overallBatchProgressLabel->setText(
+            QString("Tổng tiến độ toàn đợt nhận: Đã nhận <b>%1 / %2</b> unit (Còn thiếu: <b>%3</b> unit).")
+                .arg(totalActualUnits).arg(totalBatchUnits).arg(std::max(0, totalBatchUnits - totalActualUnits))
+        );
+    }
+
+    onInboundProductComboChanged(inboundProductCombo->currentIndex());
+}
+
+void UnitEntryDialog::onInboundProductComboChanged(int index)
+{
+    if (index < 0 || index >= static_cast<int>(batchItems.size())) {
+        if (prodProgressBar) {
+            prodProgressBar->setMaximum(1);
+            prodProgressBar->setValue(0);
+        }
+        if (prodUnitsTable) prodUnitsTable->setRowCount(0);
+        return;
+    }
+
+    const auto& itm = batchItems[index];
+    int pid = itm.productId;
+    int target = itm.batchQty;
+    int actual = itm.actualQty;
+    int rem = std::max(0, target - actual);
+
+    if (prodTargetQtyLabel) {
+        prodTargetQtyLabel->setText(QString("Kế hoạch: <b>%1</b> unit").arg(target));
+    }
+    if (prodActualQtyLabel) {
+        prodActualQtyLabel->setText(QString("Đã nhận: <b style='color:#16a34a;'>%1</b> unit").arg(actual));
+    }
+    if (prodRemQtyLabel) {
+        prodRemQtyLabel->setText(QString("Còn thiếu: <b style='color:%1;'>%2</b> unit")
+            .arg(rem == 0 ? "#16a34a" : "#ea580c").arg(rem));
+    }
+
+    if (prodProgressBar) {
+        prodProgressBar->setMaximum(target > 0 ? target : 1);
+        prodProgressBar->setValue(actual);
+        if (rem == 0) {
+            prodProgressBar->setStyleSheet(
+                "QProgressBar { border: 1px solid #86efac; border-radius: 6px; text-align: center; font-weight: bold; font-size: 11px; color: #166534; background-color: #f0fdf4; }"
+                "QProgressBar::chunk { background-color: #22c55e; border-radius: 5px; }"
+            );
+        } else {
+            prodProgressBar->setStyleSheet(
+                "QProgressBar { border: 1px solid #cbd5e1; border-radius: 6px; text-align: center; font-weight: bold; font-size: 11px; color: #1e293b; background-color: #f1f5f9; }"
+                "QProgressBar::chunk { background-color: #16a34a; border-radius: 5px; }"
+            );
+        }
+    }
+
+    bool isDone = (rem == 0);
+    if (prodProgressBadge) {
+        if (isDone) {
+            prodProgressBadge->setText("✅ ĐÃ ĐỦ SỐ LƯỢNG");
+            prodProgressBadge->setStyleSheet("background-color: #dcfce7; color: #15803d; font-weight: bold; border-radius: 4px; padding: 3px 10px; font-size: 11px; border: 1px solid #86efac;");
+        } else {
+            prodProgressBadge->setText("ĐANG NHẬP HÀNG");
+            prodProgressBadge->setStyleSheet("background-color: #eff6ff; color: #2563eb; font-weight: bold; border-radius: 4px; padding: 3px 10px; font-size: 11px; border: 1px solid #bfdbfe;");
+        }
+    }
+
+    if (prodProgressCard) {
+        if (isDone) {
+            prodProgressCard->setStyleSheet("QFrame#prodProgressCard { background-color: #f0fdf4; border: 1.5px solid #86efac; border-radius: 8px; padding: 10px 14px; }");
+        } else {
+            prodProgressCard->setStyleSheet("QFrame#prodProgressCard { background-color: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 10px 14px; }");
+        }
+    }
+
+    if (inboundSerialInput) {
+        inboundSerialInput->setEnabled(!isLogisticsCompleted && !isDone);
+        if (isDone) {
+            inboundSerialInput->setPlaceholderText("✅ Sản phẩm này đã nhận đủ số lượng.");
+        } else {
+            inboundSerialInput->setPlaceholderText(QString("Quét mã vạch hoặc nhập Serial cho [%1] rồi nhấn Enter...").arg(itm.productCode));
+        }
+    }
+    if (recordInboundSerialBtn) recordInboundSerialBtn->setEnabled(!isLogisticsCompleted && !isDone);
+    if (batchPasteSerialsBtn) batchPasteSerialsBtn->setEnabled(!isLogisticsCompleted && !isDone);
+    if (quickGenerateSerialBtn) quickGenerateSerialBtn->setEnabled(!isLogisticsCompleted && !isDone);
+
+    // Refresh units table for this product
+    if (prodUnitsTable) {
+        prodUnitsTable->blockSignals(true);
+        for (int r = 0; r < prodUnitsTable->rowCount(); ++r) {
+            prodUnitsTable->removeCellWidget(r, 4);
+        }
+        std::vector<const StagedUnit*> pUnits;
+        for (const auto& u : stagedUnits) {
+            if (u.productId == pid) {
+                pUnits.push_back(&u);
+            }
+        }
+
+        prodUnitsTable->setRowCount(static_cast<int>(pUnits.size()));
+        for (int r = 0; r < static_cast<int>(pUnits.size()); ++r) {
+            const auto* u = pUnits[r];
+            auto* itStt = new QTableWidgetItem(QString::number(r + 1));
+            itStt->setTextAlignment(Qt::AlignCenter);
+
+            auto* itSn = new QTableWidgetItem(QString::fromStdString(u->serial));
+            itSn->setFont(QFont("Consolas", font().pointSize(), QFont::Bold));
+
+            auto* itOrigSt = new QTableWidgetItem(QString::fromStdString(u->originalStatus));
+            itOrigSt->setTextAlignment(Qt::AlignCenter);
+            itOrigSt->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
+            if (u->originalStatus == "AVAILABLE") itOrigSt->setForeground(QColor("#16a34a"));
+            else if (u->originalStatus == "WARRANTY") itOrigSt->setForeground(QColor("#d97706"));
+            else if (u->originalStatus == "SCRAPPED") itOrigSt->setForeground(QColor("#dc2626"));
+
+            auto* itTime = new QTableWidgetItem("Hôm nay");
+            itTime->setTextAlignment(Qt::AlignCenter);
+
+            prodUnitsTable->setItem(r, 0, itStt);
+            prodUnitsTable->setItem(r, 1, itSn);
+            prodUnitsTable->setItem(r, 2, itOrigSt);
+            prodUnitsTable->setItem(r, 3, itTime);
+
+            auto* cb = new QComboBox(prodUnitsTable);
+            cb->addItem("AVAILABLE", "AVAILABLE");
+            cb->addItem("WARRANTY", "WARRANTY");
+            cb->addItem("SCRAPPED", "SCRAPPED");
+            int curStIdx = cb->findData(QString::fromStdString(u->currentStatus));
+            if (curStIdx >= 0) cb->setCurrentIndex(curStIdx);
+            cb->setEnabled(!isLogisticsCompleted);
+
+            int uId = u->unitId;
+            connect(cb, QOverload<int>::of(&QComboBox::currentIndexChanged), [this, uId, cb](int cIdx) {
+                onUnitStatusChanged(uId, cb->itemData(cIdx).toString());
+            });
+            prodUnitsTable->setCellWidget(r, 4, cb);
+        }
+        prodUnitsTable->blockSignals(false);
+
+        if (prodUnitsCountLabel) {
+            prodUnitsCountLabel->setText(QString("(Đã nhận: %1 unit)").arg(pUnits.size()));
+        }
+    }
+}
+
+void UnitEntryDialog::onRecordInboundSerial()
+{
+    if (!db || hubType != HubType::INBOUND || isLogisticsCompleted) return;
+    if (!inboundProductCombo || inboundProductCombo->count() == 0) return;
+
+    int curIdx = inboundProductCombo->currentIndex();
+    if (curIdx < 0 || curIdx >= static_cast<int>(batchItems.size())) return;
+
+    const auto& itm = batchItems[curIdx];
+    int pid = itm.productId;
+    int rem = itm.batchQty - itm.actualQty;
+
+    if (rem <= 0) {
+        showToast(QString("⚠️ Sản phẩm '%1' đã nhận đủ số lượng (%2/%3)!").arg(itm.productName).arg(itm.actualQty).arg(itm.batchQty), false);
+        return;
+    }
+
+    QString inputSn = inboundSerialInput ? inboundSerialInput->text().trimmed().toUpper() : "";
+    if (inputSn.isEmpty()) {
+        showToast("⚠️ Vui lòng nhập hoặc quét mã Serial.", false);
+        if (inboundSerialInput) inboundSerialInput->setFocus();
+        return;
+    }
+
+    if (!user_create::isValidSerialFormat(inputSn.toStdString())) {
+        showToast(QString("⚠️ Mã '%1' sai định dạng chuẩn SN-XXXXXXX (Rule 5.5)").arg(inputSn), false);
+        if (inboundFeedbackLabel) {
+            inboundFeedbackLabel->setText(QString("❌ Mã [%1] sai định dạng chuẩn (phải bắt đầu bằng SN- và 7 chữ số)").arg(inputSn));
+            inboundFeedbackLabel->setStyleSheet("font-size: 12px; color: #dc2626; font-weight: 600;");
+        }
+        return;
+    }
+
+    std::string serialStd = inputSn.toStdString();
+
+    for (const auto& u : stagedUnits) {
+        if (u.serial == serialStd) {
+            showToast(QString("⚠️ [%1] đã có trong đợt này!").arg(inputSn), false);
+            if (inboundFeedbackLabel) {
+                inboundFeedbackLabel->setText(QString("⚠️ Serial [%1] đã được ghi nhận trong đợt này rồi!").arg(inputSn));
+                inboundFeedbackLabel->setStyleSheet("font-size: 12px; color: #d97706; font-weight: 600;");
+            }
+            if (inboundSerialInput) {
+                inboundSerialInput->clear();
+                inboundSerialInput->setFocus();
+            }
+            return;
+        }
+    }
+
+    QString targetSt = inboundTargetStatusCombo ? inboundTargetStatusCombo->currentData().toString() : "AVAILABLE";
+    if (targetSt.isEmpty()) targetSt = "AVAILABLE";
+
+    OperationResult res = user_create::receiveUnitsForDelivery(db, logId, pid, targetSt.toStdString(), 1, {serialStd});
+    if (!res.success) {
+        showToast(QString("❌ Lỗi: %1").arg(QString::fromStdString(res.message)), false);
+        if (inboundFeedbackLabel) {
+            inboundFeedbackLabel->setText(QString("❌ %1").arg(QString::fromStdString(res.message)));
+            inboundFeedbackLabel->setStyleSheet("font-size: 12px; color: #dc2626; font-weight: 600;");
+        }
+        return;
+    }
+
+    hasModifiedUnits = true;
+    if (inboundSerialInput) {
+        inboundSerialInput->clear();
+        inboundSerialInput->setFocus();
+    }
+
+    loadBatchData();
+    loadAllUnitsData();
+
+    for (const auto& u : stagedUnits) {
+        if (u.serial == serialStd) {
+            auto itRec = std::find(recentUnitIds.begin(), recentUnitIds.end(), u.unitId);
+            if (itRec != recentUnitIds.end()) recentUnitIds.erase(itRec);
+            recentUnitIds.insert(recentUnitIds.begin(), u.unitId);
+            if (recentUnitIds.size() > 3) recentUnitIds.resize(3);
+            break;
+        }
+    }
+
+    refreshBatchOverviewTable();
+    refreshRecentUnitsTable();
+    refreshAllUnitsTable();
+    refreshProductEntryTab();
+
+    QString succMsg = QString("✅ Đã ghi nhận thành công SN [%1] cho '%2'!").arg(inputSn, itm.productName);
+    if (inboundFeedbackLabel) {
+        inboundFeedbackLabel->setText(succMsg);
+        inboundFeedbackLabel->setStyleSheet("font-size: 12px; color: #16a34a; font-weight: 600;");
+    }
+    showToast(succMsg, true);
+}
+
+void UnitEntryDialog::onBatchPasteSerials()
+{
+    if (!db || hubType != HubType::INBOUND || isLogisticsCompleted) return;
+    int curIdx = inboundProductCombo ? inboundProductCombo->currentIndex() : -1;
+    if (curIdx < 0 || curIdx >= static_cast<int>(batchItems.size())) return;
+
+    const auto& itm = batchItems[curIdx];
+    int pid = itm.productId;
+    int rem = itm.batchQty - itm.actualQty;
+    if (rem <= 0) {
+        QMessageBox::information(this, "Thông báo", "Sản phẩm này đã nhận đủ số lượng.");
+        return;
+    }
+
+    QDialog dlg(this);
+    dlg.setWindowTitle(QString("Dán Nhiều Serial Cho Sản Phẩm: [%1] %2").arg(itm.productCode, itm.productName));
+    dlg.resize(500, 400);
+
+    auto* layout = new QVBoxLayout(&dlg);
+    layout->addWidget(new QLabel(QString("Nhập danh sách mã Serial cho sản phẩm <b>[%1] %2</b><br>"
+                                        "(Còn thiếu <b>%3</b> unit. Mỗi dòng một mã hoặc cách nhau bằng dấu phẩy):")
+                                        .arg(itm.productCode, itm.productName).arg(rem)));
+
+    auto* textEdit = new QTextEdit(&dlg);
+    textEdit->setPlaceholderText("SN-0010001\nSN-0010002\nSN-0010003...");
+    layout->addWidget(textEdit);
+
+    auto* btnRow = new QHBoxLayout();
+    btnRow->addStretch();
+    auto* cancelBtn = new QPushButton("Hủy bỏ", &dlg);
+    auto* okBtn = new QPushButton("🚀 Ghi nhận danh sách", &dlg);
+    okBtn->setStyleSheet("background-color: #16a34a; color: #ffffff; font-weight: 600; padding: 6px 14px; border-radius: 4px;");
+    btnRow->addWidget(cancelBtn);
+    btnRow->addWidget(okBtn);
+    layout->addLayout(btnRow);
+
+    connect(cancelBtn, &QPushButton::clicked, &dlg, &QDialog::reject);
+    connect(okBtn, &QPushButton::clicked, &dlg, &QDialog::accept);
+
+    if (dlg.exec() != QDialog::Accepted) return;
+
+    QString text = textEdit->toPlainText();
+    QStringList rawList = text.split(QRegularExpression("[\\r\\n,;\\s]+"), Qt::SkipEmptyParts);
+
+    if (rawList.empty()) return;
+
+    QString targetSt = inboundTargetStatusCombo ? inboundTargetStatusCombo->currentData().toString() : "AVAILABLE";
+    int successCount = 0;
+    QString lastError = "";
+
+    for (const auto& raw : rawList) {
+        QString sn = raw.trimmed().toUpper();
+        if (sn.isEmpty()) continue;
+        if (!user_create::isValidSerialFormat(sn.toStdString())) continue;
+
+        bool dup = false;
+        for (const auto& u : stagedUnits) {
+            if (u.serial == sn.toStdString()) { dup = true; break; }
+        }
+        if (dup) continue;
+
+        OperationResult r = user_create::receiveUnitsForDelivery(db, logId, pid, targetSt.toStdString(), 1, {sn.toStdString()});
+        if (r.success) {
+            successCount++;
+            hasModifiedUnits = true;
+            loadBatchData();
+            loadAllUnitsData();
+        } else {
+            lastError = QString::fromStdString(r.message);
+        }
+    }
+
+    refreshBatchOverviewTable();
+    refreshRecentUnitsTable();
+    refreshAllUnitsTable();
+    refreshProductEntryTab();
+
+    if (successCount > 0) {
+        QMessageBox::information(this, "Kết quả nhập hàng",
+            QString("Đã ghi nhận thành công %1 / %2 mã Serial cho sản phẩm [%3]!").arg(successCount).arg(rawList.size()).arg(itm.productCode));
+    } else {
+        QMessageBox::warning(this, "Không thể ghi nhận",
+            QString("Không ghi nhận được Serial nào hợp lệ.\nLỗi: %1").arg(lastError));
+    }
+}
+
+void UnitEntryDialog::onQuickGenerateInboundSerial()
+{
+    if (!db || hubType != HubType::INBOUND || isLogisticsCompleted) return;
+    int curIdx = inboundProductCombo ? inboundProductCombo->currentIndex() : -1;
+    if (curIdx < 0 || curIdx >= static_cast<int>(batchItems.size())) return;
+
+    const auto& itm = batchItems[curIdx];
+    int rem = itm.batchQty - itm.actualQty;
+    if (rem <= 0) {
+        showToast("⚠️ Sản phẩm này đã nhận đủ số lượng.", false);
+        return;
+    }
+
+    std::string genSn = user_create::generateUniqueSerial(db);
+    if (inboundSerialInput) {
+        inboundSerialInput->setText(QString::fromStdString(genSn));
+        onRecordInboundSerial();
+    }
+}
+
 void UnitEntryDialog::refreshRecentUnitsTable()
 {
     if (!recentUnitsTable) return;
@@ -4241,6 +4851,7 @@ void UnitEntryDialog::onUnitStatusChanged(int unitId, const QString& newStatus)
 
     refreshRecentUnitsTable();
     refreshAllUnitsTable();
+    if (hubType == HubType::INBOUND) refreshProductEntryTab();
 
     int modCount = 0;
     for (const auto& u : stagedUnits) {
@@ -4307,6 +4918,7 @@ void UnitEntryDialog::onSaveChanges()
     refreshBatchOverviewTable();
     refreshRecentUnitsTable();
     refreshAllUnitsTable();
+    if (hubType == HubType::INBOUND) refreshProductEntryTab();
 
     statusSummaryLabel->setText(
         QString("Tổng cộng: %1 linh kiện đã ghi nhận trong đợt này.").arg(stagedUnits.size())
@@ -4413,6 +5025,7 @@ void UnitEntryDialog::onDirectSerialEntered()
         refreshBatchOverviewTable();
         refreshRecentUnitsTable();
         refreshAllUnitsTable();
+        if (hubType == HubType::INBOUND) refreshProductEntryTab();
 
         showToast(QString("✅ Đã ghi nhận [%1] cho '%2'").arg(inputSn, batchItems[itemIdx].productName), true);
     } else {
@@ -4491,6 +5104,7 @@ void UnitEntryDialog::onDirectSerialEntered()
         refreshBatchOverviewTable();
         refreshRecentUnitsTable();
         refreshAllUnitsTable();
+        if (hubType == HubType::INBOUND) refreshProductEntryTab();
 
         showToast(QString("✅ Đã tạo mới và nhận [%1] cho '%2'").arg(inputSn, batchItems[itemIdx].productName), true);
     }
@@ -4610,6 +5224,7 @@ bool UnitEntryDialog::recordCustomSerial(const QString& serial, QString& outErrM
         refreshBatchOverviewTable();
         refreshRecentUnitsTable();
         refreshAllUnitsTable();
+        if (hubType == HubType::INBOUND) refreshProductEntryTab();
 
         showToast(QString("✅ Đã ghi nhận [%1] cho '%2'").arg(inputSn, batchItems[itemIdx].productName), true);
         return true;
@@ -4663,6 +5278,7 @@ bool UnitEntryDialog::recordCustomSerial(const QString& serial, QString& outErrM
         refreshBatchOverviewTable();
         refreshRecentUnitsTable();
         refreshAllUnitsTable();
+        if (hubType == HubType::INBOUND) refreshProductEntryTab();
 
         showToast(QString("✅ Đã tạo mới và nhận [%1] cho '%2'").arg(inputSn, batchItems[itemIdx].productName), true);
         return true;
@@ -4740,6 +5356,7 @@ void UnitEntryDialog::onCandidateSerialsSelected(const Vector<std::string>& seri
         refreshBatchOverviewTable();
         refreshRecentUnitsTable();
         refreshAllUnitsTable();
+        if (hubType == HubType::INBOUND) refreshProductEntryTab();
 
         showToast(QString("✅ Đã ghi nhận thành công %1 linh kiện từ kho!").arg(successCount), true);
     } else if (!errMsg.empty()) {
@@ -4826,6 +5443,7 @@ void UnitEntryDialog::onBatchAutoGenerateUnits()
         refreshBatchOverviewTable();
         refreshRecentUnitsTable();
         refreshAllUnitsTable();
+        if (hubType == HubType::INBOUND) refreshProductEntryTab();
 
         showToast(QString("✅ Đã tạo mới và nhận thành công %1 linh kiện!").arg(totalCreated), true);
     }
