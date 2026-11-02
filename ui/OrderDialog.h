@@ -351,6 +351,8 @@ public:
         const QString& productCode,
         const QString& productName,
         int targetQuantity = 0,
+        const std::string& transactionType = "",
+        const std::vector<std::string>& excludedSerials = {},
         QWidget* parent = nullptr
     );
     ~OutboundProductUnitPickerDialog() override = default;
@@ -374,6 +376,8 @@ private:
     QString prodCode;
     QString prodName;
     int targetQty;
+    std::string txnType;
+    std::vector<std::string> excludeList;
 
     QLineEdit* searchInput;
     QPushButton* quickSelectBtn;
@@ -498,6 +502,7 @@ public:
     const std::vector<BatchItemOverview>& getBatchItems() const { return batchItems; }
 
     bool recordPendingInboundSerial(int productId, const QString& serial, const QString& status, QString& outErrMsg);
+    bool isSerialInPendingOutbound(const std::string& sn) const;
 
 protected:
     void resizeEvent(QResizeEvent* event) override;
@@ -527,9 +532,23 @@ private:
         QString addedTime;
     };
 
+    struct PendingOutboundUnit {
+        int unitId = 0;
+        int productId = 0;
+        QString productCode;
+        QString productName;
+        std::string serial;
+        std::string currentStatus;
+        QString addedTime;
+    };
+
     int getPendingCountForProduct(int productId) const;
     bool isSerialInPending(const std::string& sn) const;
     void removePendingUnitBySerial(const std::string& sn);
+
+    int getPendingOutboundCountForProduct(int productId) const;
+    void removePendingOutboundUnitBySerial(const std::string& sn);
+    bool recordPendingOutboundSerial(int productId, const QString& serial, QString& outErrMsg);
 
     void setupUI();
     void loadBatchData();
@@ -614,6 +633,7 @@ private:
 
     std::vector<StagedUnit> stagedUnits;
     std::vector<PendingInboundUnit> pendingInboundUnits;
+    std::vector<PendingOutboundUnit> pendingOutboundUnits;
     std::vector<int> recentUnitIds; // Up to 3 most recently entered/updated units
     std::vector<BatchItemOverview> batchItems;
 };
