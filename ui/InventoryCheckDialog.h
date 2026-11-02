@@ -15,9 +15,14 @@
 #include <QMessageBox>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QGridLayout>
 #include <QHeaderView>
+#include <QSplitter>
+#include <QFrame>
+#include <QScrollArea>
 #include <vector>
 #include <string>
+#include <utility>
 
 #include "database/Database.h"
 #include "schema/UserCreate.h"
@@ -70,9 +75,153 @@ private:
 };
 
 /**
+ * @brief Dialog to record unrecorded surplus items (Type 2 Surplus - Rule 5.3.1).
+ * Increments actual product counts in inventory_check_quantity without creating premature unit_inventory rows.
+ */
+class UnrecordedSurplusDialog : public QDialog
+{
+public:
+    UnrecordedSurplusDialog(Database* database, int checkId, const std::vector<std::pair<int, QString>>& products, QWidget* parent = nullptr);
+    ~UnrecordedSurplusDialog() override = default;
+
+    bool wasRecorded() const { return recorded; }
+
+private:
+    void setupUI();
+    void onConfirm();
+
+    Database* db;
+    int checkId;
+    std::vector<std::pair<int, QString>> productList;
+    bool recorded;
+
+    QComboBox* productCombo;
+    QComboBox* conditionCombo;
+    QSpinBox* quantitySpin;
+    QLineEdit* noteEdit;
+    QPushButton* confirmBtn;
+    QPushButton* cancelBtn;
+};
+
+/**
+ * @brief Post-Check Abnormal Unit Summarization & Reconciliation Dialog (Rule 5.3.2).
+ * Implements the 3-Tier Reconciliation Funnel:
+ * Tier 1: Check-wide KPI Summary Cards & Discrepancy Filter
+ * Tier 2: Product-Level Matrix & Strict No-Netting Invariant
+ * Tier 3: 3 Action-Oriented Buckets (ADJ-OUT, ADJ-IN, ADJ-MOVEMENT) with Idempotent Locking
+ */
+class InventoryCheckReconciliationDialog : public QDialog
+{
+public:
+    InventoryCheckReconciliationDialog(Database* database, int checkId, QWidget* parent = nullptr);
+    ~InventoryCheckReconciliationDialog() override = default;
+
+    bool wasOrderGenerated() const { return orderGenerated; }
+
+private:
+    void setupUI();
+    void loadReconciliationData();
+    void updateLockingState();
+    void onCreateOutboundAdj();
+    void onCreateInboundAdj();
+    void onCreateMovementAdj();
+
+    Database* db;
+    int checkId;
+    QString checkCode;
+    QString checkType;
+    QString checkStatus;
+    bool orderGenerated;
+
+    // Tier 1: KPI Summary Cards & Filter
+    QLabel* kpiSystemStockLabel;
+    QLabel* kpiActualStockLabel;
+    QLabel* kpiMatchedLabel;
+    QLabel* kpiMissingLabel;
+    QLabel* kpiSurplusLabel;
+    QLabel* kpiStatusShiftLabel;
+    QCheckBox* abnormalFilterCheck;
+
+    // Tier 2: Product Matrix Table
+    QTableWidget* matrixTable;
+
+    // Tier 3: 3 Action Buckets (Tabs)
+    QTabWidget* bucketTabWidget;
+
+    // Bucket 1: Missing Units -> ADJUSTMENT_OUT
+    QTableWidget* missingProductTable;
+    QTableWidget* missingUnitTable;
+    QPushButton* createOutboundBtn;
+    QLabel* outboundStatusLabel;
+
+    // Bucket 2: Surplus Units -> ADJUSTMENT_IN
+    QTableWidget* surplusProductTable;
+    QTableWidget* surplusDetailTable;
+    QPushButton* createInboundBtn;
+    QLabel* inboundStatusLabel;
+
+    // Bucket 3: Status Shift Units -> ADJUSTMENT_MOVEMENT
+    QTableWidget* movementSummaryTable;
+    QTableWidget* movementDetailTable;
+    QPushButton* createMovementBtn;
+    QLabel* movementStatusLabel;
+
+    struct ProductReconcileItem {
+        int productId;
+        QString productCode;
+        QString productName;
+        int systemStock;
+        int actualCounted;
+        int matchedCount;
+        int surplusCount;
+        int missingCount;
+        int statusShiftCount;
+        int unrecordedSurplus;
+    };
+    std::vector<ProductReconcileItem> productReconcileList;
+
+    struct MissingUnitItem {
+        int checkUnitId;
+        int productId;
+        QString serial;
+        QString productCode;
+        QString productName;
+        QString systemStatus;
+    };
+    std::vector<MissingUnitItem> missingUnitList;
+
+    struct SurplusUnitItem {
+        QString type; // "REDISCOVERED_OUT" or "UNRECORDED"
+        int productId;
+        QString serial;
+        QString productCode;
+        QString productName;
+        QString currentStatus;
+        QString physicalCondition;
+        int quantity;
+    };
+    std::vector<SurplusUnitItem> surplusUnitList;
+
+    struct StatusShiftUnitItem {
+        int checkUnitId;
+        int productId;
+        QString serial;
+        QString productCode;
+        QString productName;
+        QString fromStatus;
+        QString toStatus;
+    };
+    std::vector<StatusShiftUnitItem> statusShiftUnitList;
+};
+
+/**
  * @brief Detailed modal dialog to conduct and manage an inventory check.
- * Supports QUAN and UNIT checks, actual counts recording, discrepancy review,
- * automatic generation of ADJ orders, and check finalization (Rule Section 7 & 17).
+ * Redesigned for CHK-UNIT to feature:
+ * - Master-Detail Split View (Master: Product Progress Matrix, Detail: Serial Reconciliation)
+ * - Unified Scan Bar with Out-of-Scope Rejection and Rediscovered OUT Prompt
+ * - Unrecorded Surplus Registration (+ Ghi nhận hàng thừa chưa định danh)
+ * - Color-Coded Discrepancy Badges (Matched, Missing, Surplus, Status Shift)
+ * - Integrated 3-Tier Post-Completion Reconciliation Funnel
  */
 class InventoryCheckDetailDialog : public QDialog
 {
@@ -90,10 +239,16 @@ private:
     void onSaveQuantityCounts();
     void onRecordUnitStatus();
     void onOpenBatchDialog();
-    void onCreateAdjustments();
+    void onAddUnrecordedSurplus();
+    void onOpenReconciliationDialog();
     void onCompleteCheck();
     void onEditCheckNoteClicked();
     void onEditRowNoteClicked();
+
+    void filterUnitsByProduct(int pid, const QString& pCode, const QString& pName);
+    void applyUnitTableFilters();
+    bool processUnitScan(const QString& sn, const QString& chosenMode, QLabel* feedbackLabel, QLineEdit* inputLine);
+    void updateRecentUnitsBox();
 
     Database* db;
     int checkId;
@@ -112,28 +267,46 @@ private:
     QLabel* noteLabel;
     QPushButton* editCheckNoteBtn;
 
-    // Tabs for UNIT mode (or single view for QUAN)
-    QTabWidget* tabWidget;
+    // Splitter for UNIT mode Master-Detail View
+    QSplitter* masterDetailSplitter;
 
-    // Quantity table & controls
+    // Master Product Table & Controls
+    QWidget* masterWidget;
     QTableWidget* quantityTable;
     QPushButton* saveQuantityBtn;
     QPushButton* editRowNoteBtn;
+    QPushButton* addUnrecordedSurplusBtn;
+    QPushButton* showAllProductsBtn;
     QLabel* quantitySummaryLabel;
 
-    // Unit scanner bar in Tab 1 (for UNIT mode)
-    QGroupBox* quanScanGroup;
-    QLineEdit* quanSerialInput;
-    QComboBox* quanUnitStatusCombo;
-    QPushButton* quanApplyUnitStatusBtn;
-    QLabel* quanSerialFeedbackLabel;
-    void onRecordUnitFromQuanTab();
-    bool processUnitScan(const QString& sn, const QString& chosenMode, QLabel* feedbackLabel, QLineEdit* inputLine);
+    // Detail Unit Panel & Controls
+    QWidget* detailWidget;
+    QGroupBox* scanGroup;
+    QLineEdit* serialSearchInput;
+    QLabel* serialFeedbackLabel;
+    QComboBox* unitStatusCombo;
+    QPushButton* applyUnitStatusBtn;
+    QPushButton* batchTestBtn;
 
-    // Recent units box in Tab 1 (for UNIT mode)
+    // Detail Filter Bar
+    QLabel* filterScopeLabel;
+    QPushButton* clearProductFilterBtn;
+    QLineEdit* unitSearchEdit;
+    QComboBox* unitStatusFilterCombo;
+    QCheckBox* abnormalOnlyCheck;
+    QLabel* unitSummaryLabel;
+
+    QTableWidget* unitTable;
+
+    // Recent units box
     QGroupBox* recentUnitsGroup;
     QTableWidget* recentUnitsTable;
-    void updateRecentUnitsBox();
+
+    // Bottom action buttons
+    QPushButton* refreshBtn;
+    QPushButton* reconciliationBtn;
+    QPushButton* completeCheckBtn;
+    QPushButton* closeBtn;
 
     struct RecentScannedUnit {
         int checkUnitId;
@@ -146,6 +319,7 @@ private:
 
     struct CandidateUnit {
         int checkUnitId;
+        int productId;
         QString serial;
         QString productCode;
         QString productName;
@@ -154,21 +328,7 @@ private:
     };
     std::vector<CandidateUnit> checkCandidateUnits;
 
-    // Unit table & controls (for UNIT checks)
-    QWidget* unitPageWidget;
-    QLineEdit* serialSearchInput;
-    QLabel* serialFeedbackLabel;
-    QComboBox* unitStatusCombo;
-    QPushButton* applyUnitStatusBtn;
-    QPushButton* batchTestBtn;
-    QTableWidget* unitTable;
-    QLabel* unitSummaryLabel;
-
-    // Bottom action buttons
-    QPushButton* refreshBtn;
-    QPushButton* createAdjBtn;
-    QPushButton* completeCheckBtn;
-    QPushButton* closeBtn;
+    int currentFilterProductId;
 };
 
 /**
