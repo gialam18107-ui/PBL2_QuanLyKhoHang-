@@ -153,6 +153,7 @@ private:
     // UI Tables & Labels
     QTableWidget* masterTable;
     QLabel* detailBanner;
+    QPushButton* checkEyeBtn;
 
     QTableWidget* orderDetailTable;
     QLabel* orderDetailCountLabel;

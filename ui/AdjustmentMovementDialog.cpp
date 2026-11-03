@@ -69,9 +69,7 @@ void AdjustmentMovementCreateDialog::setupUI()
             QMessageBox::warning(this, "Chưa chọn đợt kiểm", "Vui lòng chọn mã đợt kiểm kho (CHK-...) để xem chi tiết.");
             return;
         }
-        InventoryCheckInspectDialog dlg(db, srcCode, this);
-        if (dlg.exec() == QDialog::Accepted && dlg.getSelectedProductId() > 0) {
-            int pid = dlg.getSelectedProductId();
+        InventoryCheckInspectDialog::openInspector(db, srcCode, this, [this](int pid, int diffAvail, int diffWarr, int diffScrap) {
             if (productCombo) {
                 for (int i = 0; i < productCombo->count(); ++i) {
                     if (productCombo->itemData(i).toInt() == pid) {
@@ -80,10 +78,6 @@ void AdjustmentMovementCreateDialog::setupUI()
                     }
                 }
             }
-            int diffAvail = dlg.getSelectedDiffAvailable();
-            int diffWarr = dlg.getSelectedDiffWarranty();
-            int diffScrap = dlg.getSelectedDiffScrapped();
-
             if (diffAvail < 0 && diffWarr > 0) {
                 fromStatusCombo->setCurrentIndex(fromStatusCombo->findData("AVAILABLE"));
                 toStatusCombo->setCurrentIndex(toStatusCombo->findData("WARRANTY"));
@@ -104,7 +98,7 @@ void AdjustmentMovementCreateDialog::setupUI()
                 int maxAbs = std::max({std::abs(diffAvail), std::abs(diffWarr), std::abs(diffScrap)});
                 if (maxAbs > 0) quantitySpin->setValue(maxAbs);
             }
-        }
+        });
     });
 
     grid->addWidget(new QLabel("Ngày điều chuyển (*):", headerGroup), 1, 0);
@@ -311,6 +305,7 @@ void AdjustmentMovementCreateDialog::onRemoveItem(int row)
 
 void AdjustmentMovementCreateDialog::renderItemsTable()
 {
+    itemsTable->setRowCount(0);
     itemsTable->setRowCount(static_cast<int>(stagedItems.size()));
     for (int r = 0; r < static_cast<int>(stagedItems.size()); ++r) {
         const auto& item = stagedItems[r];
@@ -324,13 +319,14 @@ void AdjustmentMovementCreateDialog::renderItemsTable()
         qItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
         itemsTable->setItem(r, 4, qItem);
 
-        auto* delBtn = new QPushButton("🗑️ Xóa", itemsTable);
+        auto* delBtn = new QPushButton("🗑️ Xóa");
         delBtn->setStyleSheet("color: #dc2626; border: none; font-weight: bold;");
         connect(delBtn, &QPushButton::clicked, [this, r]() {
             onRemoveItem(r);
         });
         itemsTable->setCellWidget(r, 5, delBtn);
     }
+    itemsTable->viewport()->update();
 }
 
 void AdjustmentMovementCreateDialog::onSaveMovement()
@@ -450,11 +446,23 @@ void AdjustmentMovementDetailDialog::setupUI()
     sourceCodeLabel = new QLabel(QString("<b>Đợt kiểm gốc:</b> %1").arg(sourceCode.isEmpty() ? "(Không)" : sourceCode), headerCard);
     noteLabel = new QLabel(QString("<b>Ghi chú:</b> %1").arg(note.isEmpty() ? "(Không có)" : note), headerCard);
 
+    auto* srcLayout = new QHBoxLayout();
+    srcLayout->addWidget(sourceCodeLabel);
+    if (!sourceCode.isEmpty() && sourceCode.startsWith("CHK-")) {
+        auto* eyeBtn = new QPushButton("👁️ Xem chi tiết đợt kiểm", headerCard);
+        eyeBtn->setStyleSheet("background-color: #f1f5f9; color: #0f172a; border: 1px solid #cbd5e1; font-weight: 600; padding: 2px 8px; border-radius: 4px; font-size: 11px;");
+        connect(eyeBtn, &QPushButton::clicked, [this]() {
+            InventoryCheckInspectDialog::openInspector(db, sourceCode, this);
+        });
+        srcLayout->addWidget(eyeBtn);
+    }
+    srcLayout->addStretch();
+
     grid->addWidget(codeLabel, 0, 0);
     grid->addWidget(statusLabel, 0, 1);
     grid->addWidget(reasonLabel, 0, 2);
     grid->addWidget(dateLabel, 1, 0);
-    grid->addWidget(sourceCodeLabel, 1, 1);
+    grid->addLayout(srcLayout, 1, 1);
     grid->addWidget(noteLabel, 1, 2);
 
     mainLayout->addWidget(headerCard);
@@ -662,26 +670,74 @@ void AdjustmentMovementDetailDialog::refreshAvailableUnitsCombo()
     std::unordered_set<std::string> stagedSerials;
     for (const auto& s : stagedUnits) stagedSerials.insert(s.serial.toStdString());
 
-    const auto& rows = uTbl->getRows();
-    for (size_t i = 0; i < rows.size(); ++i) {
-        if (uTbl->isRowDeleted(i)) continue;
-        const auto& r = rows[i];
-        int pid = r.has("product_id") && std::holds_alternative<int>(r.get("product_id")) ? std::get<int>(r.get("product_id")) : 0;
-        std::string st = r.has("status") && std::holds_alternative<std::string>(r.get("status")) ? std::get<std::string>(r.get("status")) : "";
-        std::string sn = r.has("serial") && std::holds_alternative<std::string>(r.get("serial")) ? std::get<std::string>(r.get("serial")) : "";
+    if (sourceCode.startsWith("CHK-")) {
+        Table* chkTbl = db->getTable("inventory_check");
+        Table* chkUnitTbl = db->getTable("inventory_check_unit");
+        Table* chkQuanTbl = db->getTable("inventory_check_quantity");
+        if (chkTbl && chkUnitTbl) {
+            Vector<Record> cRecs = Query::filterRecords(*chkTbl, "check_code", Value(sourceCode.toStdString()));
+            if (!cRecs.empty()) {
+                int chkId = cRecs[0].has("check_id") && std::holds_alternative<int>(cRecs[0].get("check_id")) ? std::get<int>(cRecs[0].get("check_id")) : 0;
+                std::unordered_map<int, int> qIdToPid;
+                if (chkQuanTbl) {
+                    Vector<Record> qRecs = Query::filterRecords(*chkQuanTbl, "check_id", Value(chkId));
+                    for (size_t i = 0; i < qRecs.size(); ++i) {
+                        int qid = qRecs[i].has("check_quantity_id") && std::holds_alternative<int>(qRecs[i].get("check_quantity_id")) ? std::get<int>(qRecs[i].get("check_quantity_id")) : 0;
+                        int pid = qRecs[i].has("product_id") && std::holds_alternative<int>(qRecs[i].get("product_id")) ? std::get<int>(qRecs[i].get("product_id")) : 0;
+                        if (qid > 0 && pid > 0) qIdToPid[qid] = pid;
+                    }
+                }
+                Vector<Record> chkUnits = Query::filterRecords(*chkUnitTbl, "check_id", Value(chkId));
+                for (size_t i = 0; i < chkUnits.size(); ++i) {
+                    const auto& cu = chkUnits[i];
+                    int qid = cu.has("check_quantity_id") && std::holds_alternative<int>(cu.get("check_quantity_id")) ? std::get<int>(cu.get("check_quantity_id")) : 0;
+                    int pid = cu.has("product_id") && std::holds_alternative<int>(cu.get("product_id")) ? std::get<int>(cu.get("product_id")) : 0;
+                    if (pid == 0 && qIdToPid.count(qid)) pid = qIdToPid[qid];
 
-        if (pid == line->productId && st == line->fromStatus.toStdString() && !stagedSerials.count(sn)) {
-            availableUnitsCombo->addItem(QString::fromStdString(sn), QString::fromStdString(sn));
+                    std::string sysSt = cu.has("system_status") && !isNull(cu.get("system_status")) && std::holds_alternative<std::string>(cu.get("system_status")) ? std::get<std::string>(cu.get("system_status")) : "";
+                    std::string scanSt = cu.has("scanned_status") && !isNull(cu.get("scanned_status")) && std::holds_alternative<std::string>(cu.get("scanned_status")) ? std::get<std::string>(cu.get("scanned_status")) : "";
+                    std::string sn = cu.has("serial") && std::holds_alternative<std::string>(cu.get("serial")) ? std::get<std::string>(cu.get("serial")) : "";
+
+                    if (pid == line->productId && sysSt == line->fromStatus.toStdString() && scanSt == line->toStatus.toStdString() && !stagedSerials.count(sn)) {
+                        Vector<Record> uRecs = Query::filterRecords(*uTbl, "serial", Value(sn));
+                        if (!uRecs.empty()) {
+                            std::string curSt = uRecs[0].has("status") && std::holds_alternative<std::string>(uRecs[0].get("status")) ? std::get<std::string>(uRecs[0].get("status")) : "";
+                            if (curSt == line->fromStatus.toStdString()) {
+                                availableUnitsCombo->addItem(QString::fromStdString(sn), QString::fromStdString(sn));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        const auto& rows = uTbl->getRows();
+        for (size_t i = 0; i < rows.size(); ++i) {
+            if (uTbl->isRowDeleted(i)) continue;
+            const auto& r = rows[i];
+            int pid = r.has("product_id") && std::holds_alternative<int>(r.get("product_id")) ? std::get<int>(r.get("product_id")) : 0;
+            std::string st = r.has("status") && std::holds_alternative<std::string>(r.get("status")) ? std::get<std::string>(r.get("status")) : "";
+            std::string sn = r.has("serial") && std::holds_alternative<std::string>(r.get("serial")) ? std::get<std::string>(r.get("serial")) : "";
+
+            if (pid == line->productId && st == line->fromStatus.toStdString() && !stagedSerials.count(sn)) {
+                availableUnitsCombo->addItem(QString::fromStdString(sn), QString::fromStdString(sn));
+            }
         }
     }
+
     if (availableUnitsCombo->count() == 0) {
-        availableUnitsCombo->addItem("(Hết unit khả dụng trong kho)", "");
+        if (sourceCode.startsWith("CHK-")) {
+            availableUnitsCombo->addItem("(Không còn linh kiện lệch trạng thái cần chuyển)", "");
+        } else {
+            availableUnitsCombo->addItem("(Hết unit khả dụng trong kho)", "");
+        }
     }
 }
 
 void AdjustmentMovementDetailDialog::refreshStagedUnitsTable()
 {
     if (!stagedUnitsTable) return;
+    stagedUnitsTable->setRowCount(0);
     stagedUnitsTable->setRowCount(static_cast<int>(stagedUnits.size()));
     for (int r = 0; r < static_cast<int>(stagedUnits.size()); ++r) {
         const auto& s = stagedUnits[r];
@@ -691,13 +747,14 @@ void AdjustmentMovementDetailDialog::refreshStagedUnitsTable()
         stagedUnitsTable->setItem(r, 3, new QTableWidgetItem(s.fromStatus));
         stagedUnitsTable->setItem(r, 4, new QTableWidgetItem(s.toStatus));
 
-        auto* delBtn = new QPushButton("🗑️ Bỏ chọn", stagedUnitsTable);
+        auto* delBtn = new QPushButton("🗑️ Bỏ chọn");
         delBtn->setStyleSheet("color: #dc2626; border: none; font-weight: bold;");
         connect(delBtn, &QPushButton::clicked, [this, r]() {
             onRemoveStagedUnit(r);
         });
         stagedUnitsTable->setCellWidget(r, 5, delBtn);
     }
+    stagedUnitsTable->viewport()->update();
     refreshTargetLineCombo();
 }
 
@@ -794,36 +851,100 @@ void AdjustmentMovementDetailDialog::onAutoPickAll()
     for (const auto& s : stagedUnits) stagedSerials.insert(s.serial.toStdString());
 
     int addedTotal = 0;
-    for (const auto& dl : detailLines) {
-        int stagedCount = 0;
-        for (const auto& s : stagedUnits) {
-            if (s.adjustDetailId == dl.adjustDetailId) stagedCount++;
+
+    if (sourceCode.startsWith("CHK-")) {
+        Table* chkTbl = db->getTable("inventory_check");
+        Table* chkUnitTbl = db->getTable("inventory_check_unit");
+        Table* chkQuanTbl = db->getTable("inventory_check_quantity");
+        if (chkTbl && chkUnitTbl) {
+            Vector<Record> cRecs = Query::filterRecords(*chkTbl, "check_code", Value(sourceCode.toStdString()));
+            if (!cRecs.empty()) {
+                int chkId = cRecs[0].has("check_id") && std::holds_alternative<int>(cRecs[0].get("check_id")) ? std::get<int>(cRecs[0].get("check_id")) : 0;
+                std::unordered_map<int, int> qIdToPid;
+                if (chkQuanTbl) {
+                    Vector<Record> qRecs = Query::filterRecords(*chkQuanTbl, "check_id", Value(chkId));
+                    for (size_t i = 0; i < qRecs.size(); ++i) {
+                        int qid = qRecs[i].has("check_quantity_id") && std::holds_alternative<int>(qRecs[i].get("check_quantity_id")) ? std::get<int>(qRecs[i].get("check_quantity_id")) : 0;
+                        int pid = qRecs[i].has("product_id") && std::holds_alternative<int>(qRecs[i].get("product_id")) ? std::get<int>(qRecs[i].get("product_id")) : 0;
+                        if (qid > 0 && pid > 0) qIdToPid[qid] = pid;
+                    }
+                }
+                Vector<Record> chkUnits = Query::filterRecords(*chkUnitTbl, "check_id", Value(chkId));
+                for (const auto& dl : detailLines) {
+                    int stagedCount = 0;
+                    for (const auto& s : stagedUnits) {
+                        if (s.adjustDetailId == dl.adjustDetailId) stagedCount++;
+                    }
+                    int remaining = std::max(0, dl.adjustQuantity - dl.actualQuantity - stagedCount);
+                    if (remaining <= 0) continue;
+
+                    for (size_t i = 0; i < chkUnits.size(); ++i) {
+                        const auto& cu = chkUnits[i];
+                        int qid = cu.has("check_quantity_id") && std::holds_alternative<int>(cu.get("check_quantity_id")) ? std::get<int>(cu.get("check_quantity_id")) : 0;
+                        int pid = cu.has("product_id") && std::holds_alternative<int>(cu.get("product_id")) ? std::get<int>(cu.get("product_id")) : 0;
+                        if (pid == 0 && qIdToPid.count(qid)) pid = qIdToPid[qid];
+
+                        std::string sysSt = cu.has("system_status") && !isNull(cu.get("system_status")) && std::holds_alternative<std::string>(cu.get("system_status")) ? std::get<std::string>(cu.get("system_status")) : "";
+                        std::string scanSt = cu.has("scanned_status") && !isNull(cu.get("scanned_status")) && std::holds_alternative<std::string>(cu.get("scanned_status")) ? std::get<std::string>(cu.get("scanned_status")) : "";
+                        std::string sn = cu.has("serial") && std::holds_alternative<std::string>(cu.get("serial")) ? std::get<std::string>(cu.get("serial")) : "";
+
+                        if (pid == dl.productId && sysSt == dl.fromStatus.toStdString() && scanSt == dl.toStatus.toStdString() && !stagedSerials.count(sn)) {
+                            Vector<Record> uRecs = Query::filterRecords(*uTbl, "serial", Value(sn));
+                            if (!uRecs.empty()) {
+                                std::string curSt = uRecs[0].has("status") && std::holds_alternative<std::string>(uRecs[0].get("status")) ? std::get<std::string>(uRecs[0].get("status")) : "";
+                                if (curSt == dl.fromStatus.toStdString()) {
+                                    StagedUnit su;
+                                    su.adjustDetailId = dl.adjustDetailId;
+                                    su.productId = dl.productId;
+                                    su.productCode = dl.productCode;
+                                    su.productName = dl.productName;
+                                    su.serial = QString::fromStdString(sn);
+                                    su.fromStatus = dl.fromStatus;
+                                    su.toStatus = dl.toStatus;
+                                    stagedUnits.push_back(su);
+                                    stagedSerials.insert(sn);
+                                    addedTotal++;
+                                    remaining--;
+                                    if (remaining <= 0) break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
-        int remaining = std::max(0, dl.adjustQuantity - dl.actualQuantity - stagedCount);
-        if (remaining <= 0) continue;
+    } else {
+        for (const auto& dl : detailLines) {
+            int stagedCount = 0;
+            for (const auto& s : stagedUnits) {
+                if (s.adjustDetailId == dl.adjustDetailId) stagedCount++;
+            }
+            int remaining = std::max(0, dl.adjustQuantity - dl.actualQuantity - stagedCount);
+            if (remaining <= 0) continue;
 
-        const auto& rows = uTbl->getRows();
-        for (size_t i = 0; i < rows.size(); ++i) {
-            if (uTbl->isRowDeleted(i)) continue;
-            const auto& r = rows[i];
-            int pid = r.has("product_id") && std::holds_alternative<int>(r.get("product_id")) ? std::get<int>(r.get("product_id")) : 0;
-            std::string st = r.has("status") && std::holds_alternative<std::string>(r.get("status")) ? std::get<std::string>(r.get("status")) : "";
-            std::string sn = r.has("serial") && std::holds_alternative<std::string>(r.get("serial")) ? std::get<std::string>(r.get("serial")) : "";
+            const auto& rows = uTbl->getRows();
+            for (size_t i = 0; i < rows.size(); ++i) {
+                if (uTbl->isRowDeleted(i)) continue;
+                const auto& r = rows[i];
+                int pid = r.has("product_id") && std::holds_alternative<int>(r.get("product_id")) ? std::get<int>(r.get("product_id")) : 0;
+                std::string st = r.has("status") && std::holds_alternative<std::string>(r.get("status")) ? std::get<std::string>(r.get("status")) : "";
+                std::string sn = r.has("serial") && std::holds_alternative<std::string>(r.get("serial")) ? std::get<std::string>(r.get("serial")) : "";
 
-            if (pid == dl.productId && st == dl.fromStatus.toStdString() && !stagedSerials.count(sn)) {
-                StagedUnit su;
-                su.adjustDetailId = dl.adjustDetailId;
-                su.productId = dl.productId;
-                su.productCode = dl.productCode;
-                su.productName = dl.productName;
-                su.serial = QString::fromStdString(sn);
-                su.fromStatus = dl.fromStatus;
-                su.toStatus = dl.toStatus;
-                stagedUnits.push_back(su);
-                stagedSerials.insert(sn);
-                addedTotal++;
-                remaining--;
-                if (remaining <= 0) break;
+                if (pid == dl.productId && st == dl.fromStatus.toStdString() && !stagedSerials.count(sn)) {
+                    StagedUnit su;
+                    su.adjustDetailId = dl.adjustDetailId;
+                    su.productId = dl.productId;
+                    su.productCode = dl.productCode;
+                    su.productName = dl.productName;
+                    su.serial = QString::fromStdString(sn);
+                    su.fromStatus = dl.fromStatus;
+                    su.toStatus = dl.toStatus;
+                    stagedUnits.push_back(su);
+                    stagedSerials.insert(sn);
+                    addedTotal++;
+                    remaining--;
+                    if (remaining <= 0) break;
+                }
             }
         }
     }

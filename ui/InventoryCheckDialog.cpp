@@ -2069,7 +2069,7 @@ void InventoryCheckDetailDialog::refreshUnitTable()
         unitTable->setItem(row, 5, badgeItem);
 
         // 6: Chuyển nhanh (QComboBox)
-        auto* cb = new QComboBox(unitTable);
+        auto* cb = new QComboBox();
         cb->addItem("AVAILABLE — Khả dụng", "AVAILABLE");
         cb->addItem("WARRANTY — Bảo hành", "WARRANTY");
         cb->addItem("SCRAPPED — Phế phẩm", "SCRAPPED");
@@ -2118,7 +2118,7 @@ void InventoryCheckDetailDialog::refreshUnitTable()
 
         // 8: Thao tác (Delete button for soft-staged new units)
         if (u.isNew && checkStatus != "COMPLETED" && checkStatus != "CANCELLED") {
-            auto* delBtn = new QPushButton("🗑️ Xóa", unitTable);
+            auto* delBtn = new QPushButton("🗑️ Xóa");
             delBtn->setCursor(Qt::PointingHandCursor);
             delBtn->setStyleSheet(
                 "QPushButton { background-color: #fee2e2; color: #dc2626; font-weight: 600; "
@@ -2140,6 +2140,7 @@ void InventoryCheckDetailDialog::refreshUnitTable()
     }
 
     unitTable->blockSignals(false);
+    unitTable->viewport()->update();
     unitTable->setUpdatesEnabled(true);
 
     if (unitTable->verticalScrollBar()) {
@@ -3553,13 +3554,28 @@ void InventoryCheckSimulationDialog::onRunFullAutoSimulation()
 // ========================================================
 // 5. InventoryCheckInspectDialog
 // ========================================================
-InventoryCheckInspectDialog::InventoryCheckInspectDialog(Database* database, const QString& checkCodeOrId, QWidget* parent)
-    : QDialog(parent), db(database), targetCheckCode(checkCodeOrId.trimmed())
+InventoryCheckInspectDialog::InventoryCheckInspectDialog(Database* database, const QString& checkCodeOrId, QWidget* parent, ProductSelectedCallback onSelect)
+    : QDialog(parent), db(database), targetCheckCode(checkCodeOrId.trimmed()), selectCallback(onSelect)
 {
+    setWindowFlags(Qt::Window);
     setWindowTitle(QString("Chi tiết & Đối soát Đợt Kiểm Kê: %1").arg(targetCheckCode));
-    resize(1000, 600);
+    resize(1050, 620);
     setupUI();
     loadCheckData();
+}
+
+void InventoryCheckInspectDialog::openInspector(Database* database, const QString& checkCodeOrId, QWidget* parent, ProductSelectedCallback onSelect)
+{
+    QString codeClean = checkCodeOrId.trimmed();
+    int sep = codeClean.indexOf(" ");
+    if (sep > 0) codeClean = codeClean.left(sep).trimmed();
+    if (codeClean.isEmpty()) return;
+
+    auto* dlg = new InventoryCheckInspectDialog(database, codeClean, parent, onSelect);
+    dlg->setAttribute(Qt::WA_DeleteOnClose, true);
+    dlg->show();
+    dlg->raise();
+    dlg->activateWindow();
 }
 
 void InventoryCheckInspectDialog::setupUI()
@@ -3581,23 +3597,25 @@ void InventoryCheckInspectDialog::setupUI()
     t1Layout->setSpacing(8);
 
     diffOnlyCheck = new QCheckBox("Chỉ hiển thị sản phẩm có chênh lệch tồn kho (Δ ≠ 0)", tab1);
-    diffOnlyCheck->setChecked(false);
+    diffOnlyCheck->setChecked(true);
     diffOnlyCheck->setStyleSheet("font-weight: 600; color: #0f172a;");
     t1Layout->addWidget(diffOnlyCheck);
 
     matrixTable = new QTableWidget(tab1);
-    matrixTable->setColumnCount(11);
+    matrixTable->setColumnCount(12);
     matrixTable->setHorizontalHeaderLabels({
         "Mã SP", "Tên sản phẩm",
         "HT (Khả dụng)", "Thực (Khả dụng)", "Lệch KD",
         "HT (Bảo hành)", "Thực (Bảo hành)", "Lệch BH",
-        "HT (Phế phẩm)", "Thực (Phế phẩm)", "Lệch PP"
+        "HT (Phế phẩm)", "Thực (Phế phẩm)", "Lệch PP",
+        "Ghi chú kiểm kê"
     });
     matrixTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
-    matrixTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    matrixTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
     for (int c = 2; c < 11; ++c) {
         matrixTable->horizontalHeader()->setSectionResizeMode(c, QHeaderView::ResizeToContents);
     }
+    matrixTable->horizontalHeader()->setSectionResizeMode(11, QHeaderView::Stretch);
     matrixTable->setAlternatingRowColors(true);
     matrixTable->setSelectionBehavior(QAbstractItemView::SelectRows);
     matrixTable->setSelectionMode(QAbstractItemView::SingleSelection);
@@ -3608,6 +3626,13 @@ void InventoryCheckInspectDialog::setupUI()
     auto* tab2 = new QWidget();
     auto* t2Layout = new QVBoxLayout(tab2);
     t2Layout->setContentsMargins(8, 8, 8, 8);
+    t2Layout->setSpacing(8);
+
+    abnormalUnitsOnlyCheck = new QCheckBox("Chỉ hiển thị linh kiện bất thường (Thừa / Thiếu / Lệch trạng thái)", tab2);
+    abnormalUnitsOnlyCheck->setChecked(true);
+    abnormalUnitsOnlyCheck->setStyleSheet("font-weight: 600; color: #dc2626;");
+    t2Layout->addWidget(abnormalUnitsOnlyCheck);
+
     unitTable = new QTableWidget(tab2);
     unitTable->setColumnCount(7);
     unitTable->setHorizontalHeaderLabels({
@@ -3640,6 +3665,7 @@ void InventoryCheckInspectDialog::setupUI()
     mainLayout->addLayout(bottomBar);
 
     connect(diffOnlyCheck, &QCheckBox::toggled, this, &InventoryCheckInspectDialog::renderMatrixTable);
+    connect(abnormalUnitsOnlyCheck, &QCheckBox::toggled, this, &InventoryCheckInspectDialog::renderUnitTable);
     connect(matrixTable, &QTableWidget::itemSelectionChanged, [this]() {
         int r = matrixTable->currentRow();
         if (r >= 0 && matrixTable->item(r, 0)) {
@@ -3659,8 +3685,14 @@ void InventoryCheckInspectDialog::setupUI()
         }
         fillBtn->setEnabled(false);
     });
-    connect(fillBtn, &QPushButton::clicked, this, &QDialog::accept);
-    connect(closeBtn, &QPushButton::clicked, this, &QDialog::reject);
+    connect(fillBtn, &QPushButton::clicked, [this]() {
+        if (selectCallback && selectedPid > 0) {
+            selectCallback(selectedPid, selectedDiffAvail, selectedDiffWarr, selectedDiffScrap);
+            infoLabel->setText(QString("✅ Đã điền sản phẩm [%1] %2 vào đơn!").arg(selectedPCode, selectedPName));
+        }
+        accept();
+    });
+    connect(closeBtn, &QPushButton::clicked, this, &QWidget::close);
 }
 
 void InventoryCheckInspectDialog::loadCheckData()
@@ -3736,6 +3768,7 @@ void InventoryCheckInspectDialog::loadCheckData()
             mi.sysScrap = qr.has("system_scrapped_quan") && std::holds_alternative<int>(qr.get("system_scrapped_quan")) ? std::get<int>(qr.get("system_scrapped_quan")) : 0;
             mi.actScrap = qr.has("actual_scrapped_quan") && std::holds_alternative<int>(qr.get("actual_scrapped_quan")) ? std::get<int>(qr.get("actual_scrapped_quan")) : 0;
             mi.diffScrap = mi.actScrap - mi.sysScrap;
+            mi.note = qr.has("note") && !isNull(qr.get("note")) && std::holds_alternative<std::string>(qr.get("note")) ? QString::fromStdString(std::get<std::string>(qr.get("note"))) : "";
 
             matrixList.push_back(mi);
         }
@@ -3804,6 +3837,7 @@ void InventoryCheckInspectDialog::renderMatrixTable()
         }
     }
 
+    matrixTable->setRowCount(0);
     matrixTable->setRowCount(static_cast<int>(displayList.size()));
     for (int r = 0; r < static_cast<int>(displayList.size()); ++r) {
         const auto& m = displayList[r];
@@ -3843,15 +3877,26 @@ void InventoryCheckInspectDialog::renderMatrixTable()
         setCell(8, m.sysScrap, 0);
         setCell(9, m.actScrap, 0);
         setCell(10, m.diffScrap, m.diffScrap);
+        matrixTable->setItem(r, 11, new QTableWidgetItem(m.note));
     }
 }
 
 void InventoryCheckInspectDialog::renderUnitTable()
 {
     if (!unitTable) return;
-    unitTable->setRowCount(static_cast<int>(unitList.size()));
-    for (int r = 0; r < static_cast<int>(unitList.size()); ++r) {
-        const auto& u = unitList[r];
+    bool abnormalOnly = abnormalUnitsOnlyCheck && abnormalUnitsOnlyCheck->isChecked();
+
+    std::vector<UnitItem> displayList;
+    for (const auto& u : unitList) {
+        if (!abnormalOnly || u.eval != "Khớp") {
+            displayList.push_back(u);
+        }
+    }
+
+    unitTable->setRowCount(0);
+    unitTable->setRowCount(static_cast<int>(displayList.size()));
+    for (int r = 0; r < static_cast<int>(displayList.size()); ++r) {
+        const auto& u = displayList[r];
         unitTable->setItem(r, 0, new QTableWidgetItem(u.serial));
         unitTable->setItem(r, 1, new QTableWidgetItem(u.pCode));
         unitTable->setItem(r, 2, new QTableWidgetItem(u.pName));

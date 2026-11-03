@@ -354,7 +354,8 @@ public:
         int targetQuantity = 0,
         const std::string& transactionType = "",
         const std::vector<std::string>& excludedSerials = {},
-        QWidget* parent = nullptr
+        QWidget* parent = nullptr,
+        const std::string& sourceCode = ""
     );
     ~OutboundProductUnitPickerDialog() override = default;
 
@@ -379,6 +380,7 @@ private:
     int targetQty;
     std::string txnType;
     std::vector<std::string> excludeList;
+    std::string sourceCode;
 
     QLineEdit* searchInput;
     QPushButton* quickSelectBtn;
@@ -578,6 +580,7 @@ private:
     int logId;
     QString batchCodeStr;
     QString parentOrderCodeStr;
+    std::string orderSourceCode;
     std::string transactionType;
     bool isLogisticsCompleted = false;
     bool hasModifiedUnits = false;

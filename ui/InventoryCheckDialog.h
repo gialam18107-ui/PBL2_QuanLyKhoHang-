@@ -471,8 +471,12 @@ private:
 class InventoryCheckInspectDialog : public QDialog
 {
 public:
-    InventoryCheckInspectDialog(Database* database, const QString& checkCodeOrId, QWidget* parent = nullptr);
+    using ProductSelectedCallback = std::function<void(int pid, int diffAvail, int diffWarr, int diffScrap)>;
+
+    InventoryCheckInspectDialog(Database* database, const QString& checkCodeOrId, QWidget* parent = nullptr, ProductSelectedCallback onSelect = nullptr);
     ~InventoryCheckInspectDialog() override = default;
+
+    static void openInspector(Database* database, const QString& checkCodeOrId, QWidget* parent = nullptr, ProductSelectedCallback onSelect = nullptr);
 
     int getSelectedProductId() const { return selectedPid; }
     QString getSelectedProductCode() const { return selectedPCode; }
@@ -489,6 +493,7 @@ private:
 
     Database* db;
     QString targetCheckCode;
+    ProductSelectedCallback selectCallback;
     int checkId = 0;
     QString checkCode;
     QString checkType;
@@ -498,6 +503,7 @@ private:
 
     QLabel* infoLabel = nullptr;
     QCheckBox* diffOnlyCheck = nullptr;
+    QCheckBox* abnormalUnitsOnlyCheck = nullptr;
     QTableWidget* matrixTable = nullptr;
     QTableWidget* unitTable = nullptr;
     QTabWidget* tabWidget = nullptr;
@@ -517,6 +523,7 @@ private:
         int sysScrap;
         int actScrap;
         int diffScrap;
+        QString note;
     };
     std::vector<MatrixItem> matrixList;
 

@@ -357,9 +357,7 @@ QWidget* OrderDialog::createStep1Widget()
             QMessageBox::warning(this, "Chưa chọn đợt kiểm", "Vui lòng chọn hoặc nhập mã đợt kiểm kho (CHK-...) để xem chi tiết.");
             return;
         }
-        InventoryCheckInspectDialog dlg(db, srcCode, this);
-        if (dlg.exec() == QDialog::Accepted && dlg.getSelectedProductId() > 0) {
-            int pid = dlg.getSelectedProductId();
+        InventoryCheckInspectDialog::openInspector(db, srcCode, this, [this](int pid, int diffAvail, int diffWarr, int diffScrap) {
             if (productCombo) {
                 for (int i = 0; i < productCombo->count(); ++i) {
                     if (productCombo->itemData(i).toInt() == pid) {
@@ -368,14 +366,11 @@ QWidget* OrderDialog::createStep1Widget()
                     }
                 }
             }
-            int diffAvail = dlg.getSelectedDiffAvailable();
-            int diffWarr = dlg.getSelectedDiffWarranty();
-            int diffScrap = dlg.getSelectedDiffScrapped();
             int absDiff = std::max({std::abs(diffAvail), std::abs(diffWarr), std::abs(diffScrap)});
             if (absDiff > 0 && quantitySpin) {
                 quantitySpin->setValue(absDiff);
             }
-        }
+        });
     });
 
     QDate today = QDate::currentDate();
@@ -1403,7 +1398,12 @@ void OrderDialog::onPickUnitsForProduct()
     QString pName = pRec->has("product_name") ? QString::fromStdString(std::get<std::string>(pRec->get("product_name"))) : "";
 
     QString txnType = typeCombo ? typeCombo->currentData().toString() : "";
-    OutboundProductUnitPickerDialog dlg(db, pid, pCode, pName, quantitySpin->value(), txnType.toStdString(), {}, this);
+    QString srcCodeStr = sourceCodeCombo ? sourceCodeCombo->currentData().toString().trimmed() : "";
+    if (srcCodeStr.isEmpty() && sourceCodeCombo) srcCodeStr = sourceCodeCombo->currentText().trimmed();
+    int sep = srcCodeStr.indexOf(" ");
+    if (sep > 0) srcCodeStr = srcCodeStr.left(sep).trimmed();
+
+    OutboundProductUnitPickerDialog dlg(db, pid, pCode, pName, quantitySpin->value(), txnType.toStdString(), {}, this, srcCodeStr.toStdString());
     if (dlg.exec() == QDialog::Accepted) {
         std::vector<std::string> chosen = dlg.getSelectedSerials();
         if (chosen.empty()) return;
@@ -2670,10 +2670,11 @@ OutboundProductUnitPickerDialog::OutboundProductUnitPickerDialog(
     int targetQuantity,
     const std::string& transactionType,
     const std::vector<std::string>& excludedSerials,
-    QWidget* parent
+    QWidget* parent,
+    const std::string& srcCode
 )
     : QDialog(parent), db(database), prodId(productId), prodCode(productCode), prodName(productName), targetQty(targetQuantity),
-      txnType(transactionType), excludeList(excludedSerials)
+      txnType(transactionType), excludeList(excludedSerials), sourceCode(srcCode)
 {
     setWindowTitle(QString("Chọn Unit Xuất Kho: [%1] %2").arg(prodCode, prodName));
     setWindowFlags(windowFlags() | Qt::WindowMaximizeButtonHint | Qt::WindowMinimizeButtonHint);
@@ -2699,6 +2700,9 @@ void OutboundProductUnitPickerDialog::setupUI()
     QString headerText = QString("📦 <b>Sản phẩm:</b> [%1] %2").arg(prodCode, prodName);
     if (targetQty > 0) {
         headerText += QString(" &nbsp;&nbsp;|&nbsp;&nbsp; <b>Cần chọn:</b> <span style='color: #2563eb;'>%1 unit</span>").arg(targetQty);
+    }
+    if (!sourceCode.empty() && sourceCode.rfind("CHK-", 0) == 0) {
+        headerText += QString(" &nbsp;&nbsp;|&nbsp;&nbsp; <b>Đợt kiểm kê:</b> <span style='color: #dc2626;'>%1 (Chỉ hiển thị linh kiện hao hụt)</span>").arg(QString::fromStdString(sourceCode));
     }
     auto* titleLbl = new QLabel(headerText, headerBox);
     titleLbl->setStyleSheet("font-size: 13px; color: #1e3a8a;");
@@ -2819,6 +2823,45 @@ void OutboundProductUnitPickerDialog::loadCandidates()
     Table* unitTable = db->getTable("unit_inventory");
     if (!unitTable) return;
 
+    bool hasChkFilter = (!sourceCode.empty() && sourceCode.rfind("CHK-", 0) == 0);
+    std::unordered_set<std::string> chkMissingSerials;
+    if (hasChkFilter) {
+        Table* chkTbl = db->getTable("inventory_check");
+        Table* chkUnitTbl = db->getTable("inventory_check_unit");
+        Table* chkQuanTbl = db->getTable("inventory_check_quantity");
+        if (chkTbl && chkUnitTbl) {
+            Vector<Record> cRecs = Query::filterRecords(*chkTbl, "check_code", Value(sourceCode));
+            if (!cRecs.empty()) {
+                int chkId = cRecs[0].has("check_id") && std::holds_alternative<int>(cRecs[0].get("check_id")) ? std::get<int>(cRecs[0].get("check_id")) : 0;
+                std::unordered_map<int, int> qIdToPid;
+                if (chkQuanTbl) {
+                    Vector<Record> qRecs = Query::filterRecords(*chkQuanTbl, "check_id", Value(chkId));
+                    for (size_t i = 0; i < qRecs.size(); ++i) {
+                        int qid = qRecs[i].has("check_quantity_id") && std::holds_alternative<int>(qRecs[i].get("check_quantity_id")) ? std::get<int>(qRecs[i].get("check_quantity_id")) : 0;
+                        int pid = qRecs[i].has("product_id") && std::holds_alternative<int>(qRecs[i].get("product_id")) ? std::get<int>(qRecs[i].get("product_id")) : 0;
+                        if (qid > 0 && pid > 0) qIdToPid[qid] = pid;
+                    }
+                }
+                Vector<Record> chkUnits = Query::filterRecords(*chkUnitTbl, "check_id", Value(chkId));
+                for (size_t i = 0; i < chkUnits.size(); ++i) {
+                    const auto& cu = chkUnits[i];
+                    int qid = cu.has("check_quantity_id") && std::holds_alternative<int>(cu.get("check_quantity_id")) ? std::get<int>(cu.get("check_quantity_id")) : 0;
+                    int pid = cu.has("product_id") && std::holds_alternative<int>(cu.get("product_id")) ? std::get<int>(cu.get("product_id")) : 0;
+                    if (pid == 0 && qIdToPid.count(qid)) pid = qIdToPid[qid];
+
+                    std::string sysSt = cu.has("system_status") && !isNull(cu.get("system_status")) && std::holds_alternative<std::string>(cu.get("system_status")) ? std::get<std::string>(cu.get("system_status")) : "";
+                    std::string scanSt = cu.has("scanned_status") && !isNull(cu.get("scanned_status")) && std::holds_alternative<std::string>(cu.get("scanned_status")) ? std::get<std::string>(cu.get("scanned_status")) : "";
+                    std::string sn = cu.has("serial") && std::holds_alternative<std::string>(cu.get("serial")) ? std::get<std::string>(cu.get("serial")) : "";
+
+                    bool isMissing = (!sysSt.empty() && sysSt != "OUT") && (scanSt.empty() || scanSt == "MISSING");
+                    if (isMissing && pid == prodId && !sn.empty()) {
+                        chkMissingSerials.insert(sn);
+                    }
+                }
+            }
+        }
+    }
+
     Vector<Record> recs = Query::filterRecords(*unitTable, "product_id", Value(prodId));
     for (size_t i = 0; i < recs.size(); ++i) {
         const auto& r = recs[i];
@@ -2829,6 +2872,7 @@ void OutboundProductUnitPickerDialog::loadCandidates()
 
         if (isSold || st == "OUT") continue;
         if (std::find(excludeList.begin(), excludeList.end(), sn) != excludeList.end()) continue;
+        if (hasChkFilter && !chkMissingSerials.count(sn)) continue;
 
         bool eligible = false;
         if (txnType == "SELLING" || txnType == "SEL") {
@@ -3800,6 +3844,29 @@ void UnitEntryDialog::setupUI()
     );
     titleText->setStyleSheet("font-size: 13px; color: #1e293b;");
     headerLayout->addWidget(titleText);
+
+    std::string chkSrcCode;
+    if (db) {
+        Table* ordTbl = db->getTable(hubType == HubType::INBOUND ? "inbound_transaction" : "outbound_transaction");
+        std::string codeCol = (hubType == HubType::INBOUND ? "inbound_code" : "outbound_code");
+        if (ordTbl) {
+            Vector<Record> ordRecs = Query::filterRecords(*ordTbl, codeCol, Value(parentOrderCodeStr.toStdString()));
+            if (!ordRecs.empty() && ordRecs[0].has("source_code") && !isNull(ordRecs[0].get("source_code")) && std::holds_alternative<std::string>(ordRecs[0].get("source_code"))) {
+                chkSrcCode = std::get<std::string>(ordRecs[0].get("source_code"));
+            }
+        }
+    }
+
+    if (!chkSrcCode.empty() && chkSrcCode.rfind("CHK-", 0) == 0) {
+        orderSourceCode = chkSrcCode;
+        auto* chkEyeBtn = new QPushButton(QString("👁️ Xem đợt kiểm (%1)").arg(QString::fromStdString(chkSrcCode)), headerBox);
+        chkEyeBtn->setStyleSheet("background-color: #ffffff; color: #1e293b; border: 1px solid #cbd5e1; font-weight: 600; padding: 4px 10px; border-radius: 4px; font-size: 11px;");
+        connect(chkEyeBtn, &QPushButton::clicked, [this, chkSrcCode]() {
+            InventoryCheckInspectDialog::openInspector(db, QString::fromStdString(chkSrcCode), this);
+        });
+        headerLayout->addWidget(chkEyeBtn);
+    }
+
     headerLayout->addStretch();
 
     if (isLogisticsCompleted) {
@@ -4251,6 +4318,7 @@ void UnitEntryDialog::refreshBatchOverviewTable()
     batchOverviewTable->setSortingEnabled(false);
     batchOverviewTable->setUpdatesEnabled(false);
     batchOverviewTable->blockSignals(true);
+    batchOverviewTable->setRowCount(0);
 
     int count = static_cast<int>(batchItems.size());
     batchOverviewTable->setRowCount(count);
@@ -4315,7 +4383,7 @@ void UnitEntryDialog::refreshBatchOverviewTable()
         batchOverviewTable->setItem(i, 6, it6);
 
         if (hubType == HubType::OUTBOUND) {
-            auto* pickBtn = new QPushButton(batchOverviewTable);
+            auto* pickBtn = new QPushButton();
             pickBtn->setCursor(Qt::PointingHandCursor);
             if (rem == 0) {
                 pickBtn->setText("✅ Đã đủ");
@@ -4337,6 +4405,7 @@ void UnitEntryDialog::refreshBatchOverviewTable()
     }
 
     batchOverviewTable->blockSignals(false);
+    batchOverviewTable->viewport()->update();
     batchOverviewTable->setUpdatesEnabled(true);
 }
 
@@ -4441,7 +4510,7 @@ void UnitEntryDialog::onOpenProductUnitPicker(int productId, const QString& pCod
     for (const auto& u : stagedUnits) excludedSerials.push_back(u.serial);
     for (const auto& pu : pendingOutboundUnits) excludedSerials.push_back(pu.serial);
 
-    OutboundProductUnitPickerDialog dlg(db, productId, pCode, pName, missingQty, transactionType, excludedSerials, this);
+    OutboundProductUnitPickerDialog dlg(db, productId, pCode, pName, missingQty, transactionType, excludedSerials, this, orderSourceCode);
     if (dlg.exec() == QDialog::Accepted) {
         std::vector<std::string> chosenSerials = dlg.getSelectedSerials();
         if (chosenSerials.empty()) return;
@@ -5126,11 +5195,7 @@ void UnitEntryDialog::onInboundProductComboChanged(int index)
     // Refresh units table for this product
     if (prodUnitsTable) {
         prodUnitsTable->blockSignals(true);
-        for (int r = 0; r < prodUnitsTable->rowCount(); ++r) {
-            prodUnitsTable->removeCellWidget(r, 2);
-            prodUnitsTable->removeCellWidget(r, 4);
-            prodUnitsTable->removeCellWidget(r, 5);
-        }
+        prodUnitsTable->setRowCount(0);
 
         // 1. Units already in DB
         std::vector<const StagedUnit*> pUnits;
@@ -5162,7 +5227,7 @@ void UnitEntryDialog::onInboundProductComboChanged(int index)
             auto* itSn = new QTableWidgetItem(QString::fromStdString(u->serial));
             itSn->setFont(QFont("Consolas", font().pointSize(), QFont::Bold));
 
-            auto* stCombo = new QComboBox(prodUnitsTable);
+            auto* stCombo = new QComboBox();
             QStringList opts = allowedOpts;
             QString curSt = QString::fromStdString(u->currentStatus);
             if (!curSt.isEmpty() && !opts.contains(curSt)) opts << curSt;
@@ -5208,7 +5273,7 @@ void UnitEntryDialog::onInboundProductComboChanged(int index)
             itSn->setFont(QFont("Consolas", font().pointSize(), QFont::Bold));
             itSn->setForeground(QColor("#1e40af"));
 
-            auto* stCombo = new QComboBox(prodUnitsTable);
+            auto* stCombo = new QComboBox();
             QStringList opts = allowedOpts;
             QString curSt = QString::fromStdString(pu->status);
             if (!curSt.isEmpty() && !opts.contains(curSt)) opts << curSt;
@@ -5245,7 +5310,7 @@ void UnitEntryDialog::onInboundProductComboChanged(int index)
             prodUnitsTable->setItem(rowIdx, 3, itTime);
             prodUnitsTable->setItem(rowIdx, 4, itClass);
 
-            auto* delBtn = new QPushButton("🗑️ Xóa", prodUnitsTable);
+            auto* delBtn = new QPushButton("🗑️ Xóa");
             delBtn->setCursor(Qt::PointingHandCursor);
             delBtn->setStyleSheet(
                 "QPushButton { background-color: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; border-radius: 4px; padding: 2px 8px; font-size: 11px; font-weight: bold; }"
@@ -5261,6 +5326,7 @@ void UnitEntryDialog::onInboundProductComboChanged(int index)
         }
 
         prodUnitsTable->blockSignals(false);
+        prodUnitsTable->viewport()->update();
 
         if (prodUnitsCountLabel) {
             if (pPending.size() > 0) {
@@ -5398,6 +5464,7 @@ void UnitEntryDialog::refreshRecentUnitsTable()
     recentUnitsTable->setSortingEnabled(false);
     recentUnitsTable->setUpdatesEnabled(false);
     recentUnitsTable->blockSignals(true);
+    recentUnitsTable->setRowCount(0);
 
     QStringList allowedStatuses = getAllowedStatusOptions();
     int rowCount = static_cast<int>(recentUnitIds.size());
@@ -5465,6 +5532,7 @@ void UnitEntryDialog::refreshRecentUnitsTable()
     }
 
     recentUnitsTable->blockSignals(false);
+    recentUnitsTable->viewport()->update();
     recentUnitsTable->setUpdatesEnabled(true);
 }
 
@@ -5475,11 +5543,7 @@ void UnitEntryDialog::refreshAllUnitsTable()
     allUnitsTable->setSortingEnabled(false);
     allUnitsTable->setUpdatesEnabled(false);
     allUnitsTable->blockSignals(true);
-
-    for (int r = 0; r < allUnitsTable->rowCount(); ++r) {
-        allUnitsTable->removeCellWidget(r, 5);
-        allUnitsTable->removeCellWidget(r, 7);
-    }
+    allUnitsTable->setRowCount(0);
 
     QString searchKw = serialSearchInput ? serialSearchInput->text().trimmed().toUpper() : "";
     int targetProdId = -1;
@@ -5572,7 +5636,7 @@ void UnitEntryDialog::refreshAllUnitsTable()
         allUnitsTable->setItem(rowIdx, 3, itName);
         allUnitsTable->setItem(rowIdx, 4, itOrigStatus);
 
-        auto* combo = new QComboBox(allUnitsTable);
+        auto* combo = new QComboBox();
         QStringList opts = allowedStatuses;
         QString curStatusStr = QString::fromStdString(u->currentStatus);
         if (!curStatusStr.isEmpty() && !opts.contains(curStatusStr)) {
@@ -5633,7 +5697,7 @@ void UnitEntryDialog::refreshAllUnitsTable()
         allUnitsTable->setItem(rowIdx, 3, itName);
         allUnitsTable->setItem(rowIdx, 4, itOrigStatus);
 
-        auto* combo = new QComboBox(allUnitsTable);
+        auto* combo = new QComboBox();
         QStringList opts = allowedStatuses;
         QString curStatusStr = QString::fromStdString(pu->status);
         if (!curStatusStr.isEmpty() && !opts.contains(curStatusStr)) {
@@ -5664,7 +5728,7 @@ void UnitEntryDialog::refreshAllUnitsTable()
         itStatus->setForeground(QColor("#2563eb"));
         allUnitsTable->setItem(rowIdx, 6, itStatus);
 
-        auto* delBtn = new QPushButton("🗑️ Xóa", allUnitsTable);
+        auto* delBtn = new QPushButton("🗑️ Xóa");
         delBtn->setCursor(Qt::PointingHandCursor);
         delBtn->setStyleSheet(
             "QPushButton { background-color: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; border-radius: 4px; padding: 2px 8px; font-size: 11px; font-weight: bold; }"
@@ -5715,7 +5779,7 @@ void UnitEntryDialog::refreshAllUnitsTable()
         allUnitsTable->setItem(rowIdx, 5, itTargetStatus);
         allUnitsTable->setItem(rowIdx, 6, itStatus);
 
-        auto* delBtn = new QPushButton("🗑️ Bỏ chọn", allUnitsTable);
+        auto* delBtn = new QPushButton("🗑️ Bỏ chọn");
         delBtn->setCursor(Qt::PointingHandCursor);
         delBtn->setStyleSheet(
             "QPushButton { background-color: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; border-radius: 4px; padding: 2px 8px; font-size: 11px; font-weight: bold; }"
@@ -5731,6 +5795,7 @@ void UnitEntryDialog::refreshAllUnitsTable()
     }
 
     allUnitsTable->blockSignals(false);
+    allUnitsTable->viewport()->update();
     allUnitsTable->setUpdatesEnabled(true);
 }
 

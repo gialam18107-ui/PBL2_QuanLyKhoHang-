@@ -3,6 +3,7 @@
 #include "schema/UserUpdate.h"
 #include "ui/TableClipboardHelper.h"
 #include "ui/OrderDialog.h"
+#include "ui/InventoryCheckDialog.h"
 
 #include <QHeaderView>
 #include <QScrollBar>
@@ -18,7 +19,7 @@ TransactionHubWidget::TransactionHubWidget(HubType type, Database* database, con
     : QWidget(parent), hubType(type), db(database), titleText(title), descText(description),
       createOrderBtn(nullptr), updateOrderStatusBtn(nullptr), inspectOrderBtn(nullptr),
       updateLogisticsBtn(nullptr), inspectLogisticsBtn(nullptr),
-      masterTable(nullptr), detailBanner(nullptr),
+      masterTable(nullptr), detailBanner(nullptr), checkEyeBtn(nullptr),
       orderDetailTable(nullptr), orderDetailCountLabel(nullptr),
       logisticsTable(nullptr), logisticsCountLabel(nullptr),
       logisticsDetailTable(nullptr), logisticsDetailCountLabel(nullptr),
@@ -505,7 +506,17 @@ void TransactionHubWidget::setupSplitterUI(QVBoxLayout* mainLayout)
         "  color: #1e293b;"
         "}"
     );
-    bottomLayout->addWidget(detailBanner);
+
+    auto* bannerRow = new QHBoxLayout();
+    bannerRow->setContentsMargins(0, 0, 0, 0);
+    bannerRow->addWidget(detailBanner, 1);
+
+    checkEyeBtn = new QPushButton("👁️ Xem đợt kiểm gốc", bottomContainer);
+    checkEyeBtn->setStyleSheet("background-color: #f1f5f9; color: #0f172a; border: 1px solid #cbd5e1; font-weight: 600; padding: 6px 14px; border-radius: 6px; font-size: 12px;");
+    checkEyeBtn->setVisible(false);
+    bannerRow->addWidget(checkEyeBtn);
+
+    bottomLayout->addLayout(bannerRow);
 
     // Horizontal splitter dividing Left (Order items) and Right (Logistics)
     horizontalSplitter = new QSplitter(Qt::Horizontal, bottomContainer);
@@ -1274,6 +1285,24 @@ void TransactionHubWidget::onTransactionSelected(int row)
 
     detailBanner->setText(QString("📌 Chi tiết đối chiếu theo đơn: %1 | Đối tác: %2 | Ngày đặt: %3")
         .arg(QString::fromStdString(orderCode)).arg(customerStr).arg(dateStr));
+
+    std::string sourceCode;
+    if (rec.has("inbound_transaction.source_code") && holds_alternative<string>(rec.get("inbound_transaction.source_code"))) sourceCode = get<string>(rec.get("inbound_transaction.source_code"));
+    else if (rec.has("outbound_transaction.source_code") && holds_alternative<string>(rec.get("outbound_transaction.source_code"))) sourceCode = get<string>(rec.get("outbound_transaction.source_code"));
+    else if (rec.has("source_code") && holds_alternative<string>(rec.get("source_code"))) sourceCode = get<string>(rec.get("source_code"));
+
+    if (checkEyeBtn) {
+        if (!sourceCode.empty() && sourceCode.rfind("CHK-", 0) == 0) {
+            checkEyeBtn->setText(QString("👁️ Xem đợt kiểm (%1)").arg(QString::fromStdString(sourceCode)));
+            checkEyeBtn->setVisible(true);
+            checkEyeBtn->disconnect();
+            connect(checkEyeBtn, &QPushButton::clicked, [this, sourceCode]() {
+                InventoryCheckInspectDialog::openInspector(db, QString::fromStdString(sourceCode), this);
+            });
+        } else {
+            checkEyeBtn->setVisible(false);
+        }
+    }
 
     // Load Bottom-Left: Order details
     loadOrderDetails(orderCode);
