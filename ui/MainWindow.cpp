@@ -1194,7 +1194,7 @@ void MainWindow::setupPages()
         {"Mã phiếu (adjust_code)", "adjust_code", FilterType::EXACT_TEXT, {}},
         {"Lý do điều chuyển", "reason", FilterType::SELECT_OR_TYPE, {"STOCKTAKE_DIFF", "DAMAGED", "DATA_ERROR", "OTHER"}},
         {"Đợt kiểm gốc (source_code)", "source_code", FilterType::EXACT_TEXT, {}},
-        {"Trạng thái", "status", FilterType::SELECT_OR_TYPE, {"PENDING", "IN_PROCESS", "PARTLY_COMPLETED", "COMPLETED", "CANCELLED"}}
+        {"Trạng thái", "status", FilterType::SELECT_OR_TYPE, {"PENDING", "PARTLY_COMPLETED", "COMPLETED", "CANCELLED"}}
     });
     adjustmentMovementWidget->setRefreshCallback([this]() { refreshQuery(14); });
     adjustmentMovementWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {

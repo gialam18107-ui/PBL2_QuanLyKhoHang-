@@ -194,6 +194,26 @@ private:
 };
 
 /**
+ * @brief Modal confirmation dialog required before transitioning an order or logistics batch to CANCELLED (Rule 5.6).
+ * Features explicit warning, a mandatory confirmation tick-box, and Confirm/Cancel buttons.
+ */
+class CancellationConfirmationDialog : public QDialog
+{
+public:
+    CancellationConfirmationDialog(
+        const QString& itemCode,
+        const QString& itemDescription = "đơn hàng",
+        QWidget* parent = nullptr
+    );
+    ~CancellationConfirmationDialog() override = default;
+
+private:
+    QCheckBox* confirmCheck;
+    QPushButton* confirmBtn;
+    QPushButton* cancelBtn;
+};
+
+/**
  * @brief Modal dialog to update logistics batch status and actual date (delivery / shipment) (Rule 5.3).
  */
 class LogisticsUpdateDialog : public QDialog

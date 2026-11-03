@@ -1345,8 +1345,8 @@ namespace user_create
 
         std::string delStatus = delRec->has("status") && std::holds_alternative<std::string>(delRec->get("status"))
                               ? std::get<std::string>(delRec->get("status")) : "";
-        if (delStatus == "COMPLETED" || delStatus == "completed") {
-            return OperationResult{false, "Đợt nhận hàng này đã ở trạng thái HOÀN THÀNH (COMPLETED), không thể nhận thêm linh kiện.", 0};
+        if (delStatus == "COMPLETED" || delStatus == "completed" || delStatus == "CANCELLED") {
+            return OperationResult{false, "Đợt nhận hàng này đã ở trạng thái HOÀN THÀNH hoặc BỊ HỦY, không thể nhận thêm linh kiện.", 0};
         }
 
         int inTxnId = -1;
@@ -1356,6 +1356,12 @@ namespace user_create
         const Record* inTxnRec = inTxnTable->getRecordById(inTxnId);
         if (!inTxnRec) {
             return OperationResult{false, "Không tìm thấy đơn nhập kho gốc của đợt nhận hàng này.", 0};
+        }
+
+        std::string inTxnSt = inTxnRec->has("status") && std::holds_alternative<std::string>(inTxnRec->get("status"))
+                            ? std::get<std::string>(inTxnRec->get("status")) : "";
+        if (inTxnSt == "CONFIRMED" || inTxnSt == "COMPLETED" || inTxnSt == "CANCELLED") {
+            return OperationResult{false, "Đơn nhập kho (" + inTxnSt + ") đã hoàn tất hoặc bị hủy. Toàn bộ các đợt nhận hàng đã bị khóa vĩnh viễn (Rule 5.6).", 0};
         }
 
         std::string inType = inTxnRec->has("type") && std::holds_alternative<std::string>(inTxnRec->get("type"))

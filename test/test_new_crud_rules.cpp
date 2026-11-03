@@ -285,11 +285,21 @@ int main() {
     assert(!rExecCompleted.success);
 
     // 6.6 Create Inbound Adjustment transaction with source_code, then transition transaction to CONFIRMED under-fulfilled: MUST SUCCEED
+    assert(inTxnTbl != nullptr);
     Vector<Pair<int, int>> inItems;
     inItems.push_back(Pair<int, int>(1, 5));
     OperationResult rInAdj = user_create::createInboundOrder(&db, "ADJUSTMENT_IN", "", inItems, "2026-11-02", "2026-11-03", "Test Inbound Adj", "CHK-UNIT-000025");
+    cout << "  - Create Inbound Adj: " << (rInAdj.success ? "SUCCESS" : "FAILED") << " | Msg: [" << rInAdj.message << "]\n";
     assert(rInAdj.success);
-    int inTxnId = rInAdj.affectedCount;
+    size_t pos = rInAdj.message.find("Mã: ");
+    string inAdjCode = (pos != string::npos) ? rInAdj.message.substr(pos + 6) : ""; // Mã is 2 UTF-8 bytes (M, ã), so "Mã: " is 2 + 1 + 1? No! "Mã: " in UTF-8: 'M' (1) + 'ã' (2) + ':' (1) + ' ' (1) = 5 bytes!
+    // Or just look for "IN-"!
+    size_t inPos = rInAdj.message.find("IN-");
+    if (inPos != string::npos) inAdjCode = rInAdj.message.substr(inPos);
+    cout << "  - Extracted inAdjCode: [" << inAdjCode << "]\n";
+    Vector<Record> adjInRecs = Query::filterRecords(*inTxnTbl, "inbound_code", Value(inAdjCode));
+    assert(!adjInRecs.empty());
+    int inTxnId = safeGetInt(adjInRecs[0], "inbound_transaction_id");
 
     // Retrieve created delivery for this inbound order
     Table* delTbl = db.getTable("delivery");
@@ -316,6 +326,115 @@ int main() {
     cout << "  - Scanning unit into delivery when parent transaction is CONFIRMED: " << (rUnitLocked.success ? "FAILED" : "REJECTED (EXPECTED)")
          << " | Msg: " << rUnitLocked.message << endl;
     assert(!rUnitLocked.success);
+
+    // 6.9 Partial execution of Adjustment Movement -> status must become PARTLY_COMPLETED (No FK Violation!)
+    Table* unitTable = db.getTable("unit_inventory");
+    assert(unitTable != nullptr);
+    Vector<Record> availUnits = Query::filterRecords(*unitTable, "product_id", Value(1));
+    string validSerial = "";
+    for (const auto& u : availUnits) {
+        if (safeGetString(u, "status") == "AVAILABLE") {
+            validSerial = safeGetString(u, "serial");
+            break;
+        }
+    }
+    assert(!validSerial.empty());
+
+    Vector<user_create::AdjustMovementItem> movItems3;
+    movItems3.push_back({1, "AVAILABLE", "SCRAPPED", 2});
+    OperationResult rMov3 = user_create::createAdjustmentMovement(&db, "", "DAMAGED", "2026-11-03", movItems3, "Test partial movement");
+    assert(rMov3.success);
+    int testAdjId3 = rMov3.affectedCount;
+
+    Table* adjDetTbl = db.getTable("adjust_movement_detail");
+    assert(adjDetTbl != nullptr);
+    Vector<Record> dRecs3 = Query::filterRecords(*adjDetTbl, "adjust_id", Value(testAdjId3));
+    assert(!dRecs3.empty());
+    int dId3 = safeGetInt(dRecs3[0], "adjust_detail_id");
+
+    Vector<user_update::AdjustUnitEntry> partialEntries;
+    user_update::AdjustUnitEntry ent;
+    ent.adjustDetailId = dId3;
+    ent.serial = validSerial;
+    partialEntries.push_back(ent);
+
+    OperationResult rPartialExec = user_update::executeAdjustmentMovementUnits(&db, testAdjId3, partialEntries);
+    cout << "  - Partial execution of adjustment movement (1 of 2 units): " << (rPartialExec.success ? "SUCCESS" : "FAILED")
+         << " | Msg: " << rPartialExec.message << endl;
+    assert(rPartialExec.success);
+
+    Table* adjMovTbl = db.getTable("adjustment_movement");
+    const Record* adjRecAfter = adjMovTbl->getRecordById(testAdjId3);
+    assert(adjRecAfter != nullptr);
+    string adjStAfter = safeGetString(*adjRecAfter, "status");
+    cout << "  - Status of partially executed movement: " << adjStAfter << " (Expected: PARTLY_COMPLETED)\n";
+    assert(adjStAfter == "PARTLY_COMPLETED");
+
+    // 6.10 Standard Inbound Order cancellation & delivery cascade
+    Vector<Pair<int, int>> purItems;
+    purItems.push_back(Pair<int, int>(1, 10));
+    OperationResult rPur = user_create::createInboundOrder(&db, "PURCHASING", "BS-0000001", purItems, "2026-11-03", "2026-11-04", "Test Pur Order");
+    cout << "  - Create PURCHASING order: " << (rPur.success ? "SUCCESS" : "FAILED") << " | Msg: " << rPur.message << endl;
+    assert(rPur.success);
+    string purCode = rPur.message.substr(rPur.message.find("IN-"));
+    Vector<Record> purTxnRecs = Query::filterRecords(*inTxnTbl, "inbound_code", Value(purCode));
+    assert(!purTxnRecs.empty());
+    int purTxnId = safeGetInt(purTxnRecs[0], "inbound_transaction_id");
+
+    Vector<Record> purDels = Query::filterRecords(*delTbl, "inbound_transaction_id", Value(purTxnId));
+    assert(!purDels.empty());
+    int purDelId = safeGetInt(purDels[0], "delivery_id");
+
+    // Cancel the inbound order: MUST SUCCEED and CASCADE delivery to CANCELLED
+    OperationResult rCancelInbound = user_update::updateTransactionStatus(&db, "inbound_transaction", purTxnId, "CANCELLED");
+    cout << "  - Cancelling PENDING inbound order: " << (rCancelInbound.success ? "SUCCESS" : "FAILED")
+         << " | Msg: " << rCancelInbound.message << endl;
+    assert(rCancelInbound.success);
+
+    const Record* cancelledDel = delTbl->getRecordById(purDelId);
+    assert(cancelledDel != nullptr);
+    string delStAfter = safeGetString(*cancelledDel, "status");
+    cout << "  - Status of cascaded child delivery: " << delStAfter << " (Expected: CANCELLED)\n";
+    assert(delStAfter == "CANCELLED");
+
+    // Reverting CANCELLED transaction back to PENDING: MUST FAIL
+    OperationResult rReopenInbound = user_update::updateTransactionStatus(&db, "inbound_transaction", purTxnId, "PENDING");
+    cout << "  - Reverting CANCELLED inbound transaction to PENDING: " << (rReopenInbound.success ? "FAILED" : "REJECTED (EXPECTED)")
+         << " | Msg: " << rReopenInbound.message << endl;
+    assert(!rReopenInbound.success);
+
+    // 6.11 Standard Outbound Order state transitions
+    Vector<Pair<int, int>> sellItems;
+    sellItems.push_back(Pair<int, int>(1, 1));
+    OperationResult rSell = user_create::createOutboundOrder(&db, "SELLING", "BS-0000001", sellItems, "2026-11-03", "2026-11-04", "Test Sell Order");
+    cout << "  - Create SELLING order: " << (rSell.success ? "SUCCESS" : "FAILED") << " | Msg: " << rSell.message << endl;
+    assert(rSell.success);
+    string sellCode = rSell.message.substr(rSell.message.find("OUT-"));
+    Table* outTxnTbl = db.getTable("outbound_transaction");
+    assert(outTxnTbl != nullptr);
+    Vector<Record> sellTxnRecs = Query::filterRecords(*outTxnTbl, "outbound_code", Value(sellCode));
+    assert(!sellTxnRecs.empty());
+    int sellTxnId = sellTxnRecs[0].has("outbound_trainsaction_id")
+                  ? safeGetInt(sellTxnRecs[0], "outbound_trainsaction_id")
+                  : safeGetInt(sellTxnRecs[0], "outbound_transaction_id");
+
+    // Transition to PROCESSING: MUST SUCCEED
+    OperationResult rProcOut = user_update::updateTransactionStatus(&db, "outbound_transaction", sellTxnId, "PROCESSING");
+    cout << "  - Transitioning outbound transaction to PROCESSING: " << (rProcOut.success ? "SUCCESS" : "FAILED")
+         << " | Msg: " << rProcOut.message << endl;
+    assert(rProcOut.success);
+
+    // Attempting to cancel when PROCESSING: MUST FAIL
+    OperationResult rCancelProcOut = user_update::updateTransactionStatus(&db, "outbound_transaction", sellTxnId, "CANCELLED");
+    cout << "  - Cancelling outbound transaction while in PROCESSING: " << (rCancelProcOut.success ? "FAILED" : "REJECTED (EXPECTED)")
+         << " | Msg: " << rCancelProcOut.message << endl;
+    assert(!rCancelProcOut.success);
+
+    // Attempting to revert from PROCESSING to PENDING: MUST FAIL
+    OperationResult rRevertProcOut = user_update::updateTransactionStatus(&db, "outbound_transaction", sellTxnId, "PENDING");
+    cout << "  - Reverting outbound transaction from PROCESSING to PENDING: " << (rRevertProcOut.success ? "FAILED" : "REJECTED (EXPECTED)")
+         << " | Msg: " << rRevertProcOut.message << endl;
+    assert(!rRevertProcOut.success);
 
     printHeader("ALL NEW CRUD RULES PASSED 100%!");
     return 0;

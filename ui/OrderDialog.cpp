@@ -1856,27 +1856,16 @@ TransactionStatusDialog::TransactionStatusDialog(
         }
     }
 
-    if (isAdj) {
-        if (initialStatus == "PENDING") {
-            if (!hasProgress) {
-                statuses = {"PENDING", "PROCESSING", "CANCELLED"};
-            } else {
-                statuses = {"PENDING", "PROCESSING"};
-            }
-        } else if (initialStatus == "PROCESSING" || initialStatus == "PARTIALLY_CONFIRMED") {
-            statuses = {"PROCESSING", "PARTIALLY_CONFIRMED", "CONFIRMED"};
+    if (initialStatus == "PENDING") {
+        if (!hasProgress) {
+            statuses = {"PENDING", "PROCESSING", "CANCELLED"};
         } else {
-            statuses = {initialStatus};
+            statuses = {"PENDING", "PROCESSING"};
         }
+    } else if (initialStatus == "PROCESSING" || initialStatus == "PARTIALLY_CONFIRMED") {
+        statuses = {"PROCESSING", "PARTIALLY_CONFIRMED", "CONFIRMED"};
     } else {
-        Vector<std::string> stVec;
-        user_query::get_all_statuses_for_table(db, statusTbl, stVec);
-        for (size_t i = 0; i < stVec.size(); ++i) {
-            statuses << QString::fromStdString(stVec[i]);
-        }
-        if (statuses.isEmpty()) {
-            statuses = {"PENDING", "PROCESSING", "PARTIALLY_CONFIRMED", "CONFIRMED", "CANCELLED"};
-        }
+        statuses = {initialStatus};
     }
 
     statusCombo->addItems(statuses);
@@ -1893,27 +1882,29 @@ TransactionStatusDialog::TransactionStatusDialog(
 
     mainLayout->addWidget(infoGroup);
 
-    if (isAdj) {
-        QString tipText;
-        if (initialStatus == "PENDING") {
-            if (!hasProgress) {
-                tipText = "ℹ️ <b>Quy tắc đơn điều chỉnh (Rule 5.6):</b> Đơn đang ở trạng thái PENDING và chưa phát sinh giao nhận nên được phép chuyển sang <b>CANCELLED</b> (Hủy đơn) hoặc bắt đầu <b>PROCESSING</b>.";
-            } else {
-                tipText = "ℹ️ <b>Quy tắc đơn điều chỉnh (Rule 5.6):</b> Đơn đã phát sinh ghi nhận linh kiện, không thể hủy sang CANCELLED.";
-            }
-        } else if (initialStatus == "PROCESSING" || initialStatus == "PARTIALLY_CONFIRMED") {
-            if (totalPlanQty > 0 && totalActQty >= totalPlanQty) {
-                tipText = QString("✅ <b>Quy tắc đơn điều chỉnh (Rule 5.6):</b> Đã xử lý đủ 100% số lượng (%1/%2 cái). Có thể xác nhận <b>CONFIRMED</b>.").arg(totalActQty).arg(totalPlanQty);
-            } else {
-                tipText = QString("⏳ <b>Quy tắc đơn điều chỉnh (Rule 5.6):</b> Đang xử lý (%1/%2 cái). Có thể chọn <b>CONFIRMED</b> để đóng hoàn tất đơn (yêu cầu xác nhận qua hộp thoại cảnh báo và dấu tick).").arg(totalActQty).arg(totalPlanQty);
-            }
+    QString tipText;
+    if (initialStatus == "PENDING") {
+        if (!hasProgress) {
+            tipText = isAdj
+                ? "ℹ️ <b>Quy tắc đơn điều chỉnh (Rule 5.6):</b> Đơn đang ở trạng thái PENDING và chưa phát sinh giao nhận nên được phép chuyển sang <b>CANCELLED</b> (Hủy đơn) hoặc bắt đầu <b>PROCESSING</b>."
+                : "ℹ️ <b>Quy trình chuyển trạng thái:</b> Đơn đang ở trạng thái PENDING và chưa phát sinh giao nhận/vận chuyển thực tế. Có thể chọn <b>PROCESSING</b> để bắt đầu xử lý hoặc chọn <b>CANCELLED</b> để hủy bỏ đơn hàng.";
+        } else {
+            tipText = isAdj
+                ? "ℹ️ <b>Quy tắc đơn điều chỉnh (Rule 5.6):</b> Đơn đã phát sinh ghi nhận linh kiện, không thể hủy sang CANCELLED."
+                : "ℹ️ <b>Quy trình chuyển trạng thái:</b> Đơn đã phát sinh ghi nhận linh kiện/vận chuyển thực tế, không thể hủy sang CANCELLED. Chỉ có thể chọn <b>PROCESSING</b>.";
         }
-        if (!tipText.isEmpty()) {
-            auto* tipLbl = new QLabel(tipText, this);
-            tipLbl->setStyleSheet("background-color: #eff6ff; border: 1px solid #bfdbfe; border-left: 4px solid #3b82f6; border-radius: 6px; padding: 8px 12px; font-size: 12px; color: #1e40af;");
-            tipLbl->setWordWrap(true);
-            mainLayout->addWidget(tipLbl);
+    } else if (initialStatus == "PROCESSING" || initialStatus == "PARTIALLY_CONFIRMED") {
+        if (totalPlanQty > 0 && totalActQty >= totalPlanQty) {
+            tipText = QString("✅ <b>Quy trình chuyển trạng thái:</b> Đã xử lý đủ 100% số lượng (%1/%2 cái). Có thể xác nhận <b>CONFIRMED</b>.").arg(totalActQty).arg(totalPlanQty);
+        } else {
+            tipText = QString("⏳ <b>Quy trình chuyển trạng thái:</b> Đang xử lý (%1/%2 cái). Có thể chọn <b>CONFIRMED</b> để đóng hoàn tất đơn (yêu cầu xác nhận qua hộp thoại cảnh báo và dấu tick).").arg(totalActQty).arg(totalPlanQty);
         }
+    }
+    if (!tipText.isEmpty()) {
+        auto* tipLbl = new QLabel(tipText, this);
+        tipLbl->setStyleSheet("background-color: #eff6ff; border: 1px solid #bfdbfe; border-left: 4px solid #3b82f6; border-radius: 6px; padding: 8px 12px; font-size: 12px; color: #1e40af;");
+        tipLbl->setWordWrap(true);
+        mainLayout->addWidget(tipLbl);
     }
 
     bool isCompleted = (initialStatus == "COMPLETED" || initialStatus == "CONFIRMED" || initialStatus == "CANCELLED");
@@ -1957,6 +1948,17 @@ void TransactionStatusDialog::onSave()
     if (newStatus == oldStatus) {
         accept();
         return;
+    }
+
+    if (newStatus == "CANCELLED" && oldStatus != newStatus) {
+        CancellationConfirmationDialog cancelDlg(
+            !orderCodeStr.isEmpty() ? orderCodeStr : QString::number(txnId),
+            (hubType == HubType::INBOUND ? "đơn nhập kho" : "đơn xuất kho"),
+            this
+        );
+        if (cancelDlg.exec() != QDialog::Accepted) {
+            return;
+        }
     }
 
     if ((newStatus == "CONFIRMED" || newStatus == "COMPLETED") && oldStatus != newStatus) {
@@ -2072,6 +2074,64 @@ CompletionConfirmationDialog::CompletionConfirmationDialog(
     if (isUnderFulfilled) {
         confirmBtn->setStyleSheet("background-color: #dc2626; color: white; font-weight: bold; padding: 8px 16px; border-radius: 6px;");
     }
+    confirmBtn->setEnabled(false);
+    connect(confirmCheck, &QCheckBox::toggled, confirmBtn, &QPushButton::setEnabled);
+    connect(confirmBtn, &QPushButton::clicked, this, &QDialog::accept);
+    btnLayout->addWidget(confirmBtn);
+
+    layout->addLayout(btnLayout);
+}
+
+// ============================================================================
+// 2c. CancellationConfirmationDialog (Rule 5.6)
+// ============================================================================
+
+CancellationConfirmationDialog::CancellationConfirmationDialog(
+    const QString& itemCode,
+    const QString& itemDescription,
+    QWidget* parent)
+    : QDialog(parent)
+{
+    setWindowTitle("⚠️ Xác Nhận Hủy: " + itemCode);
+    setMinimumWidth(500);
+    setStyleSheet(commonDialogStyleSheet());
+
+    auto* layout = new QVBoxLayout(this);
+    layout->setContentsMargins(20, 20, 20, 20);
+    layout->setSpacing(14);
+
+    auto* warnIconLabel = new QLabel("⚠️ CẢNH BÁO: HỦY ĐƠN HÀNG VĨNH VIỄN (CANCELLED)", this);
+    warnIconLabel->setStyleSheet("font-size: 15px; font-weight: bold; color: #dc2626;");
+    layout->addWidget(warnIconLabel);
+
+    auto* msgLabel = new QLabel(
+        QString("Bạn đang yêu cầu chuyển %1 <b>[%2]</b> sang trạng thái <b>HỦY (CANCELLED)</b>.<br><br>"
+                "<b>Lưu ý quan trọng (Rule 5.6):</b><br>"
+                "• Đơn hàng sau khi hủy sẽ bị <b>KHÓA VĨNH VIỄN</b>, không thể mở lại hay chuyển ngược trạng thái.<br>"
+                "• Toàn bộ các đợt giao nhận / xuất hàng (delivery / shipment) chưa hoàn tất thuộc đơn này cũng sẽ tự động chuyển sang trạng thái <b>CANCELLED</b>.<br>"
+                "• Thao tác này chỉ được phép thực hiện khi đơn chưa có bất kỳ đợt giao nhận hoặc xuất hàng thực tế nào.")
+            .arg(itemDescription, itemCode),
+        this
+    );
+    msgLabel->setWordWrap(true);
+    msgLabel->setStyleSheet("font-size: 13px; color: #1e293b; line-height: 1.4;");
+    layout->addWidget(msgLabel);
+
+    confirmCheck = new QCheckBox("Tôi hiểu rõ và xác nhận muốn hủy vĩnh viễn đơn hàng này cùng các đợt vận chuyển liên quan.", this);
+    confirmCheck->setStyleSheet("font-weight: 600; font-size: 13px; color: #b91c1c; padding: 6px 0;");
+    layout->addWidget(confirmCheck);
+
+    auto* btnLayout = new QHBoxLayout();
+    btnLayout->addStretch();
+
+    cancelBtn = new QPushButton("Hủy bỏ / Quay lại", this);
+    cancelBtn->setObjectName("cancelBtn");
+    connect(cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
+    btnLayout->addWidget(cancelBtn);
+
+    confirmBtn = new QPushButton("⚠️ Xác nhận hủy vĩnh viễn", this);
+    confirmBtn->setObjectName("saveBtn");
+    confirmBtn->setStyleSheet("background-color: #dc2626; color: white; font-weight: bold; padding: 8px 16px; border-radius: 6px;");
     confirmBtn->setEnabled(false);
     connect(confirmCheck, &QCheckBox::toggled, confirmBtn, &QPushButton::setEnabled);
     connect(confirmBtn, &QPushButton::clicked, this, &QDialog::accept);
@@ -2273,6 +2333,17 @@ void LogisticsUpdateDialog::onSave()
             this
         );
         if (confirmDlg.exec() != QDialog::Accepted) {
+            return;
+        }
+    }
+
+    if (newStatus == "CANCELLED") {
+        CancellationConfirmationDialog cancelDlg(
+            batchCodeStr,
+            (hubType == HubType::INBOUND ? "đợt giao nhận (Delivery)" : "đợt xuất hàng (Shipment)"),
+            this
+        );
+        if (cancelDlg.exec() != QDialog::Accepted) {
             return;
         }
     }
