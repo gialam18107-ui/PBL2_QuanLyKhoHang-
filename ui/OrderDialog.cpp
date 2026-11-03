@@ -16,6 +16,7 @@
 #include <QRegularExpression>
 #include <QScrollBar>
 #include <algorithm>
+#include <unordered_set>
 
 #include "schema/UserCreate.h"
 #include "schema/UserUpdate.h"
@@ -337,6 +338,13 @@ QWidget* OrderDialog::createStep1Widget()
     }
     sourceCodeLabel->setVisible(false);
     sourceCodeCombo->setVisible(false);
+
+    connect(sourceCodeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), [this](int) {
+        populateActiveProducts();
+    });
+    connect(sourceCodeCombo, &QComboBox::currentTextChanged, [this](const QString&) {
+        populateActiveProducts();
+    });
 
     viewCheckBtn = new QPushButton("👁️ Xem chi tiết đợt kiểm", headerGroup);
     viewCheckBtn->setStyleSheet("background-color: #f1f5f9; color: #0f172a; border: 1px solid #cbd5e1; font-weight: 600; padding: 4px 12px; border-radius: 4px;");
@@ -931,6 +939,7 @@ void OrderDialog::onOrderTypeChanged(int)
     if (sourceCodeCombo) sourceCodeCombo->setVisible(isAdj);
     if (viewCheckBtn) viewCheckBtn->setVisible(isAdj);
 
+    populateActiveProducts();
     updateProductStockHint(productCombo ? productCombo->currentIndex() : -1);
 }
 
@@ -1005,6 +1014,37 @@ void OrderDialog::populateActiveProducts()
     productCombo->clear();
     if (!db) return;
 
+    QString t = typeCombo ? typeCombo->currentData().toString() : "";
+    bool isAdj = (t == "ADJUSTMENT_IN" || t == "ADJUSTMENT_OUT");
+    std::unordered_set<int> allowedPids;
+    bool filterActive = false;
+
+    if (isAdj && sourceCodeCombo) {
+        QString srcCode = sourceCodeCombo->currentData().toString().trimmed();
+        if (srcCode.isEmpty()) {
+            srcCode = sourceCodeCombo->currentText().trimmed();
+            int sep = srcCode.indexOf(" ");
+            if (sep > 0) srcCode = srcCode.left(sep).trimmed();
+        }
+        if (!srcCode.isEmpty()) {
+            Table* chkTbl = db->getTable("inventory_check");
+            Table* cqTbl = db->getTable("inventory_check_quantity");
+            if (chkTbl && cqTbl) {
+                Vector<Record> cRecs = Query::filterRecords(*chkTbl, "check_code", Value(srcCode.toStdString()));
+                if (!cRecs.empty()) {
+                    filterActive = true;
+                    int chkId = std::get<int>(cRecs[0].get("check_id"));
+                    Vector<Record> cqRecs = Query::filterRecords(*cqTbl, "check_id", Value(chkId));
+                    for (size_t k = 0; k < cqRecs.size(); ++k) {
+                        if (cqRecs[k].has("product_id") && std::holds_alternative<int>(cqRecs[k].get("product_id"))) {
+                            allowedPids.insert(std::get<int>(cqRecs[k].get("product_id")));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     Vector<Record> rows;
     user_query::product_quantity_query(db, rows, "is_sold", Value(true));
 
@@ -1013,6 +1053,7 @@ void OrderDialog::populateActiveProducts()
         int pid = (r.has("product_id") && holds_alternative<int>(r.get("product_id")))
             ? get<int>(r.get("product_id")) : -1;
         if (pid <= 0) continue;
+        if (filterActive && allowedPids.find(pid) == allowedPids.end()) continue;
 
         QString code = (r.has("product.product_code") && holds_alternative<std::string>(r.get("product.product_code")))
             ? QString::fromStdString(get<std::string>(r.get("product.product_code")))
@@ -3023,7 +3064,7 @@ bool SimulationToolDialog::isUnitEligible(const std::string& status) const
         if (transactionType == "WARRANTY_REPLACEMENT_TO_CUSTOMER" || transactionType == "WRC") return (status == "AVAILABLE" || status == "WARRANTY");
         return (status != "OUT");
     } else {
-        if (transactionType == "ADJUSTMENT_IN" || transactionType == "ADJ") return true;
+        if (transactionType == "ADJUSTMENT_IN" || transactionType == "ADJ") return (status == "OUT");
         bool isNew = (transactionType == "PURCHASING" || transactionType == "PUR" ||
                       transactionType == "WARRANTY_REPLACEMENT" || transactionType == "WRP");
         if (isNew) return false;
@@ -3043,7 +3084,8 @@ QString SimulationToolDialog::getEligibilityReason(const std::string& status) co
             return (status == "AVAILABLE" || status == "WARRANTY") ? "✅ Hợp lệ (AVAILABLE/WARRANTY)" : "❌ Cần AVAILABLE/WARRANTY";
         return (status != "OUT") ? "✅ Hợp lệ" : "❌ Không thể xuất";
     } else {
-        if (transactionType == "ADJUSTMENT_IN" || transactionType == "ADJ") return "✅ Hợp lệ nhập điều chỉnh";
+        if (transactionType == "ADJUSTMENT_IN" || transactionType == "ADJ")
+            return (status == "OUT") ? "✅ Hợp lệ tái phát hiện (Đang OUT)" : "❌ Đang trong kho (Chỉ nhận lại unit OUT)";
         bool isNew = (transactionType == "PURCHASING" || transactionType == "PUR" ||
                       transactionType == "WARRANTY_REPLACEMENT" || transactionType == "WRP");
         if (isNew) return "ℹ️ Đơn mua mới yêu cầu Serial mới (Không xuất/nhập lại)";
@@ -3637,7 +3679,8 @@ UnitEntryDialog::UnitEntryDialog(
                             std::string sn = cu.has("serial") && std::holds_alternative<std::string>(cu.get("serial"))
                                              ? std::get<std::string>(cu.get("serial")) : "";
 
-                            bool isSurplus = (sysSt.empty() || sysSt == "OUT") && (!scannedSt.empty() && scannedSt != "MISSING");
+                            bool isSurplus = (sysSt.empty() || sysSt == "OUT") &&
+                                             (!scannedSt.empty() && scannedSt != "OUT" && scannedSt != "MISSING" && scannedSt != "UNCHECKED");
                             if (isSurplus && pid > 0 && !sn.empty()) {
                                 QString errMsg;
                                 if (recordPendingInboundSerial(pid, QString::fromStdString(sn), QString::fromStdString(scannedSt), errMsg)) {
@@ -3666,7 +3709,8 @@ UnitEntryDialog::UnitEntryDialog(
                             std::string sn = cu.has("serial") && std::holds_alternative<std::string>(cu.get("serial"))
                                              ? std::get<std::string>(cu.get("serial")) : "";
 
-                            bool isMissing = (!sysSt.empty() && sysSt != "OUT") && (scannedSt.empty() || scannedSt == "MISSING");
+                            bool isMissing = (!sysSt.empty() && sysSt != "OUT") &&
+                                             (scannedSt.empty() || scannedSt == "OUT" || scannedSt == "MISSING" || scannedSt == "UNCHECKED");
                             if (isMissing && pid > 0 && !sn.empty()) {
                                 QString errMsg;
                                 if (recordPendingOutboundSerial(pid, QString::fromStdString(sn), errMsg)) {
@@ -3992,7 +4036,7 @@ void UnitEntryDialog::setupUI()
     tab2Layout->addWidget(overviewLbl);
 
     batchOverviewTable = new QTableWidget(tabBatchOverview);
-    batchOverviewTable->setColumnCount(8);
+    batchOverviewTable->setColumnCount(7);
 
     QString col3Title = (hubType == HubType::INBOUND) ? "Thực nhận" : "Thực xuất";
     QString col5Title = (hubType == HubType::OUTBOUND)
@@ -4002,8 +4046,7 @@ void UnitEntryDialog::setupUI()
     QStringList batchHeaders = {
         "Mã sản phẩm", "Tên sản phẩm", "SL Đợt này", col3Title, "Còn thiếu",
         col5Title,
-        "Tồn kho chung (Khả dụng / BH / Lỗi)",
-        "Thao tác chọn Unit"
+        "Tồn kho chung (Khả dụng / BH / Lỗi)"
     };
     batchOverviewTable->setHorizontalHeaderLabels(batchHeaders);
     batchOverviewTable->setAlternatingRowColors(true);
@@ -4037,7 +4080,6 @@ void UnitEntryDialog::setupUI()
     batchOverviewTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Interactive);
     batchOverviewTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::Interactive);
     batchOverviewTable->horizontalHeader()->setSectionResizeMode(6, QHeaderView::Interactive);
-    batchOverviewTable->horizontalHeader()->setSectionResizeMode(7, QHeaderView::ResizeToContents);
 
     batchOverviewTable->setColumnWidth(0, 130); // Mã SP
     batchOverviewTable->setColumnWidth(2, 95);  // SL Đợt này
@@ -4430,27 +4472,6 @@ void UnitEntryDialog::refreshBatchOverviewTable()
         batchOverviewTable->setItem(i, 4, it4);
         batchOverviewTable->setItem(i, 5, it5);
         batchOverviewTable->setItem(i, 6, it6);
-
-        if (hubType == HubType::OUTBOUND) {
-            auto* pickBtn = new QPushButton();
-            pickBtn->setCursor(Qt::PointingHandCursor);
-            if (rem == 0) {
-                pickBtn->setText("✅ Đã đủ");
-                pickBtn->setEnabled(false);
-                pickBtn->setStyleSheet("background-color: #f1f5f9; color: #16a34a; font-weight: 600; border: 1px solid #bbf7d0; border-radius: 4px; padding: 4px 10px; font-size: 11px;");
-            } else {
-                pickBtn->setText(QString("📦 Chọn Unit (%1)").arg(rem));
-                pickBtn->setEnabled(!isLogisticsCompleted);
-                pickBtn->setStyleSheet("QPushButton { background-color: #2563eb; color: #ffffff; font-weight: 600; border: none; border-radius: 4px; padding: 4px 10px; font-size: 11px; } QPushButton:hover { background-color: #1d4ed8; }");
-                int pid = itm.productId;
-                QString pCode = itm.productCode;
-                QString pName = itm.productName;
-                connect(pickBtn, &QPushButton::clicked, [this, pid, pCode, pName, rem]() {
-                    onOpenProductUnitPicker(pid, pCode, pName, rem);
-                });
-            }
-            batchOverviewTable->setCellWidget(i, 7, pickBtn);
-        }
     }
 
     batchOverviewTable->blockSignals(false);
@@ -6750,7 +6771,8 @@ void UnitEntryDialog::onBatchAutoGenerateUnits()
                         std::string scanSt = cu.has("scanned_status") && !isNull(cu.get("scanned_status")) && std::holds_alternative<std::string>(cu.get("scanned_status")) ? std::get<std::string>(cu.get("scanned_status")) : "";
                         std::string sn = cu.has("serial") && std::holds_alternative<std::string>(cu.get("serial")) ? std::get<std::string>(cu.get("serial")) : "";
 
-                        bool isMissing = (!sysSt.empty() && sysSt != "OUT") && (scanSt.empty() || scanSt == "MISSING");
+                        bool isMissing = (!sysSt.empty() && sysSt != "OUT") &&
+                                         (scanSt.empty() || scanSt == "OUT" || scanSt == "MISSING" || scanSt == "UNCHECKED");
                         if (isMissing && !sn.empty()) {
                             chkMissingSerials.insert(sn);
                         }

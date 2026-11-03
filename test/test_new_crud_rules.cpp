@@ -143,8 +143,10 @@ int main() {
     // Update counted actual quantities
     int cqId1 = safeGetInt(checkQtys[0], "check_quantity_id");
     int sysAvail1 = safeGetInt(checkQtys[0], "system_available_quan");
+    int sysWarr1 = safeGetInt(checkQtys[0], "system_warranty_quan");
+    int sysScrap1 = safeGetInt(checkQtys[0], "system_scrapped_quan");
     // Simulate finding 3 more available items
-    OperationResult rUpQty = user_update::updateInventoryCheckQuantity(&db, cqId1, sysAvail1 + 3, 0, 0, "Dư 3 cái");
+    OperationResult rUpQty = user_update::updateInventoryCheckQuantity(&db, cqId1, sysAvail1 + 3, sysWarr1, sysScrap1, "Dư 3 cái");
     assert(rUpQty.success);
 
     // Verify difference

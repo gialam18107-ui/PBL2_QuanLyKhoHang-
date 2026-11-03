@@ -3639,9 +3639,10 @@ void InventoryCheckInspectDialog::setupUI()
     t1Layout->addWidget(diffOnlyCheck);
 
     matrixTable = new QTableWidget(tab1);
-    matrixTable->setColumnCount(12);
+    matrixTable->setColumnCount(15);
     matrixTable->setHorizontalHeaderLabels({
         "Mã SP", "Tên sản phẩm",
+        "Tổng tồn HT", "Tổng thực tế", "Tổng chênh lệch",
         "HT (Khả dụng)", "Thực (Khả dụng)", "Lệch KD",
         "HT (Bảo hành)", "Thực (Bảo hành)", "Lệch BH",
         "HT (Phế phẩm)", "Thực (Phế phẩm)", "Lệch PP",
@@ -3649,10 +3650,10 @@ void InventoryCheckInspectDialog::setupUI()
     });
     matrixTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
     matrixTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
-    for (int c = 2; c < 11; ++c) {
+    for (int c = 2; c < 14; ++c) {
         matrixTable->horizontalHeader()->setSectionResizeMode(c, QHeaderView::ResizeToContents);
     }
-    matrixTable->horizontalHeader()->setSectionResizeMode(11, QHeaderView::Stretch);
+    matrixTable->horizontalHeader()->setSectionResizeMode(14, QHeaderView::Stretch);
     matrixTable->setAlternatingRowColors(true);
     matrixTable->setSelectionBehavior(QAbstractItemView::SelectRows);
     matrixTable->setSelectionMode(QAbstractItemView::SingleSelection);
@@ -3692,6 +3693,7 @@ void InventoryCheckInspectDialog::setupUI()
     fillBtn = new QPushButton("➕ Điền sản phẩm đã chọn vào đơn", this);
     fillBtn->setStyleSheet("background-color: #2563eb; color: #ffffff; font-weight: 600; padding: 8px 16px; border-radius: 6px;");
     fillBtn->setEnabled(false);
+    fillBtn->setVisible(static_cast<bool>(selectCallback));
 
     closeBtn = new QPushButton("Đóng", this);
     closeBtn->setStyleSheet("padding: 8px 16px;");
@@ -3786,16 +3788,33 @@ void InventoryCheckInspectDialog::loadCheckData()
     checkCode = QString::fromStdString(std::get<std::string>(cRec->get("check_code")));
     checkType = cRec->has("check_type") && std::holds_alternative<std::string>(cRec->get("check_type")) ? QString::fromStdString(std::get<std::string>(cRec->get("check_type"))) : "";
     checkStatus = cRec->has("status") && std::holds_alternative<std::string>(cRec->get("status")) ? QString::fromStdString(std::get<std::string>(cRec->get("status"))) : "";
-    checkedAt = cRec->has("checked_at") && std::holds_alternative<std::string>(cRec->get("checked_at")) ? QString::fromStdString(std::get<std::string>(cRec->get("checked_at"))) : "";
+    checkedAt = cRec->has("check_at") && !isNull(cRec->get("check_at")) && std::holds_alternative<std::string>(cRec->get("check_at"))
+        ? QString::fromStdString(std::get<std::string>(cRec->get("check_at")))
+        : (cRec->has("checked_at") && !isNull(cRec->get("checked_at")) && std::holds_alternative<std::string>(cRec->get("checked_at"))
+            ? QString::fromStdString(std::get<std::string>(cRec->get("checked_at"))) : "");
     note = cRec->has("note") && std::holds_alternative<std::string>(cRec->get("note")) ? QString::fromStdString(std::get<std::string>(cRec->get("note"))) : "";
 
     QString stColor = (checkStatus == "COMPLETED") ? "#16a34a" : "#ca8a04";
     infoLabel->setText(QString("<b>Mã đợt:</b> %1 &nbsp;&nbsp;|&nbsp;&nbsp; <b>Loại kiểm:</b> %2 &nbsp;&nbsp;|&nbsp;&nbsp; <b>Trạng thái:</b> <span style='color:%3; font-weight:bold;'>%4</span> &nbsp;&nbsp;|&nbsp;&nbsp; <b>Ngày kiểm:</b> %5 &nbsp;&nbsp;|&nbsp;&nbsp; <b>Ghi chú:</b> %6")
         .arg(checkCode, checkType, stColor, checkStatus, checkedAt, note.isEmpty() ? "(Không)" : note));
 
-    // Tab 2 visibility
+    // Tab visibility & custom layout per check type
     if (tabWidget) {
-        tabWidget->setTabVisible(1, checkType == "UNIT");
+        if (checkType == "QUAN") {
+            setWindowTitle(QString("Chi Tiết Kiểm Kê Số Lượng: %1").arg(checkCode));
+            tabWidget->setTabVisible(0, false); // Hide unit surplus/missing buckets
+            tabWidget->setTabVisible(1, true);  // Show quantity inspection matrix
+            tabWidget->setTabVisible(2, false); // Hide individual unit table
+            tabWidget->setTabText(1, "📊 Chi Tiết Kiểm Kê Số Lượng & Ghi Chú");
+            tabWidget->setCurrentIndex(1);
+            if (diffOnlyCheck) diffOnlyCheck->setChecked(false); // Show all products with notes
+        } else {
+            setWindowTitle(QString("Chi Tiết & Đối Soát Đợt Kiểm Kê: %1").arg(checkCode));
+            tabWidget->setTabVisible(0, true);
+            tabWidget->setTabVisible(1, true);
+            tabWidget->setTabVisible(2, true);
+            tabWidget->setTabText(1, "📊 Bảng Chênh Lệch Sản Phẩm");
+        }
     }
 
     // Load quantity matrix
@@ -3863,7 +3882,7 @@ void InventoryCheckInspectDialog::loadCheckData()
 
                 if (ui.sysStatus == "(Không có)" || ui.sysStatus == "OUT") {
                     ui.eval = "Hàng thừa / Lạ";
-                } else if (ui.actStatus.startsWith("(Chưa") || ui.actStatus == "MISSING") {
+                } else if (ui.actStatus.startsWith("(Chưa") || ui.actStatus == "MISSING" || ui.actStatus == "OUT" || ui.actStatus == "UNCHECKED") {
                     ui.eval = "Hàng thiếu (Mất)";
                 } else if (ui.sysStatus != ui.actStatus) {
                     ui.eval = QString("Lệch TT (%1 -> %2)").arg(ui.sysStatus, ui.actStatus);
@@ -3903,10 +3922,14 @@ void InventoryCheckInspectDialog::renderMatrixTable()
         matrixTable->setItem(r, 0, codeItem);
         matrixTable->setItem(r, 1, new QTableWidgetItem(m.name));
 
+        int sysTot = m.sysAvail + m.sysWarr + m.sysScrap;
+        int actTot = m.actAvail + m.actWarr + m.actScrap;
+        int diffTot = actTot - sysTot;
+
         auto setCell = [this, r](int col, int val, int diff) {
             auto* item = new QTableWidgetItem(QString::number(val));
             item->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
-            if (col == 4 || col == 7 || col == 10) {
+            if (col == 4 || col == 7 || col == 10 || col == 13) {
                 if (diff > 0) {
                     item->setText("+" + QString::number(diff));
                     item->setForeground(QBrush(QColor("#16a34a"))); // Green
@@ -3922,18 +3945,22 @@ void InventoryCheckInspectDialog::renderMatrixTable()
             matrixTable->setItem(r, col, item);
         };
 
-        setCell(2, m.sysAvail, 0);
-        setCell(3, m.actAvail, 0);
-        setCell(4, m.diffAvail, m.diffAvail);
+        setCell(2, sysTot, 0);
+        setCell(3, actTot, 0);
+        setCell(4, diffTot, diffTot);
 
-        setCell(5, m.sysWarr, 0);
-        setCell(6, m.actWarr, 0);
-        setCell(7, m.diffWarr, m.diffWarr);
+        setCell(5, m.sysAvail, 0);
+        setCell(6, m.actAvail, 0);
+        setCell(7, m.diffAvail, m.diffAvail);
 
-        setCell(8, m.sysScrap, 0);
-        setCell(9, m.actScrap, 0);
-        setCell(10, m.diffScrap, m.diffScrap);
-        matrixTable->setItem(r, 11, new QTableWidgetItem(m.note));
+        setCell(8, m.sysWarr, 0);
+        setCell(9, m.actWarr, 0);
+        setCell(10, m.diffWarr, m.diffWarr);
+
+        setCell(11, m.sysScrap, 0);
+        setCell(12, m.actScrap, 0);
+        setCell(13, m.diffScrap, m.diffScrap);
+        matrixTable->setItem(r, 14, new QTableWidgetItem(m.note));
     }
 }
 
@@ -4084,7 +4111,7 @@ void InventoryCheckInspectDialog::renderSummaryTable()
         if (checkType == "UNIT") {
             std::map<int, SummaryRow> prodMap;
             for (const auto& u : unitList) {
-                if (u.eval.contains("thiếu") || u.actStatus.startsWith("(Chưa") || u.actStatus == "MISSING") {
+                if (u.eval.contains("thiếu") || u.actStatus.startsWith("(Chưa") || u.actStatus == "MISSING" || u.actStatus == "OUT" || u.actStatus == "UNCHECKED") {
                     auto& row = prodMap[u.productId];
                     row.productId = u.productId;
                     row.pCode = u.pCode;
@@ -4174,7 +4201,7 @@ void InventoryCheckInspectDialog::renderSummaryTable()
             std::map<std::tuple<int, QString, QString>, SummaryRow> shiftMap;
             for (const auto& u : unitList) {
                 if (u.sysStatus.isEmpty() || u.sysStatus == "(Không có)" || u.sysStatus == "OUT") continue;
-                if (u.actStatus.isEmpty() || u.actStatus.startsWith("(Chưa") || u.actStatus == "MISSING") continue;
+                if (u.actStatus.isEmpty() || u.actStatus.startsWith("(Chưa") || u.actStatus == "MISSING" || u.actStatus == "OUT" || u.actStatus == "UNCHECKED") continue;
                 if (u.sysStatus != u.actStatus) {
                     auto key = std::make_tuple(u.productId, u.sysStatus, u.actStatus);
                     auto& row = shiftMap[key];

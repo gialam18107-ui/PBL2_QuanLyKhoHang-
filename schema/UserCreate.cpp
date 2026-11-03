@@ -486,6 +486,20 @@ namespace user_create
         return db->insertRecord("brand", rBrand);
     }
 
+    static std::string getProductCodeStr(Database* db, int pid) {
+        if (db) {
+            Table* prodTbl = db->getTable("product");
+            if (prodTbl) {
+                const Record* pRec = prodTbl->getRecordById(pid);
+                if (pRec && pRec->has("product_code") && std::holds_alternative<std::string>(pRec->get("product_code"))) {
+                    std::string code = std::get<std::string>(pRec->get("product_code"));
+                    if (!code.empty()) return code;
+                }
+            }
+        }
+        return "ID " + std::to_string(pid);
+    }
+
     OperationResult createInboundOrder(
         Database* db,
         const std::string& inboundType,
@@ -511,6 +525,22 @@ namespace user_create
             Vector<Record> chkRecs = Query::filterRecords(*chkTbl, "check_code", Value(sourceCode));
             if (chkRecs.empty()) {
                 return OperationResult{false, "Mã đợt kiểm kho source_code '" + sourceCode + "' không tồn tại trong hệ thống.", 0};
+            }
+            Table* cqTbl = db->getTable("inventory_check_quantity");
+            if (cqTbl) {
+                int chkId = std::get<int>(chkRecs[0].get("check_id"));
+                Vector<Record> cqRecs = Query::filterRecords(*cqTbl, "check_id", Value(chkId));
+                HashMap<int, bool> allowedPids;
+                for (size_t k = 0; k < cqRecs.size(); ++k) {
+                    if (cqRecs[k].has("product_id") && std::holds_alternative<int>(cqRecs[k].get("product_id"))) {
+                        allowedPids[std::get<int>(cqRecs[k].get("product_id"))] = true;
+                    }
+                }
+                for (size_t k = 0; k < items.size(); ++k) {
+                    if (!allowedPids.contains(items[k].first)) {
+                        return OperationResult{false, "Sản phẩm [" + getProductCodeStr(db, items[k].first) + "] không thuộc phạm vi đợt kiểm kho " + sourceCode + " (Rule 5.5).", 0};
+                    }
+                }
             }
         } else {
             if (effectiveCustomerCode.empty()) {
@@ -658,6 +688,22 @@ namespace user_create
             Vector<Record> chkRecs = Query::filterRecords(*chkTbl, "check_code", Value(sourceCode));
             if (chkRecs.empty()) {
                 return OperationResult{false, "Mã đợt kiểm kho source_code '" + sourceCode + "' không tồn tại trong hệ thống.", 0};
+            }
+            Table* cqTbl = db->getTable("inventory_check_quantity");
+            if (cqTbl) {
+                int chkId = std::get<int>(chkRecs[0].get("check_id"));
+                Vector<Record> cqRecs = Query::filterRecords(*cqTbl, "check_id", Value(chkId));
+                HashMap<int, bool> allowedPids;
+                for (size_t k = 0; k < cqRecs.size(); ++k) {
+                    if (cqRecs[k].has("product_id") && std::holds_alternative<int>(cqRecs[k].get("product_id"))) {
+                        allowedPids[std::get<int>(cqRecs[k].get("product_id"))] = true;
+                    }
+                }
+                for (size_t k = 0; k < items.size(); ++k) {
+                    if (!allowedPids.contains(items[k].first)) {
+                        return OperationResult{false, "Sản phẩm [" + getProductCodeStr(db, items[k].first) + "] không thuộc phạm vi đợt kiểm kho " + sourceCode + " (Rule 5.5).", 0};
+                    }
+                }
             }
         } else {
             if (effectiveCustomerCode.empty()) {
@@ -903,6 +949,22 @@ namespace user_create
             if (chkRecs.empty()) {
                 return OperationResult{false, "Mã đợt kiểm kho source_code '" + sourceCode + "' không tồn tại trong hệ thống.", 0};
             }
+            Table* cqTbl = db->getTable("inventory_check_quantity");
+            if (cqTbl) {
+                int chkId = std::get<int>(chkRecs[0].get("check_id"));
+                Vector<Record> cqRecs = Query::filterRecords(*cqTbl, "check_id", Value(chkId));
+                HashMap<int, bool> allowedPids;
+                for (size_t k = 0; k < cqRecs.size(); ++k) {
+                    if (cqRecs[k].has("product_id") && std::holds_alternative<int>(cqRecs[k].get("product_id"))) {
+                        allowedPids[std::get<int>(cqRecs[k].get("product_id"))] = true;
+                    }
+                }
+                for (size_t k = 0; k < totalOrderedItems.size(); ++k) {
+                    if (!allowedPids.contains(totalOrderedItems[k].first)) {
+                        return OperationResult{false, "Sản phẩm [" + getProductCodeStr(db, totalOrderedItems[k].first) + "] không thuộc phạm vi đợt kiểm kho " + sourceCode + " (Rule 5.5).", 0};
+                    }
+                }
+            }
         } else {
             if (effectiveCustomerCode.empty()) return OperationResult{false, "Mã đối tác / nhà cung cấp không được để trống.", 0};
         }
@@ -1081,6 +1143,22 @@ namespace user_create
             Vector<Record> chkRecs = Query::filterRecords(*chkTbl, "check_code", Value(sourceCode));
             if (chkRecs.empty()) {
                 return OperationResult{false, "Mã đợt kiểm kho source_code '" + sourceCode + "' không tồn tại trong hệ thống.", 0};
+            }
+            Table* cqTbl = db->getTable("inventory_check_quantity");
+            if (cqTbl) {
+                int chkId = std::get<int>(chkRecs[0].get("check_id"));
+                Vector<Record> cqRecs = Query::filterRecords(*cqTbl, "check_id", Value(chkId));
+                HashMap<int, bool> allowedPids;
+                for (size_t k = 0; k < cqRecs.size(); ++k) {
+                    if (cqRecs[k].has("product_id") && std::holds_alternative<int>(cqRecs[k].get("product_id"))) {
+                        allowedPids[std::get<int>(cqRecs[k].get("product_id"))] = true;
+                    }
+                }
+                for (size_t k = 0; k < totalOrderedItems.size(); ++k) {
+                    if (!allowedPids.contains(totalOrderedItems[k].first)) {
+                        return OperationResult{false, "Sản phẩm [" + getProductCodeStr(db, totalOrderedItems[k].first) + "] không thuộc phạm vi đợt kiểm kho " + sourceCode + " (Rule 5.5).", 0};
+                    }
+                }
             }
         } else {
             if (effectiveCustomerCode.empty()) return OperationResult{false, "Mã khách hàng / đối tác không được để trống.", 0};
@@ -1847,6 +1925,12 @@ namespace user_create
         if (adjustedAt.empty()) return OperationResult{false, "Ngày điều chuyển không được để trống.", 0};
         if (items.empty()) return OperationResult{false, "Phiếu điều chuyển phải có ít nhất một mặt hàng.", 0};
 
+        if (reason == "STOCKTAKE_DIFF" || reason == "STOCK_DIFF") {
+            if (sourceCheckCode.empty()) {
+                return OperationResult{false, "Điều chuyển do lệch kiểm kê (STOCKTAKE_DIFF) bắt buộc phải có source_code tham chiếu đến đợt kiểm kho (check_code).", 0};
+            }
+        }
+
         Table* rTable = db->getTable("reason");
         if (rTable) {
             Vector<Record> rRecs = Query::filterRecords(*rTable, "reason", Value(reason));
@@ -1857,10 +1941,26 @@ namespace user_create
 
         if (!sourceCheckCode.empty()) {
             Table* chkTbl = db->getTable("inventory_check");
+            Table* cqTbl = db->getTable("inventory_check_quantity");
             if (chkTbl) {
                 Vector<Record> cRecs = Query::filterRecords(*chkTbl, "check_code", Value(sourceCheckCode));
                 if (cRecs.empty()) {
                     return OperationResult{false, "Mã đợt kiểm kho source_code '" + sourceCheckCode + "' không tồn tại.", 0};
+                }
+                if (cqTbl) {
+                    int chkId = std::get<int>(cRecs[0].get("check_id"));
+                    Vector<Record> cqRecs = Query::filterRecords(*cqTbl, "check_id", Value(chkId));
+                    HashMap<int, bool> allowedPids;
+                    for (size_t k = 0; k < cqRecs.size(); ++k) {
+                        if (cqRecs[k].has("product_id") && std::holds_alternative<int>(cqRecs[k].get("product_id"))) {
+                            allowedPids[std::get<int>(cqRecs[k].get("product_id"))] = true;
+                        }
+                    }
+                    for (size_t i = 0; i < items.size(); ++i) {
+                        if (!allowedPids.contains(items[i].productId)) {
+                            return OperationResult{false, "Sản phẩm [" + getProductCodeStr(db, items[i].productId) + "] không thuộc phạm vi đợt kiểm kho " + sourceCheckCode + " (Rule 5.5).", 0};
+                        }
+                    }
                 }
             }
         }
@@ -1870,6 +1970,28 @@ namespace user_create
         Table* prodTbl = db->getTable("product");
         if (!adjTbl || !detTbl || !prodTbl) {
             return OperationResult{false, "Các bảng dữ liệu điều chuyển không đầy đủ.", 0};
+        }
+
+        for (size_t i = 0; i < items.size(); ++i) {
+            const auto& item = items[i];
+            if (item.quantity <= 0) {
+                return OperationResult{false, "Số lượng điều chuyển phải lớn hơn 0.", 0};
+            }
+            if (!prodTbl->getRecordById(item.productId)) {
+                return OperationResult{false, "Sản phẩm ID " + std::to_string(item.productId) + " không tồn tại trong danh mục.", 0};
+            }
+            if (item.fromStatus == item.toStatus) {
+                return OperationResult{false, "Trạng thái nguồn và trạng thái đích không được trùng nhau.", 0};
+            }
+            if (item.fromStatus != "AVAILABLE" && item.fromStatus != "WARRANTY" && item.fromStatus != "SCRAPPED") {
+                return OperationResult{false, "Trạng thái nguồn '" + item.fromStatus + "' không hợp lệ.", 0};
+            }
+            if (item.toStatus != "AVAILABLE" && item.toStatus != "WARRANTY" && item.toStatus != "SCRAPPED") {
+                return OperationResult{false, "Trạng thái đích '" + item.toStatus + "' không hợp lệ (không được là OUT).", 0};
+            }
+            if (reason == "DAMAGED" && item.toStatus != "SCRAPPED") {
+                return OperationResult{false, "Khi lý do điều chuyển là DAMAGED (Hư hỏng), trạng thái đích (to_status) chỉ được phép là SCRAPPED.", 0};
+            }
         }
 
         if (!db->beginTransaction()) {
@@ -1895,10 +2017,6 @@ namespace user_create
         int totalAffected = 1;
         for (size_t i = 0; i < items.size(); ++i) {
             const auto& item = items[i];
-            if (item.quantity <= 0) {
-                db->rollback();
-                return OperationResult{false, "Số lượng điều chuyển phải lớn hơn 0.", 0};
-            }
 
             int detId = getNextTableId(db, "adjust_movement_detail");
             Record dRec;

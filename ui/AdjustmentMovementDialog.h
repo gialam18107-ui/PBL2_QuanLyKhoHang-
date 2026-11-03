@@ -39,9 +39,11 @@ public:
 
 private:
     void setupUI();
-    void populateProducts();
+    void populateProducts(const QString& filterCheckCode = "");
     void populateReasons();
     void populateChecks();
+    void onReasonChanged();
+    void onCheckChanged();
     void onAddItem();
     void onRemoveItem(int row);
     void renderItemsTable();

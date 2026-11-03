@@ -235,6 +235,7 @@ void status_history_query(Database *db, Vector<Record> &results,
 	Table *uTable = db->getTable("unit_inventory");
 	Table *dTable = db->getTable("delivery");
 	Table *sTable = db->getTable("shipment");
+	Table *aTable = db->getTable("adjustment_movement");
 	if (!shTable || !uTable)
 		return;
 
@@ -250,7 +251,7 @@ void status_history_query(Database *db, Vector<Record> &results,
 		}
 	}
 
-	// 2. Maps cho delivery và shipment (lưu con trỏ const Record*)
+	// 2. Maps cho delivery, shipment và adjustment_movement (lưu con trỏ const Record*)
 	HashMap<Value, const Record*> delivMap;
 	if (dTable) {
 		const auto &dRows = dTable->getRows();
@@ -271,6 +272,16 @@ void status_history_query(Database *db, Vector<Record> &results,
 		}
 	}
 
+	HashMap<Value, const Record*> adjMap;
+	if (aTable) {
+		const auto &aRows = aTable->getRows();
+		for (size_t i = 0; i < aRows.size(); ++i) {
+			if (!aTable->isRowDeleted(i) && aRows[i].has("adjust_id")) {
+				adjMap[aRows[i].get("adjust_id")] = &aRows[i];
+			}
+		}
+	}
+
 	string col = stripPrefix(indexedColumn, "status_history.");
 	col = stripPrefix(col, "unit_inventory.");
 
@@ -280,6 +291,7 @@ void status_history_query(Database *db, Vector<Record> &results,
 
 	HashMap<Value, bool> matchedDelivIds;
 	HashMap<Value, bool> matchedShipIds;
+	HashMap<Value, bool> matchedAdjIds;
 
 	if (filterByTxCode) {
 		if (dTable) {
@@ -294,6 +306,13 @@ void status_history_query(Database *db, Vector<Record> &results,
 			for (size_t i = 0; i < matchedS.size(); ++i) {
 				if (matchedS[i].has("shipment_id"))
 					matchedShipIds[matchedS[i].get("shipment_id")] = true;
+			}
+		}
+		if (aTable) {
+			Vector<Record> matchedA = Query::filterRecords(*aTable, "adjust_code", val);
+			for (size_t i = 0; i < matchedA.size(); ++i) {
+				if (matchedA[i].has("adjust_id"))
+					matchedAdjIds[matchedA[i].get("adjust_id")] = true;
 			}
 		}
 	} else if (filterByDate) {
@@ -313,6 +332,15 @@ void status_history_query(Database *db, Vector<Record> &results,
 			for (size_t i = 0; i < matchedS.size(); ++i) {
 				if (matchedS[i].has("shipment_id"))
 					matchedShipIds[matchedS[i].get("shipment_id")] = true;
+			}
+		}
+		if (aTable) {
+			Vector<Record> matchedA = hasRange
+					? Query::filterRecords(*aTable, "adjusted_at", minVal, maxVal)
+					: Query::filterRecords(*aTable, "adjusted_at", val);
+			for (size_t i = 0; i < matchedA.size(); ++i) {
+				if (matchedA[i].has("adjust_id"))
+					matchedAdjIds[matchedA[i].get("adjust_id")] = true;
 			}
 		}
 	}
@@ -361,6 +389,15 @@ void status_history_query(Database *db, Vector<Record> &results,
 				if (s.has("ship_at"))
 					dateVal = s.get("ship_at");
 			}
+		} else if (t == "ADJUSTMENT" && sh.has("transaction")) {
+			auto ait = adjMap.find(sh.get("transaction"));
+			if (ait != adjMap.end()) {
+				const Record &a = *(ait->second);
+				if (a.has("adjust_code"))
+					txCodeVal = a.get("adjust_code");
+				if (a.has("adjusted_at"))
+					dateVal = a.get("adjusted_at");
+			}
 		}
 
 		out.set("status_history.transaction", txCodeVal);
@@ -386,6 +423,10 @@ void status_history_query(Database *db, Vector<Record> &results,
 				}
 			} else if (t == "OUTBOUND") {
 				if (sh.has("transaction") && matchedShipIds.find(sh.get("transaction")) != matchedShipIds.end()) {
+					processSh(sh);
+				}
+			} else if (t == "ADJUSTMENT") {
+				if (sh.has("transaction") && matchedAdjIds.find(sh.get("transaction")) != matchedAdjIds.end()) {
 					processSh(sh);
 				}
 			}

@@ -27,9 +27,10 @@ AdjustmentMovementCreateDialog::AdjustmentMovementCreateDialog(Database* databas
         resize(1100, 750);
     }
     setupUI();
-    populateProducts();
     populateReasons();
     populateChecks();
+    populateProducts();
+    onReasonChanged();
 }
 
 void AdjustmentMovementCreateDialog::setupUI()
@@ -189,9 +190,61 @@ void AdjustmentMovementCreateDialog::setupUI()
     connect(addItemBtn, &QPushButton::clicked, this, &AdjustmentMovementCreateDialog::onAddItem);
     connect(cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
     connect(saveBtn, &QPushButton::clicked, this, &AdjustmentMovementCreateDialog::onSaveMovement);
+
+    connect(reasonCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), [this](int) { onReasonChanged(); });
+    connect(sourceCheckCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), [this](int) { onCheckChanged(); });
+    connect(sourceCheckCombo, &QComboBox::currentTextChanged, [this](const QString&) { onCheckChanged(); });
 }
 
-void AdjustmentMovementCreateDialog::populateProducts()
+void AdjustmentMovementCreateDialog::onReasonChanged()
+{
+    if (!reasonCombo || !fromStatusCombo || !toStatusCombo) return;
+    QString r = reasonCombo->currentData().toString();
+    if (r == "DAMAGED") {
+        fromStatusCombo->clear();
+        fromStatusCombo->addItem("Từ AVAILABLE (Khả dụng)", "AVAILABLE");
+        fromStatusCombo->addItem("Từ WARRANTY (Bảo hành)", "WARRANTY");
+
+        toStatusCombo->clear();
+        toStatusCombo->addItem("Sang SCRAPPED (Phế phẩm)", "SCRAPPED");
+        toStatusCombo->setEnabled(false);
+
+        populateProducts("");
+    } else {
+        toStatusCombo->setEnabled(true);
+        fromStatusCombo->clear();
+        fromStatusCombo->addItem("Từ AVAILABLE (Khả dụng)", "AVAILABLE");
+        fromStatusCombo->addItem("Từ WARRANTY (Bảo hành)", "WARRANTY");
+        fromStatusCombo->addItem("Từ SCRAPPED (Phế phẩm)", "SCRAPPED");
+
+        toStatusCombo->clear();
+        toStatusCombo->addItem("Sang WARRANTY (Bảo hành)", "WARRANTY");
+        toStatusCombo->addItem("Sang SCRAPPED (Phế phẩm)", "SCRAPPED");
+        toStatusCombo->addItem("Sang AVAILABLE (Khả dụng)", "AVAILABLE");
+
+        onCheckChanged();
+    }
+}
+
+void AdjustmentMovementCreateDialog::onCheckChanged()
+{
+    QString r = reasonCombo ? reasonCombo->currentData().toString() : "";
+    QString srcCode = sourceCheckCombo ? sourceCheckCombo->currentData().toString().trimmed() : "";
+    if (srcCode.isEmpty() && sourceCheckCombo) {
+        srcCode = sourceCheckCombo->currentText().trimmed();
+        int bPos = srcCode.indexOf(" ");
+        if (bPos > 0) srcCode = srcCode.left(bPos).trimmed();
+        if (srcCode.startsWith("(")) srcCode = "";
+    }
+
+    if (r == "STOCKTAKE_DIFF" || r == "STOCK_DIFF") {
+        populateProducts(srcCode);
+    } else if (r != "DAMAGED") {
+        populateProducts("");
+    }
+}
+
+void AdjustmentMovementCreateDialog::populateProducts(const QString& filterCheckCode)
 {
     if (!db || !productCombo) return;
     productCombo->clear();
@@ -199,18 +252,40 @@ void AdjustmentMovementCreateDialog::populateProducts()
     Table* pTable = db->getTable("product");
     if (!pTable) return;
 
+    std::unordered_set<int> allowedPids;
+    bool filterActive = false;
+
+    if (!filterCheckCode.isEmpty()) {
+        Table* chkTable = db->getTable("inventory_check");
+        Table* cqTable = db->getTable("inventory_check_quantity");
+        if (chkTable && cqTable) {
+            Vector<Record> cRecs = Query::filterRecords(*chkTable, "check_code", Value(filterCheckCode.toStdString()));
+            if (!cRecs.empty()) {
+                filterActive = true;
+                int chkId = std::get<int>(cRecs[0].get("check_id"));
+                Vector<Record> cqRecs = Query::filterRecords(*cqTable, "check_id", Value(chkId));
+                for (size_t i = 0; i < cqRecs.size(); ++i) {
+                    if (cqRecs[i].has("product_id") && std::holds_alternative<int>(cqRecs[i].get("product_id"))) {
+                        allowedPids.insert(std::get<int>(cqRecs[i].get("product_id")));
+                    }
+                }
+            }
+        }
+    }
+
     const auto& rows = pTable->getRows();
     for (size_t i = 0; i < rows.size(); ++i) {
         if (pTable->isRowDeleted(i)) continue;
         const auto& r = rows[i];
         int pid = r.has("product_id") && std::holds_alternative<int>(r.get("product_id")) ? std::get<int>(r.get("product_id")) : 0;
+        if (pid <= 0) continue;
+        if (filterActive && allowedPids.find(pid) == allowedPids.end()) continue;
+
         std::string code = r.has("product_code") && std::holds_alternative<std::string>(r.get("product_code")) ? std::get<std::string>(r.get("product_code")) : "";
         std::string name = r.has("product_name") && std::holds_alternative<std::string>(r.get("product_name")) ? std::get<std::string>(r.get("product_name")) : "";
 
-        if (pid > 0) {
-            QString label = QString("%1 — %2").arg(QString::fromStdString(code), QString::fromStdString(name));
-            productCombo->addItem(label, pid);
-        }
+        QString label = QString("%1 — %2").arg(QString::fromStdString(code), QString::fromStdString(name));
+        productCombo->addItem(label, pid);
     }
 }
 
@@ -270,6 +345,12 @@ void AdjustmentMovementCreateDialog::onAddItem()
 
     QString fromSt = fromStatusCombo->currentData().toString();
     QString toSt = toStatusCombo->currentData().toString();
+
+    QString reason = reasonCombo ? reasonCombo->currentData().toString() : "";
+    if (reason == "DAMAGED" && toSt != "SCRAPPED") {
+        QMessageBox::warning(this, "Không hợp lệ", "Khi lý do là DAMAGED (Hư hỏng), trạng thái đích chỉ được phép là SCRAPPED (Phế phẩm).");
+        return;
+    }
 
     if (fromSt == toSt) {
         QMessageBox::warning(this, "Trạng thái trùng lặp", "Trạng thái nguồn và trạng thái đích phải khác nhau.");
@@ -349,6 +430,12 @@ void AdjustmentMovementCreateDialog::onSaveMovement()
         int bPos = srcCode.indexOf(" ");
         if (bPos > 0) srcCode = srcCode.left(bPos).trimmed();
         if (srcCode.startsWith("(")) srcCode = "";
+    }
+
+    if ((reason == "STOCKTAKE_DIFF" || reason == "STOCK_DIFF") && srcCode.isEmpty()) {
+        QMessageBox::warning(this, "Thiếu đợt kiểm kho", "Lý do điều chuyển do lệch kiểm kê (STOCKTAKE_DIFF) bắt buộc phải có mã đợt kiểm kho gốc (source_code).");
+        sourceCheckCombo->setFocus();
+        return;
     }
 
     QString adjDate = dateEdit->date().toString("yyyy-MM-dd");
@@ -789,14 +876,16 @@ void AdjustmentSimulationDialog::setupUI()
 
     candidatesTable = new QTableWidget(tab1);
     candidatesTable->setColumnCount(4);
-    candidatesTable->setHorizontalHeaderLabels({"STT / Chọn", "Mã Serial", "Trạng thái nguồn", "Phù hợp / Đợt kiểm"});
+    candidatesTable->setHorizontalHeaderLabels({"STT", "Mã Serial", "Trạng thái nguồn", "Phù hợp / Đợt kiểm"});
     candidatesTable->setAlternatingRowColors(true);
     candidatesTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    candidatesTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    candidatesTable->setSelectionMode(QAbstractItemView::ExtendedSelection);
     candidatesTable->verticalHeader()->setVisible(false);
     candidatesTable->verticalHeader()->setDefaultSectionSize(30);
     candidatesTable->horizontalHeader()->setHighlightSections(false);
     candidatesTable->horizontalHeader()->setStretchLastSection(true);
-    candidatesTable->setColumnWidth(0, 100);
+    candidatesTable->setColumnWidth(0, 60);
     candidatesTable->setColumnWidth(1, 180);
     candidatesTable->setColumnWidth(2, 150);
     TableClipboardHelper::setupClipboardForTable(candidatesTable);
@@ -856,7 +945,7 @@ void AdjustmentSimulationDialog::setupUI()
     connect(searchSerialInput, &QLineEdit::textChanged, this, &AdjustmentSimulationDialog::filterCandidates);
     connect(selectAllBtn, &QPushButton::clicked, this, &AdjustmentSimulationDialog::onSelectAll);
     connect(deselectAllBtn, &QPushButton::clicked, this, &AdjustmentSimulationDialog::onDeselectAll);
-    connect(candidatesTable, &QTableWidget::itemChanged, this, &AdjustmentSimulationDialog::onSelectionChanged);
+    connect(candidatesTable, &QTableWidget::itemSelectionChanged, this, &AdjustmentSimulationDialog::onSelectionChanged);
     connect(confirmCandidatesBtn, &QPushButton::clicked, this, &AdjustmentSimulationDialog::onConfirmCandidates);
     connect(autoPickAllBtn, &QPushButton::clicked, this, &AdjustmentSimulationDialog::onExecuteAutoPickAll);
     connect(closeBtn, &QPushButton::clicked, this, &QDialog::accept);
@@ -1052,10 +1141,8 @@ void AdjustmentSimulationDialog::filterCandidates()
     for (int r = 0; r < static_cast<int>(visible.size()); ++r) {
         const auto* lc = visible[r];
 
-        auto* chkItem = new QTableWidgetItem(QString::number(r + 1));
-        chkItem->setFlags(Qt::ItemIsUserCheckable | Qt::ItemIsEnabled | Qt::ItemIsSelectable);
-        chkItem->setCheckState(Qt::Unchecked);
-        chkItem->setTextAlignment(Qt::AlignCenter);
+        auto* sttItem = new QTableWidgetItem(QString::number(r + 1));
+        sttItem->setTextAlignment(Qt::AlignCenter);
 
         auto* snItem = new QTableWidgetItem(QString::fromStdString(lc->serial));
         snItem->setFont(QFont("Consolas", font().pointSize(), QFont::Bold));
@@ -1073,7 +1160,7 @@ void AdjustmentSimulationDialog::filterCandidates()
             noteItem->setForeground(QColor("#64748b"));
         }
 
-        candidatesTable->setItem(r, 0, chkItem);
+        candidatesTable->setItem(r, 0, sttItem);
         candidatesTable->setItem(r, 1, snItem);
         candidatesTable->setItem(r, 2, stItem);
         candidatesTable->setItem(r, 3, noteItem);
@@ -1085,11 +1172,10 @@ void AdjustmentSimulationDialog::filterCandidates()
 
 void AdjustmentSimulationDialog::onSelectionChanged()
 {
-    int sel = 0;
-    for (int r = 0; r < candidatesTable->rowCount(); ++r) {
-        auto* item = candidatesTable->item(r, 0);
-        if (item && item->checkState() == Qt::Checked) sel++;
-    }
+    auto selectedItems = candidatesTable->selectedItems();
+    std::unordered_set<int> rowSet;
+    for (const auto* it : selectedItems) rowSet.insert(it->row());
+    int sel = static_cast<int>(rowSet.size());
 
     if (selectionCountLabel) selectionCountLabel->setText(QString("Đã chọn: <b>%1</b> unit").arg(sel));
     if (confirmCandidatesBtn) {
@@ -1100,19 +1186,13 @@ void AdjustmentSimulationDialog::onSelectionChanged()
 
 void AdjustmentSimulationDialog::onSelectAll()
 {
-    for (int r = 0; r < candidatesTable->rowCount(); ++r) {
-        auto* item = candidatesTable->item(r, 0);
-        if (item) item->setCheckState(Qt::Checked);
-    }
+    candidatesTable->selectAll();
     onSelectionChanged();
 }
 
 void AdjustmentSimulationDialog::onDeselectAll()
 {
-    for (int r = 0; r < candidatesTable->rowCount(); ++r) {
-        auto* item = candidatesTable->item(r, 0);
-        if (item) item->setCheckState(Qt::Unchecked);
-    }
+    candidatesTable->clearSelection();
     onSelectionChanged();
 }
 
@@ -1121,13 +1201,21 @@ void AdjustmentSimulationDialog::onConfirmCandidates()
     int detId = lineFilterCombo ? lineFilterCombo->currentData().toInt() : 0;
     if (detId <= 0 || !mainDlg) return;
 
-    std::vector<std::string> chosen;
-    for (int r = 0; r < candidatesTable->rowCount(); ++r) {
-        auto* item = candidatesTable->item(r, 0);
-        if (item && item->checkState() == Qt::Checked) {
-            auto* snItem = candidatesTable->item(r, 1);
-            if (snItem) chosen.push_back(snItem->text().toStdString());
+    auto selectedItems = candidatesTable->selectedItems();
+    std::vector<int> rowVec;
+    std::unordered_set<int> rowSet;
+    for (const auto* it : selectedItems) {
+        if (!rowSet.count(it->row())) {
+            rowSet.insert(it->row());
+            rowVec.push_back(it->row());
         }
+    }
+    std::sort(rowVec.begin(), rowVec.end());
+
+    std::vector<std::string> chosen;
+    for (int r : rowVec) {
+        auto* snItem = candidatesTable->item(r, 1);
+        if (snItem) chosen.push_back(snItem->text().toStdString());
     }
     if (chosen.empty()) return;
 
@@ -1226,14 +1314,14 @@ void AdjustmentMovementDetailDialog::setupUI()
     mainLayout->addWidget(headerCard);
 
     // 1. Detail targets table
-    auto* detailGroup = new QGroupBox("📊 1. Kế hoạch điều chuyển (Tiến độ thực tế & Chọn Unit)", this);
+    auto* detailGroup = new QGroupBox("📊 1. Kế hoạch điều chuyển (Tiến độ thực tế)", this);
     auto* dLayout = new QVBoxLayout(detailGroup);
     dLayout->setContentsMargins(10, 8, 10, 8);
 
     detailTable = new QTableWidget(detailGroup);
-    detailTable->setColumnCount(8);
+    detailTable->setColumnCount(7);
     detailTable->setHorizontalHeaderLabels({
-        "Mã SP", "Tên sản phẩm", "Từ trạng thái", "Sang trạng thái", "SL Kế hoạch", "SL Đã chuyển", "Còn lại", "Thao tác chọn Unit"
+        "Mã SP", "Tên sản phẩm", "Từ trạng thái", "Sang trạng thái", "SL Kế hoạch", "SL Đã chuyển", "Còn lại"
     });
     detailTable->setAlternatingRowColors(true);
     detailTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -1249,7 +1337,6 @@ void AdjustmentMovementDetailDialog::setupUI()
     detailTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Interactive);
     detailTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::Interactive);
     detailTable->horizontalHeader()->setSectionResizeMode(6, QHeaderView::Interactive);
-    detailTable->horizontalHeader()->setSectionResizeMode(7, QHeaderView::ResizeToContents);
 
     detailTable->setColumnWidth(0, 120);
     detailTable->setColumnWidth(2, 130);
@@ -1286,6 +1373,7 @@ void AdjustmentMovementDetailDialog::setupUI()
 
     openSimulationBtn = new QPushButton("🧪 Bộ Công Cụ Giả Lập & Kiểm Thử ↗", scanBox);
     openSimulationBtn->setCursor(Qt::PointingHandCursor);
+    openSimulationBtn->setEnabled(!isCompleted);
     openSimulationBtn->setStyleSheet(
         "QPushButton { background-color: #ffffff; border: 1.5px solid #6366f1; border-radius: 4px; padding: 6px 14px; font-size: 12px; font-weight: bold; color: #4f46e5; }"
         "QPushButton:hover { background-color: #eef2ff; border-color: #4f46e5; }"
@@ -1482,7 +1570,6 @@ void AdjustmentMovementDetailDialog::refreshDetailTable()
     detailTable->blockSignals(true);
     detailTable->setRowCount(0);
 
-    bool isCompleted = (adjustStatus == "COMPLETED" || adjustStatus == "CANCELLED");
     int count = static_cast<int>(detailLines.size());
     detailTable->setRowCount(count);
 
@@ -1529,23 +1616,6 @@ void AdjustmentMovementDetailDialog::refreshDetailTable()
         detailTable->setItem(r, 4, itPlan);
         detailTable->setItem(r, 5, itAct);
         detailTable->setItem(r, 6, itRem);
-
-        auto* pickBtn = new QPushButton();
-        pickBtn->setCursor(Qt::PointingHandCursor);
-        if (remaining == 0) {
-            pickBtn->setText("✅ Đã đủ");
-            pickBtn->setEnabled(false);
-            pickBtn->setStyleSheet("background-color: #f1f5f9; color: #16a34a; font-weight: 600; border: 1px solid #bbf7d0; border-radius: 4px; padding: 3px 8px; font-size: 11px;");
-        } else {
-            pickBtn->setText(QString("📦 Chọn Unit (%1)").arg(remaining));
-            pickBtn->setEnabled(!isCompleted);
-            pickBtn->setStyleSheet("QPushButton { background-color: #2563eb; color: #ffffff; font-weight: 600; border: none; border-radius: 4px; padding: 3px 10px; font-size: 11px; } QPushButton:hover { background-color: #1d4ed8; }");
-            int detId = dl.adjustDetailId;
-            connect(pickBtn, &QPushButton::clicked, [this, detId]() {
-                onOpenProductUnitPicker(detId);
-            });
-        }
-        detailTable->setCellWidget(r, 7, pickBtn);
     }
 
     detailTable->blockSignals(false);
@@ -1772,8 +1842,16 @@ void AdjustmentMovementDetailDialog::onDirectSerialEntered()
     }
 
     if (candidateDetailIndices.empty()) {
-        QString reasonMsg = QString("Không có dòng kế hoạch nào phù hợp cho linh kiện [%1] (Sản phẩm ID %2, trạng thái hiện tại '%3').")
-                            .arg(sn).arg(uPid).arg(QString::fromStdString(uSt));
+        QString uProdCode = QString("ID %1").arg(uPid);
+        if (Table* pTbl = db->getTable("product")) {
+            if (const Record* pRec = pTbl->getRecordById(uPid)) {
+                if (pRec->has("product_code") && std::holds_alternative<std::string>(pRec->get("product_code"))) {
+                    uProdCode = QString::fromStdString(std::get<std::string>(pRec->get("product_code")));
+                }
+            }
+        }
+        QString reasonMsg = QString("Không có dòng kế hoạch nào phù hợp cho linh kiện [%1] (Mã SP: %2, trạng thái hiện tại '%3').")
+                            .arg(sn, uProdCode, QString::fromStdString(uSt));
         for (const auto& dl : detailLines) {
             if (dl.productId == uPid) {
                 int rem = dl.adjustQuantity - dl.actualQuantity - getStagedCountForDetail(dl.adjustDetailId);
@@ -1926,6 +2004,7 @@ void AdjustmentMovementDetailDialog::onRemoveStagedUnitBySerial(const QString& s
 
 void AdjustmentMovementDetailDialog::preloadUnitsFromCheck()
 {
+    if (adjustStatus == "COMPLETED" || adjustStatus == "CANCELLED") return;
     if (!db || sourceCode.isEmpty() || !sourceCode.startsWith("CHK-")) return;
     Table* chkTbl = db->getTable("inventory_check");
     Table* chkUnitTbl = db->getTable("inventory_check_unit");
@@ -2157,6 +2236,7 @@ void AdjustmentMovementDetailDialog::onConfirmSaveUnits()
     if (confirmSaveUnitsBtn) confirmSaveUnitsBtn->setEnabled(!isCompleted);
     if (scanSerialEdit) scanSerialEdit->setEnabled(!isCompleted);
     if (addSerialBtn) addSerialBtn->setEnabled(!isCompleted);
+    if (openSimulationBtn) openSimulationBtn->setEnabled(!isCompleted);
 
     loadMovementDetails();
     loadExecutedUnits();
