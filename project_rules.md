@@ -334,7 +334,7 @@ Once a `CHK-UNIT` audit transitions to `COMPLETED` (or enters reconciliation rev
 - **Attributes**:
   - `adjust_id`: primary key
   - `adjust_code`: `ADJ-<reason_code>-<xxxxxx>` (e.g., `ADJ-STD-000001`, `ADJ-DMG-000001`)
-  - `source_code`: unique, references `INVENTORY_CHECK.check_code`
+  - `source_code`: unique, nullable, references `INVENTORY_CHECK.check_code` (mandatory when `reason == "STOCKTAKE_DIFF"`)
   - `reason`: references `REASON.reason` (`STOCKTAKE_DIFF`, `DAMAGED`, `DATA_ERROR`, `OTHER`)
   - `adjusted_at`: execution date
   - `status`: `PENDING`, `COMPLETED`, `PARTLY_COMPLETED`, `CANCELLED`
@@ -346,13 +346,21 @@ Once a `CHK-UNIT` audit transitions to `COMPLETED` (or enters reconciliation rev
   - `to_status`: destination warehouse status (`AVAILABLE`, `WARRANTY`, `SCRAPPED`; must not be `OUT`)
   - `adjust_quantity`: planned quantity to shift
   - `actual_quantity`: actual number of units shifted
+- **Reason-Specific Preconditions & Transition Rules (Quy tắc theo lý do điều chuyển `reason`)**:
+  - **`STOCKTAKE_DIFF` (Lệch kiểm kê)**:
+    - **Mandatory `source_code`**: Must strictly provide a non-empty `source_code` referencing an existing `INVENTORY_CHECK.check_code`.
+    - **Audited Product Scope Enforcement**: All products (`product_id`) declared in `adjust_movement_detail` must belong strictly to the product scope audited in the referenced inventory check (`inventory_check_quantity` of `source_code`).
+  - **`DAMAGED` (Hư hỏng trong kho)**:
+    - **Destination Status Restriction**: All detail lines in `adjust_movement_detail` are only permitted to transition to `SCRAPPED` (`to_status == "SCRAPPED"`, with `from_status` in `{AVAILABLE, WARRANTY}`).
 - **Mandatory Pre-Declaration of Movement Details & Detail Immutability (Khai báo cụ thể trước và khóa chi tiết điều chỉnh nội bộ)**:
   - Similar to transactions and inventory checks, every `ADJUSTMENT_MOVEMENT` **must declare specifically in advance all planned adjustment detail lines** (`product_id`, `from_status`, `to_status`, `adjust_quantity`) in `adjust_movement_detail` at the moment the movement order is created.
   - **Strict Post-Creation Lock**: Once the `ADJUSTMENT_MOVEMENT` record is created, **it is strictly prohibited to add, remove, or delete any records in the detail table `adjust_movement_detail`**.
 
-### 5.5 Referential Linkage & Cardinality Invariant (`source_code` referencing `check_code`)
+### 5.5 Referential Linkage, Audited Product Scope & Cardinality Invariant (`source_code` referencing `check_code`)
 - **Mandatory Linkage Rule**:
-  - Whenever an Inbound Transaction or Outbound Transaction is created with type `ADJ` (`ADJUSTMENT_IN` / `ADJUSTMENT_OUT`), its `source_code` **must strictly reference an existing `INVENTORY_CHECK.check_code`**.
+  - Whenever an Inbound Transaction or Outbound Transaction is created with type `ADJ` (`ADJUSTMENT_IN` / `ADJUSTMENT_OUT`), or an `ADJUSTMENT_MOVEMENT` is created with `reason == "STOCKTAKE_DIFF"`, its `source_code` **must strictly reference an existing `INVENTORY_CHECK.check_code`**.
+- **Audited Product Scope Constraint (Ràng buộc sản phẩm thuộc phạm vi kiểm kê)**:
+  - When an `inbound_transaction` has `type = ADJUSTMENT_IN` (`ADJ`), an `outbound_transaction` has `type = ADJUSTMENT_OUT` (`ADJ`), or an `adjustment_movement` has `reason = STOCKTAKE_DIFF`, every `product_id` in the document's detail lines **must strictly belong to the products declared in that inventory check** (`inventory_check_quantity` linked to `source_code`). Selecting or inserting any product outside the referenced inventory check is prohibited.
 - **Cardinality Invariant (Quy tắc một đơn nhập, một đơn xuất, một điều chỉnh cho một kiểm kê)**:
   - In `inbound_transaction`, `outbound_transaction`, and `adjustment_movement`, `source_code` carries a **UNIQUE (`[UQ]`) constraint**.
   - A single inventory check (`check_code`) can be referenced by at most **one** Inbound Transaction (`ADJUSTMENT_IN`), at most **one** Outbound Transaction (`ADJUSTMENT_OUT`), and at most **one** Adjustment Movement (`ADJUSTMENT_MOVEMENT`).
@@ -427,11 +435,15 @@ All auto-generated codes and user inputs must strictly conform to `QuanLyKhoHang
      - **`is_sold` Validation**:
        - Reject changing `product.is_sold` to `FALSE` if $\text{total\_quantity} > 0$.
        - Atomically insert an audit record into `IS_SOLD_CHANGING` on every status change.
-     - **Adjustment Transaction Validation (`ADJ`)**:
+     - **Adjustment Transaction & Movement Validation (`ADJ` / `ADJUSTMENT_MOVEMENT`)**:
        - If transaction type is `ADJUSTMENT_IN` or `ADJUSTMENT_OUT`:
          - Enforce that `customer_id` is `NULL` (no customer). If a customer is provided, reject!
          - Enforce that `source_code` is NOT NULL and exists in `INVENTORY_CHECK.check_code`.
          - Enforce uniqueness: Ensure this `check_code` does not already have an existing transaction of this direction (`INBOUND` or `OUTBOUND`).
+         - Enforce audited product scope: Every `product_id` in the order must exist in `inventory_check_quantity` for the referenced `source_code`.
+       - For `ADJUSTMENT_MOVEMENT`:
+         - If `reason == "STOCKTAKE_DIFF"`: enforce that `source_code` is NOT NULL, exists in `INVENTORY_CHECK.check_code`, and every `product_id` in `adjust_movement_detail` exists in `inventory_check_quantity` for that `source_code`.
+         - If `reason == "DAMAGED"`: enforce that all detail rows have `to_status == "SCRAPPED"`.
      - **Commercial Transaction Validation**:
        - If transaction is non-ADJ: enforce that `customer_id` is provided and exists in `customer`.
      - **Inbound Unit Transition Validation**:
