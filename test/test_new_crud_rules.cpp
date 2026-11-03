@@ -262,6 +262,61 @@ int main() {
          << " | Msg: " << rReopen.message << endl;
     assert(!rReopen.success);
 
+    // 6.4 Create another adjustment movement with quota = 2 and complete under-fulfilled to COMPLETED: MUST SUCCEED
+    Vector<user_create::AdjustMovementItem> movItems2;
+    movItems2.push_back({1, "AVAILABLE", "SCRAPPED", 2});
+    OperationResult rMov2 = user_create::createAdjustmentMovement(&db, "", "DAMAGED", "2026-11-02", movItems2, "Test under-fulfilled complete");
+    assert(rMov2.success);
+    int testAdjId2 = rMov2.affectedCount;
+    OperationResult rCompleteMov = user_update::updateAdjustmentMovementStatus(&db, testAdjId2, "COMPLETED");
+    cout << "  - Completing under-fulfilled movement to COMPLETED: " << (rCompleteMov.success ? "SUCCESS" : "FAILED")
+         << " | Msg: " << rCompleteMov.message << endl;
+    assert(rCompleteMov.success);
+
+    // 6.5 Attempting to execute unit on COMPLETED movement: MUST BE REJECTED
+    Vector<user_update::AdjustUnitEntry> testUnits;
+    user_update::AdjustUnitEntry entry;
+    entry.adjustDetailId = 1;
+    entry.serial = "DUMMY-SN";
+    testUnits.push_back(entry);
+    OperationResult rExecCompleted = user_update::executeAdjustmentMovementUnits(&db, testAdjId2, testUnits);
+    cout << "  - Executing units on COMPLETED movement: " << (rExecCompleted.success ? "FAILED" : "REJECTED (EXPECTED)")
+         << " | Msg: " << rExecCompleted.message << endl;
+    assert(!rExecCompleted.success);
+
+    // 6.6 Create Inbound Adjustment transaction with source_code, then transition transaction to CONFIRMED under-fulfilled: MUST SUCCEED
+    Vector<Pair<int, int>> inItems;
+    inItems.push_back(Pair<int, int>(1, 5));
+    OperationResult rInAdj = user_create::createInboundOrder(&db, "ADJUSTMENT_IN", "", inItems, "2026-11-02", "2026-11-03", "Test Inbound Adj", "CHK-UNIT-000025");
+    assert(rInAdj.success);
+    int inTxnId = rInAdj.affectedCount;
+
+    // Retrieve created delivery for this inbound order
+    Table* delTbl = db.getTable("delivery");
+    assert(delTbl != nullptr);
+    Vector<Record> delRecs = Query::filterRecords(*delTbl, "inbound_transaction_id", Value(inTxnId));
+    assert(!delRecs.empty());
+    int delId = std::get<int>(delRecs[0].get("delivery_id"));
+    std::string delCode = std::get<std::string>(delRecs[0].get("delivery_code"));
+
+    // Transition transaction to CONFIRMED even though actual == 0 < plan == 5: MUST SUCCEED
+    OperationResult rConfirmTxn = user_update::updateTransactionStatus(&db, "inbound_transaction", inTxnId, "CONFIRMED");
+    cout << "  - Transitioning under-fulfilled inbound transaction to CONFIRMED: " << (rConfirmTxn.success ? "SUCCESS" : "FAILED")
+         << " | Msg: " << rConfirmTxn.message << endl;
+    assert(rConfirmTxn.success);
+
+    // 6.7 Attempting to modify delivery after parent transaction is CONFIRMED: MUST BE REJECTED (Logistics Lock)
+    OperationResult rModDel = user_update::updateRecord(&db, "delivery", delId, {"status"}, {Value(std::string("COMPLETED"))});
+    cout << "  - Modifying delivery when parent transaction is CONFIRMED: " << (rModDel.success ? "FAILED" : "REJECTED (EXPECTED)")
+         << " | Msg: " << rModDel.message << endl;
+    assert(!rModDel.success);
+
+    // 6.8 Attempting to scan/change unit status on locked delivery: MUST BE REJECTED
+    OperationResult rUnitLocked = user_update::changeUnitStatusInLogistics(&db, delCode, true, "SN-TEST-999", "AVAILABLE");
+    cout << "  - Scanning unit into delivery when parent transaction is CONFIRMED: " << (rUnitLocked.success ? "FAILED" : "REJECTED (EXPECTED)")
+         << " | Msg: " << rUnitLocked.message << endl;
+    assert(!rUnitLocked.success);
+
     printHeader("ALL NEW CRUD RULES PASSED 100%!");
     return 0;
 }

@@ -166,10 +166,12 @@ private:
     QString orderCodeStr;
     QString initialStatus;
     QComboBox* statusCombo;
+    int totalActQty = 0;
+    int totalPlanQty = 0;
 };
 
 /**
- * @brief Modal confirmation dialog required before transitioning an order or logistics batch to COMPLETED (Rule 4.5).
+ * @brief Modal confirmation dialog required before transitioning an order or logistics batch to COMPLETED (Rule 4.5 & Rule 5.6).
  * Features explicit warning, a mandatory confirmation tick-box, and Confirm/Cancel buttons.
  */
 class CompletionConfirmationDialog : public QDialog
@@ -178,7 +180,10 @@ public:
     CompletionConfirmationDialog(
         const QString& itemCode,
         const QString& itemDescription = "đợt giao vận",
-        QWidget* parent = nullptr
+        QWidget* parent = nullptr,
+        bool isUnderFulfilled = false,
+        int actualQuantity = 0,
+        int plannedQuantity = 0
     );
     ~CompletionConfirmationDialog() override = default;
 
@@ -583,6 +588,7 @@ private:
     QString parentOrderCodeStr;
     std::string orderSourceCode;
     std::string transactionType;
+    std::string parentOrderStatus;
     bool isLogisticsCompleted = false;
     bool hasModifiedUnits = false;
 

@@ -384,8 +384,11 @@ Once a `CHK-UNIT` audit transitions to `COMPLETED` (or enters reconciliation rev
 - **Sequential In-Progress & Completion Transitions (Trình tự chuyển đổi trạng thái khi đang thực hiện)**:
   - **`PENDING` ➔ `PROCESSING`**: Occurs when order processing begins.
   - **`PROCESSING` ⇄ `PARTIALLY_CONFIRMED`**: Semi-automatic bi-directional toggling between `PROCESSING` and `PARTIALLY_CONFIRMED` is permitted to reflect partial processing milestones.
-  - **`CONFIRMED` (Inbound/Outbound) / `COMPLETED` (Movement)**: Transition to completed status is allowed **only when 100% of the planned items/deliveries/shipments are fulfilled**. Premature confirmation before 100% fulfillment is strictly rejected.
-  - **Delivery / Shipment Status Updates**: Users are permitted to manually update the status of individual delivery/shipment records in adjustment orders following standard logistics lifecycles.
+  - **`CONFIRMED` (Inbound/Outbound) / `COMPLETED` (Movement) & Under-Fulfillment Rule**:
+    - Under normal circumstances, orders transition to completed status upon 100% fulfillment of planned quantities.
+    - **Exception for Under-Fulfillment**: If an order cannot be 100% fulfilled (due to missing stock, discrepancy, supplier shortage, or operational closeout), transition to `CONFIRMED` (or `COMPLETED` for movement) **IS PERMITTED**, provided that a **mandatory warning popup dialog with an explicit confirmation checkbox ("dấu tick")** is confirmed by the user.
+    - **Permanent Logistics Lock upon Confirmation**: Once an order transitions to `CONFIRMED` (or `COMPLETED`), the order is permanently closed. **All associated logistics batches (deliveries / shipments) are permanently locked against further execution**: no new batches may be added, no existing delivery/shipment record may be edited, and no further units can be scanned, received, or modified (`changeUnitStatusInLogistics` is locked).
+  - **Delivery / Shipment Status Updates**: Users are permitted to manually update the status of individual delivery/shipment records in adjustment orders following standard logistics lifecycles, provided the parent order has not reached terminal status (`CONFIRMED` / `CANCELLED`).
 
 ---
 
@@ -468,7 +471,7 @@ All auto-generated codes and user inputs must strictly conform to `QuanLyKhoHang
        - **Cancellation (`CANCELLED`)**: An adjustment order can ONLY be cancelled if it is currently in `PENDING` and no progress has occurred (`actual_quantity == 0` across all items/deliveries/shipments/movement lines). Once any units or shipments/deliveries are processed, cancellation is strictly forbidden.
        - **Synchronized Cancellation**: Cancelling an `ADJUSTMENT_IN` or `ADJUSTMENT_OUT` automatically transitions all associated non-completed `delivery` or `shipment` records to `CANCELLED`.
        - **Terminal State Lock**: A `CANCELLED` adjustment order is permanently closed and cannot be reopened or edited.
-       - **Sequential In-Progress Transitions**: Transition from `PENDING` to `PROCESSING` occurs when processing begins. Bi-directional transitions between `PROCESSING` and `PARTIALLY_CONFIRMED` are permitted. Transition to `CONFIRMED` (or `COMPLETED` for movement) is strictly restricted until 100% of order quantities are fulfilled.
+       - **Sequential In-Progress & Completion Transitions**: Transition from `PENDING` to `PROCESSING` occurs when processing begins. Bi-directional transitions between `PROCESSING` and `PARTIALLY_CONFIRMED` are permitted. Transition to `CONFIRMED` (or `COMPLETED` for movement) allows completion upon 100% fulfillment, or under-fulfilled completion with explicit user confirmation popup & checkbox; upon confirmation, all deliveries/shipments are permanently locked against execution or editing.
      - **Commercial Transaction Validation**:
        - If transaction is non-ADJ: enforce that `customer_id` is provided and exists in `customer`.
      - **Inbound Unit Transition Validation**:

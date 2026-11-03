@@ -1787,10 +1787,10 @@ TransactionStatusDialog::TransactionStatusDialog(
     bool isAdj = (oType == "ADJUSTMENT_IN" || oType == "ADJUSTMENT_OUT" || oType == "ADJ");
 
     bool hasProgress = false;
-    int totalActQty = 0;
-    int totalPlanQty = 0;
+    totalActQty = 0;
+    totalPlanQty = 0;
 
-    if (isAdj && db) {
+    if (db) {
         if (hubType == HubType::INBOUND) {
             Table* dTable = db->getTable("delivery");
             Table* ddTable = db->getTable("delivery_detail");
@@ -1864,11 +1864,7 @@ TransactionStatusDialog::TransactionStatusDialog(
                 statuses = {"PENDING", "PROCESSING"};
             }
         } else if (initialStatus == "PROCESSING" || initialStatus == "PARTIALLY_CONFIRMED") {
-            if (totalPlanQty > 0 && totalActQty >= totalPlanQty) {
-                statuses = {"PROCESSING", "PARTIALLY_CONFIRMED", "CONFIRMED"};
-            } else {
-                statuses = {"PROCESSING", "PARTIALLY_CONFIRMED"};
-            }
+            statuses = {"PROCESSING", "PARTIALLY_CONFIRMED", "CONFIRMED"};
         } else {
             statuses = {initialStatus};
         }
@@ -1909,7 +1905,7 @@ TransactionStatusDialog::TransactionStatusDialog(
             if (totalPlanQty > 0 && totalActQty >= totalPlanQty) {
                 tipText = QString("✅ <b>Quy tắc đơn điều chỉnh (Rule 5.6):</b> Đã xử lý đủ 100% số lượng (%1/%2 cái). Có thể xác nhận <b>CONFIRMED</b>.").arg(totalActQty).arg(totalPlanQty);
             } else {
-                tipText = QString("⏳ <b>Quy tắc đơn điều chỉnh (Rule 5.6):</b> Đang xử lý (%1/%2 cái). Cho phép chuyển đổi giữa <b>PROCESSING</b> và <b>PARTIALLY_CONFIRMED</b>. Chưa thể xác nhận CONFIRMED cho đến khi đủ 100% số lượng.").arg(totalActQty).arg(totalPlanQty);
+                tipText = QString("⏳ <b>Quy tắc đơn điều chỉnh (Rule 5.6):</b> Đang xử lý (%1/%2 cái). Có thể chọn <b>CONFIRMED</b> để đóng hoàn tất đơn (yêu cầu xác nhận qua hộp thoại cảnh báo và dấu tick).").arg(totalActQty).arg(totalPlanQty);
             }
         }
         if (!tipText.isEmpty()) {
@@ -1964,10 +1960,14 @@ void TransactionStatusDialog::onSave()
     }
 
     if ((newStatus == "CONFIRMED" || newStatus == "COMPLETED") && oldStatus != newStatus) {
+        bool isUnder = (totalPlanQty > 0 && totalActQty < totalPlanQty);
         CompletionConfirmationDialog confirmDlg(
             !orderCodeStr.isEmpty() ? orderCodeStr : QString::number(txnId),
             (hubType == HubType::INBOUND ? "đơn nhập kho" : "đơn xuất kho"),
-            this
+            this,
+            isUnder,
+            totalActQty,
+            totalPlanQty
         );
         if (confirmDlg.exec() != QDialog::Accepted) {
             return;
@@ -1990,53 +1990,88 @@ std::string TransactionStatusDialog::getSelectedStatus() const
 }
 
 // ============================================================================
-// 2b. CompletionConfirmationDialog (Rule 4.5)
+// 2b. CompletionConfirmationDialog (Rule 4.5 & Rule 5.6)
 // ============================================================================
 
 CompletionConfirmationDialog::CompletionConfirmationDialog(
     const QString& itemCode,
     const QString& itemDescription,
-    QWidget* parent)
+    QWidget* parent,
+    bool isUnderFulfilled,
+    int actualQuantity,
+    int plannedQuantity)
     : QDialog(parent)
 {
-    setWindowTitle("Xác Nhận Hoàn Thành: " + itemCode);
-    setMinimumWidth(460);
+    setWindowTitle(isUnderFulfilled ? "⚠️ Cảnh Báo Chưa Đủ Số Lượng: " + itemCode : "Xác Nhận Hoàn Thành: " + itemCode);
+    setMinimumWidth(500);
     setStyleSheet(commonDialogStyleSheet());
 
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(20, 20, 20, 20);
     layout->setSpacing(14);
 
-    auto* warnIconLabel = new QLabel("⚠️ XÁC NHẬN CHUYỂN TRẠNG THÁI HOÀN THÀNH", this);
-    warnIconLabel->setStyleSheet("font-size: 15px; font-weight: bold; color: #b45309;");
-    layout->addWidget(warnIconLabel);
+    if (isUnderFulfilled) {
+        auto* warnIconLabel = new QLabel("⚠️ CẢNH BÁO: CHƯA ĐẠT 100% SỐ LƯỢNG KẾ HOẠCH", this);
+        warnIconLabel->setStyleSheet("font-size: 15px; font-weight: bold; color: #dc2626;");
+        layout->addWidget(warnIconLabel);
 
-    auto* msgLabel = new QLabel(
-        QString("Bạn có chắc chắn muốn chuyển %1 <b>[%2]</b> sang trạng thái <b>HOÀN THÀNH (COMPLETED)</b>?<br><br>"
-                "<b>Lưu ý quan trọng (Rule 4.5):</b><br>"
-                "• Sau khi hoàn thành, toàn bộ dữ liệu đơn vị linh kiện (Unit) của đợt này sẽ bị <b>KHÓA VĨNH VIỄN</b>.<br>"
-                "• Bạn sẽ <b>KHÔNG THỂ</b> nhận thêm, xuất thêm hoặc thay đổi trạng thái bất kỳ linh kiện nào nữa.")
-            .arg(itemDescription, itemCode),
-        this
-    );
-    msgLabel->setWordWrap(true);
-    msgLabel->setStyleSheet("font-size: 13px; color: #1e293b; line-height: 1.4;");
-    layout->addWidget(msgLabel);
+        int missingQuantity = std::max(0, plannedQuantity - actualQuantity);
+        auto* msgLabel = new QLabel(
+            QString("Bạn đang yêu cầu chuyển %1 <b>[%2]</b> sang trạng thái <b>HOÀN THÀNH (CONFIRMED / COMPLETED)</b> khi chưa xử lý đủ 100% số lượng:<br><br>"
+                    "• <b>Số lượng đã thực tế xử lý:</b> <span style='color:#16a34a; font-weight:bold;'>%3</span> cái<br>"
+                    "• <b>Số lượng kế hoạch đặt ra:</b> <span style='color:#2563eb; font-weight:bold;'>%4</span> cái<br>"
+                    "• <b>Số lượng còn thiếu:</b> <span style='color:#dc2626; font-weight:bold;'>%5</span> cái<br><br>"
+                    "<b>Lưu ý quan trọng (Rule 5.6 & Logistics Lock):</b><br>"
+                    "• Sau khi xác nhận hoàn thành, đơn hàng sẽ được đóng lại vĩnh viễn.<br>"
+                    "• Toàn bộ các đợt vận chuyển (delivery / shipment) liên quan sẽ <b>BỊ KHÓA VĨNH VIỄN</b>: không thể nhận/xuất thêm hoặc chỉnh sửa trạng thái linh kiện nữa.")
+                .arg(itemDescription, itemCode)
+                .arg(actualQuantity)
+                .arg(plannedQuantity)
+                .arg(missingQuantity),
+            this
+        );
+        msgLabel->setWordWrap(true);
+        msgLabel->setStyleSheet("font-size: 13px; color: #1e293b; line-height: 1.4;");
+        layout->addWidget(msgLabel);
 
-    confirmCheck = new QCheckBox("Tôi xác nhận đợt hàng đã được kiểm đếm đầy đủ và đồng ý hoàn tất.", this);
-    confirmCheck->setStyleSheet("font-weight: 600; font-size: 13px; color: #0f172a; padding: 6px 0;");
-    layout->addWidget(confirmCheck);
+        confirmCheck = new QCheckBox("Tôi xác nhận và đồng ý hoàn tất đơn hàng này dù chưa đủ số lượng kế hoạch (đóng đơn & khóa vĩnh viễn các đợt vận chuyển).", this);
+        confirmCheck->setStyleSheet("font-weight: 600; font-size: 13px; color: #b91c1c; padding: 6px 0;");
+        layout->addWidget(confirmCheck);
+    } else {
+        auto* warnIconLabel = new QLabel("⚠️ XÁC NHẬN CHUYỂN TRẠNG THÁI HOÀN THÀNH", this);
+        warnIconLabel->setStyleSheet("font-size: 15px; font-weight: bold; color: #b45309;");
+        layout->addWidget(warnIconLabel);
+
+        auto* msgLabel = new QLabel(
+            QString("Bạn có chắc chắn muốn chuyển %1 <b>[%2]</b> sang trạng thái <b>HOÀN THÀNH (CONFIRMED / COMPLETED)</b>?<br><br>"
+                    "<b>Lưu ý quan trọng (Rule 4.5 & Rule 5.6):</b><br>"
+                    "• Sau khi hoàn thành, toàn bộ các đợt vận chuyển liên quan sẽ bị <b>KHÓA VĨNH VIỄN</b>.<br>"
+                    "• Bạn sẽ <b>KHÔNG THỂ</b> nhận thêm, xuất thêm hoặc thay đổi trạng thái bất kỳ linh kiện nào nữa.")
+                .arg(itemDescription, itemCode),
+            this
+        );
+        msgLabel->setWordWrap(true);
+        msgLabel->setStyleSheet("font-size: 13px; color: #1e293b; line-height: 1.4;");
+        layout->addWidget(msgLabel);
+
+        confirmCheck = new QCheckBox("Tôi xác nhận đợt hàng đã được kiểm đếm đầy đủ và đồng ý hoàn tất.", this);
+        confirmCheck->setStyleSheet("font-weight: 600; font-size: 13px; color: #0f172a; padding: 6px 0;");
+        layout->addWidget(confirmCheck);
+    }
 
     auto* btnLayout = new QHBoxLayout();
     btnLayout->addStretch();
 
-    cancelBtn = new QPushButton("Chưa hoàn thành / Hủy", this);
+    cancelBtn = new QPushButton("Hủy bỏ / Quay lại", this);
     cancelBtn->setObjectName("cancelBtn");
     connect(cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
     btnLayout->addWidget(cancelBtn);
 
-    confirmBtn = new QPushButton("✓ Xác nhận hoàn thành", this);
+    confirmBtn = new QPushButton(isUnderFulfilled ? "⚠️ Đồng ý hoàn tất (Thiếu số lượng)" : "✓ Xác nhận hoàn thành", this);
     confirmBtn->setObjectName("saveBtn");
+    if (isUnderFulfilled) {
+        confirmBtn->setStyleSheet("background-color: #dc2626; color: white; font-weight: bold; padding: 8px 16px; border-radius: 6px;");
+    }
     confirmBtn->setEnabled(false);
     connect(confirmCheck, &QCheckBox::toggled, confirmBtn, &QPushButton::setEnabled);
     connect(confirmBtn, &QPushButton::clicked, this, &QDialog::accept);
@@ -3734,6 +3769,17 @@ UnitEntryDialog::UnitEntryDialog(
         isLogisticsCompleted = user_query::is_logistics_completed(
             db, batchCodeStr.toStdString(), hubType == HubType::INBOUND
         );
+        Table* ordTbl = db->getTable(hubType == HubType::INBOUND ? "inbound_transaction" : "outbound_transaction");
+        std::string codeCol = (hubType == HubType::INBOUND ? "inbound_code" : "outbound_code");
+        if (ordTbl) {
+            Vector<Record> ordRecs = Query::filterRecords(*ordTbl, codeCol, Value(parentOrderCodeStr.toStdString()));
+            if (!ordRecs.empty() && ordRecs[0].has("status") && std::holds_alternative<std::string>(ordRecs[0].get("status"))) {
+                parentOrderStatus = std::get<std::string>(ordRecs[0].get("status"));
+            }
+        }
+        if (parentOrderStatus == "CONFIRMED" || parentOrderStatus == "COMPLETED" || parentOrderStatus == "CANCELLED") {
+            isLogisticsCompleted = true;
+        }
     }
     if (transactionType.empty()) {
         transactionType = (hubType == HubType::INBOUND) ? "PURCHASING" : "SELLING";
@@ -4025,18 +4071,24 @@ void UnitEntryDialog::setupUI()
     headerLayout->addStretch();
 
     if (isLogisticsCompleted) {
-        auto* lockBadge = new QLabel("🔒 ĐÃ HOÀN THÀNH (READ-ONLY)", headerBox);
+        QString lockText = (parentOrderStatus == "CONFIRMED" || parentOrderStatus == "COMPLETED" || parentOrderStatus == "CANCELLED")
+                         ? QString("🔒 ĐÃ KHÓA THEO ĐƠN (%1)").arg(QString::fromStdString(parentOrderStatus))
+                         : "🔒 ĐÃ HOÀN THÀNH (READ-ONLY)";
+        auto* lockBadge = new QLabel(lockText, headerBox);
         lockBadge->setStyleSheet("background-color: #fee2e2; color: #991b1b; font-weight: bold; border-radius: 4px; padding: 3px 8px; font-size: 11px;");
         headerLayout->addWidget(lockBadge);
     }
     mainLayout->addWidget(headerBox);
 
     if (isLogisticsCompleted) {
-        auto* warnBanner = new QLabel(
-            "ℹ️ <b>Chế độ chỉ xem (Read-only):</b> Đợt giao nhận này đã ở trạng thái <code>COMPLETED</code>. "
-            "Toàn bộ dữ liệu linh kiện đã bị khóa vĩnh viễn (Rule 4.5). Bạn có thể xem danh sách và lịch sử nhưng không thể chỉnh sửa.",
-            this
-        );
+        QString bannerText = (parentOrderStatus == "CONFIRMED" || parentOrderStatus == "COMPLETED" || parentOrderStatus == "CANCELLED")
+            ? QString("ℹ️ <b>Chế độ chỉ xem (Read-only):</b> Đơn giao dịch [%1] đã ở trạng thái <code>%2</code>. "
+                      "Toàn bộ các đợt vận chuyển liên quan đã bị khóa vĩnh viễn (Rule 5.6). Bạn có thể xem danh sách và lịch sử nhưng không thể quét thêm hoặc chỉnh sửa linh kiện.")
+                .arg(parentOrderCodeStr, QString::fromStdString(parentOrderStatus))
+            : "ℹ️ <b>Chế độ chỉ xem (Read-only):</b> Đợt giao nhận này đã ở trạng thái <code>COMPLETED</code>. "
+              "Toàn bộ dữ liệu linh kiện đã bị khóa vĩnh viễn (Rule 4.5). Bạn có thể xem danh sách và lịch sử nhưng không thể chỉnh sửa.";
+
+        auto* warnBanner = new QLabel(bannerText, this);
         warnBanner->setStyleSheet("background-color: #eff6ff; border: 1px solid #bfdbfe; border-left: 4px solid #2563eb; border-radius: 6px; padding: 8px 12px; font-size: 12px; color: #1e40af;");
         warnBanner->setWordWrap(true);
         mainLayout->addWidget(warnBanner);

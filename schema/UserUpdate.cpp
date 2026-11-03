@@ -202,9 +202,7 @@ namespace user_update
                                     }
                                 }
                             }
-                            if (totalReq > 0 && totalAct < totalReq) {
-                                return OperationResult{false, "Không thể xác nhận hoàn thành đơn điều chỉnh khi chưa xử lý đủ 100% số lượng (Thực tế: " + std::to_string(totalAct) + "/" + std::to_string(totalReq) + " cái) (Rule 5.6).", 0};
-                            }
+                            // Note: Under-fulfilled confirmation to CONFIRMED is permitted with UI dialog confirmation & logistics lock (Rule 5.6).
                         } else if (newTxnSt == "PENDING" && oldTxnSt != "PENDING") {
                             return OperationResult{false, "Không thể chuyển ngược trạng thái đơn điều chỉnh về PENDING (Rule 5.6).", 0};
                         }
@@ -213,6 +211,26 @@ namespace user_update
             }
         }
         else if (tableName == "delivery") {
+            // Rule 5.6: Logistics Lock if parent transaction is CONFIRMED, COMPLETED, or CANCELLED
+            int inId = -1;
+            if (oldRecord.has("inbound_transaction_id") && std::holds_alternative<int>(oldRecord.get("inbound_transaction_id"))) {
+                inId = std::get<int>(oldRecord.get("inbound_transaction_id"));
+            } else if (oldRecord.has("inbound_id") && std::holds_alternative<int>(oldRecord.get("inbound_id"))) {
+                inId = std::get<int>(oldRecord.get("inbound_id"));
+            }
+            if (inId != -1) {
+                Table* inTab = db->getTable("inbound_transaction");
+                if (inTab) {
+                    const Record* inRec = inTab->getRecordById(inId);
+                    if (inRec && inRec->has("status") && std::holds_alternative<std::string>(inRec->get("status"))) {
+                        std::string pSt = std::get<std::string>(inRec->get("status"));
+                        if (pSt == "CONFIRMED" || pSt == "COMPLETED" || pSt == "CANCELLED") {
+                            return OperationResult{false, "Đơn hàng (" + pSt + ") đã hoàn tất hoặc bị hủy. Toàn bộ các đợt nhận hàng đã bị khóa vĩnh viễn (Rule 5.6).", 0};
+                        }
+                    }
+                }
+            }
+
             std::string oldDelSt = oldRecord.has("status") && std::holds_alternative<std::string>(oldRecord.get("status"))
                                  ? std::get<std::string>(oldRecord.get("status")) : "";
             for (size_t i = 0; i < modifiedColumns.size(); ++i) {
@@ -254,6 +272,30 @@ namespace user_update
             }
         }
         else if (tableName == "shipment") {
+            // Rule 5.6: Logistics Lock if parent transaction is CONFIRMED, COMPLETED, or CANCELLED
+            int outId = -1;
+            if (oldRecord.has("sell_id") && std::holds_alternative<int>(oldRecord.get("sell_id"))) {
+                outId = std::get<int>(oldRecord.get("sell_id"));
+            } else if (oldRecord.has("outbound_trainsaction_id") && std::holds_alternative<int>(oldRecord.get("outbound_trainsaction_id"))) {
+                outId = std::get<int>(oldRecord.get("outbound_trainsaction_id"));
+            } else if (oldRecord.has("outbound_transaction_id") && std::holds_alternative<int>(oldRecord.get("outbound_transaction_id"))) {
+                outId = std::get<int>(oldRecord.get("outbound_transaction_id"));
+            } else if (oldRecord.has("outbound_id") && std::holds_alternative<int>(oldRecord.get("outbound_id"))) {
+                outId = std::get<int>(oldRecord.get("outbound_id"));
+            }
+            if (outId != -1) {
+                Table* outTab = db->getTable("outbound_transaction");
+                if (outTab) {
+                    const Record* outRec = outTab->getRecordById(outId);
+                    if (outRec && outRec->has("status") && std::holds_alternative<std::string>(outRec->get("status"))) {
+                        std::string pSt = std::get<std::string>(outRec->get("status"));
+                        if (pSt == "CONFIRMED" || pSt == "COMPLETED" || pSt == "CANCELLED") {
+                            return OperationResult{false, "Đơn hàng (" + pSt + ") đã hoàn tất hoặc bị hủy. Toàn bộ các đợt xuất hàng đã bị khóa vĩnh viễn (Rule 5.6).", 0};
+                        }
+                    }
+                }
+            }
+
             std::string oldShipSt = oldRecord.has("status") && std::holds_alternative<std::string>(oldRecord.get("status"))
                                   ? std::get<std::string>(oldRecord.get("status")) : "";
             for (size_t i = 0; i < modifiedColumns.size(); ++i) {
@@ -336,19 +378,7 @@ namespace user_update
                             }
                         }
                     } else if (newAdjSt == "COMPLETED") {
-                        Table* detTbl = db->getTable("adjust_movement_detail");
-                        if (detTbl) {
-                            Vector<Record> dRecs = Query::filterRecords(*detTbl, "adjust_id", Value(recordId));
-                            for (const auto& d : dRecs) {
-                                int plan = d.has("adjust_quantity") && std::holds_alternative<int>(d.get("adjust_quantity"))
-                                         ? std::get<int>(d.get("adjust_quantity")) : 0;
-                                int act = d.has("actual_quantity") && std::holds_alternative<int>(d.get("actual_quantity"))
-                                        ? std::get<int>(d.get("actual_quantity")) : 0;
-                                if (act < plan) {
-                                    return OperationResult{false, "Không thể hoàn thành phiếu điều chuyển khi chưa điều chuyển đủ 100% số lượng theo kế hoạch (Rule 5.6).", 0};
-                                }
-                            }
-                        }
+                        // Allowed to transition to COMPLETED even if not 100% fulfilled (handled by UI confirmation & checkbox) (Rule 5.6)
                     } else if (newAdjSt == "PENDING" && oldAdjSt != "PENDING") {
                         return OperationResult{false, "Không thể chuyển ngược trạng thái phiếu điều chuyển về PENDING (Rule 5.6).", 0};
                     }
@@ -1038,7 +1068,7 @@ namespace user_update
         }
         const Record& logRec = logMatches[0];
 
-        // 1. Completion Lock check (Rule 4.5)
+        // 1. Completion Lock check (Rule 4.5 & Rule 5.6)
         std::string currentLogStatus = "";
         if (logRec.has("status") && std::holds_alternative<std::string>(logRec.get("status"))) {
             currentLogStatus = std::get<std::string>(logRec.get("status"));
@@ -1046,33 +1076,59 @@ namespace user_update
         if (currentLogStatus == "COMPLETED" || currentLogStatus == "completed") {
             return OperationResult{false, "Đợt giao nhận này đã ở trạng thái HOÀN THÀNH (COMPLETED). Toàn bộ thao tác thay đổi trạng thái linh kiện đã bị khóa vĩnh viễn (Rule 4.5).", 0};
         }
+        if (currentLogStatus == "CANCELLED" || currentLogStatus == "cancelled") {
+            return OperationResult{false, "Đợt giao nhận này đã bị HỦY (CANCELLED). Toàn bộ thao tác thay đổi trạng thái linh kiện đã bị khóa vĩnh viễn (Rule 5.6).", 0};
+        }
 
-        // 2. Resolve transaction type for business rule constraints
+        // 2. Resolve transaction type and parent status for business rule constraints (Rule 5.6 Logistics Lock)
         std::string txnType = "";
+        std::string txnStatus = "";
         if (isInbound) {
             int inTxnId = -1;
             if (logRec.has("inbound_transaction_id") && std::holds_alternative<int>(logRec.get("inbound_transaction_id"))) {
                 inTxnId = std::get<int>(logRec.get("inbound_transaction_id"));
+            } else if (logRec.has("inbound_id") && std::holds_alternative<int>(logRec.get("inbound_id"))) {
+                inTxnId = std::get<int>(logRec.get("inbound_id"));
             }
             Table* inTxnTable = db->getTable("inbound_transaction");
             if (inTxnTable && inTxnId > 0) {
                 const Record* inTxnRec = inTxnTable->getRecordById(inTxnId);
-                if (inTxnRec && inTxnRec->has("type") && std::holds_alternative<std::string>(inTxnRec->get("type"))) {
-                    txnType = std::get<std::string>(inTxnRec->get("type"));
+                if (inTxnRec) {
+                    if (inTxnRec->has("type") && std::holds_alternative<std::string>(inTxnRec->get("type"))) {
+                        txnType = std::get<std::string>(inTxnRec->get("type"));
+                    }
+                    if (inTxnRec->has("status") && std::holds_alternative<std::string>(inTxnRec->get("status"))) {
+                        txnStatus = std::get<std::string>(inTxnRec->get("status"));
+                    }
                 }
             }
         } else {
             int outTxnId = -1;
             if (logRec.has("sell_id") && std::holds_alternative<int>(logRec.get("sell_id"))) {
                 outTxnId = std::get<int>(logRec.get("sell_id"));
+            } else if (logRec.has("outbound_trainsaction_id") && std::holds_alternative<int>(logRec.get("outbound_trainsaction_id"))) {
+                outTxnId = std::get<int>(logRec.get("outbound_trainsaction_id"));
+            } else if (logRec.has("outbound_transaction_id") && std::holds_alternative<int>(logRec.get("outbound_transaction_id"))) {
+                outTxnId = std::get<int>(logRec.get("outbound_transaction_id"));
+            } else if (logRec.has("outbound_id") && std::holds_alternative<int>(logRec.get("outbound_id"))) {
+                outTxnId = std::get<int>(logRec.get("outbound_id"));
             }
             Table* outTxnTable = db->getTable("outbound_transaction");
             if (outTxnTable && outTxnId > 0) {
                 const Record* outTxnRec = outTxnTable->getRecordById(outTxnId);
-                if (outTxnRec && outTxnRec->has("type") && std::holds_alternative<std::string>(outTxnRec->get("type"))) {
-                    txnType = std::get<std::string>(outTxnRec->get("type"));
+                if (outTxnRec) {
+                    if (outTxnRec->has("type") && std::holds_alternative<std::string>(outTxnRec->get("type"))) {
+                        txnType = std::get<std::string>(outTxnRec->get("type"));
+                    }
+                    if (outTxnRec->has("status") && std::holds_alternative<std::string>(outTxnRec->get("status"))) {
+                        txnStatus = std::get<std::string>(outTxnRec->get("status"));
+                    }
                 }
             }
+        }
+
+        if (txnStatus == "CONFIRMED" || txnStatus == "COMPLETED" || txnStatus == "CANCELLED") {
+            return OperationResult{false, "Đơn hàng (" + txnStatus + ") đã đóng/hủy. Toàn bộ các đợt vận chuyển liên quan đã bị khóa vĩnh viễn (Rule 5.6).", 0};
         }
 
         // 3. Validate permitted target statuses (Rule 4.4, 4.5)

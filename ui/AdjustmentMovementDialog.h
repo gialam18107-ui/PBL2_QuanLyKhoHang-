@@ -265,6 +265,7 @@ private:
     void onOpenSimulationToolsDialog();
     void onRemoveStagedUnitBySerial(const QString& sn);
     void onConfirmSaveUnits();
+    void onFinalizeMovement();
     void preloadUnitsFromCheck();
 
     Database* db;
@@ -295,6 +296,7 @@ private:
     QPushButton* openSimulationBtn;
 
     QPushButton* confirmSaveUnitsBtn;
+    QPushButton* finalizeMovementBtn;
     QPushButton* cancelMovementBtn;
     QPushButton* closeBtn;
 

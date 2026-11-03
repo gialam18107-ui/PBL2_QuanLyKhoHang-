@@ -2235,6 +2235,24 @@ void TransactionHubWidget::onUpdateLogisticsClicked()
         return;
     }
 
+    std::string parentOrderStatus = "";
+    if (db) {
+        Table* ordTbl = db->getTable(hubType == HubType::INBOUND ? "inbound_transaction" : "outbound_transaction");
+        std::string codeCol = (hubType == HubType::INBOUND ? "inbound_code" : "outbound_code");
+        if (ordTbl) {
+            Vector<Record> ordRecs = Query::filterRecords(*ordTbl, codeCol, Value(parentCode.toStdString()));
+            if (!ordRecs.empty() && ordRecs[0].has("status") && holds_alternative<string>(ordRecs[0].get("status"))) {
+                parentOrderStatus = get<string>(ordRecs[0].get("status"));
+            }
+        }
+    }
+    if (parentOrderStatus == "CONFIRMED" || parentOrderStatus == "COMPLETED" || parentOrderStatus == "CANCELLED") {
+        QMessageBox::warning(this, "Đợt giao nhận đã bị khóa",
+            QString("Đơn hàng %1 đang ở trạng thái [%2]. Toàn bộ các đợt vận chuyển liên quan đã bị khóa vĩnh viễn (Rule 5.6).")
+                .arg(parentCode, QString::fromStdString(parentOrderStatus)));
+        return;
+    }
+
     LogisticsUpdateDialog dlg(hubType, db, logId, batchCode, parentCode, expDate, actDate, status, this);
     if (dlg.exec() == QDialog::Accepted) {
         currentOrderCode = parentCode.toStdString();
@@ -2367,6 +2385,21 @@ void TransactionHubWidget::onAddLogisticsBatchClicked()
 
     if (txnId <= 0) {
         QMessageBox::critical(this, "Lỗi dữ liệu", "Không xác định được khóa chính nội bộ của đơn hàng.");
+        return;
+    }
+
+    std::string ordStatus = "";
+    if (rec->has("status") && holds_alternative<string>(rec->get("status")))
+        ordStatus = get<string>(rec->get("status"));
+    else if (rec->has("inbound_transaction.status") && holds_alternative<string>(rec->get("inbound_transaction.status")))
+        ordStatus = get<string>(rec->get("inbound_transaction.status"));
+    else if (rec->has("outbound_transaction.status") && holds_alternative<string>(rec->get("outbound_transaction.status")))
+        ordStatus = get<string>(rec->get("outbound_transaction.status"));
+
+    if (ordStatus == "CONFIRMED" || ordStatus == "COMPLETED" || ordStatus == "CANCELLED") {
+        QMessageBox::warning(this, "Đơn hàng đã khóa",
+            QString("Đơn hàng %1 đang ở trạng thái [%2]. Không thể tạo thêm đợt giao nhận mới (Rule 5.6).")
+                .arg(orderCode, QString::fromStdString(ordStatus)));
         return;
     }
 

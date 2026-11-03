@@ -1,4 +1,5 @@
 #include "ui/AdjustmentMovementDialog.h"
+#include "ui/OrderDialog.h"
 #include "ui/InventoryCheckDialog.h"
 #include "ui/TableClipboardHelper.h"
 #include "data_io/TableIO.h"
@@ -1459,6 +1460,11 @@ void AdjustmentMovementDetailDialog::setupUI()
     confirmSaveUnitsBtn->setStyleSheet("background-color: #16a34a; color: #ffffff; font-weight: 600; padding: 8px 18px; border-radius: 6px;");
     confirmSaveUnitsBtn->setEnabled(!isCompleted);
 
+    finalizeMovementBtn = new QPushButton("🏁 Hoàn tất phiếu điều chuyển", this);
+    finalizeMovementBtn->setStyleSheet("background-color: #0284c7; color: #ffffff; font-weight: 600; padding: 8px 18px; border-radius: 6px;");
+    finalizeMovementBtn->setCursor(Qt::PointingHandCursor);
+    finalizeMovementBtn->setEnabled(!isCompleted);
+
     cancelMovementBtn = new QPushButton("❌ Hủy phiếu điều chuyển", this);
     cancelMovementBtn->setStyleSheet("background-color: #fff1f2; border: 1.5px solid #f43f5e; color: #e11d48; font-weight: 600; padding: 8px 16px; border-radius: 6px;");
     cancelMovementBtn->setCursor(Qt::PointingHandCursor);
@@ -1468,6 +1474,7 @@ void AdjustmentMovementDetailDialog::setupUI()
     closeBtn->setStyleSheet("background-color: #ffffff; border: 1px solid #cbd5e1; font-weight: 600; padding: 8px 18px; border-radius: 6px;");
 
     bottomBar->addWidget(confirmSaveUnitsBtn);
+    bottomBar->addWidget(finalizeMovementBtn);
     bottomBar->addWidget(cancelMovementBtn);
     bottomBar->addStretch();
     bottomBar->addWidget(closeBtn);
@@ -1478,6 +1485,7 @@ void AdjustmentMovementDetailDialog::setupUI()
     connect(addSerialBtn, &QPushButton::clicked, this, &AdjustmentMovementDetailDialog::onDirectSerialEntered);
     connect(openSimulationBtn, &QPushButton::clicked, this, &AdjustmentMovementDetailDialog::onOpenSimulationToolsDialog);
     connect(confirmSaveUnitsBtn, &QPushButton::clicked, this, &AdjustmentMovementDetailDialog::onConfirmSaveUnits);
+    connect(finalizeMovementBtn, &QPushButton::clicked, this, &AdjustmentMovementDetailDialog::onFinalizeMovement);
     connect(cancelMovementBtn, &QPushButton::clicked, this, &AdjustmentMovementDetailDialog::onCancelMovement);
     connect(closeBtn, &QPushButton::clicked, this, &QDialog::accept);
 }
@@ -2425,6 +2433,64 @@ void AdjustmentMovementDetailDialog::onConfirmSaveUnits()
     }
     bool isCompleted = (adjustStatus == "COMPLETED" || adjustStatus == "CANCELLED");
     if (confirmSaveUnitsBtn) confirmSaveUnitsBtn->setEnabled(!isCompleted);
+    if (finalizeMovementBtn) finalizeMovementBtn->setEnabled(!isCompleted);
+    if (cancelMovementBtn) cancelMovementBtn->setEnabled(adjustStatus == "PENDING" && executedUnits.empty());
+    if (scanSerialEdit) scanSerialEdit->setEnabled(!isCompleted);
+    if (addSerialBtn) addSerialBtn->setEnabled(!isCompleted);
+    if (openSimulationBtn) openSimulationBtn->setEnabled(!isCompleted);
+
+    loadMovementDetails();
+    loadExecutedUnits();
+    refreshAllViews(false);
+}
+
+void AdjustmentMovementDetailDialog::onFinalizeMovement()
+{
+    if (!db || adjustId <= 0) return;
+    if (adjustStatus == "COMPLETED" || adjustStatus == "CANCELLED") {
+        QMessageBox::warning(this, "Thông báo", "Phiếu điều chuyển đã ở trạng thái kết thúc, không thể thao tác.");
+        return;
+    }
+
+    int totalPlan = 0;
+    int totalAct = 0;
+    for (const auto& dl : detailLines) {
+        totalPlan += dl.adjustQuantity;
+        totalAct += dl.actualQuantity;
+    }
+
+    bool isUnder = (totalPlan > 0 && totalAct < totalPlan);
+    CompletionConfirmationDialog confirmDlg(
+        adjustCode,
+        "phiếu điều chuyển",
+        this,
+        isUnder,
+        totalAct,
+        totalPlan
+    );
+
+    if (confirmDlg.exec() != QDialog::Accepted) {
+        return;
+    }
+
+    OperationResult res = user_update::updateAdjustmentMovementStatus(db, adjustId, "COMPLETED");
+    if (!res.success) {
+        QMessageBox::critical(this, "Lỗi hoàn tất", QString::fromStdString(res.message));
+        return;
+    }
+
+    DataIO::TableIO::writeToFile(*db->getTable("adjustment_movement"), "data/inventory_check/adjustment_movement.csv");
+
+    QMessageBox::information(this, "Thành công", "Phiếu điều chuyển đã được hoàn tất thành công (COMPLETED). Toàn bộ thao tác đã bị khóa vĩnh viễn.");
+    loadMovementInfo();
+    if (statusLabel) {
+        statusLabel->setText(QString("<b>Trạng thái:</b> <span style='color:%1; font-weight:bold;'>%2</span>")
+            .arg(adjustStatus == "COMPLETED" ? "#16a34a" : "#ca8a04", adjustStatus));
+    }
+    bool isCompleted = (adjustStatus == "COMPLETED" || adjustStatus == "CANCELLED");
+    if (confirmSaveUnitsBtn) confirmSaveUnitsBtn->setEnabled(!isCompleted);
+    if (finalizeMovementBtn) finalizeMovementBtn->setEnabled(!isCompleted);
+    if (cancelMovementBtn) cancelMovementBtn->setEnabled(false);
     if (scanSerialEdit) scanSerialEdit->setEnabled(!isCompleted);
     if (addSerialBtn) addSerialBtn->setEnabled(!isCompleted);
     if (openSimulationBtn) openSimulationBtn->setEnabled(!isCompleted);
