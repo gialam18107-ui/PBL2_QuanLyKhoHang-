@@ -260,6 +260,7 @@ private:
 
     void onDirectSerialEntered();
     void onDetailSelectionChanged();
+    void onCancelMovement();
     void onOpenProductUnitPicker(int adjustDetailId);
     void onOpenSimulationToolsDialog();
     void onRemoveStagedUnitBySerial(const QString& sn);
@@ -294,6 +295,7 @@ private:
     QPushButton* openSimulationBtn;
 
     QPushButton* confirmSaveUnitsBtn;
+    QPushButton* cancelMovementBtn;
     QPushButton* closeBtn;
 
     AdjustmentSimulationDialog* simulationDialog = nullptr;

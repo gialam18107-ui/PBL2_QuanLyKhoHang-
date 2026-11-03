@@ -368,6 +368,25 @@ Once a `CHK-UNIT` audit transitions to `COMPLETED` (or enters reconciliation rev
 - **No-Customer Validation**:
   - Both Inbound and Outbound adjustment transactions must have `customer_id == NULL`. The system must validate that no customer is selected before committing the order.
 
+### 5.6 Lifecycle, Status Transition & Cancellation Rules for Adjustment Orders (`ADJUSTMENT_IN`, `ADJUSTMENT_OUT`, `ADJUSTMENT_MOVEMENT`)
+- **Initial Lifecycle State**:
+  - All adjustment orders (`inbound_transaction` with type `ADJUSTMENT_IN`, `outbound_transaction` with type `ADJUSTMENT_OUT`, and `adjustment_movement`) strictly start in the **`PENDING`** status.
+- **Cancellation Rule (`CANCELLED`)**:
+  - An adjustment order can **ONLY** be transitioned to `CANCELLED` if:
+    1. It is currently in `PENDING` status.
+    2. **Zero progress has occurred**:
+       - For `ADJUSTMENT_IN`: No delivery has been completed (`status == COMPLETED`), and no unit has been received (`actual_quantity == 0` across all deliveries).
+       - For `ADJUSTMENT_OUT`: No shipment has been completed (`status == COMPLETED`), and no unit has been dispatched (`actual_quantity == 0` across all shipments).
+       - For `ADJUSTMENT_MOVEMENT`: No unit status has been shifted/executed (`actual_quantity == 0` across all detail lines).
+  - Once any unit has been received, dispatched, or shifted (`actual_quantity > 0`), or any delivery/shipment is completed, transition to `CANCELLED` is **strictly prohibited**.
+  - **Synchronized Cancellation**: Transitioning an `ADJUSTMENT_IN` or `ADJUSTMENT_OUT` to `CANCELLED` automatically transitions all its associated non-completed `delivery` or `shipment` records to `CANCELLED`.
+  - **Terminal State Lock**: A `CANCELLED` adjustment order is permanently closed and immutable (cannot be reopened, cannot receive units, cannot transition back to `PENDING` or any other state).
+- **Sequential In-Progress & Completion Transitions (Trình tự chuyển đổi trạng thái khi đang thực hiện)**:
+  - **`PENDING` ➔ `PROCESSING`**: Occurs when order processing begins.
+  - **`PROCESSING` ⇄ `PARTIALLY_CONFIRMED`**: Semi-automatic bi-directional toggling between `PROCESSING` and `PARTIALLY_CONFIRMED` is permitted to reflect partial processing milestones.
+  - **`CONFIRMED` (Inbound/Outbound) / `COMPLETED` (Movement)**: Transition to completed status is allowed **only when 100% of the planned items/deliveries/shipments are fulfilled**. Premature confirmation before 100% fulfillment is strictly rejected.
+  - **Delivery / Shipment Status Updates**: Users are permitted to manually update the status of individual delivery/shipment records in adjustment orders following standard logistics lifecycles.
+
 ---
 
 ## 6. Code Formats and System Conventions
@@ -444,6 +463,12 @@ All auto-generated codes and user inputs must strictly conform to `QuanLyKhoHang
        - For `ADJUSTMENT_MOVEMENT`:
          - If `reason == "STOCKTAKE_DIFF"`: enforce that `source_code` is NOT NULL, exists in `INVENTORY_CHECK.check_code`, and every `product_id` in `adjust_movement_detail` exists in `inventory_check_quantity` for that `source_code`.
          - If `reason == "DAMAGED"`: enforce that all detail rows have `to_status == "SCRAPPED"`.
+     - **Adjustment Order Lifecycle & Status Transition Rules (Rule 5.6)**:
+       - Applicable to `ADJUSTMENT_IN`, `ADJUSTMENT_OUT`, and `ADJUSTMENT_MOVEMENT`:
+       - **Cancellation (`CANCELLED`)**: An adjustment order can ONLY be cancelled if it is currently in `PENDING` and no progress has occurred (`actual_quantity == 0` across all items/deliveries/shipments/movement lines). Once any units or shipments/deliveries are processed, cancellation is strictly forbidden.
+       - **Synchronized Cancellation**: Cancelling an `ADJUSTMENT_IN` or `ADJUSTMENT_OUT` automatically transitions all associated non-completed `delivery` or `shipment` records to `CANCELLED`.
+       - **Terminal State Lock**: A `CANCELLED` adjustment order is permanently closed and cannot be reopened or edited.
+       - **Sequential In-Progress Transitions**: Transition from `PENDING` to `PROCESSING` occurs when processing begins. Bi-directional transitions between `PROCESSING` and `PARTIALLY_CONFIRMED` are permitted. Transition to `CONFIRMED` (or `COMPLETED` for movement) is strictly restricted until 100% of order quantities are fulfilled.
      - **Commercial Transaction Validation**:
        - If transaction is non-ADJ: enforce that `customer_id` is provided and exists in `customer`.
      - **Inbound Unit Transition Validation**:

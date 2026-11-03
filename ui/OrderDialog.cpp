@@ -1779,14 +1779,110 @@ TransactionStatusDialog::TransactionStatusDialog(
     statusCombo->setStyleSheet("font-size: 13px; font-weight: 600; padding: 2px 8px; border: 1.5px solid #94a3b8; border-radius: 6px;");
     std::string statusTbl = (hubType == HubType::INBOUND) ? "inbound_status" : "outbound_status";
     QStringList statuses;
-    Vector<std::string> stVec;
-    user_query::get_all_statuses_for_table(db, statusTbl, stVec);
-    for (size_t i = 0; i < stVec.size(); ++i) {
-        statuses << QString::fromStdString(stVec[i]);
+
+    Table* tTable = db ? db->getTable(hubType == HubType::INBOUND ? "inbound_transaction" : "outbound_transaction") : nullptr;
+    const Record* tRec = tTable ? tTable->getRecordById(txnId) : nullptr;
+    std::string oType = (tRec && tRec->has("type") && std::holds_alternative<std::string>(tRec->get("type")))
+                      ? std::get<std::string>(tRec->get("type")) : "";
+    bool isAdj = (oType == "ADJUSTMENT_IN" || oType == "ADJUSTMENT_OUT" || oType == "ADJ");
+
+    bool hasProgress = false;
+    int totalActQty = 0;
+    int totalPlanQty = 0;
+
+    if (isAdj && db) {
+        if (hubType == HubType::INBOUND) {
+            Table* dTable = db->getTable("delivery");
+            Table* ddTable = db->getTable("delivery_detail");
+            if (dTable) {
+                Vector<Record> dRecs = Query::filterRecords(*dTable, "inbound_transaction_id", Value(txnId));
+                if (dRecs.empty()) dRecs = Query::filterRecords(*dTable, "inbound_id", Value(txnId));
+                for (const auto& d : dRecs) {
+                    std::string dSt = d.has("status") && std::holds_alternative<std::string>(d.get("status")) ? std::get<std::string>(d.get("status")) : "";
+                    if (dSt == "COMPLETED" || dSt == "DELIVERED") hasProgress = true;
+                    if (ddTable && d.has("delivery_id") && std::holds_alternative<int>(d.get("delivery_id"))) {
+                        Vector<Record> ddRecs = Query::filterRecords(*ddTable, "delivery_id", Value(std::get<int>(d.get("delivery_id"))));
+                        for (const auto& dd : ddRecs) {
+                            if (dd.has("actual_quantity") && std::holds_alternative<int>(dd.get("actual_quantity"))) {
+                                int q = std::get<int>(dd.get("actual_quantity"));
+                                totalActQty += q;
+                                if (q > 0) hasProgress = true;
+                            }
+                        }
+                    }
+                }
+            }
+            Table* itmTbl = db->getTable("inbound_detail");
+            if (itmTbl) {
+                Vector<Record> itmRecs = Query::filterRecords(*itmTbl, "inbound_transaction_id", Value(txnId));
+                if (itmRecs.empty()) itmRecs = Query::filterRecords(*itmTbl, "inbound_id", Value(txnId));
+                for (const auto& it : itmRecs) {
+                    if (it.has("ordered_quantity") && std::holds_alternative<int>(it.get("ordered_quantity"))) {
+                        totalPlanQty += std::get<int>(it.get("ordered_quantity"));
+                    }
+                }
+            }
+        } else {
+            Table* sTable = db->getTable("shipment");
+            Table* sdTable = db->getTable("shipment_detail");
+            if (sTable) {
+                Vector<Record> sRecs = Query::filterRecords(*sTable, "outbound_transaction_id", Value(txnId));
+                if (sRecs.empty()) sRecs = Query::filterRecords(*sTable, "outbound_id", Value(txnId));
+                for (const auto& s : sRecs) {
+                    std::string sSt = s.has("status") && std::holds_alternative<std::string>(s.get("status")) ? std::get<std::string>(s.get("status")) : "";
+                    if (sSt == "COMPLETED" || sSt == "SHIPPED") hasProgress = true;
+                    if (sdTable && s.has("shipment_id") && std::holds_alternative<int>(s.get("shipment_id"))) {
+                        Vector<Record> sdRecs = Query::filterRecords(*sdTable, "shipment_id", Value(std::get<int>(s.get("shipment_id"))));
+                        for (const auto& sd : sdRecs) {
+                            if (sd.has("actual_quantity") && std::holds_alternative<int>(sd.get("actual_quantity"))) {
+                                int q = std::get<int>(sd.get("actual_quantity"));
+                                totalActQty += q;
+                                if (q > 0) hasProgress = true;
+                            }
+                        }
+                    }
+                }
+            }
+            Table* itmTbl = db->getTable("outbound_detail");
+            if (itmTbl) {
+                Vector<Record> itmRecs = Query::filterRecords(*itmTbl, "outbound_transaction_id", Value(txnId));
+                if (itmRecs.empty()) itmRecs = Query::filterRecords(*itmTbl, "outbound_id", Value(txnId));
+                for (const auto& it : itmRecs) {
+                    if (it.has("ordered_quantity") && std::holds_alternative<int>(it.get("ordered_quantity"))) {
+                        totalPlanQty += std::get<int>(it.get("ordered_quantity"));
+                    }
+                }
+            }
+        }
     }
-    if (statuses.isEmpty()) {
-        statuses = {"PENDING", "PROCESSING", "PARTIALLY_CONFIRMED", "CONFIRMED", "CANCELLED"};
+
+    if (isAdj) {
+        if (initialStatus == "PENDING") {
+            if (!hasProgress) {
+                statuses = {"PENDING", "PROCESSING", "CANCELLED"};
+            } else {
+                statuses = {"PENDING", "PROCESSING"};
+            }
+        } else if (initialStatus == "PROCESSING" || initialStatus == "PARTIALLY_CONFIRMED") {
+            if (totalPlanQty > 0 && totalActQty >= totalPlanQty) {
+                statuses = {"PROCESSING", "PARTIALLY_CONFIRMED", "CONFIRMED"};
+            } else {
+                statuses = {"PROCESSING", "PARTIALLY_CONFIRMED"};
+            }
+        } else {
+            statuses = {initialStatus};
+        }
+    } else {
+        Vector<std::string> stVec;
+        user_query::get_all_statuses_for_table(db, statusTbl, stVec);
+        for (size_t i = 0; i < stVec.size(); ++i) {
+            statuses << QString::fromStdString(stVec[i]);
+        }
+        if (statuses.isEmpty()) {
+            statuses = {"PENDING", "PROCESSING", "PARTIALLY_CONFIRMED", "CONFIRMED", "CANCELLED"};
+        }
     }
+
     statusCombo->addItems(statuses);
     int curIdx = statusCombo->findText(initialStatus, Qt::MatchFixedString);
     if (curIdx >= 0) {
@@ -1801,10 +1897,33 @@ TransactionStatusDialog::TransactionStatusDialog(
 
     mainLayout->addWidget(infoGroup);
 
-    bool isCompleted = (initialStatus == "COMPLETED" || initialStatus == "CANCELLED");
+    if (isAdj) {
+        QString tipText;
+        if (initialStatus == "PENDING") {
+            if (!hasProgress) {
+                tipText = "ℹ️ <b>Quy tắc đơn điều chỉnh (Rule 5.6):</b> Đơn đang ở trạng thái PENDING và chưa phát sinh giao nhận nên được phép chuyển sang <b>CANCELLED</b> (Hủy đơn) hoặc bắt đầu <b>PROCESSING</b>.";
+            } else {
+                tipText = "ℹ️ <b>Quy tắc đơn điều chỉnh (Rule 5.6):</b> Đơn đã phát sinh ghi nhận linh kiện, không thể hủy sang CANCELLED.";
+            }
+        } else if (initialStatus == "PROCESSING" || initialStatus == "PARTIALLY_CONFIRMED") {
+            if (totalPlanQty > 0 && totalActQty >= totalPlanQty) {
+                tipText = QString("✅ <b>Quy tắc đơn điều chỉnh (Rule 5.6):</b> Đã xử lý đủ 100% số lượng (%1/%2 cái). Có thể xác nhận <b>CONFIRMED</b>.").arg(totalActQty).arg(totalPlanQty);
+            } else {
+                tipText = QString("⏳ <b>Quy tắc đơn điều chỉnh (Rule 5.6):</b> Đang xử lý (%1/%2 cái). Cho phép chuyển đổi giữa <b>PROCESSING</b> và <b>PARTIALLY_CONFIRMED</b>. Chưa thể xác nhận CONFIRMED cho đến khi đủ 100% số lượng.").arg(totalActQty).arg(totalPlanQty);
+            }
+        }
+        if (!tipText.isEmpty()) {
+            auto* tipLbl = new QLabel(tipText, this);
+            tipLbl->setStyleSheet("background-color: #eff6ff; border: 1px solid #bfdbfe; border-left: 4px solid #3b82f6; border-radius: 6px; padding: 8px 12px; font-size: 12px; color: #1e40af;");
+            tipLbl->setWordWrap(true);
+            mainLayout->addWidget(tipLbl);
+        }
+    }
+
+    bool isCompleted = (initialStatus == "COMPLETED" || initialStatus == "CONFIRMED" || initialStatus == "CANCELLED");
     if (isCompleted) {
         auto* warnLbl = new QLabel(
-            QString("🔒 <b>Đơn hàng đã ở trạng thái hoàn tất (%1).</b><br>Toàn bộ thông tin đơn và trạng thái đã bị khóa vĩnh viễn (Rule 5.3, Rule 4.5).")
+            QString("🔒 <b>Đơn hàng đã ở trạng thái hoàn tất (%1).</b><br>Toàn bộ thông tin đơn và trạng thái đã bị khóa vĩnh viễn (Rule 5.3, Rule 4.5, Rule 5.6).")
                 .arg(initialStatus),
             this
         );

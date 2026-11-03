@@ -75,10 +75,14 @@ namespace user_update
             }
         }
 
-        // 3. Domain Business Rules & Immutable Fields Validation (Rule 5.3 & 6.3.1)
+        // 3. Domain Business Rules & Immutable Fields Validation (Rule 5.3, 5.6 & 6.3.1)
         if (tableName == "inbound_transaction" || tableName == "outbound_transaction") {
             std::string oldTxnSt = oldRecord.has("status") && std::holds_alternative<std::string>(oldRecord.get("status"))
                                  ? std::get<std::string>(oldRecord.get("status")) : "";
+            std::string txnType = oldRecord.has("type") && std::holds_alternative<std::string>(oldRecord.get("type"))
+                                ? std::get<std::string>(oldRecord.get("type")) : "";
+            bool isAdj = (txnType == "ADJUSTMENT_IN" || txnType == "ADJUSTMENT_OUT" || txnType == "ADJ");
+
             for (size_t i = 0; i < modifiedColumns.size(); ++i) {
                 const std::string& colName = modifiedColumns[i];
                 if (colName != "status" && colName != "note") {
@@ -87,8 +91,123 @@ namespace user_update
                 if (colName == "status") {
                     std::string newTxnSt = std::holds_alternative<std::string>(modifyingValues[i])
                                          ? std::get<std::string>(modifyingValues[i]) : "";
-                    if ((oldTxnSt == "COMPLETED" || oldTxnSt == "completed") && newTxnSt != "COMPLETED") {
-                        return OperationResult{false, "Đơn giao dịch đã ở trạng thái HOÀN THÀNH (COMPLETED), không thể chuyển ngược trạng thái (Rule 4.5).", 0};
+                    if ((oldTxnSt == "COMPLETED" || oldTxnSt == "CONFIRMED" || oldTxnSt == "completed") && newTxnSt != oldTxnSt) {
+                        return OperationResult{false, "Đơn giao dịch đã ở trạng thái HOÀN TẤT (" + oldTxnSt + "), không thể chuyển ngược trạng thái (Rule 4.5).", 0};
+                    }
+                    if (oldTxnSt == "CANCELLED" && newTxnSt != "CANCELLED") {
+                        return OperationResult{false, "Đơn giao dịch đã bị HỦY (CANCELLED), trạng thái bị khóa vĩnh viễn (Rule 5.6).", 0};
+                    }
+
+                    if (isAdj) {
+                        if (newTxnSt == "CANCELLED") {
+                            if (oldTxnSt != "PENDING") {
+                                return OperationResult{false, "Chỉ được phép hủy đơn điều chỉnh khi đơn đang ở trạng thái PENDING (Rule 5.6).", 0};
+                            }
+                            if (tableName == "inbound_transaction") {
+                                Table* dTable = db->getTable("delivery");
+                                Table* ddTable = db->getTable("delivery_detail");
+                                if (dTable) {
+                                    Vector<Record> dRecs = Query::filterRecords(*dTable, "inbound_transaction_id", Value(recordId));
+                                    if (dRecs.empty()) dRecs = Query::filterRecords(*dTable, "inbound_id", Value(recordId));
+                                    for (const auto& d : dRecs) {
+                                        std::string dSt = d.has("status") && std::holds_alternative<std::string>(d.get("status")) ? std::get<std::string>(d.get("status")) : "";
+                                        if (dSt == "COMPLETED" || dSt == "DELIVERED") {
+                                            return OperationResult{false, "Không thể hủy đơn điều chỉnh: Đã có đợt giao nhận hoàn tất (Rule 5.6).", 0};
+                                        }
+                                        if (ddTable && d.has("delivery_id") && std::holds_alternative<int>(d.get("delivery_id"))) {
+                                            Vector<Record> ddRecs = Query::filterRecords(*ddTable, "delivery_id", Value(std::get<int>(d.get("delivery_id"))));
+                                            for (const auto& dd : ddRecs) {
+                                                int act = dd.has("actual_quantity") && std::holds_alternative<int>(dd.get("actual_quantity")) ? std::get<int>(dd.get("actual_quantity")) : 0;
+                                                if (act > 0) {
+                                                    return OperationResult{false, "Không thể hủy đơn điều chỉnh: Đã có linh kiện được ghi nhận thực tế (Rule 5.6).", 0};
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                Table* sTable = db->getTable("shipment");
+                                Table* sdTable = db->getTable("shipment_detail");
+                                if (sTable) {
+                                    Vector<Record> sRecs = Query::filterRecords(*sTable, "outbound_transaction_id", Value(recordId));
+                                    if (sRecs.empty()) sRecs = Query::filterRecords(*sTable, "outbound_id", Value(recordId));
+                                    for (const auto& s : sRecs) {
+                                        std::string sSt = s.has("status") && std::holds_alternative<std::string>(s.get("status")) ? std::get<std::string>(s.get("status")) : "";
+                                        if (sSt == "COMPLETED" || sSt == "SHIPPED") {
+                                            return OperationResult{false, "Không thể hủy đơn điều chỉnh: Đã có đợt xuất hàng hoàn tất (Rule 5.6).", 0};
+                                        }
+                                        if (sdTable && s.has("shipment_id") && std::holds_alternative<int>(s.get("shipment_id"))) {
+                                            Vector<Record> sdRecs = Query::filterRecords(*sdTable, "shipment_id", Value(std::get<int>(s.get("shipment_id"))));
+                                            for (const auto& sd : sdRecs) {
+                                                int act = sd.has("actual_quantity") && std::holds_alternative<int>(sd.get("actual_quantity")) ? std::get<int>(sd.get("actual_quantity")) : 0;
+                                                if (act > 0) {
+                                                    return OperationResult{false, "Không thể hủy đơn điều chỉnh: Đã có linh kiện được xuất thực tế (Rule 5.6).", 0};
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        } else if (newTxnSt == "CONFIRMED" || newTxnSt == "COMPLETED") {
+                            Table* itmTbl = db->getTable(tableName == "inbound_transaction" ? "inbound_detail" : "outbound_detail");
+                            std::string fkCol = (tableName == "inbound_transaction") ? "inbound_transaction_id" : "outbound_transaction_id";
+                            Vector<Record> itmRecs;
+                            if (itmTbl) {
+                                itmRecs = Query::filterRecords(*itmTbl, fkCol, Value(recordId));
+                                if (itmRecs.empty()) {
+                                    fkCol = (tableName == "inbound_transaction") ? "inbound_id" : "outbound_id";
+                                    itmRecs = Query::filterRecords(*itmTbl, fkCol, Value(recordId));
+                                }
+                            }
+                            int totalReq = 0;
+                            for (const auto& it : itmRecs) {
+                                if (it.has("ordered_quantity") && std::holds_alternative<int>(it.get("ordered_quantity"))) {
+                                    totalReq += std::get<int>(it.get("ordered_quantity"));
+                                }
+                            }
+
+                            int totalAct = 0;
+                            if (tableName == "inbound_transaction") {
+                                Table* dTable = db->getTable("delivery");
+                                Table* ddTable = db->getTable("delivery_detail");
+                                if (dTable && ddTable) {
+                                    Vector<Record> dRecs = Query::filterRecords(*dTable, "inbound_transaction_id", Value(recordId));
+                                    if (dRecs.empty()) dRecs = Query::filterRecords(*dTable, "inbound_id", Value(recordId));
+                                    for (const auto& d : dRecs) {
+                                        if (d.has("delivery_id") && std::holds_alternative<int>(d.get("delivery_id"))) {
+                                            Vector<Record> ddRecs = Query::filterRecords(*ddTable, "delivery_id", Value(std::get<int>(d.get("delivery_id"))));
+                                            for (const auto& dd : ddRecs) {
+                                                if (dd.has("actual_quantity") && std::holds_alternative<int>(dd.get("actual_quantity"))) {
+                                                    totalAct += std::get<int>(dd.get("actual_quantity"));
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                Table* sTable = db->getTable("shipment");
+                                Table* sdTable = db->getTable("shipment_detail");
+                                if (sTable && sdTable) {
+                                    Vector<Record> sRecs = Query::filterRecords(*sTable, "outbound_transaction_id", Value(recordId));
+                                    if (sRecs.empty()) sRecs = Query::filterRecords(*sTable, "outbound_id", Value(recordId));
+                                    for (const auto& s : sRecs) {
+                                        if (s.has("shipment_id") && std::holds_alternative<int>(s.get("shipment_id"))) {
+                                            Vector<Record> sdRecs = Query::filterRecords(*sdTable, "shipment_id", Value(std::get<int>(s.get("shipment_id"))));
+                                            for (const auto& sd : sdRecs) {
+                                                if (sd.has("actual_quantity") && std::holds_alternative<int>(sd.get("actual_quantity"))) {
+                                                    totalAct += std::get<int>(sd.get("actual_quantity"));
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            if (totalReq > 0 && totalAct < totalReq) {
+                                return OperationResult{false, "Không thể xác nhận hoàn thành đơn điều chỉnh khi chưa xử lý đủ 100% số lượng (Thực tế: " + std::to_string(totalAct) + "/" + std::to_string(totalReq) + " cái) (Rule 5.6).", 0};
+                            }
+                        } else if (newTxnSt == "PENDING" && oldTxnSt != "PENDING") {
+                            return OperationResult{false, "Không thể chuyển ngược trạng thái đơn điều chỉnh về PENDING (Rule 5.6).", 0};
+                        }
                     }
                 }
             }
@@ -187,8 +306,53 @@ namespace user_update
         else if (tableName == "adjustment_movement") {
             std::string oldAdjSt = oldRecord.has("status") && std::holds_alternative<std::string>(oldRecord.get("status"))
                                  ? std::get<std::string>(oldRecord.get("status")) : "";
-            if (oldAdjSt == "COMPLETED" || oldAdjSt == "completed") {
-                return OperationResult{false, "Phiếu điều chuyển đã ở trạng thái HOÀN THÀNH (COMPLETED), không thể chỉnh sửa.", 0};
+            for (size_t i = 0; i < modifiedColumns.size(); ++i) {
+                const std::string& colName = modifiedColumns[i];
+                if (colName != "status" && colName != "note") {
+                    return OperationResult{false, "Chỉ được phép cập nhật trạng thái (status) hoặc ghi chú (note) của phiếu điều chuyển.", 0};
+                }
+                if (colName == "status") {
+                    std::string newAdjSt = std::holds_alternative<std::string>(modifyingValues[i])
+                                         ? std::get<std::string>(modifyingValues[i]) : "";
+                    if (oldAdjSt == "CANCELLED" && newAdjSt != "CANCELLED") {
+                        return OperationResult{false, "Phiếu điều chuyển đã bị HỦY (CANCELLED), trạng thái bị khóa vĩnh viễn (Rule 5.6).", 0};
+                    }
+                    if ((oldAdjSt == "COMPLETED" || oldAdjSt == "completed") && newAdjSt != oldAdjSt) {
+                        return OperationResult{false, "Phiếu điều chuyển đã ở trạng thái HOÀN THÀNH (COMPLETED), không thể chuyển ngược trạng thái (Rule 5.6).", 0};
+                    }
+                    if (newAdjSt == "CANCELLED") {
+                        if (oldAdjSt != "PENDING") {
+                            return OperationResult{false, "Chỉ được phép hủy phiếu điều chuyển khi phiếu đang ở trạng thái PENDING (Rule 5.6).", 0};
+                        }
+                        Table* detTbl = db->getTable("adjust_movement_detail");
+                        if (detTbl) {
+                            Vector<Record> dRecs = Query::filterRecords(*detTbl, "adjust_id", Value(recordId));
+                            for (const auto& d : dRecs) {
+                                int act = d.has("actual_quantity") && std::holds_alternative<int>(d.get("actual_quantity"))
+                                        ? std::get<int>(d.get("actual_quantity")) : 0;
+                                if (act > 0) {
+                                    return OperationResult{false, "Không thể hủy phiếu điều chuyển: Đã có linh kiện được điều chuyển trạng thái (Rule 5.6).", 0};
+                                }
+                            }
+                        }
+                    } else if (newAdjSt == "COMPLETED") {
+                        Table* detTbl = db->getTable("adjust_movement_detail");
+                        if (detTbl) {
+                            Vector<Record> dRecs = Query::filterRecords(*detTbl, "adjust_id", Value(recordId));
+                            for (const auto& d : dRecs) {
+                                int plan = d.has("adjust_quantity") && std::holds_alternative<int>(d.get("adjust_quantity"))
+                                         ? std::get<int>(d.get("adjust_quantity")) : 0;
+                                int act = d.has("actual_quantity") && std::holds_alternative<int>(d.get("actual_quantity"))
+                                        ? std::get<int>(d.get("actual_quantity")) : 0;
+                                if (act < plan) {
+                                    return OperationResult{false, "Không thể hoàn thành phiếu điều chuyển khi chưa điều chuyển đủ 100% số lượng theo kế hoạch (Rule 5.6).", 0};
+                                }
+                            }
+                        }
+                    } else if (newAdjSt == "PENDING" && oldAdjSt != "PENDING") {
+                        return OperationResult{false, "Không thể chuyển ngược trạng thái phiếu điều chuyển về PENDING (Rule 5.6).", 0};
+                    }
+                }
             }
         }
         else if (tableName == "inventory_check_quantity") {
@@ -301,7 +465,75 @@ namespace user_update
                 }
             }
         }
+
+        if (res.success && (tableName == "inbound_transaction" || tableName == "outbound_transaction")) {
+            std::string txnType = oldRecord.has("type") && std::holds_alternative<std::string>(oldRecord.get("type"))
+                                ? std::get<std::string>(oldRecord.get("type")) : "";
+            bool isAdj = (txnType == "ADJUSTMENT_IN" || txnType == "ADJUSTMENT_OUT" || txnType == "ADJ");
+            if (isAdj) {
+                for (size_t i = 0; i < modifiedColumns.size(); ++i) {
+                    if (modifiedColumns[i] == "status") {
+                        std::string newTxnSt = std::holds_alternative<std::string>(modifyingValues[i])
+                                             ? std::get<std::string>(modifyingValues[i]) : "";
+                        if (newTxnSt == "CANCELLED") {
+                            if (tableName == "inbound_transaction") {
+                                Table* dTable = db->getTable("delivery");
+                                if (dTable) {
+                                    Vector<Record> dRecs = Query::filterRecords(*dTable, "inbound_transaction_id", Value(recordId));
+                                    if (dRecs.empty()) dRecs = Query::filterRecords(*dTable, "inbound_id", Value(recordId));
+                                    for (const auto& d : dRecs) {
+                                        int dId = std::get<int>(d.get("delivery_id"));
+                                        std::string dSt = d.has("status") && std::holds_alternative<std::string>(d.get("status")) ? std::get<std::string>(d.get("status")) : "";
+                                        if (dSt != "COMPLETED" && dSt != "CANCELLED") {
+                                            Record dUp;
+                                            dUp.set("status", std::string("CANCELLED"));
+                                            db->update("delivery", dId, dUp);
+                                        }
+                                    }
+                                }
+                            } else {
+                                Table* sTable = db->getTable("shipment");
+                                if (sTable) {
+                                    Vector<Record> sRecs = Query::filterRecords(*sTable, "outbound_transaction_id", Value(recordId));
+                                    if (sRecs.empty()) sRecs = Query::filterRecords(*sTable, "outbound_id", Value(recordId));
+                                    for (const auto& s : sRecs) {
+                                        int sId = std::get<int>(s.get("shipment_id"));
+                                        std::string sSt = s.has("status") && std::holds_alternative<std::string>(s.get("status")) ? std::get<std::string>(s.get("status")) : "";
+                                        if (sSt != "COMPLETED" && sSt != "CANCELLED") {
+                                            Record sUp;
+                                            sUp.set("status", std::string("CANCELLED"));
+                                            db->update("shipment", sId, sUp);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+        }
         return res;
+    }
+
+    OperationResult updateAdjustmentMovementStatus(
+        Database* db,
+        int adjustId,
+        const std::string& newStatus
+    ) {
+        if (!db || adjustId <= 0) return OperationResult{false, "Tham số không hợp lệ.", 0};
+        Vector<std::string> cols;
+        cols.push_back("status");
+        Vector<Value> vals;
+        vals.push_back(Value(newStatus));
+        return updateRecord(db, "adjustment_movement", adjustId, cols, vals);
+    }
+
+    OperationResult cancelAdjustmentMovement(
+        Database* db,
+        int adjustId
+    ) {
+        return updateAdjustmentMovementStatus(db, adjustId, "CANCELLED");
     }
 
     OperationResult updateTransactionStatus(

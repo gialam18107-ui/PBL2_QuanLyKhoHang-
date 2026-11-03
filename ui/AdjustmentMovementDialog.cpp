@@ -1459,10 +1459,16 @@ void AdjustmentMovementDetailDialog::setupUI()
     confirmSaveUnitsBtn->setStyleSheet("background-color: #16a34a; color: #ffffff; font-weight: 600; padding: 8px 18px; border-radius: 6px;");
     confirmSaveUnitsBtn->setEnabled(!isCompleted);
 
+    cancelMovementBtn = new QPushButton("❌ Hủy phiếu điều chuyển", this);
+    cancelMovementBtn->setStyleSheet("background-color: #fff1f2; border: 1.5px solid #f43f5e; color: #e11d48; font-weight: 600; padding: 8px 16px; border-radius: 6px;");
+    cancelMovementBtn->setCursor(Qt::PointingHandCursor);
+    cancelMovementBtn->setEnabled(adjustStatus == "PENDING" && executedUnits.empty());
+
     closeBtn = new QPushButton("Đóng", this);
     closeBtn->setStyleSheet("background-color: #ffffff; border: 1px solid #cbd5e1; font-weight: 600; padding: 8px 18px; border-radius: 6px;");
 
     bottomBar->addWidget(confirmSaveUnitsBtn);
+    bottomBar->addWidget(cancelMovementBtn);
     bottomBar->addStretch();
     bottomBar->addWidget(closeBtn);
     mainLayout->addLayout(bottomBar);
@@ -1472,6 +1478,7 @@ void AdjustmentMovementDetailDialog::setupUI()
     connect(addSerialBtn, &QPushButton::clicked, this, &AdjustmentMovementDetailDialog::onDirectSerialEntered);
     connect(openSimulationBtn, &QPushButton::clicked, this, &AdjustmentMovementDetailDialog::onOpenSimulationToolsDialog);
     connect(confirmSaveUnitsBtn, &QPushButton::clicked, this, &AdjustmentMovementDetailDialog::onConfirmSaveUnits);
+    connect(cancelMovementBtn, &QPushButton::clicked, this, &AdjustmentMovementDetailDialog::onCancelMovement);
     connect(closeBtn, &QPushButton::clicked, this, &QDialog::accept);
 }
 
@@ -1595,6 +1602,9 @@ void AdjustmentMovementDetailDialog::refreshAllViews(bool scrollToBottom)
         } else {
             confirmSaveUnitsBtn->setText("💾 Xác nhận thực hiện chuyển đổi (Lưu kết quả)");
         }
+    }
+    if (cancelMovementBtn) {
+        cancelMovementBtn->setEnabled(adjustStatus == "PENDING" && executedUnits.empty() && stagedUnits.empty());
     }
 }
 
@@ -2044,6 +2054,45 @@ void AdjustmentMovementDetailDialog::onDirectSerialEntered()
     stagedUnits.push_back(su);
 
     refreshAllViews(true);
+}
+
+void AdjustmentMovementDetailDialog::onCancelMovement()
+{
+    if (!db || adjustId <= 0) return;
+    if (adjustStatus != "PENDING") {
+        QMessageBox::warning(this, "Không thể hủy", "Chỉ có thể hủy phiếu điều chuyển khi phiếu đang ở trạng thái PENDING (Rule 5.6).");
+        return;
+    }
+    if (!executedUnits.empty() || !stagedUnits.empty()) {
+        QMessageBox::warning(this, "Không thể hủy", "Phiếu đã có linh kiện phát sinh chuyển đổi, không thể hủy bỏ (Rule 5.6).");
+        return;
+    }
+
+    auto rep = QMessageBox::question(
+        this, "Xác nhận hủy phiếu điều chuyển",
+        QString("Bạn có chắc chắn muốn HỦY phiếu điều chuyển [%1] không?\n\nSau khi hủy, trạng thái của phiếu sẽ chuyển thành CANCELLED và bị khóa vĩnh viễn (Rule 5.6).")
+            .arg(adjustCode),
+        QMessageBox::Yes | QMessageBox::No
+    );
+    if (rep != QMessageBox::Yes) return;
+
+    OperationResult res = user_update::cancelAdjustmentMovement(db, adjustId);
+    if (!res.success) {
+        QMessageBox::critical(this, "Không thể hủy", QString::fromStdString(res.message));
+        return;
+    }
+
+    QMessageBox::information(this, "Thành công", "Đã hủy phiếu điều chuyển thành công.");
+    adjustStatus = "CANCELLED";
+    isExecuted = true;
+    if (statusLabel) {
+        statusLabel->setText(QString("<b>Trạng thái:</b> <span style='color:%1; font-weight:bold;'>%2</span>")
+            .arg("#dc2626", adjustStatus));
+    }
+    if (scanSerialEdit) scanSerialEdit->setEnabled(false);
+    if (addSerialBtn) addSerialBtn->setEnabled(false);
+    if (openSimulationBtn) openSimulationBtn->setEnabled(false);
+    refreshAllViews();
 }
 
 void AdjustmentMovementDetailDialog::onOpenProductUnitPicker(int adjustDetailId)

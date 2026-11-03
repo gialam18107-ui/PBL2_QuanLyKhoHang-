@@ -237,6 +237,31 @@ int main() {
          << " | Msg: " << rModComp.message << endl;
     assert(!rModComp.success);
 
+    // --------------------------------------------------------
+    // TEST 6: Rule 5.6 Adjustment Order Status Transitions & Cancellation
+    // --------------------------------------------------------
+    printHeader("TEST 6: Rule 5.6 Adjustment Order Status Transitions & Cancellation");
+
+    // 6.1 Create an adjustment movement in PENDING status
+    Vector<user_create::AdjustMovementItem> movItems;
+    movItems.push_back({1, "AVAILABLE", "SCRAPPED", 1});
+    OperationResult rMov = user_create::createAdjustmentMovement(&db, "", "DAMAGED", "2026-11-02", movItems, "Test cancel");
+    assert(rMov.success);
+    int testAdjId = rMov.affectedCount;
+    cout << "[+] Created test adjustment movement ID: " << testAdjId << endl;
+
+    // 6.2 Cancel movement when PENDING with 0 progress: MUST SUCCEED
+    OperationResult rCancelMov = user_update::cancelAdjustmentMovement(&db, testAdjId);
+    cout << "  - Cancelling PENDING movement with 0 progress: " << (rCancelMov.success ? "SUCCESS" : "FAILED")
+         << " | Msg: " << rCancelMov.message << endl;
+    assert(rCancelMov.success);
+
+    // 6.3 Attempting to reopen CANCELLED movement: MUST BE REJECTED
+    OperationResult rReopen = user_update::updateAdjustmentMovementStatus(&db, testAdjId, "PENDING");
+    cout << "  - Reopening CANCELLED movement: " << (rReopen.success ? "FAILED" : "REJECTED (EXPECTED)")
+         << " | Msg: " << rReopen.message << endl;
+    assert(!rReopen.success);
+
     printHeader("ALL NEW CRUD RULES PASSED 100%!");
     return 0;
 }

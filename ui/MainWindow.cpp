@@ -3014,6 +3014,28 @@ void MainWindow::setupCrudWiring()
             "🔍 Xem chi tiết & Thực hiện",
             ""
         );
+        adjustmentMovementWidget->setExtraAction("❌ Hủy phiếu", [this](const Record& rec) {
+            int adjId = rec.has("adjust_id") && holds_alternative<int>(rec.get("adjust_id")) ? get<int>(rec.get("adjust_id")) : 0;
+            if (adjId <= 0 || !db) return;
+            std::string st = rec.has("status") && holds_alternative<std::string>(rec.get("status")) ? get<std::string>(rec.get("status")) : "";
+            if (st != "PENDING") {
+                QMessageBox::warning(this, "Không thể hủy", "Chỉ có thể hủy phiếu điều chuyển khi phiếu đang ở trạng thái PENDING (Rule 5.6).");
+                return;
+            }
+            auto rep = QMessageBox::question(
+                this, "Xác nhận hủy phiếu",
+                "Bạn có chắc chắn muốn HỦY phiếu điều chuyển đang chọn không?\n\nSau khi hủy, phiếu sẽ chuyển sang trạng thái CANCELLED và đóng vĩnh viễn (Rule 5.6).",
+                QMessageBox::Yes | QMessageBox::No
+            );
+            if (rep != QMessageBox::Yes) return;
+            OperationResult res = user_update::cancelAdjustmentMovement(db, adjId);
+            if (!res.success) {
+                QMessageBox::critical(this, "Lỗi hủy phiếu", QString::fromStdString(res.message));
+                return;
+            }
+            notifyDataChanged("Đã hủy phiếu điều chuyển ID " + QString::number(adjId));
+            refreshQuery(14);
+        });
     }
 
     // Quick Toggle Selling Status (Rule 4.2: product.is_sold)

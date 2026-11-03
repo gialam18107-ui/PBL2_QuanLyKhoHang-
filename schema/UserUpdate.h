@@ -203,6 +203,17 @@ namespace user_update
         int adjustId,
         const Vector<AdjustUnitEntry>& stagedUnits
     );
+
+    OperationResult updateAdjustmentMovementStatus(
+        Database* db,
+        int adjustId,
+        const std::string& newStatus
+    );
+
+    OperationResult cancelAdjustmentMovement(
+        Database* db,
+        int adjustId
+    );
 }
 
 #endif // USER_UPDATE_H
