@@ -1297,7 +1297,7 @@ void TransactionHubWidget::onTransactionSelected(int row)
             checkEyeBtn->setVisible(true);
             checkEyeBtn->disconnect();
             connect(checkEyeBtn, &QPushButton::clicked, [this, sourceCode]() {
-                InventoryCheckInspectDialog::openInspector(db, QString::fromStdString(sourceCode), this);
+                InventoryCheckInspectDialog::openInspector(db, QString::fromStdString(sourceCode), this, nullptr, hubType == HubType::INBOUND ? "INBOUND" : "OUTBOUND");
             });
         } else {
             checkEyeBtn->setVisible(false);

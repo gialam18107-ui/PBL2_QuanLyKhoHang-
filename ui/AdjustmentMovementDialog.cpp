@@ -98,7 +98,7 @@ void AdjustmentMovementCreateDialog::setupUI()
                 int maxAbs = std::max({std::abs(diffAvail), std::abs(diffWarr), std::abs(diffScrap)});
                 if (maxAbs > 0) quantitySpin->setValue(maxAbs);
             }
-        });
+        }, "ADJUSTMENT");
     });
 
     grid->addWidget(new QLabel("Ngày điều chuyển (*):", headerGroup), 1, 0);
@@ -452,7 +452,7 @@ void AdjustmentMovementDetailDialog::setupUI()
         auto* eyeBtn = new QPushButton("👁️ Xem chi tiết đợt kiểm", headerCard);
         eyeBtn->setStyleSheet("background-color: #f1f5f9; color: #0f172a; border: 1px solid #cbd5e1; font-weight: 600; padding: 2px 8px; border-radius: 4px; font-size: 11px;");
         connect(eyeBtn, &QPushButton::clicked, [this]() {
-            InventoryCheckInspectDialog::openInspector(db, sourceCode, this);
+            InventoryCheckInspectDialog::openInspector(db, sourceCode, this, nullptr, "ADJUSTMENT");
         });
         srcLayout->addWidget(eyeBtn);
     }

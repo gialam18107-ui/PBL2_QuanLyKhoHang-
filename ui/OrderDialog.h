@@ -556,9 +556,11 @@ private:
     void setupUI();
     void loadBatchData();
     void loadAllUnitsData();
-    void refreshAllUnitsTable();
-    void refreshRecentUnitsTable();
+    void refreshAllUnitsTable(bool scrollToBottom = false);
+    void refreshBatchUnitsTable(bool scrollToBottom = false);
     void refreshBatchOverviewTable();
+    void refreshProductEntryTab(bool scrollToBottom = false);
+    void refreshAllViews(bool scrollToBottom = false);
     void updateSaveButtonState();
 
     void onDirectSerialEntered();
@@ -568,7 +570,6 @@ private:
     void onSaveChanges();
 
     void setupProductEntryTab();
-    void refreshProductEntryTab();
     void onInboundProductComboChanged(int index);
     void onRecordInboundSerial();
     void onBatchPasteSerials();
@@ -626,8 +627,8 @@ private:
     QPushButton* recordDirectSerialBtn;
     QPushButton* openSimulationToolsBtn;
     QTableWidget* batchOverviewTable;
-    QTableWidget* recentUnitsTable;
-    QLabel* recentUnitsLabel;
+    QTableWidget* batchUnitsTable;
+    QLabel* batchUnitsCountLabel;
 
     // Bottom action controls
     QLabel* statusSummaryLabel;

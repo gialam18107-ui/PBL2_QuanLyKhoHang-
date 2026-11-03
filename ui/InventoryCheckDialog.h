@@ -473,10 +473,10 @@ class InventoryCheckInspectDialog : public QDialog
 public:
     using ProductSelectedCallback = std::function<void(int pid, int diffAvail, int diffWarr, int diffScrap)>;
 
-    InventoryCheckInspectDialog(Database* database, const QString& checkCodeOrId, QWidget* parent = nullptr, ProductSelectedCallback onSelect = nullptr);
+    InventoryCheckInspectDialog(Database* database, const QString& checkCodeOrId, QWidget* parent = nullptr, ProductSelectedCallback onSelect = nullptr, const QString& initialPurpose = "");
     ~InventoryCheckInspectDialog() override = default;
 
-    static void openInspector(Database* database, const QString& checkCodeOrId, QWidget* parent = nullptr, ProductSelectedCallback onSelect = nullptr);
+    static void openInspector(Database* database, const QString& checkCodeOrId, QWidget* parent = nullptr, ProductSelectedCallback onSelect = nullptr, const QString& initialPurpose = "");
 
     int getSelectedProductId() const { return selectedPid; }
     QString getSelectedProductCode() const { return selectedPCode; }
@@ -490,10 +490,12 @@ private:
     void loadCheckData();
     void renderMatrixTable();
     void renderUnitTable();
+    void renderSummaryTable();
 
     Database* db;
     QString targetCheckCode;
     ProductSelectedCallback selectCallback;
+    QString initialPurposeMode;
     int checkId = 0;
     QString checkCode;
     QString checkType;
@@ -506,9 +508,25 @@ private:
     QCheckBox* abnormalUnitsOnlyCheck = nullptr;
     QTableWidget* matrixTable = nullptr;
     QTableWidget* unitTable = nullptr;
+    QTableWidget* summaryTable = nullptr;
+    QComboBox* purposeModeCombo = nullptr;
     QTabWidget* tabWidget = nullptr;
     QPushButton* fillBtn = nullptr;
     QPushButton* closeBtn = nullptr;
+
+    struct SummaryRow {
+        int productId;
+        QString pCode;
+        QString pName;
+        int qtyAvail = 0;
+        int qtyWarr = 0;
+        int qtyScrap = 0;
+        int totalQty = 0;
+        QString fromStatus;
+        QString toStatus;
+        QString detailNote;
+    };
+    std::vector<SummaryRow> summaryList;
 
     struct MatrixItem {
         int productId;

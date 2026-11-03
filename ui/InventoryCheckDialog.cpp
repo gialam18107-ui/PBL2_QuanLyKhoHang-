@@ -3554,24 +3554,24 @@ void InventoryCheckSimulationDialog::onRunFullAutoSimulation()
 // ========================================================
 // 5. InventoryCheckInspectDialog
 // ========================================================
-InventoryCheckInspectDialog::InventoryCheckInspectDialog(Database* database, const QString& checkCodeOrId, QWidget* parent, ProductSelectedCallback onSelect)
-    : QDialog(parent), db(database), targetCheckCode(checkCodeOrId.trimmed()), selectCallback(onSelect)
+InventoryCheckInspectDialog::InventoryCheckInspectDialog(Database* database, const QString& checkCodeOrId, QWidget* parent, ProductSelectedCallback onSelect, const QString& initialPurpose)
+    : QDialog(parent), db(database), targetCheckCode(checkCodeOrId.trimmed()), selectCallback(onSelect), initialPurposeMode(initialPurpose.trimmed().toUpper())
 {
     setWindowFlags(Qt::Window);
     setWindowTitle(QString("Chi tiết & Đối soát Đợt Kiểm Kê: %1").arg(targetCheckCode));
-    resize(1050, 620);
+    resize(1080, 640);
     setupUI();
     loadCheckData();
 }
 
-void InventoryCheckInspectDialog::openInspector(Database* database, const QString& checkCodeOrId, QWidget* parent, ProductSelectedCallback onSelect)
+void InventoryCheckInspectDialog::openInspector(Database* database, const QString& checkCodeOrId, QWidget* parent, ProductSelectedCallback onSelect, const QString& initialPurpose)
 {
     QString codeClean = checkCodeOrId.trimmed();
     int sep = codeClean.indexOf(" ");
     if (sep > 0) codeClean = codeClean.left(sep).trimmed();
     if (codeClean.isEmpty()) return;
 
-    auto* dlg = new InventoryCheckInspectDialog(database, codeClean, parent, onSelect);
+    auto* dlg = new InventoryCheckInspectDialog(database, codeClean, parent, onSelect, initialPurpose);
     dlg->setAttribute(Qt::WA_DeleteOnClose, true);
     dlg->show();
     dlg->raise();
@@ -3589,6 +3589,43 @@ void InventoryCheckInspectDialog::setupUI()
     mainLayout->addWidget(infoLabel);
 
     tabWidget = new QTabWidget(this);
+
+    // Tab 0: Purpose-driven Product Summary (INBOUND / OUTBOUND / ADJUSTMENT)
+    auto* tabSummary = new QWidget();
+    auto* tSumLayout = new QVBoxLayout(tabSummary);
+    tSumLayout->setContentsMargins(8, 8, 8, 8);
+    tSumLayout->setSpacing(8);
+
+    auto* filterRow = new QHBoxLayout();
+    auto* filterLbl = new QLabel("Mục đích xử lý:", tabSummary);
+    filterLbl->setStyleSheet("font-weight: 600; color: #1e293b; font-size: 12px;");
+    filterRow->addWidget(filterLbl);
+
+    purposeModeCombo = new QComboBox(tabSummary);
+    purposeModeCombo->addItem("📥 Đơn Nhập Kho (INBOUND) — Tổng hợp hàng thừa / Tái phát hiện", "INBOUND");
+    purposeModeCombo->addItem("📤 Đơn Xuất Kho (OUTBOUND) — Tổng hợp hàng thiếu / Thất thoát", "OUTBOUND");
+    purposeModeCombo->addItem("🔄 Phiếu Điều Chuyển (ADJUSTMENT) — Tổng hợp lệch trạng thái (Từ ➔ Sang)", "ADJUSTMENT");
+    purposeModeCombo->setMinimumWidth(380);
+    purposeModeCombo->setStyleSheet("font-weight: 600; padding: 4px 10px; font-size: 12px;");
+
+    if (initialPurposeMode == "OUTBOUND") {
+        purposeModeCombo->setCurrentIndex(1);
+    } else if (initialPurposeMode == "ADJUSTMENT") {
+        purposeModeCombo->setCurrentIndex(2);
+    } else {
+        purposeModeCombo->setCurrentIndex(0);
+    }
+
+    filterRow->addWidget(purposeModeCombo);
+    filterRow->addStretch();
+    tSumLayout->addLayout(filterRow);
+
+    summaryTable = new QTableWidget(tabSummary);
+    summaryTable->setAlternatingRowColors(true);
+    summaryTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    summaryTable->setSelectionMode(QAbstractItemView::SingleSelection);
+    tSumLayout->addWidget(summaryTable, 1);
+    tabWidget->addTab(tabSummary, "📦 Tổng Hợp Xử Lý Theo Sản Phẩm");
 
     // Tab 1: Product Discrepancy Matrix
     auto* tab1 = new QWidget();
@@ -3664,8 +3701,26 @@ void InventoryCheckInspectDialog::setupUI()
     bottomBar->addWidget(closeBtn);
     mainLayout->addLayout(bottomBar);
 
+    connect(purposeModeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &InventoryCheckInspectDialog::renderSummaryTable);
     connect(diffOnlyCheck, &QCheckBox::toggled, this, &InventoryCheckInspectDialog::renderMatrixTable);
     connect(abnormalUnitsOnlyCheck, &QCheckBox::toggled, this, &InventoryCheckInspectDialog::renderUnitTable);
+
+    connect(summaryTable, &QTableWidget::itemSelectionChanged, [this]() {
+        int r = summaryTable->currentRow();
+        if (r >= 0 && r < static_cast<int>(summaryList.size())) {
+            const auto& row = summaryList[r];
+            selectedPid = row.productId;
+            selectedPCode = row.pCode;
+            selectedPName = row.pName;
+            selectedDiffAvail = row.qtyAvail;
+            selectedDiffWarr = row.qtyWarr;
+            selectedDiffScrap = row.qtyScrap;
+            fillBtn->setEnabled(true);
+            return;
+        }
+        fillBtn->setEnabled(false);
+    });
+
     connect(matrixTable, &QTableWidget::itemSelectionChanged, [this]() {
         int r = matrixTable->currentRow();
         if (r >= 0 && matrixTable->item(r, 0)) {
@@ -3685,12 +3740,12 @@ void InventoryCheckInspectDialog::setupUI()
         }
         fillBtn->setEnabled(false);
     });
+
     connect(fillBtn, &QPushButton::clicked, [this]() {
         if (selectCallback && selectedPid > 0) {
             selectCallback(selectedPid, selectedDiffAvail, selectedDiffWarr, selectedDiffScrap);
-            infoLabel->setText(QString("✅ Đã điền sản phẩm [%1] %2 vào đơn!").arg(selectedPCode, selectedPName));
+            infoLabel->setText(QString("✅ Đã điền sản phẩm [%1] %2 vào đơn thành công! (Bạn có thể chọn tiếp sản phẩm khác để điền)").arg(selectedPCode, selectedPName));
         }
-        accept();
     });
     connect(closeBtn, &QPushButton::clicked, this, &QWidget::close);
 }
@@ -3823,6 +3878,7 @@ void InventoryCheckInspectDialog::loadCheckData()
 
     renderMatrixTable();
     renderUnitTable();
+    renderSummaryTable();
 }
 
 void InventoryCheckInspectDialog::renderMatrixTable()
@@ -3910,5 +3966,336 @@ void InventoryCheckInspectDialog::renderUnitTable()
         else evalItem->setForeground(QBrush(QColor("#16a34a")));
         unitTable->setItem(r, 5, evalItem);
         unitTable->setItem(r, 6, new QTableWidgetItem(""));
+    }
+}
+
+void InventoryCheckInspectDialog::renderSummaryTable()
+{
+    if (!summaryTable || !purposeModeCombo) return;
+    QString mode = purposeModeCombo->currentData().toString();
+    summaryList.clear();
+
+    if (mode == "INBOUND") {
+        summaryTable->setColumnCount(8);
+        summaryTable->setHorizontalHeaderLabels({
+            "STT", "Mã SP", "Tên sản phẩm",
+            "Thừa Khả dụng", "Thừa Bảo hành", "Thừa Phế phẩm",
+            "Tổng SL Cần Nhập", "Chi tiết đối soát"
+        });
+        summaryTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+        summaryTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+        summaryTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+        summaryTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+        summaryTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
+        summaryTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::ResizeToContents);
+        summaryTable->horizontalHeader()->setSectionResizeMode(6, QHeaderView::ResizeToContents);
+        summaryTable->horizontalHeader()->setSectionResizeMode(7, QHeaderView::Stretch);
+
+        if (checkType == "UNIT") {
+            std::map<int, SummaryRow> prodMap;
+            for (const auto& u : unitList) {
+                if (u.eval.contains("thừa") || u.sysStatus == "(Không có)" || u.sysStatus == "OUT") {
+                    auto& row = prodMap[u.productId];
+                    row.productId = u.productId;
+                    row.pCode = u.pCode;
+                    row.pName = u.pName;
+                    if (u.actStatus == "AVAILABLE") row.qtyAvail++;
+                    else if (u.actStatus == "WARRANTY") row.qtyWarr++;
+                    else if (u.actStatus == "SCRAPPED") row.qtyScrap++;
+                    else row.qtyAvail++;
+                    row.totalQty++;
+                }
+            }
+            for (auto& pair : prodMap) {
+                pair.second.detailNote = QString("%1 unit thừa / lạ ghi nhận trong đợt").arg(pair.second.totalQty);
+                summaryList.push_back(pair.second);
+            }
+        } else {
+            for (const auto& m : matrixList) {
+                int a = std::max(0, m.diffAvail);
+                int w = std::max(0, m.diffWarr);
+                int s = std::max(0, m.diffScrap);
+                if (a + w + s > 0) {
+                    SummaryRow row;
+                    row.productId = m.productId;
+                    row.pCode = m.code;
+                    row.pName = m.name;
+                    row.qtyAvail = a;
+                    row.qtyWarr = w;
+                    row.qtyScrap = s;
+                    row.totalQty = a + w + s;
+                    row.detailNote = QString("Chênh lệch dương: KD +%1, BH +%2, PP +%3").arg(a).arg(w).arg(s);
+                    summaryList.push_back(row);
+                }
+            }
+        }
+
+        summaryTable->setRowCount(0);
+        summaryTable->setRowCount(static_cast<int>(summaryList.size()));
+        for (int r = 0; r < static_cast<int>(summaryList.size()); ++r) {
+            const auto& row = summaryList[r];
+            auto* itStt = new QTableWidgetItem(QString::number(r + 1));
+            itStt->setTextAlignment(Qt::AlignCenter);
+            summaryTable->setItem(r, 0, itStt);
+            summaryTable->setItem(r, 1, new QTableWidgetItem(row.pCode));
+            summaryTable->setItem(r, 2, new QTableWidgetItem(row.pName));
+
+            auto makeNum = [](int v, const QString& col) {
+                auto* it = new QTableWidgetItem(v > 0 ? ("+" + QString::number(v)) : "0");
+                it->setTextAlignment(Qt::AlignCenter);
+                if (v > 0) {
+                    it->setForeground(QBrush(QColor(col)));
+                    it->setFont(QFont("Segoe UI", 9, QFont::Bold));
+                } else {
+                    it->setForeground(QBrush(QColor("#94a3b8")));
+                }
+                return it;
+            };
+
+            summaryTable->setItem(r, 3, makeNum(row.qtyAvail, "#16a34a"));
+            summaryTable->setItem(r, 4, makeNum(row.qtyWarr, "#d97706"));
+            summaryTable->setItem(r, 5, makeNum(row.qtyScrap, "#dc2626"));
+
+            auto* itTot = new QTableWidgetItem(QString::number(row.totalQty));
+            itTot->setTextAlignment(Qt::AlignCenter);
+            itTot->setForeground(QBrush(QColor("#2563eb")));
+            itTot->setFont(QFont("Segoe UI", 10, QFont::Bold));
+            summaryTable->setItem(r, 6, itTot);
+
+            summaryTable->setItem(r, 7, new QTableWidgetItem(row.detailNote));
+        }
+
+    } else if (mode == "OUTBOUND") {
+        summaryTable->setColumnCount(8);
+        summaryTable->setHorizontalHeaderLabels({
+            "STT", "Mã SP", "Tên sản phẩm",
+            "Thiếu Khả dụng", "Thiếu Bảo hành", "Thiếu Phế phẩm",
+            "Tổng SL Cần Xuất", "Chi tiết đối soát"
+        });
+        summaryTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+        summaryTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+        summaryTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+        summaryTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+        summaryTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
+        summaryTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::ResizeToContents);
+        summaryTable->horizontalHeader()->setSectionResizeMode(6, QHeaderView::ResizeToContents);
+        summaryTable->horizontalHeader()->setSectionResizeMode(7, QHeaderView::Stretch);
+
+        if (checkType == "UNIT") {
+            std::map<int, SummaryRow> prodMap;
+            for (const auto& u : unitList) {
+                if (u.eval.contains("thiếu") || u.actStatus.startsWith("(Chưa") || u.actStatus == "MISSING") {
+                    auto& row = prodMap[u.productId];
+                    row.productId = u.productId;
+                    row.pCode = u.pCode;
+                    row.pName = u.pName;
+                    if (u.sysStatus == "AVAILABLE") row.qtyAvail++;
+                    else if (u.sysStatus == "WARRANTY") row.qtyWarr++;
+                    else if (u.sysStatus == "SCRAPPED") row.qtyScrap++;
+                    else row.qtyAvail++;
+                    row.totalQty++;
+                }
+            }
+            for (auto& pair : prodMap) {
+                pair.second.detailNote = QString("%1 unit hao hụt / thiếu trong đợt").arg(pair.second.totalQty);
+                summaryList.push_back(pair.second);
+            }
+        } else {
+            for (const auto& m : matrixList) {
+                int a = std::max(0, -m.diffAvail);
+                int w = std::max(0, -m.diffWarr);
+                int s = std::max(0, -m.diffScrap);
+                if (a + w + s > 0) {
+                    SummaryRow row;
+                    row.productId = m.productId;
+                    row.pCode = m.code;
+                    row.pName = m.name;
+                    row.qtyAvail = a;
+                    row.qtyWarr = w;
+                    row.qtyScrap = s;
+                    row.totalQty = a + w + s;
+                    row.detailNote = QString("Hao hụt số lượng: KD -%1, BH -%2, PP -%3").arg(a).arg(w).arg(s);
+                    summaryList.push_back(row);
+                }
+            }
+        }
+
+        summaryTable->setRowCount(0);
+        summaryTable->setRowCount(static_cast<int>(summaryList.size()));
+        for (int r = 0; r < static_cast<int>(summaryList.size()); ++r) {
+            const auto& row = summaryList[r];
+            auto* itStt = new QTableWidgetItem(QString::number(r + 1));
+            itStt->setTextAlignment(Qt::AlignCenter);
+            summaryTable->setItem(r, 0, itStt);
+            summaryTable->setItem(r, 1, new QTableWidgetItem(row.pCode));
+            summaryTable->setItem(r, 2, new QTableWidgetItem(row.pName));
+
+            auto makeNum = [](int v, const QString& col) {
+                auto* it = new QTableWidgetItem(v > 0 ? ("-" + QString::number(v)) : "0");
+                it->setTextAlignment(Qt::AlignCenter);
+                if (v > 0) {
+                    it->setForeground(QBrush(QColor(col)));
+                    it->setFont(QFont("Segoe UI", 9, QFont::Bold));
+                } else {
+                    it->setForeground(QBrush(QColor("#94a3b8")));
+                }
+                return it;
+            };
+
+            summaryTable->setItem(r, 3, makeNum(row.qtyAvail, "#dc2626"));
+            summaryTable->setItem(r, 4, makeNum(row.qtyWarr, "#d97706"));
+            summaryTable->setItem(r, 5, makeNum(row.qtyScrap, "#dc2626"));
+
+            auto* itTot = new QTableWidgetItem(QString::number(row.totalQty));
+            itTot->setTextAlignment(Qt::AlignCenter);
+            itTot->setForeground(QBrush(QColor("#dc2626")));
+            itTot->setFont(QFont("Segoe UI", 10, QFont::Bold));
+            summaryTable->setItem(r, 6, itTot);
+
+            summaryTable->setItem(r, 7, new QTableWidgetItem(row.detailNote));
+        }
+
+    } else { // ADJUSTMENT
+        summaryTable->setColumnCount(7);
+        summaryTable->setHorizontalHeaderLabels({
+            "STT", "Mã SP", "Tên sản phẩm",
+            "Từ trạng thái (HT)", "Sang trạng thái (Thực)",
+            "SL Cần Chuyển", "Chi tiết đối soát"
+        });
+        summaryTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+        summaryTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+        summaryTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+        summaryTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+        summaryTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
+        summaryTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::ResizeToContents);
+        summaryTable->horizontalHeader()->setSectionResizeMode(6, QHeaderView::Stretch);
+
+        if (checkType == "UNIT") {
+            std::map<std::tuple<int, QString, QString>, SummaryRow> shiftMap;
+            for (const auto& u : unitList) {
+                if (u.sysStatus.isEmpty() || u.sysStatus == "(Không có)" || u.sysStatus == "OUT") continue;
+                if (u.actStatus.isEmpty() || u.actStatus.startsWith("(Chưa") || u.actStatus == "MISSING") continue;
+                if (u.sysStatus != u.actStatus) {
+                    auto key = std::make_tuple(u.productId, u.sysStatus, u.actStatus);
+                    auto& row = shiftMap[key];
+                    row.productId = u.productId;
+                    row.pCode = u.pCode;
+                    row.pName = u.pName;
+                    row.fromStatus = u.sysStatus;
+                    row.toStatus = u.actStatus;
+                    row.totalQty++;
+                }
+            }
+            for (auto& pair : shiftMap) {
+                auto& row = pair.second;
+                row.detailNote = QString("Chuyển trạng thái %1 -> %2").arg(row.fromStatus, row.toStatus);
+                if (row.fromStatus == "AVAILABLE" && row.toStatus == "WARRANTY") { row.qtyAvail = -row.totalQty; row.qtyWarr = row.totalQty; }
+                else if (row.fromStatus == "AVAILABLE" && row.toStatus == "SCRAPPED") { row.qtyAvail = -row.totalQty; row.qtyScrap = row.totalQty; }
+                else if (row.fromStatus == "WARRANTY" && row.toStatus == "AVAILABLE") { row.qtyWarr = -row.totalQty; row.qtyAvail = row.totalQty; }
+                else if (row.fromStatus == "WARRANTY" && row.toStatus == "SCRAPPED") { row.qtyWarr = -row.totalQty; row.qtyScrap = row.totalQty; }
+                else if (row.fromStatus == "SCRAPPED" && row.toStatus == "AVAILABLE") { row.qtyScrap = -row.totalQty; row.qtyAvail = row.totalQty; }
+                else if (row.fromStatus == "SCRAPPED" && row.toStatus == "WARRANTY") { row.qtyScrap = -row.totalQty; row.qtyWarr = row.totalQty; }
+                summaryList.push_back(row);
+            }
+        } else {
+            for (const auto& m : matrixList) {
+                if (m.diffAvail < 0 && m.diffWarr > 0) {
+                    SummaryRow row;
+                    row.productId = m.productId;
+                    row.pCode = m.code;
+                    row.pName = m.name;
+                    row.fromStatus = "AVAILABLE";
+                    row.toStatus = "WARRANTY";
+                    row.totalQty = std::min(-m.diffAvail, m.diffWarr);
+                    row.qtyAvail = -row.totalQty;
+                    row.qtyWarr = row.totalQty;
+                    row.detailNote = "Bù trừ lệch: AVAILABLE -> WARRANTY";
+                    summaryList.push_back(row);
+                }
+                if (m.diffAvail < 0 && m.diffScrap > 0) {
+                    SummaryRow row;
+                    row.productId = m.productId;
+                    row.pCode = m.code;
+                    row.pName = m.name;
+                    row.fromStatus = "AVAILABLE";
+                    row.toStatus = "SCRAPPED";
+                    row.totalQty = std::min(-m.diffAvail, m.diffScrap);
+                    row.qtyAvail = -row.totalQty;
+                    row.qtyScrap = row.totalQty;
+                    row.detailNote = "Bù trừ lệch: AVAILABLE -> SCRAPPED";
+                    summaryList.push_back(row);
+                }
+                if (m.diffWarr < 0 && m.diffAvail > 0) {
+                    SummaryRow row;
+                    row.productId = m.productId;
+                    row.pCode = m.code;
+                    row.pName = m.name;
+                    row.fromStatus = "WARRANTY";
+                    row.toStatus = "AVAILABLE";
+                    row.totalQty = std::min(-m.diffWarr, m.diffAvail);
+                    row.qtyWarr = -row.totalQty;
+                    row.qtyAvail = row.totalQty;
+                    row.detailNote = "Bù trừ lệch: WARRANTY -> AVAILABLE";
+                    summaryList.push_back(row);
+                }
+                if (m.diffWarr < 0 && m.diffScrap > 0) {
+                    SummaryRow row;
+                    row.productId = m.productId;
+                    row.pCode = m.code;
+                    row.pName = m.name;
+                    row.fromStatus = "WARRANTY";
+                    row.toStatus = "SCRAPPED";
+                    row.totalQty = std::min(-m.diffWarr, m.diffScrap);
+                    row.qtyWarr = -row.totalQty;
+                    row.qtyScrap = row.totalQty;
+                    row.detailNote = "Bù trừ lệch: WARRANTY -> SCRAPPED";
+                    summaryList.push_back(row);
+                }
+                if (m.diffScrap < 0 && m.diffAvail > 0) {
+                    SummaryRow row;
+                    row.productId = m.productId;
+                    row.pCode = m.code;
+                    row.pName = m.name;
+                    row.fromStatus = "SCRAPPED";
+                    row.toStatus = "AVAILABLE";
+                    row.totalQty = std::min(-m.diffScrap, m.diffAvail);
+                    row.qtyScrap = -row.totalQty;
+                    row.qtyAvail = row.totalQty;
+                    row.detailNote = "Bù trừ lệch: SCRAPPED -> AVAILABLE";
+                    summaryList.push_back(row);
+                }
+            }
+        }
+
+        summaryTable->setRowCount(0);
+        summaryTable->setRowCount(static_cast<int>(summaryList.size()));
+        for (int r = 0; r < static_cast<int>(summaryList.size()); ++r) {
+            const auto& row = summaryList[r];
+            auto* itStt = new QTableWidgetItem(QString::number(r + 1));
+            itStt->setTextAlignment(Qt::AlignCenter);
+            summaryTable->setItem(r, 0, itStt);
+            summaryTable->setItem(r, 1, new QTableWidgetItem(row.pCode));
+            summaryTable->setItem(r, 2, new QTableWidgetItem(row.pName));
+
+            auto* itFrom = new QTableWidgetItem(row.fromStatus);
+            itFrom->setTextAlignment(Qt::AlignCenter);
+            itFrom->setForeground(QBrush(QColor("#7c3aed")));
+            itFrom->setFont(QFont("Segoe UI", 9, QFont::Bold));
+            summaryTable->setItem(r, 3, itFrom);
+
+            auto* itTo = new QTableWidgetItem(row.toStatus);
+            itTo->setTextAlignment(Qt::AlignCenter);
+            itTo->setForeground(QBrush(QColor("#059669")));
+            itTo->setFont(QFont("Segoe UI", 9, QFont::Bold));
+            summaryTable->setItem(r, 4, itTo);
+
+            auto* itTot = new QTableWidgetItem(QString::number(row.totalQty));
+            itTot->setTextAlignment(Qt::AlignCenter);
+            itTot->setForeground(QBrush(QColor("#7c3aed")));
+            itTot->setFont(QFont("Segoe UI", 10, QFont::Bold));
+            summaryTable->setItem(r, 5, itTot);
+
+            summaryTable->setItem(r, 6, new QTableWidgetItem(row.detailNote));
+        }
     }
 }
