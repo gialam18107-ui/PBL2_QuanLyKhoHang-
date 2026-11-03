@@ -1513,8 +1513,8 @@ void TransactionHubWidget::renderLogisticsBatches()
     }
 
     logisticsTable->setColumnWidth(0, 160);
-    logisticsTable->setColumnWidth(1, 100);
-    logisticsTable->setColumnWidth(2, 110);
+    logisticsTable->setColumnWidth(1, 130);
+    logisticsTable->setColumnWidth(2, 130);
     logisticsTable->setColumnWidth(3, 110);
 
     logisticsTable->blockSignals(false);
@@ -1611,9 +1611,9 @@ void TransactionHubWidget::renderLogisticsDetails()
     }
 
     logisticsDetailTable->setColumnWidth(0, 160);
-    logisticsDetailTable->setColumnWidth(1, 240);
+    logisticsDetailTable->setColumnWidth(1, 300);
     logisticsDetailTable->setColumnWidth(2, 90);
-    logisticsDetailTable->setColumnWidth(3, 100);
+    logisticsDetailTable->setColumnWidth(3, 90);
 
     logisticsDetailTable->blockSignals(false);
     logisticsDetailTable->setUpdatesEnabled(true);

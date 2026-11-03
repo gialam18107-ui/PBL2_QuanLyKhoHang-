@@ -241,6 +241,7 @@ public:
     };
 
     const std::vector<DetailLine>& getDetailLines() const { return detailLines; }
+    int getSelectedDetailId() const;
     int getStagedCountForDetail(int detailId) const;
     bool isSerialStaged(const std::string& sn) const;
     bool isSerialExecuted(const std::string& sn) const;
@@ -258,6 +259,7 @@ private:
     void refreshUnitsTable(bool scrollToBottom = false);
 
     void onDirectSerialEntered();
+    void onDetailSelectionChanged();
     void onOpenProductUnitPicker(int adjustDetailId);
     void onOpenSimulationToolsDialog();
     void onRemoveStagedUnitBySerial(const QString& sn);
@@ -286,6 +288,7 @@ private:
     QTableWidget* unitsTable;
 
     // Smart scan bar controls
+    QLabel* selectedPlanLabel;
     QLineEdit* scanSerialEdit;
     QPushButton* addSerialBtn;
     QPushButton* openSimulationBtn;

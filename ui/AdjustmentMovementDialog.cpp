@@ -368,6 +368,17 @@ void AdjustmentMovementCreateDialog::onAddItem()
     QString pCode = (sep > 0) ? fullText.left(sep).trimmed() : fullText;
     QString pName = (sep > 0) ? fullText.mid(sep + 3).trimmed() : "";
 
+    // Nếu đã tồn tại bản ghi cùng sản phẩm và cặp trạng thái (từ -> sang), cộng dồn số lượng
+    for (size_t i = 0; i < stagedItems.size(); ++i) {
+        if (stagedItems[i].productId == pid &&
+            stagedItems[i].fromStatus == fromSt &&
+            stagedItems[i].toStatus == toSt) {
+            stagedItems[i].quantity += qty;
+            renderItemsTable();
+            return;
+        }
+    }
+
     StagedItem item;
     item.productId = pid;
     item.productCode = pCode;
@@ -958,6 +969,9 @@ void AdjustmentSimulationDialog::refreshData()
 
     lineFilterCombo->blockSignals(true);
     int prevDetId = lineFilterCombo->currentData().toInt();
+    if (prevDetId <= 0 && mainDlg) {
+        prevDetId = mainDlg->getSelectedDetailId();
+    }
     lineFilterCombo->clear();
 
     QString summaryHtml = "<p>Dưới đây là tiến độ và số lượng linh kiện có sẵn trong kho cho từng dòng kế hoạch:</p><ul>";
@@ -1325,6 +1339,8 @@ void AdjustmentMovementDetailDialog::setupUI()
     });
     detailTable->setAlternatingRowColors(true);
     detailTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    detailTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    detailTable->setSelectionMode(QAbstractItemView::SingleSelection);
     detailTable->verticalHeader()->setVisible(false);
     detailTable->verticalHeader()->setDefaultSectionSize(32);
     detailTable->horizontalHeader()->setHighlightSections(false);
@@ -1347,6 +1363,7 @@ void AdjustmentMovementDetailDialog::setupUI()
 
     detailTable->setStyleSheet(
         "QTableWidget { background-color: #ffffff; alternate-background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; }"
+        "QTableWidget::item:selected { background-color: #dbeafe; color: #1e3a8a; font-weight: 600; }"
         "QHeaderView::section { background-color: #f1f5f9; color: #334155; font-weight: 600; padding: 6px 8px; border: none; border-bottom: 1px solid #cbd5e1; }"
     );
     TableClipboardHelper::setupClipboardForTable(detailTable);
@@ -1357,8 +1374,17 @@ void AdjustmentMovementDetailDialog::setupUI()
     bool isCompleted = (adjustStatus == "COMPLETED" || adjustStatus == "CANCELLED");
 
     auto* scanBox = new QFrame(this);
-    scanBox->setStyleSheet("background-color: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 6px; padding: 6px 12px;");
-    auto* scanLayout = new QHBoxLayout(scanBox);
+    scanBox->setStyleSheet("background-color: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 6px; padding: 8px 12px;");
+    auto* scanMainLayout = new QVBoxLayout(scanBox);
+    scanMainLayout->setContentsMargins(0, 0, 0, 0);
+    scanMainLayout->setSpacing(6);
+
+    selectedPlanLabel = new QLabel(scanBox);
+    selectedPlanLabel->setStyleSheet("font-size: 12px; color: #64748b; font-weight: 500; background-color: #f1f5f9; border: 1px dashed #cbd5e1; border-radius: 4px; padding: 5px 10px;");
+    selectedPlanLabel->setText("🎯 <i>Chưa chọn dòng cụ thể. Nhấp chọn 1 dòng kế hoạch ở bảng trên để gán trực tiếp trạng thái khi quét Serial.</i>");
+    scanMainLayout->addWidget(selectedPlanLabel);
+
+    auto* scanLayout = new QHBoxLayout();
     scanLayout->setContentsMargins(0, 0, 0, 0);
     scanLayout->setSpacing(10);
 
@@ -1383,6 +1409,7 @@ void AdjustmentMovementDetailDialog::setupUI()
     scanLayout->addWidget(scanSerialEdit, 1);
     scanLayout->addWidget(addSerialBtn);
     scanLayout->addWidget(openSimulationBtn);
+    scanMainLayout->addLayout(scanLayout);
     mainLayout->addWidget(scanBox);
 
     // 3. Staged / Executed Units Table (Bottom overview, synchronized with Inbound/Outbound)
@@ -1440,6 +1467,7 @@ void AdjustmentMovementDetailDialog::setupUI()
     bottomBar->addWidget(closeBtn);
     mainLayout->addLayout(bottomBar);
 
+    connect(detailTable, &QTableWidget::itemSelectionChanged, this, &AdjustmentMovementDetailDialog::onDetailSelectionChanged);
     connect(scanSerialEdit, &QLineEdit::returnPressed, this, &AdjustmentMovementDetailDialog::onDirectSerialEntered);
     connect(addSerialBtn, &QPushButton::clicked, this, &AdjustmentMovementDetailDialog::onDirectSerialEntered);
     connect(openSimulationBtn, &QPushButton::clicked, this, &AdjustmentMovementDetailDialog::onOpenSimulationToolsDialog);
@@ -1515,6 +1543,16 @@ void AdjustmentMovementDetailDialog::loadExecutedUnits()
     }
 }
 
+int AdjustmentMovementDetailDialog::getSelectedDetailId() const
+{
+    if (!detailTable) return 0;
+    int row = detailTable->currentRow();
+    if (row >= 0 && row < static_cast<int>(detailLines.size())) {
+        return detailLines[row].adjustDetailId;
+    }
+    return 0;
+}
+
 int AdjustmentMovementDetailDialog::getStagedCountForDetail(int detailId) const
 {
     int count = 0;
@@ -1564,6 +1602,11 @@ void AdjustmentMovementDetailDialog::refreshDetailTable()
 {
     if (!detailTable) return;
     int prevScroll = detailTable->verticalScrollBar() ? detailTable->verticalScrollBar()->value() : 0;
+    int prevSelectedDetailId = -1;
+    int curRow = detailTable->currentRow();
+    if (curRow >= 0 && curRow < static_cast<int>(detailLines.size())) {
+        prevSelectedDetailId = detailLines[curRow].adjustDetailId;
+    }
 
     detailTable->setSortingEnabled(false);
     detailTable->setUpdatesEnabled(false);
@@ -1581,6 +1624,7 @@ void AdjustmentMovementDetailDialog::refreshDetailTable()
         auto* itCode = new QTableWidgetItem(dl.productCode);
         itCode->setTextAlignment(Qt::AlignCenter);
         itCode->setFont(QFont("Consolas", font().pointSize()));
+        itCode->setData(Qt::UserRole, dl.adjustDetailId);
 
         auto* itName = new QTableWidgetItem(dl.productName);
 
@@ -1622,6 +1666,68 @@ void AdjustmentMovementDetailDialog::refreshDetailTable()
     detailTable->viewport()->update();
     detailTable->setUpdatesEnabled(true);
     if (detailTable->verticalScrollBar()) detailTable->verticalScrollBar()->setValue(prevScroll);
+
+    int targetSelectRow = -1;
+    if (prevSelectedDetailId > 0) {
+        for (int r = 0; r < count; ++r) {
+            if (detailLines[r].adjustDetailId == prevSelectedDetailId) {
+                int staged = getStagedCountForDetail(detailLines[r].adjustDetailId);
+                int rem = detailLines[r].adjustQuantity - detailLines[r].actualQuantity - staged;
+                if (rem > 0) {
+                    targetSelectRow = r;
+                }
+                break;
+            }
+        }
+    }
+    if (targetSelectRow < 0) {
+        for (int r = 0; r < count; ++r) {
+            int staged = getStagedCountForDetail(detailLines[r].adjustDetailId);
+            if (detailLines[r].adjustQuantity - detailLines[r].actualQuantity - staged > 0) {
+                targetSelectRow = r;
+                break;
+            }
+        }
+    }
+    if (targetSelectRow < 0 && prevSelectedDetailId > 0) {
+        for (int r = 0; r < count; ++r) {
+            if (detailLines[r].adjustDetailId == prevSelectedDetailId) {
+                targetSelectRow = r;
+                break;
+            }
+        }
+    }
+    if (targetSelectRow >= 0 && targetSelectRow < count) {
+        detailTable->selectRow(targetSelectRow);
+    }
+    onDetailSelectionChanged();
+}
+
+void AdjustmentMovementDetailDialog::onDetailSelectionChanged()
+{
+    if (!selectedPlanLabel || !scanSerialEdit) return;
+    int row = detailTable ? detailTable->currentRow() : -1;
+    if (row >= 0 && row < static_cast<int>(detailLines.size())) {
+        const auto& dl = detailLines[row];
+        int stagedCount = getStagedCountForDetail(dl.adjustDetailId);
+        int rem = std::max(0, dl.adjustQuantity - dl.actualQuantity - stagedCount);
+        QString statusText = rem > 0 
+            ? QString("<span style='color:#ea580c; font-weight:bold;'>Còn thiếu: %1</span>").arg(rem)
+            : "<span style='color:#16a34a; font-weight:bold;'>✅ Đã đủ</span>";
+
+        selectedPlanLabel->setText(
+            QString("🎯 Đang chọn dòng: <b>[%1] %2</b> &nbsp;|&nbsp; <b>%3 ➔ %4</b> &nbsp;|&nbsp; %5")
+            .arg(dl.productCode, dl.productName, dl.fromStatus, dl.toStatus, statusText)
+        );
+        selectedPlanLabel->setStyleSheet("font-size: 12px; color: #1e3a8a; font-weight: 500; background-color: #dbeafe; border: 1px solid #3b82f6; border-radius: 4px; padding: 5px 10px;");
+        scanSerialEdit->setPlaceholderText(
+            QString("Quét Serial cho [%1: %2 ➔ %3]... Nhấn Enter để nhận luôn").arg(dl.productCode, dl.fromStatus, dl.toStatus)
+        );
+    } else {
+        selectedPlanLabel->setText("🎯 <i>Chưa chọn dòng cụ thể. Nhấp chọn 1 dòng ở bảng trên để quét/nhập serial gán trực tiếp vào dòng đó.</i>");
+        selectedPlanLabel->setStyleSheet("font-size: 12px; color: #64748b; font-weight: 500; background-color: #f1f5f9; border: 1px dashed #cbd5e1; border-radius: 4px; padding: 5px 10px;");
+        scanSerialEdit->setPlaceholderText("Quét mã vạch hoặc nhập mã Serial (SN-XXXXXXX)... Nhấn Enter để thêm");
+    }
 }
 
 void AdjustmentMovementDetailDialog::refreshUnitsTable(bool scrollToBottom)
@@ -1868,24 +1974,60 @@ void AdjustmentMovementDetailDialog::onDirectSerialEntered()
     }
 
     int chosenLineIdx = -1;
-    if (candidateDetailIndices.size() == 1) {
-        chosenLineIdx = candidateDetailIndices[0];
-    } else {
-        QStringList opts;
-        for (int idx : candidateDetailIndices) {
-            const auto& dl = detailLines[idx];
-            int rem = dl.adjustQuantity - dl.actualQuantity - getStagedCountForDetail(dl.adjustDetailId);
-            opts << QString("Chuyển sang '%1' (Còn thiếu: %2)").arg(dl.toStatus).arg(rem);
+    int currentSelRow = detailTable ? detailTable->currentRow() : -1;
+    if (currentSelRow >= 0 && currentSelRow < static_cast<int>(detailLines.size())) {
+        const auto& selDl = detailLines[currentSelRow];
+        int selRem = selDl.adjustQuantity - selDl.actualQuantity - getStagedCountForDetail(selDl.adjustDetailId);
+        if (selDl.productId == uPid && selDl.fromStatus.toStdString() == uSt) {
+            if (selRem > 0) {
+                chosenLineIdx = currentSelRow;
+            } else {
+                QMessageBox::warning(this, "Dòng kế hoạch đã đủ số lượng",
+                    QString("Dòng kế hoạch đang chọn ([%1] %2 ➔ %3) đã đủ số lượng.\nVui lòng chọn dòng kế hoạch khác trên bảng.")
+                    .arg(selDl.productCode, selDl.fromStatus, selDl.toStatus));
+                return;
+            }
+        } else {
+            QString uProdCode = QString("ID %1").arg(uPid);
+            if (Table* pTbl = db->getTable("product")) {
+                if (const Record* pRec = pTbl->getRecordById(uPid)) {
+                    if (pRec->has("product_code") && std::holds_alternative<std::string>(pRec->get("product_code"))) {
+                        uProdCode = QString::fromStdString(std::get<std::string>(pRec->get("product_code")));
+                    }
+                }
+            }
+            QMessageBox::warning(this, "Không khớp dòng đang chọn",
+                QString("Linh kiện [%1] (SP: %2, trạng thái hiện tại: '%3') không khớp với dòng kế hoạch đang chọn trên bảng ([%4]: %5 ➔ %6).\n\nVui lòng nhấp chọn dòng kế hoạch tương ứng trên bảng trước khi quét/nhập mã.")
+                .arg(sn, uProdCode, QString::fromStdString(uSt),
+                     selDl.productCode, selDl.fromStatus, selDl.toStatus));
+            return;
         }
-        bool ok = false;
-        QString chosen = QInputDialog::getItem(
-            this, "Chọn trạng thái đích",
-            QString("Linh kiện [%1] của sản phẩm [%2] có thể chuyển sang nhiều trạng thái theo kế hoạch.\nVui lòng chọn:").arg(sn, detailLines[candidateDetailIndices[0]].productName),
-            opts, 0, false, &ok
-        );
-        if (!ok || chosen.isEmpty()) return;
-        int optIdx = opts.indexOf(chosen);
-        if (optIdx >= 0) chosenLineIdx = candidateDetailIndices[optIdx];
+    }
+
+    if (chosenLineIdx < 0) {
+        if (candidateDetailIndices.size() == 1) {
+            chosenLineIdx = candidateDetailIndices[0];
+            detailTable->selectRow(chosenLineIdx);
+        } else {
+            QStringList opts;
+            for (int idx : candidateDetailIndices) {
+                const auto& dl = detailLines[idx];
+                int rem = dl.adjustQuantity - dl.actualQuantity - getStagedCountForDetail(dl.adjustDetailId);
+                opts << QString("Chuyển sang '%1' (Còn thiếu: %2)").arg(dl.toStatus).arg(rem);
+            }
+            bool ok = false;
+            QString chosen = QInputDialog::getItem(
+                this, "Chọn trạng thái đích",
+                QString("Linh kiện [%1] của sản phẩm [%2] có thể chuyển sang nhiều trạng thái theo kế hoạch.\nVui lòng chọn:").arg(sn, detailLines[candidateDetailIndices[0]].productName),
+                opts, 0, false, &ok
+            );
+            if (!ok || chosen.isEmpty()) return;
+            int optIdx = opts.indexOf(chosen);
+            if (optIdx >= 0) {
+                chosenLineIdx = candidateDetailIndices[optIdx];
+                detailTable->selectRow(chosenLineIdx);
+            }
+        }
     }
 
     if (chosenLineIdx < 0 || chosenLineIdx >= static_cast<int>(detailLines.size())) return;

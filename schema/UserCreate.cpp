@@ -1925,6 +1925,24 @@ namespace user_create
         if (adjustedAt.empty()) return OperationResult{false, "Ngày điều chuyển không được để trống.", 0};
         if (items.empty()) return OperationResult{false, "Phiếu điều chuyển phải có ít nhất một mặt hàng.", 0};
 
+        // Gộp các bản ghi có cùng (productId, fromStatus, toStatus) để tránh phân mảnh record
+        Vector<AdjustMovementItem> effectiveItems;
+        for (size_t i = 0; i < items.size(); ++i) {
+            bool merged = false;
+            for (size_t j = 0; j < effectiveItems.size(); ++j) {
+                if (effectiveItems[j].productId == items[i].productId &&
+                    effectiveItems[j].fromStatus == items[i].fromStatus &&
+                    effectiveItems[j].toStatus == items[i].toStatus) {
+                    effectiveItems[j].quantity += items[i].quantity;
+                    merged = true;
+                    break;
+                }
+            }
+            if (!merged) {
+                effectiveItems.push_back(items[i]);
+            }
+        }
+
         if (reason == "STOCKTAKE_DIFF" || reason == "STOCK_DIFF") {
             if (sourceCheckCode.empty()) {
                 return OperationResult{false, "Điều chuyển do lệch kiểm kê (STOCKTAKE_DIFF) bắt buộc phải có source_code tham chiếu đến đợt kiểm kho (check_code).", 0};
@@ -1956,9 +1974,9 @@ namespace user_create
                             allowedPids[std::get<int>(cqRecs[k].get("product_id"))] = true;
                         }
                     }
-                    for (size_t i = 0; i < items.size(); ++i) {
-                        if (!allowedPids.contains(items[i].productId)) {
-                            return OperationResult{false, "Sản phẩm [" + getProductCodeStr(db, items[i].productId) + "] không thuộc phạm vi đợt kiểm kho " + sourceCheckCode + " (Rule 5.5).", 0};
+                    for (size_t i = 0; i < effectiveItems.size(); ++i) {
+                        if (!allowedPids.contains(effectiveItems[i].productId)) {
+                            return OperationResult{false, "Sản phẩm [" + getProductCodeStr(db, effectiveItems[i].productId) + "] không thuộc phạm vi đợt kiểm kho " + sourceCheckCode + " (Rule 5.5).", 0};
                         }
                     }
                 }
@@ -1972,8 +1990,8 @@ namespace user_create
             return OperationResult{false, "Các bảng dữ liệu điều chuyển không đầy đủ.", 0};
         }
 
-        for (size_t i = 0; i < items.size(); ++i) {
-            const auto& item = items[i];
+        for (size_t i = 0; i < effectiveItems.size(); ++i) {
+            const auto& item = effectiveItems[i];
             if (item.quantity <= 0) {
                 return OperationResult{false, "Số lượng điều chuyển phải lớn hơn 0.", 0};
             }
@@ -2015,8 +2033,8 @@ namespace user_create
         if (!rAdj) { db->rollback(); return rAdj; }
 
         int totalAffected = 1;
-        for (size_t i = 0; i < items.size(); ++i) {
-            const auto& item = items[i];
+        for (size_t i = 0; i < effectiveItems.size(); ++i) {
+            const auto& item = effectiveItems[i];
 
             int detId = getNextTableId(db, "adjust_movement_detail");
             Record dRec;
