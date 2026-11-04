@@ -47,6 +47,7 @@ namespace user_create
         Database* db,
         const std::string& companyName,
         const std::string& taxCode,
+        const std::string& address,
         const std::string& phone,
         const std::string& email
     );

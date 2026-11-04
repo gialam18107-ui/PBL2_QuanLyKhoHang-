@@ -1748,6 +1748,10 @@ void business_customer_query(Database *db, Vector<Record> &results,
 			out.set("business_info.tax_code", bInfo.get("tax_code"));
 			out.set("tax_code", bInfo.get("tax_code"));
 		}
+		if (bInfo.has("address")) {
+			out.set("business_info.address", bInfo.get("address"));
+			out.set("address", bInfo.get("address"));
+		}
 		if (bInfo.has("phone_number")) {
 			out.set("business_info.phone_number", bInfo.get("phone_number"));
 			out.set("phone_number", bInfo.get("phone_number"));

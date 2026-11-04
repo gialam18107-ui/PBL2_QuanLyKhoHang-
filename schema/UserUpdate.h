@@ -88,7 +88,8 @@ namespace user_update
         const std::string& nameOrCompany,
         const std::string& phone,
         const std::string& email,
-        const std::string& taxCode = ""
+        const std::string& taxCode = "",
+        const std::string& address = ""
     );
 
     // ========================================================

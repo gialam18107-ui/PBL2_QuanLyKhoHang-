@@ -63,6 +63,8 @@ private:
     void selectReportQuery();
     void setupReportPage();
     void renderReportTable();
+    void setupTopNavBar();
+    void setActiveNavButton(QPushButton* btn);
 
     Database* db;
     bool hasUnsavedChanges;
@@ -74,7 +76,19 @@ private:
     QMenu* auxSpecMenu;    // "Danh mục phụ"
     QMenu* reportMenu;     // "Báo cáo" (Section 9)
 
-    // Sidebar navigation tabs & separated lists
+    // Top Horizontal Navigation Bar
+    QWidget* topNavBar;
+    QPushButton* navWarehouseBtn;
+    QPushButton* navProductBtn;
+    QPushButton* navInboundBtn;
+    QPushButton* navOutboundBtn;
+    QPushButton* navCheckBtn;
+    QPushButton* navAdjustmentBtn;
+    QPushButton* navReportBtn;
+    QPushButton* navCustomerBtn;
+    QPushButton* navMoreBtn;
+
+    // Legacy sidebar references kept for backwards compatibility
     QPushButton* tabWarehouseBtn;
     QPushButton* tabCategoryBtn;
     QPushButton* tabCustomerBtn;

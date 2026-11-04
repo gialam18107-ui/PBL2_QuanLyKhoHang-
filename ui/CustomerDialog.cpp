@@ -37,11 +37,13 @@ CustomerDialog::CustomerDialog(Database* database, CustomerKind initialKind, boo
       kindCombo(nullptr), codePreviewEdit(nullptr),
       nameFieldLabel(nullptr), nameEdit(nullptr),
       taxFieldLabel(nullptr), taxCodeEdit(nullptr),
-      phoneEdit(nullptr), emailEdit(nullptr), saveBtn(nullptr)
+      addressFieldLabel(nullptr), addressEdit(nullptr),
+      phoneFieldLabel(nullptr), phoneEdit(nullptr),
+      emailFieldLabel(nullptr), emailEdit(nullptr), saveBtn(nullptr)
 {
     setWindowTitle("Thêm Mới Khách Hàng / Đối Tác");
-    resize(540, 400);
-    setMinimumWidth(480);
+    resize(560, 440);
+    setMinimumWidth(500);
 
     setupUI(allowSwitchKind);
     kindCombo->setCurrentIndex(initialKind == CustomerKind::BUSINESS ? 1 : 0);
@@ -53,11 +55,13 @@ CustomerDialog::CustomerDialog(Database* database, int editCustomerId, QWidget* 
       kindCombo(nullptr), codePreviewEdit(nullptr),
       nameFieldLabel(nullptr), nameEdit(nullptr),
       taxFieldLabel(nullptr), taxCodeEdit(nullptr),
-      phoneEdit(nullptr), emailEdit(nullptr), saveBtn(nullptr)
+      addressFieldLabel(nullptr), addressEdit(nullptr),
+      phoneFieldLabel(nullptr), phoneEdit(nullptr),
+      emailFieldLabel(nullptr), emailEdit(nullptr), saveBtn(nullptr)
 {
     setWindowTitle("Cập Nhật Thông Tin Liên Hệ Khách Hàng");
-    resize(540, 400);
-    setMinimumWidth(480);
+    resize(560, 440);
+    setMinimumWidth(500);
 
     setupUI(false);
     loadExistingCustomer();
@@ -132,7 +136,7 @@ void CustomerDialog::setupUI(bool allowSwitchKind)
 
     auto* descLbl = new QLabel(
         isEditMode
-            ? "Mã định danh và phân loại khách hàng được bảo vệ cố định theo quy tắc kế toán (Rule 4.1)."
+            ? "Mã định danh và phân loại khách hàng được bảo vệ cố định theo quy định hệ thống."
             : "Hệ thống tự động cấp mã định danh duy nhất (IN-xxxxxxx cho Cá nhân, BS-xxxxxxx cho Doanh nghiệp).",
         this
     );
@@ -147,8 +151,8 @@ void CustomerDialog::setupUI(bool allowSwitchKind)
     grid->setVerticalSpacing(10);
 
     kindCombo = new QComboBox(this);
-    kindCombo->addItem("👤 Khách hàng Cá nhân (Individual)", 0);
-    kindCombo->addItem("🏢 Khách hàng Doanh nghiệp / Đối tác (Business)", 1);
+    kindCombo->addItem("👤 Khách hàng Cá nhân (Cá nhân)", 0);
+    kindCombo->addItem("🏢 Khách hàng Doanh nghiệp / Đối tác (Doanh nghiệp)", 1);
     kindCombo->setEnabled(!isEditMode && allowSwitchKind);
     connect(kindCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), [this](int idx) {
         onKindChanged(idx);
@@ -176,17 +180,26 @@ void CustomerDialog::setupUI(bool allowSwitchKind)
     grid->addWidget(taxFieldLabel, 3, 0);
     grid->addWidget(taxCodeEdit, 3, 1);
 
+    addressFieldLabel = new QLabel("Địa chỉ (*):", this);
+    addressEdit = new QLineEdit(this);
+    addressEdit->setMaxLength(255);
+    addressEdit->setPlaceholderText("VD: 123 Lê Duẩn, Quận Hải Châu, Đà Nẵng");
+    grid->addWidget(addressFieldLabel, 4, 0);
+    grid->addWidget(addressEdit, 4, 1);
+
+    phoneFieldLabel = new QLabel("Số điện thoại (*):", this);
     phoneEdit = new QLineEdit(this);
     phoneEdit->setMaxLength(50);
     phoneEdit->setPlaceholderText("VD: 0901234567");
-    grid->addWidget(new QLabel("Số điện thoại (*):", this), 4, 0);
-    grid->addWidget(phoneEdit, 4, 1);
+    grid->addWidget(phoneFieldLabel, 5, 0);
+    grid->addWidget(phoneEdit, 5, 1);
 
+    emailFieldLabel = new QLabel("Email:", this);
     emailEdit = new QLineEdit(this);
     emailEdit->setMaxLength(100);
     emailEdit->setPlaceholderText("VD: contact@domain.com");
-    grid->addWidget(new QLabel("Email (*):", this), 5, 0);
-    grid->addWidget(emailEdit, 5, 1);
+    grid->addWidget(emailFieldLabel, 6, 0);
+    grid->addWidget(emailEdit, 6, 1);
 
     mainLayout->addWidget(formGroup);
     mainLayout->addStretch();
@@ -216,6 +229,11 @@ void CustomerDialog::onKindChanged(int index)
     nameEdit->setPlaceholderText(isBus ? "VD: Công ty TNHH Tin Học Phong Vũ..." : "VD: Nguyễn Văn An...");
     taxFieldLabel->setVisible(isBus);
     taxCodeEdit->setVisible(isBus);
+    addressFieldLabel->setVisible(isBus);
+    addressEdit->setVisible(isBus);
+
+    phoneFieldLabel->setText(isBus ? "Số điện thoại:" : "Số điện thoại (*):");
+    emailFieldLabel->setText("Email:");
 
     if (isEditMode && customerId == 0) {
         QMessageBox::critical(this, "Không thể cập nhật", "Không thể sửa thông tin của khách hàng hệ thống mặc định (BS-0000000).");
@@ -283,6 +301,9 @@ void CustomerDialog::loadExistingCustomer()
             if (bRec->has("tax_code") && holds_alternative<std::string>(bRec->get("tax_code"))) {
                 taxCodeEdit->setText(QString::fromStdString(get<std::string>(bRec->get("tax_code"))));
             }
+            if (bRec->has("address") && holds_alternative<std::string>(bRec->get("address"))) {
+                addressEdit->setText(QString::fromStdString(get<std::string>(bRec->get("address"))));
+            }
             if (bRec->has("phone_number") && holds_alternative<std::string>(bRec->get("phone_number"))) {
                 phoneEdit->setText(QString::fromStdString(get<std::string>(bRec->get("phone_number"))));
             }
@@ -295,6 +316,7 @@ void CustomerDialog::loadExistingCustomer()
     if (customerId == 0) {
         nameEdit->setReadOnly(true);
         if (taxCodeEdit) taxCodeEdit->setReadOnly(true);
+        if (addressEdit) addressEdit->setReadOnly(true);
         phoneEdit->setReadOnly(true);
         emailEdit->setReadOnly(true);
         if (saveBtn) {
@@ -308,7 +330,8 @@ void CustomerDialog::onSaveClicked()
 {
     bool isBus = (kindCombo->currentIndex() == 1);
     QString name = nameEdit->text().trimmed();
-    QString taxCode = taxCodeEdit->text().trimmed();
+    QString taxCode = taxCodeEdit ? taxCodeEdit->text().trimmed() : "";
+    QString address = addressEdit ? addressEdit->text().trimmed() : "";
     QString phone = phoneEdit->text().trimmed();
     QString email = emailEdit->text().trimmed();
 
@@ -318,20 +341,23 @@ void CustomerDialog::onSaveClicked()
         nameEdit->setFocus();
         return;
     }
-    if (isBus && taxCode.isEmpty()) {
-        QMessageBox::critical(this, "Lỗi nhập liệu", "Mã số thuế doanh nghiệp không được để trống.");
-        taxCodeEdit->setFocus();
-        return;
-    }
-    if (phone.isEmpty()) {
-        QMessageBox::critical(this, "Lỗi nhập liệu", "Số điện thoại liên hệ không được để trống.");
-        phoneEdit->setFocus();
-        return;
-    }
-    if (email.isEmpty()) {
-        QMessageBox::critical(this, "Lỗi nhập liệu", "Địa chỉ Email không được để trống.");
-        emailEdit->setFocus();
-        return;
+    if (isBus) {
+        if (taxCode.isEmpty()) {
+            QMessageBox::critical(this, "Lỗi nhập liệu", "Mã số thuế doanh nghiệp không được để trống.");
+            taxCodeEdit->setFocus();
+            return;
+        }
+        if (address.isEmpty()) {
+            QMessageBox::critical(this, "Lỗi nhập liệu", "Địa chỉ doanh nghiệp không được để trống.");
+            addressEdit->setFocus();
+            return;
+        }
+    } else {
+        if (phone.isEmpty()) {
+            QMessageBox::critical(this, "Lỗi nhập liệu", "Số điện thoại khách hàng không được để trống.");
+            phoneEdit->setFocus();
+            return;
+        }
     }
 
     if (isEditMode && customerId == 0) {
@@ -341,16 +367,14 @@ void CustomerDialog::onSaveClicked()
 
     if (!isEditMode) {
         OperationResult res = isBus
-            ? user_create::createBusinessCustomer(db, name.toStdString(), taxCode.toStdString(), phone.toStdString(), email.toStdString())
+            ? user_create::createBusinessCustomer(db, name.toStdString(), taxCode.toStdString(), address.toStdString(), phone.toStdString(), email.toStdString())
             : user_create::createIndividualCustomer(db, name.toStdString(), phone.toStdString(), email.toStdString());
 
         if (!res.success) {
-            // Rule 6.3.1: Keep dialog open on failure
             QMessageBox::critical(this, "Không thể tạo khách hàng", QString::fromStdString(res.message));
             return;
         }
 
-        // Extract generated customer_code from customer table (latest row)
         Table* custTable = db->getTable("customer");
         if (custTable) {
             const auto& rows = custTable->getRows();
@@ -368,7 +392,7 @@ void CustomerDialog::onSaveClicked()
     } else {
         OperationResult res = user_update::updateCustomerContact(
             db, customerId, name.toStdString(), phone.toStdString(), email.toStdString(),
-            isBus ? taxCode.toStdString() : ""
+            isBus ? taxCode.toStdString() : "", isBus ? address.toStdString() : ""
         );
         if (!res.success) {
             QMessageBox::critical(this, "Không thể cập nhật khách hàng", QString::fromStdString(res.message));
@@ -378,4 +402,3 @@ void CustomerDialog::onSaveClicked()
         accept();
     }
 }
-

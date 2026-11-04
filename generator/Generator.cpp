@@ -500,7 +500,7 @@ namespace Generator
         Table* chkTbl = db.getTable("inventory_check");
         if (!chkTbl) return "";
 
-        string actualType = (checkType == "UNIT") ? "UNIT" : "QUAN";
+        string actualType = "UNIT";
         string date = checkDate.empty() ? getCurrentDate() : checkDate;
 
         int chkId = nextInventoryCheckId++;
@@ -669,7 +669,7 @@ namespace Generator
                 // Auto-generate quantity audit check for the items involved
                 Vector<int> pids;
                 for (const auto& item : items) pids.push_back(item.first);
-                finalSource = generateInventoryCheck("QUAN", date, pids);
+                finalSource = generateInventoryCheck("UNIT", date, pids);
             }
             sourceCodeVal = finalSource;
         }
@@ -995,10 +995,7 @@ namespace Generator
                     {
                         if (st == "AVAILABLE" || st == "WARRANTY") eligibleCount++;
                     }
-                    else if (outboundType == "RETURN_TO_SUPPLIER" || outboundType == "RTS")
-                    {
-                        if (st == "AVAILABLE" || st == "WARRANTY" || st == "SCRAPPED") eligibleCount++;
-                    }
+
                     else
                     {
                         if (st == "AVAILABLE") eligibleCount++;
@@ -1017,7 +1014,6 @@ namespace Generator
         // Determine Type Code
         string typeCode = "SEL";
         if (outboundType == "ADJUSTMENT_OUT") typeCode = "ADJ";
-        else if (outboundType == "RETURN_TO_SUPPLIER" || outboundType == "RTS") typeCode = "RTS";
         else if (outboundType == "WARRANTY_RETURN" || outboundType == "WRT") typeCode = "WRT";
         else if (outboundType == "WARRANTY_REPLACEMENT_TO_CUSTOMER" || outboundType == "WRC") typeCode = "WRC";
 
@@ -1034,7 +1030,7 @@ namespace Generator
         {
             customerVal = Value{}; // NULL
         }
-        else if (outboundType == "WARRANTY_RETURN" || outboundType == "RETURN_TO_SUPPLIER" || outboundType == "RTS")
+        else if (outboundType == "WARRANTY_RETURN" || outboundType == "WRT")
         {
             customerVal = 4; // Supplier / Business
         }
@@ -1052,7 +1048,7 @@ namespace Generator
             {
                 Vector<int> pids;
                 for (const auto& item : items) pids.push_back(item.first);
-                finalSource = generateInventoryCheck("QUAN", date, pids);
+                finalSource = generateInventoryCheck("UNIT", date, pids);
             }
             sourceCodeVal = finalSource;
         }
@@ -1151,10 +1147,7 @@ namespace Generator
                         {
                             isEligible = (currentStatus == "AVAILABLE" || currentStatus == "WARRANTY");
                         }
-                        else if (outboundType == "RETURN_TO_SUPPLIER" || outboundType == "RTS")
-                        {
-                            isEligible = (currentStatus == "AVAILABLE" || currentStatus == "WARRANTY" || currentStatus == "SCRAPPED");
-                        }
+
                         else
                         {
                             isEligible = (currentStatus == "AVAILABLE");
@@ -1259,7 +1252,7 @@ namespace Generator
         {
             Vector<int> pids;
             for (size_t i = 0; i < items.size(); ++i) pids.push_back(items[i].productId);
-            finalSource = generateInventoryCheck("QUAN", date, pids);
+            finalSource = generateInventoryCheck("UNIT", date, pids);
         }
 
         int adjId = nextAdjustmentMovementId++;
@@ -1396,7 +1389,7 @@ namespace Generator
         }
 
         // Generate Outbound Transactions
-        const string outboundTypes[] = {"SELLING", "ADJUSTMENT_OUT", "SELLING", "RETURN_TO_SUPPLIER"};
+        const string outboundTypes[] = {"SELLING", "ADJUSTMENT_OUT", "SELLING", "WARRANTY_RETURN"};
         for (int i = 0; i < numOutbound; i++)
         {
             string outType = outboundTypes[nextRandom() % 4];
@@ -1438,10 +1431,10 @@ namespace Generator
             curDate = advanceDate(curDate, 1);
         }
 
-        // Generate Standalone Inventory Checks (alternating between QUAN and UNIT)
+        // Generate Standalone Inventory Checks (always UNIT)
         for (int k = 0; k < numChecks; k++)
         {
-            string checkType = (k % 2 == 0) ? "QUAN" : "UNIT";
+            string checkType = "UNIT";
             int numAuditProducts = 2 + (nextRandom() % 4);
             if (numAuditProducts > static_cast<int>(productIds.size()))
             {

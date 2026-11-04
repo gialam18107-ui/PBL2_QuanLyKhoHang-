@@ -23,6 +23,30 @@
 #include <QLineEdit>
 #include <QGroupBox>
 #include <QShortcut>
+#include <QEvent>
+#include <QComboBox>
+#include <QAbstractSpinBox>
+#include <QDateEdit>
+#include <QAbstractItemView>
+#include <QApplication>
+
+class WheelEventBlocker : public QObject {
+public:
+    explicit WheelEventBlocker(QObject* parent = nullptr) : QObject(parent) {}
+protected:
+    bool eventFilter(QObject* obj, QEvent* event) override {
+        if (event->type() == QEvent::Wheel) {
+            if (qobject_cast<QComboBox*>(obj) || qobject_cast<QAbstractSpinBox*>(obj) || qobject_cast<QDateEdit*>(obj)) {
+                if (auto* cb = qobject_cast<QComboBox*>(obj)) {
+                    if (cb->view() && cb->view()->isVisible()) return false;
+                }
+                event->ignore();
+                return true;
+            }
+        }
+        return QObject::eventFilter(obj, event);
+    }
+};
 
 namespace {
 inline QString getRecordStringValue(const Record& rec, const std::string& col) {
@@ -38,6 +62,8 @@ inline QString getRecordStringValue(const Record& rec, const std::string& col) {
 MainWindow::MainWindow(Database* database, QWidget* parent)
     : QMainWindow(parent), db(database), hasUnsavedChanges(false),
       warehouseMenu(nullptr), categoryMenu(nullptr), customerMenu(nullptr), auxSpecMenu(nullptr), reportMenu(nullptr),
+      topNavBar(nullptr), navWarehouseBtn(nullptr), navProductBtn(nullptr), navInboundBtn(nullptr), navOutboundBtn(nullptr),
+      navCheckBtn(nullptr), navAdjustmentBtn(nullptr), navReportBtn(nullptr), navCustomerBtn(nullptr), navMoreBtn(nullptr),
       tabWarehouseBtn(nullptr), tabCategoryBtn(nullptr), tabCustomerBtn(nullptr), tabAuxSpecBtn(nullptr), tabReportBtn(nullptr),
       sidebarStack(nullptr), warehouseList(nullptr), categoryList(nullptr), customerList(nullptr), auxSpecList(nullptr), reportList(nullptr),
       stackedWidget(nullptr), statusLabel(nullptr), saveDbBtn(nullptr), reloadDbBtn(nullptr),
@@ -58,6 +84,7 @@ MainWindow::MainWindow(Database* database, QWidget* parent)
       cachedReportRecords(), cachedGrandTotal(),
       currentReportSortColumn(-1), currentReportSortAscending(true)
 {
+    qApp->installEventFilter(new WheelEventBlocker(this));
     setWindowTitle("Hệ thống Quản lý Kho Hàng - PBL2 (Query for Interface)");
     resize(1300, 850);
     setMinimumSize(1020, 680);
@@ -265,163 +292,197 @@ void MainWindow::setupUI()
     auto* centralWidget = new QWidget(this);
     setCentralWidget(centralWidget);
 
-    auto* rootLayout = new QHBoxLayout(centralWidget);
+    auto* rootLayout = new QVBoxLayout(centralWidget);
     rootLayout->setContentsMargins(0, 0, 0, 0);
     rootLayout->setSpacing(0);
 
-    // Left Panel (Sidebar)
-    auto* sidebarWidget = new QWidget(this);
-    sidebarWidget->setFixedWidth(310);
-    sidebarWidget->setStyleSheet(
-        "QWidget {"
-        "  background-color: #0f172a;"
-        "  color: #e2e8f0;"
-        "}"
-    );
+    // 1. Top Horizontal Navigation Bar
+    setupTopNavBar();
+    rootLayout->addWidget(topNavBar);
 
-    auto* sidebarLayout = new QVBoxLayout(sidebarWidget);
-    sidebarLayout->setContentsMargins(14, 18, 14, 14);
-    sidebarLayout->setSpacing(10);
-
-    // App Branding
-    auto* brandLabel = new QLabel("🏢 QUẢN LÝ KHO HÀNG", this);
-    brandLabel->setStyleSheet("font-size: 16px; font-weight: bold; color: #38bdf8;");
-
-    auto* subBrandLabel = new QLabel("PBL2 - Kho Linh Kiện Máy Tính", this);
-    subBrandLabel->setStyleSheet("font-size: 12px; color: #94a3b8;");
-
-    sidebarLayout->addWidget(brandLabel);
-    sidebarLayout->addWidget(subBrandLabel);
-
-    // Reload DB Button
-    // Save & Reload DB Buttons
-    saveDbBtn = new QPushButton("💾 Lưu dữ liệu ra CSV", this);
-    saveDbBtn->setCursor(Qt::PointingHandCursor);
-    saveDbBtn->setStyleSheet(
-        "QPushButton {"
-        "  background-color: #059669;"
-        "  border: none;"
-        "  border-radius: 6px;"
-        "  padding: 8px 12px;"
-        "  font-size: 12px;"
-        "  font-weight: 600;"
-        "  color: #ffffff;"
-        "}"
-        "QPushButton:hover { background-color: #047857; }"
-        "QPushButton:pressed { background-color: #065f46; }"
-    );
-    sidebarLayout->addWidget(saveDbBtn);
-    connect(saveDbBtn, &QPushButton::clicked, [this]() {
-        saveDatabase(true);
-    });
-
-    reloadDbBtn = new QPushButton("🔄 Nạp lại dữ liệu CSDL", this);
-    reloadDbBtn->setStyleSheet(
-        "QPushButton {"
-        "  background-color: #1e293b;"
-        "  border: 1px solid #334155;"
-        "  border-radius: 6px;"
-        "  padding: 8px 12px;"
-        "  font-size: 12px;"
-        "  font-weight: 500;"
-        "  color: #38bdf8;"
-        "}"
-        "QPushButton:hover { background-color: #334155; }"
-        "QPushButton:pressed { background-color: #0f172a; }"
-    );
-    sidebarLayout->addWidget(reloadDbBtn);
-
-    // Domain Navigation Tabs (Rule 9.2, 9.3 & 9.4: Tách biệt rõ ràng 4 phân hệ)
-    auto* tabContainer = new QWidget(sidebarWidget);
-    auto* tabGrid = new QGridLayout(tabContainer);
-    tabGrid->setContentsMargins(0, 4, 0, 4);
-    tabGrid->setSpacing(4);
-
-    tabWarehouseBtn = new QPushButton("📦 Kho hàng", tabContainer);
-    tabWarehouseBtn->setToolTip("Bảng quản lý kho hàng");
-
-    tabCategoryBtn = new QPushButton("📁 Danh mục SP", tabContainer);
-    tabCategoryBtn->setToolTip("Danh mục sản phẩm (Rule 9.2)");
-
-    tabCustomerBtn = new QPushButton("👥 Khách hàng", tabContainer);
-    tabCustomerBtn->setToolTip("Quản lý khách hàng (Rule 9.4)");
-
-    tabAuxSpecBtn = new QPushButton("⚙️ Danh mục phụ", tabContainer);
-    tabAuxSpecBtn->setToolTip("Bảng thông số phụ & Master data (Rule 9.3)");
-
-    tabReportBtn = new QPushButton("📊 Báo cáo", tabContainer);
-    tabReportBtn->setToolTip("Báo cáo xuất - nhập - tồn định kỳ (Section 9)");
-
-    tabGrid->addWidget(tabWarehouseBtn, 0, 0);
-    tabGrid->addWidget(tabCategoryBtn, 0, 1);
-    tabGrid->addWidget(tabCustomerBtn, 1, 0);
-    tabGrid->addWidget(tabAuxSpecBtn, 1, 1);
-    tabGrid->addWidget(tabReportBtn, 2, 0, 1, 2);
-    sidebarLayout->addWidget(tabContainer);
-
-    // Stacked sidebar lists for the 5 separated domains
-    sidebarStack = new QStackedWidget(sidebarWidget);
-    sidebarStack->setStyleSheet(
-        "QListWidget {"
-        "  background-color: transparent;"
-        "  border: none;"
-        "  outline: none;"
-        "}"
-        "QListWidget::item {"
-        "  padding: 8px 10px;"
-        "  border-radius: 6px;"
-        "  font-size: 12px;"
-        "  color: #cbd5e1;"
-        "  margin-bottom: 2px;"
-        "}"
-        "QListWidget::item:hover {"
-        "  background-color: #1e293b;"
-        "  color: #ffffff;"
-        "}"
-        "QListWidget::item:selected {"
-        "  background-color: #2563eb;"
-        "  color: #ffffff;"
-        "  font-weight: 600;"
-        "}"
-    );
-
-    warehouseList = new QListWidget(sidebarStack);
-    categoryList = new QListWidget(sidebarStack);
-    customerList = new QListWidget(sidebarStack);
-    auxSpecList = new QListWidget(sidebarStack);
-    reportList = new QListWidget(sidebarStack);
-
-    sidebarStack->addWidget(warehouseList); // Index 0: Warehouse
-    sidebarStack->addWidget(categoryList);  // Index 1: Category
-    sidebarStack->addWidget(customerList);  // Index 2: Customer
-    sidebarStack->addWidget(auxSpecList);   // Index 3: Aux Specs
-    sidebarStack->addWidget(reportList);    // Index 4: Periodic Report
-
-    sidebarLayout->addWidget(sidebarStack);
-
-    rootLayout->addWidget(sidebarWidget);
-
-    // Right Content Area
-    auto* rightPanel = new QWidget(this);
-    rightPanel->setStyleSheet("background-color: #f8fafc;");
-    auto* rightLayout = new QVBoxLayout(rightPanel);
-    rightLayout->setContentsMargins(0, 0, 0, 0);
-    rightLayout->setSpacing(0);
-
+    // 2. Main Stacked Widget Area
     stackedWidget = new QStackedWidget(this);
-    rightLayout->addWidget(stackedWidget);
-
-    rootLayout->addWidget(rightPanel, 1);
+    stackedWidget->setStyleSheet("background-color: #f8fafc;");
+    rootLayout->addWidget(stackedWidget, 1);
 
     // Status bar
     auto* sBar = statusBar();
     sBar->setStyleSheet("QStatusBar { background-color: #ffffff; border-top: 1px solid #e2e8f0; color: #64748b; font-size: 12px; }");
     statusLabel = new QLabel("Cơ sở dữ liệu sẵn sàng", this);
     sBar->addWidget(statusLabel);
+}
 
-    connect(reloadDbBtn, &QPushButton::clicked, [this]() {
-        reloadDatabase();
+void MainWindow::setActiveNavButton(QPushButton* activeBtn)
+{
+    QList<QPushButton*> btns = {
+        navWarehouseBtn, navProductBtn, navInboundBtn, navOutboundBtn,
+        navCheckBtn, navAdjustmentBtn, navReportBtn, navCustomerBtn, navMoreBtn
+    };
+    for (auto* b : btns) {
+        if (!b) continue;
+        if (b == activeBtn) {
+            b->setStyleSheet(
+                "QPushButton {"
+                "  background-color: #2563eb; color: #ffffff; font-weight: bold; font-size: 13px; border-radius: 5px; padding: 6px 14px; border: none;"
+                "} QPushButton::menu-indicator { subcontrol-origin: padding; subcontrol-position: right center; }"
+            );
+        } else {
+            b->setStyleSheet(
+                "QPushButton {"
+                "  background-color: transparent; color: #cbd5e1; font-weight: 500; font-size: 13px; border-radius: 5px; padding: 6px 12px; border: 1px solid transparent;"
+                "} QPushButton:hover { background-color: #1e293b; color: #ffffff; }"
+                "QPushButton::menu-indicator { subcontrol-origin: padding; subcontrol-position: right center; }"
+            );
+        }
+    }
+}
+
+void MainWindow::setupTopNavBar()
+{
+    topNavBar = new QWidget(this);
+    topNavBar->setStyleSheet("background-color: #0f172a; border-bottom: 1px solid #1e293b;");
+    auto* navLayout = new QHBoxLayout(topNavBar);
+    navLayout->setContentsMargins(12, 6, 12, 6);
+    navLayout->setSpacing(6);
+
+    auto* brandLabel = new QLabel("🏢 KHO HÀNG", topNavBar);
+    brandLabel->setStyleSheet("font-size: 14px; font-weight: bold; color: #38bdf8; padding-right: 8px;");
+    navLayout->addWidget(brandLabel);
+
+    navWarehouseBtn = new QPushButton("📦 Tồn kho", topNavBar);
+    navWarehouseBtn->setCursor(Qt::PointingHandCursor);
+    navLayout->addWidget(navWarehouseBtn);
+
+    navProductBtn = new QPushButton("💻 Sản phẩm ▾", topNavBar);
+    navProductBtn->setCursor(Qt::PointingHandCursor);
+    auto* prodMenu = new QMenu(navProductBtn);
+    prodMenu->setStyleSheet("QMenu { background-color: #ffffff; color: #0f172a; font-size: 13px; } QMenu::item:selected { background-color: #f1f5f9; color: #2563eb; }");
+    QStringList catNames = {"CPU", "Card màn hình (GPU)", "Bo mạch chủ (Mainboard)", "Bộ nhớ RAM", "Ổ cứng SSD", "Nguồn (PSU)", "Tản nhiệt (Cooling)", "Vỏ máy (Case)"};
+    for (int i = 0; i < catNames.size(); ++i) {
+        auto* act = prodMenu->addAction(catNames[i]);
+        int catIdx = i;
+        connect(act, &QAction::triggered, [this, catIdx]() {
+            selectCategoryQuery(catIdx);
+        });
+    }
+    navProductBtn->setMenu(prodMenu);
+    navLayout->addWidget(navProductBtn);
+
+    navInboundBtn = new QPushButton("📥 Đơn nhập", topNavBar);
+    navInboundBtn->setCursor(Qt::PointingHandCursor);
+    navLayout->addWidget(navInboundBtn);
+
+    navOutboundBtn = new QPushButton("📤 Đơn xuất", topNavBar);
+    navOutboundBtn->setCursor(Qt::PointingHandCursor);
+    navLayout->addWidget(navOutboundBtn);
+
+    navCheckBtn = new QPushButton("📋 Kiểm kê", topNavBar);
+    navCheckBtn->setCursor(Qt::PointingHandCursor);
+    navLayout->addWidget(navCheckBtn);
+
+    navAdjustmentBtn = new QPushButton("🔄 Điều chỉnh", topNavBar);
+    navAdjustmentBtn->setCursor(Qt::PointingHandCursor);
+    navLayout->addWidget(navAdjustmentBtn);
+
+    navReportBtn = new QPushButton("📊 Báo cáo", topNavBar);
+    navReportBtn->setCursor(Qt::PointingHandCursor);
+    navLayout->addWidget(navReportBtn);
+
+    navCustomerBtn = new QPushButton("👥 Khách hàng ▾", topNavBar);
+    navCustomerBtn->setCursor(Qt::PointingHandCursor);
+    auto* custMenu = new QMenu(navCustomerBtn);
+    custMenu->setStyleSheet("QMenu { background-color: #ffffff; color: #0f172a; font-size: 13px; } QMenu::item:selected { background-color: #f1f5f9; color: #2563eb; }");
+    auto* actIndiv = custMenu->addAction("👤 Khách hàng Cá nhân");
+    connect(actIndiv, &QAction::triggered, [this]() {
+        selectCustomerQuery(0);
     });
+    auto* actBiz = custMenu->addAction("🏢 Khách hàng Doanh nghiệp / Đối tác");
+    connect(actBiz, &QAction::triggered, [this]() {
+        selectCustomerQuery(1);
+    });
+    navCustomerBtn->setMenu(custMenu);
+    navLayout->addWidget(navCustomerBtn);
+
+    navMoreBtn = new QPushButton("☰", topNavBar);
+    navMoreBtn->setCursor(Qt::PointingHandCursor);
+    navMoreBtn->setToolTip("Các bảng thông tin chi tiết & danh mục phụ");
+    auto* moreMenu = new QMenu(navMoreBtn);
+    moreMenu->setStyleSheet("QMenu { background-color: #ffffff; color: #0f172a; font-size: 13px; } QMenu::item:selected { background-color: #f1f5f9; color: #2563eb; }");
+
+    auto addMoreItem = [this, moreMenu](const QString& title, int stackIdx) {
+        auto* act = moreMenu->addAction(title);
+        connect(act, &QAction::triggered, [this, stackIdx]() {
+            stackedWidget->setCurrentIndex(stackIdx);
+            refreshQuery(stackIdx);
+            setActiveNavButton(navMoreBtn);
+        });
+    };
+
+    addMoreItem("🔢 Quản lý Serial linh kiện (unit_inventory)", 1);
+    addMoreItem("📜 Lịch sử biến động trạng thái (status_history)", 2);
+    moreMenu->addSeparator();
+    addMoreItem("📥 Chi tiết đơn nhập (inbound_detail)", 4);
+    addMoreItem("🚚 Đợt nhận hàng nhập (delivery)", 5);
+    addMoreItem("📦 Kiện hàng nhận (delivery_detail)", 6);
+    moreMenu->addSeparator();
+    addMoreItem("📤 Chi tiết đơn xuất (outbound_detail)", 8);
+    addMoreItem("🚛 Đợt xuất kho (shipment)", 9);
+    addMoreItem("📦 Kiện hàng xuất (shipment_detail)", 10);
+    moreMenu->addSeparator();
+    addMoreItem("📋 Chi tiết kiểm kê số lượng (check_quantity)", 12);
+    addMoreItem("📋 Chi tiết kiểm kê đơn vị (check_unit)", 13);
+    moreMenu->addSeparator();
+    addMoreItem("🔄 Chi tiết điều chỉnh trạng thái (adjust_detail)", 15);
+    addMoreItem("🏷️ Lịch sử thay đổi trạng thái bán (is_sold)", 16);
+    moreMenu->addSeparator();
+    addMoreItem("⚙️ Thông số phụ & Thương hiệu (aux_specs)", 25);
+    navMoreBtn->setMenu(moreMenu);
+    navLayout->addWidget(navMoreBtn);
+
+    navLayout->addStretch(1);
+
+    // Quick DB Buttons on the right
+    saveDbBtn = new QPushButton("💾 Lưu CSV", topNavBar);
+    saveDbBtn->setCursor(Qt::PointingHandCursor);
+    saveDbBtn->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #059669; color: #ffffff; border: none; border-radius: 4px; padding: 6px 12px; font-weight: 600; font-size: 12px;"
+        "} QPushButton:hover { background-color: #047857; }"
+    );
+    connect(saveDbBtn, &QPushButton::clicked, [this]() { saveDatabase(true); });
+    navLayout->addWidget(saveDbBtn);
+
+    reloadDbBtn = new QPushButton("🔄 Nạp lại", topNavBar);
+    reloadDbBtn->setCursor(Qt::PointingHandCursor);
+    reloadDbBtn->setStyleSheet(
+        "QPushButton {"
+        "  background-color: #1e293b; color: #38bdf8; border: 1px solid #334155; border-radius: 4px; padding: 6px 12px; font-weight: 500; font-size: 12px;"
+        "} QPushButton:hover { background-color: #334155; }"
+    );
+    connect(reloadDbBtn, &QPushButton::clicked, [this]() { reloadDatabase(); });
+    navLayout->addWidget(reloadDbBtn);
+
+    // Direct click connections
+    connect(navWarehouseBtn, &QPushButton::clicked, [this]() {
+        selectWarehouseQuery(0);
+    });
+    connect(navInboundBtn, &QPushButton::clicked, [this]() {
+        selectWarehouseQuery(3);
+    });
+    connect(navOutboundBtn, &QPushButton::clicked, [this]() {
+        selectWarehouseQuery(7);
+    });
+    connect(navCheckBtn, &QPushButton::clicked, [this]() {
+        selectWarehouseQuery(11);
+    });
+    connect(navAdjustmentBtn, &QPushButton::clicked, [this]() {
+        selectWarehouseQuery(14);
+    });
+    connect(navReportBtn, &QPushButton::clicked, [this]() {
+        selectReportQuery();
+    });
+
+    setActiveNavButton(navWarehouseBtn);
 }
 
 QStringList MainWindow::loadColumnOptions(const QString& tableName, const QString& colName)
@@ -465,120 +526,120 @@ void MainWindow::updateCategoryFilterOptions()
         QStringList inTypes = loadColumnOptions("inbound_type", "type");
         if (inTypes.isEmpty()) inTypes = {"PURCHASING", "ADJUSTMENT_IN", "WARRANTY_CHECKING", "WARRANTY_REPLACEMENT", "CUSTOMER_RETURN"};
         QStringList inStatuses = loadColumnOptions("inbound_status", "status");
-        if (inStatuses.isEmpty()) inStatuses = {"PENDING", "PROCESSING", "PARTIALLY_CONFIRMED", "CONFIRMED", "CANCELLED"};
+        if (inStatuses.isEmpty()) inStatuses = {"PENDING", "PROCESSING", "CONFIRMED", "CANCELLED"};
         inboundTxnWidget->setFilterColumns({
-            {"Mã đơn nhập (inbound_code)", "inbound_code", FilterType::EXACT_TEXT, {}},
-            {"Mã đối tác (customer_code)", "customer_code", FilterType::EXACT_TEXT, {}},
-            {"Ngày đặt hàng (order_at)", "order_at", FilterType::DATE_RANGE, {}},
-            {"Loại đơn nhập (type)", "type", FilterType::SELECT_OR_TYPE, inTypes},
-            {"Trạng thái đơn (status)", "status", FilterType::SELECT_OR_TYPE, inStatuses}
+            {"Mã đơn nhập", "inbound_code", FilterType::EXACT_TEXT, {}},
+            {"Mã đối tác", "customer_code", FilterType::EXACT_TEXT, {}},
+            {"Ngày đặt hàng", "order_at", FilterType::DATE_RANGE, {}},
+            {"Loại đơn nhập", "type", FilterType::SELECT_OR_TYPE, inTypes},
+            {"Trạng thái", "status", FilterType::SELECT_OR_TYPE, inStatuses}
         });
     }
     if (deliveryWidget) {
         QStringList delivStatuses = loadColumnOptions("delivery_status", "status");
         if (delivStatuses.isEmpty()) delivStatuses = {"EXPECTED", "RECEIVING", "INSPECTING", "COMPLETED"};
         deliveryWidget->setFilterColumns({
-            {"Mã giao nhận (delivery_code)", "delivery_code", FilterType::EXACT_TEXT, {}},
-            {"Mã đơn nhập (inbound_code)", "inbound_code", FilterType::EXACT_TEXT, {}},
-            {"Ngày nhận hàng (delivery_at)", "delivery_at", FilterType::DATE_RANGE, {}},
-            {"Ngày dự kiến (expected_at)", "expected_at", FilterType::DATE_RANGE, {}},
-            {"Trạng thái nhận (status)", "status", FilterType::SELECT_OR_TYPE, delivStatuses}
+            {"Mã giao nhận", "delivery_code", FilterType::EXACT_TEXT, {}},
+            {"Mã đơn nhập", "inbound_code", FilterType::EXACT_TEXT, {}},
+            {"Ngày nhận hàng", "delivery_at", FilterType::DATE_RANGE, {}},
+            {"Ngày dự kiến", "expected_at", FilterType::DATE_RANGE, {}},
+            {"Trạng thái nhận", "status", FilterType::SELECT_OR_TYPE, delivStatuses}
         });
     }
     if (outboundTxnWidget) {
         QStringList outTypes = loadColumnOptions("outbound_type", "type");
-        if (outTypes.isEmpty()) outTypes = {"SELLING", "ADJUSTMENT_OUT", "RETURN_TO_SUPPLIER", "WARRANTY_RETURN", "WARRANTY_REPLACEMENT_TO_CUSTOMER"};
+        if (outTypes.isEmpty()) outTypes = {"SELLING", "ADJUSTMENT_OUT", "WARRANTY_RETURN", "WARRANTY_REPLACEMENT_TO_CUSTOMER"};
         QStringList outStatuses = loadColumnOptions("outbound_status", "status");
-        if (outStatuses.isEmpty()) outStatuses = {"PENDING", "PROCESSING", "CONFIRMED", "PARTIALLY_CONFIRMED", "CANCELLED"};
+        if (outStatuses.isEmpty()) outStatuses = {"PENDING", "PROCESSING", "CONFIRMED", "CANCELLED"};
         outboundTxnWidget->setFilterColumns({
-            {"Mã đơn xuất (outbound_code)", "outbound_code", FilterType::EXACT_TEXT, {}},
-            {"Mã khách hàng (customer_code)", "customer_code", FilterType::EXACT_TEXT, {}},
-            {"Ngày đặt hàng (order_at)", "order_at", FilterType::DATE_RANGE, {}},
-            {"Loại đơn xuất (type)", "type", FilterType::SELECT_OR_TYPE, outTypes},
-            {"Trạng thái đơn (status)", "status", FilterType::SELECT_OR_TYPE, outStatuses}
+            {"Mã đơn xuất", "outbound_code", FilterType::EXACT_TEXT, {}},
+            {"Mã khách hàng", "customer_code", FilterType::EXACT_TEXT, {}},
+            {"Ngày đặt hàng", "order_at", FilterType::DATE_RANGE, {}},
+            {"Loại đơn xuất", "type", FilterType::SELECT_OR_TYPE, outTypes},
+            {"Trạng thái", "status", FilterType::SELECT_OR_TYPE, outStatuses}
         });
     }
     if (shipmentWidget) {
         QStringList shipStatuses = loadColumnOptions("shipment_status", "status");
         if (shipStatuses.isEmpty()) shipStatuses = {"PENDING", "PICKING", "COMPLETED", "CANCELLED"};
         shipmentWidget->setFilterColumns({
-            {"Mã xuất hàng (shipment_code)", "shipment_code", FilterType::EXACT_TEXT, {}},
-            {"Mã đơn xuất (outbound_code)", "outbound_code", FilterType::EXACT_TEXT, {}},
-            {"Ngày xuất hàng (ship_at)", "ship_at", FilterType::DATE_RANGE, {}},
-            {"Ngày dự kiến (expected_at)", "expected_at", FilterType::DATE_RANGE, {}},
-            {"Trạng thái xuất (status)", "status", FilterType::SELECT_OR_TYPE, shipStatuses}
+            {"Mã xuất hàng", "shipment_code", FilterType::EXACT_TEXT, {}},
+            {"Mã đơn xuất", "outbound_code", FilterType::EXACT_TEXT, {}},
+            {"Ngày xuất hàng", "ship_at", FilterType::DATE_RANGE, {}},
+            {"Ngày dự kiến", "expected_at", FilterType::DATE_RANGE, {}},
+            {"Trạng thái xuất", "status", FilterType::SELECT_OR_TYPE, shipStatuses}
         });
     }
     if (unitInventoryWidget) {
         QStringList unitStatuses = loadColumnOptions("unit_status", "status");
         if (unitStatuses.isEmpty()) unitStatuses = {"AVAILABLE", "WARRANTY", "OUT", "SCRAPPED"};
         unitInventoryWidget->setFilterColumns({
-            {"Số Serial (SN)", "serial", FilterType::EXACT_TEXT, {}},
-            {"Trạng thái (status)", "status", FilterType::SELECT_OR_TYPE, unitStatuses}
+            {"Số Serial", "serial", FilterType::EXACT_TEXT, {}},
+            {"Trạng thái", "status", FilterType::SELECT_OR_TYPE, unitStatuses}
         });
     }
 
     // Cập nhật danh mục sản phẩm (8 danh mục)
     if (cpuWidget) {
         cpuWidget->setFilterColumns({
-            {"Trạng thái đang bán (is_sold)", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
-            {"Socket CPU (socket)", "socket", FilterType::SELECT_OR_TYPE, loadSpecOptions("cpu_socket")},
-            {"Phân khúc CPU (tier)", "tier", FilterType::SELECT_OR_TYPE, loadSpecOptions("cpu_tier")},
-            {"Dòng CPU (series)", "series", FilterType::SELECT_OR_TYPE, loadSpecOptions("cpu_series")}
+            {"Trạng thái bán", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
+            {"Socket CPU", "socket", FilterType::SELECT_OR_TYPE, loadSpecOptions("cpu_socket")},
+            {"Phân khúc CPU", "tier", FilterType::SELECT_OR_TYPE, loadSpecOptions("cpu_tier")},
+            {"Dòng CPU", "series", FilterType::SELECT_OR_TYPE, loadSpecOptions("cpu_series")}
         });
     }
     if (gpuWidget) {
         gpuWidget->setFilterColumns({
-            {"Trạng thái đang bán (is_sold)", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
-            {"Dòng GPU (series)", "series", FilterType::SELECT_OR_TYPE, loadSpecOptions("gpu_series")},
-            {"Hãng chip (producer)", "producer", FilterType::SELECT_OR_TYPE, loadSpecOptions("gpu_producer")},
-            {"Dung lượng VRAM (vram)", "vram", FilterType::SELECT_OR_TYPE, loadSpecOptions("gpu_vram")}
+            {"Trạng thái bán", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
+            {"Dòng GPU", "series", FilterType::SELECT_OR_TYPE, loadSpecOptions("gpu_series")},
+            {"Hãng chip", "producer", FilterType::SELECT_OR_TYPE, loadSpecOptions("gpu_producer")},
+            {"Dung lượng VRAM", "vram", FilterType::SELECT_OR_TYPE, loadSpecOptions("gpu_vram")}
         });
     }
     if (mainboardWidget) {
         mainboardWidget->setFilterColumns({
-            {"Trạng thái đang bán (is_sold)", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
-            {"Hỗ trợ CPU (cpu_support)", "cpu_support", FilterType::SELECT_OR_TYPE, loadSpecOptions("mainboard_cpu_support")},
-            {"Socket Mainboard (socket)", "socket", FilterType::SELECT_OR_TYPE, loadSpecOptions("mainboard_socket")},
-            {"Kích cỡ bo mạch (size)", "size", FilterType::SELECT_OR_TYPE, loadSpecOptions("mainboard_size")},
-            {"Chipset (chipset)", "chipset", FilterType::SELECT_OR_TYPE, loadSpecOptions("mainboard_chipset")},
-            {"Chuẩn RAM (ram_support)", "ram_support", FilterType::SELECT_OR_TYPE, loadSpecOptions("mainboard_ram_support")}
+            {"Trạng thái bán", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
+            {"Hỗ trợ CPU", "cpu_support", FilterType::SELECT_OR_TYPE, loadSpecOptions("mainboard_cpu_support")},
+            {"Socket Mainboard", "socket", FilterType::SELECT_OR_TYPE, loadSpecOptions("mainboard_socket")},
+            {"Kích cỡ bo mạch", "size", FilterType::SELECT_OR_TYPE, loadSpecOptions("mainboard_size")},
+            {"Chipset", "chipset", FilterType::SELECT_OR_TYPE, loadSpecOptions("mainboard_chipset")},
+            {"Chuẩn RAM", "ram_support", FilterType::SELECT_OR_TYPE, loadSpecOptions("mainboard_ram_support")}
         });
     }
     if (ramWidget) {
         ramWidget->setFilterColumns({
-            {"Trạng thái đang bán (is_sold)", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
-            {"Thế hệ RAM (generation)", "generation", FilterType::SELECT_OR_TYPE, loadSpecOptions("ram_generation")},
-            {"Dung lượng RAM (capacity)", "capacity", FilterType::SELECT_OR_TYPE, loadSpecOptions("ram_capacity")},
-            {"Tốc độ Bus (bus)", "bus", FilterType::SELECT_OR_TYPE, loadSpecOptions("ram_bus")}
+            {"Trạng thái bán", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
+            {"Thế hệ RAM", "generation", FilterType::SELECT_OR_TYPE, loadSpecOptions("ram_generation")},
+            {"Dung lượng RAM", "capacity", FilterType::SELECT_OR_TYPE, loadSpecOptions("ram_capacity")},
+            {"Tốc độ Bus", "bus", FilterType::SELECT_OR_TYPE, loadSpecOptions("ram_bus")}
         });
     }
     if (ssdWidget) {
         ssdWidget->setFilterColumns({
-            {"Trạng thái đang bán (is_sold)", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
-            {"Loại SSD (type)", "type", FilterType::SELECT_OR_TYPE, loadSpecOptions("ssd_type")},
-            {"Thế hệ giao tiếp (gen)", "gen", FilterType::SELECT_OR_TYPE, loadSpecOptions("ssd_gen")},
-            {"Dung lượng SSD (capacity)", "capacity", FilterType::SELECT_OR_TYPE, loadSpecOptions("ssd_capacity")}
+            {"Trạng thái bán", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
+            {"Loại SSD", "type", FilterType::SELECT_OR_TYPE, loadSpecOptions("ssd_type")},
+            {"Thế hệ giao tiếp", "gen", FilterType::SELECT_OR_TYPE, loadSpecOptions("ssd_gen")},
+            {"Dung lượng SSD", "capacity", FilterType::SELECT_OR_TYPE, loadSpecOptions("ssd_capacity")}
         });
     }
     if (psuWidget) {
         psuWidget->setFilterColumns({
-            {"Trạng thái đang bán (is_sold)", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
-            {"Chuẩn hiệu suất (quality)", "quality", FilterType::SELECT_OR_TYPE, loadSpecOptions("psu_quality")},
-            {"Công suất nguồn (capacity)", "capacity", FilterType::SELECT_OR_TYPE, loadSpecOptions("psu_capacity")},
-            {"Kích cỡ nguồn (size)", "size", FilterType::SELECT_OR_TYPE, loadSpecOptions("psu_size")}
+            {"Trạng thái bán", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
+            {"Chuẩn hiệu suất", "quality", FilterType::SELECT_OR_TYPE, loadSpecOptions("psu_quality")},
+            {"Công suất nguồn", "capacity", FilterType::SELECT_OR_TYPE, loadSpecOptions("psu_capacity")},
+            {"Kích cỡ nguồn", "size", FilterType::SELECT_OR_TYPE, loadSpecOptions("psu_size")}
         });
     }
     if (coolingWidget) {
         coolingWidget->setFilterColumns({
-            {"Trạng thái đang bán (is_sold)", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
-            {"Loại tản nhiệt (type)", "type", FilterType::SELECT_OR_TYPE, loadSpecOptions("cooling_type")}
+            {"Trạng thái bán", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
+            {"Loại tản nhiệt", "type", FilterType::SELECT_OR_TYPE, loadSpecOptions("cooling_type")}
         });
     }
     if (caseWidget) {
         caseWidget->setFilterColumns({
-            {"Trạng thái đang bán (is_sold)", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
-            {"Kích cỡ vỏ case (size)", "size", FilterType::SELECT_OR_TYPE, loadSpecOptions("case_size")}
+            {"Trạng thái bán", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
+            {"Kích cỡ vỏ case", "size", FilterType::SELECT_OR_TYPE, loadSpecOptions("case_size")}
         });
     }
 }
@@ -590,18 +651,18 @@ void MainWindow::setupPages()
     // ========================================================
     productQuantityWidget = new QueryTableWidget(
         "1. Tồn kho Sản phẩm (PRODUCT_QUANTITY)",
-        "Thống kê số lượng tồn kho khả dụng, bảo hành và phế phẩm theo từng sản phẩm",
+        "Thống kê số lượng tồn kho khả dụng, bảo hành và hư hỏng theo từng sản phẩm",
         this
     );
     productQuantityWidget->setColumns(
-        {"Mã sản phẩm", "Mã vạch (Barcode)", "Mã SKU", "Tên sản phẩm", "Khả dụng (Available)", "Bảo hành (Warranty)", "Phế phẩm (Scrapped)", "Đang bán (is_sold)"},
+        {"Mã sản phẩm", "Mã vạch (Barcode)", "Mã SKU", "Tên sản phẩm", "Khả dụng", "Bảo hành", "Hư hỏng", "Đang bán"},
         {"product.product_code", "product.barcode", "product.sku", "product.product_name", "product_quantity.available_quan", "product_quantity.warranty_quan", "product_quantity.scrapped_quan", "product.is_sold"}
     );
     productQuantityWidget->setFilterColumns({
-        {"Mã sản phẩm (PK)", "product_code", FilterType::EXACT_TEXT, {}},
+        {"Mã sản phẩm", "product_code", FilterType::EXACT_TEXT, {}},
         {"Mã SKU", "sku", FilterType::EXACT_TEXT, {}},
         {"Mã vạch (Barcode)", "barcode", FilterType::EXACT_TEXT, {}},
-        {"Trạng thái bán (is_sold)", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}}
+        {"Trạng thái bán", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}}
     });
     productQuantityWidget->setRefreshCallback([this]() { refreshQuery(0); });
     productQuantityWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
@@ -701,12 +762,12 @@ void MainWindow::setupPages()
         {"inbound_transaction.inbound_code", "inbound_transaction.source_code", "customer.customer_code", "inbound_transaction.order_at", "inbound_transaction.type", "inbound_transaction.status", "inbound_transaction.note"}
     );
     inboundTxnWidget->setFilterColumns({
-        {"Mã đơn nhập (inbound_code)", "inbound_code", FilterType::EXACT_TEXT, {}},
-        {"Mã tham chiếu (source_code)", "source_code", FilterType::EXACT_TEXT, {}},
-        {"Mã đối tác (customer_code)", "customer_code", FilterType::EXACT_TEXT, {}},
-        {"Ngày đặt hàng (order_at)", "order_at", FilterType::DATE_RANGE, {}},
-        {"Loại đơn nhập (type)", "type", FilterType::SELECT_OR_TYPE, {"PURCHASING", "ADJUSTMENT_IN", "WARRANTY_CHECKING", "WARRANTY_REPLACEMENT", "CUSTOMER_RETURN"}},
-        {"Trạng thái đơn (status)", "status", FilterType::SELECT_OR_TYPE, {"PENDING", "PROCESSING", "PARTIALLY_CONFIRMED", "CONFIRMED", "CANCELLED"}}
+        {"Mã đơn nhập", "inbound_code", FilterType::EXACT_TEXT, {}},
+        {"Mã tham chiếu", "source_code", FilterType::EXACT_TEXT, {}},
+        {"Mã đối tác", "customer_code", FilterType::EXACT_TEXT, {}},
+        {"Ngày đặt hàng", "order_at", FilterType::DATE_RANGE, {}},
+        {"Loại đơn nhập", "type", FilterType::SELECT_OR_TYPE, {"PURCHASING", "ADJUSTMENT_IN", "WARRANTY_CHECKING", "WARRANTY_REPLACEMENT", "CUSTOMER_RETURN"}},
+        {"Trạng thái", "status", FilterType::SELECT_OR_TYPE, {"PENDING", "PROCESSING", "CONFIRMED", "CANCELLED"}}
     });
     inboundTxnWidget->setRefreshCallback([this]() { refreshQuery(3); });
     inboundTxnWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& v2, bool isRange) {
@@ -846,12 +907,12 @@ void MainWindow::setupPages()
         {"outbound_transaction.outbound_code", "outbound_transaction.source_code", "customer.customer_code", "outbound_transaction.order_at", "outbound_transaction.type", "outbound_transaction.status", "outbound_transaction.note"}
     );
     outboundTxnWidget->setFilterColumns({
-        {"Mã đơn xuất (outbound_code)", "outbound_code", FilterType::EXACT_TEXT, {}},
-        {"Mã tham chiếu (source_code)", "source_code", FilterType::EXACT_TEXT, {}},
-        {"Mã khách hàng (customer_code)", "customer_code", FilterType::EXACT_TEXT, {}},
-        {"Ngày đặt hàng (order_at)", "order_at", FilterType::DATE_RANGE, {}},
-        {"Loại đơn xuất (type)", "type", FilterType::SELECT_OR_TYPE, {"SELLING", "ADJUSTMENT_OUT", "RETURN_TO_SUPPLIER", "WARRANTY_RETURN", "WARRANTY_REPLACEMENT_TO_CUSTOMER"}},
-        {"Trạng thái đơn (status)", "status", FilterType::SELECT_OR_TYPE, {"PENDING", "PROCESSING", "CONFIRMED", "PARTIALLY_CONFIRMED", "CANCELLED"}}
+        {"Mã đơn xuất", "outbound_code", FilterType::EXACT_TEXT, {}},
+        {"Mã tham chiếu", "source_code", FilterType::EXACT_TEXT, {}},
+        {"Mã khách hàng", "customer_code", FilterType::EXACT_TEXT, {}},
+        {"Ngày đặt hàng", "order_at", FilterType::DATE_RANGE, {}},
+        {"Loại đơn xuất", "type", FilterType::SELECT_OR_TYPE, {"SELLING", "ADJUSTMENT_OUT", "WARRANTY_RETURN", "WARRANTY_REPLACEMENT_TO_CUSTOMER"}},
+        {"Trạng thái", "status", FilterType::SELECT_OR_TYPE, {"PENDING", "PROCESSING", "CONFIRMED", "CANCELLED"}}
     });
     outboundTxnWidget->setRefreshCallback([this]() { refreshQuery(7); });
     outboundTxnWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& v2, bool isRange) {
@@ -982,7 +1043,7 @@ void MainWindow::setupPages()
     // ========================================================
     inventoryCheckWidget = new QueryTableWidget(
         "12. Quản lý Đợt Kiểm kho (INVENTORY_CHECK)",
-        "Quản lý danh sách các đợt kiểm kê kho số lượng (QUAN) và chi tiết linh kiện (UNIT)",
+        "Quản lý danh sách các đợt kiểm kê kho chi tiết linh kiện (UNIT)",
         this
     );
     inventoryCheckWidget->setColumns(
@@ -990,9 +1051,9 @@ void MainWindow::setupPages()
         {"inventory_check.check_code", "inventory_check.check_type", "inventory_check.check_at", "inventory_check.status", "inventory_check.note"}
     );
     inventoryCheckWidget->setFilterColumns({
-        {"Mã đợt kiểm (check_code)", "check_code", FilterType::EXACT_TEXT, {}},
-        {"Hình thức (check_type)", "check_type", FilterType::SELECT_OR_TYPE, {"QUAN", "UNIT"}},
-        {"Trạng thái (status)", "status", FilterType::SELECT_OR_TYPE, {"PENDING", "IN_PROCESS", "COMPLETED", "CANCELLED"}}
+        {"Mã đợt kiểm", "check_code", FilterType::EXACT_TEXT, {}},
+        {"Hình thức", "check_type", FilterType::SELECT_OR_TYPE, {"UNIT"}},
+        {"Trạng thái", "status", FilterType::SELECT_OR_TYPE, {"PENDING", "IN_PROCESS", "COMPLETED", "CANCELLED"}}
     });
     inventoryCheckWidget->setRefreshCallback([this]() { refreshQuery(11); });
     inventoryCheckWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
@@ -1156,7 +1217,7 @@ void MainWindow::setupPages()
     );
     inventoryCheckUnitWidget->setFilterColumns({
         {"Mã đợt kiểm", "check_code", FilterType::EXACT_TEXT, {}},
-        {"Số Serial (SN)", "serial", FilterType::EXACT_TEXT, {}},
+        {"Số Serial", "serial", FilterType::EXACT_TEXT, {}},
         {"Trạng thái HT", "system_status", FilterType::SELECT_OR_TYPE, {"AVAILABLE", "WARRANTY", "SCRAPPED", "OUT"}},
         {"Trạng thái Quét", "scanned_status", FilterType::SELECT_OR_TYPE, {"AVAILABLE", "WARRANTY", "SCRAPPED", "OUT"}}
     });
@@ -1182,19 +1243,19 @@ void MainWindow::setupPages()
     // 15. ADJUSTMENT_MOVEMENT_QUERY
     // ========================================================
     adjustmentMovementWidget = new QueryTableWidget(
-        "15. Quản lý Phiếu Điều chuyển (ADJUSTMENT_MOVEMENT)",
-        "Điều chuyển trạng thái tồn kho nội bộ giữa Available, Warranty và Scrapped",
+        "15. Quản lý Phiếu Điều chỉnh Trạng thái (ADJUSTMENT_MOVEMENT)",
+        "Điều chỉnh trạng thái tồn kho giữa Khả dụng, Bảo hành và Hư hỏng",
         this
     );
     adjustmentMovementWidget->setColumns(
-        {"Mã phiếu", "Lý do", "Ngày điều chuyển", "Đợt kiểm gốc", "Trạng thái", "Ghi chú"},
+        {"Mã phiếu", "Lý do", "Ngày điều chỉnh", "Đợt kiểm gốc", "Trạng thái", "Ghi chú"},
         {"adjustment_movement.adjust_code", "adjustment_movement.reason", "adjustment_movement.adjusted_at", "adjustment_movement.source_code", "adjustment_movement.status", "adjustment_movement.note"}
     );
     adjustmentMovementWidget->setFilterColumns({
-        {"Mã phiếu (adjust_code)", "adjust_code", FilterType::EXACT_TEXT, {}},
-        {"Lý do điều chuyển", "reason", FilterType::SELECT_OR_TYPE, {"STOCKTAKE_DIFF", "DAMAGED", "DATA_ERROR", "OTHER"}},
-        {"Đợt kiểm gốc (source_code)", "source_code", FilterType::EXACT_TEXT, {}},
-        {"Trạng thái", "status", FilterType::SELECT_OR_TYPE, {"PENDING", "PARTLY_COMPLETED", "COMPLETED", "CANCELLED"}}
+        {"Mã phiếu", "adjust_code", FilterType::EXACT_TEXT, {}},
+        {"Lý do điều chỉnh", "reason", FilterType::SELECT_OR_TYPE, {"STOCKTAKE_DIFF", "DAMAGED", "DATA_ERROR", "OTHER"}},
+        {"Đợt kiểm gốc", "source_code", FilterType::EXACT_TEXT, {}},
+        {"Trạng thái", "status", FilterType::SELECT_OR_TYPE, {"PENDING", "PROCESSING", "COMPLETED", "CANCELLED"}}
     });
     adjustmentMovementWidget->setRefreshCallback([this]() { refreshQuery(14); });
     adjustmentMovementWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
@@ -1204,7 +1265,7 @@ void MainWindow::setupPages()
         adjustmentMovementWidget->setData(results);
     });
     adjustmentMovementWidget->enableBottomDetailPanel(
-        "📦 Chọn một phiếu điều chuyển ở trên để xem chi tiết danh mục mặt hàng điều chuyển...",
+        "📦 Chọn một phiếu điều chỉnh ở trên để xem chi tiết danh mục mặt hàng điều chỉnh...",
         {"Mã phiếu", "Mã sản phẩm", "Tên sản phẩm", "Từ trạng thái", "Sang trạng thái", "SL Kế hoạch", "SL Thực tế"},
         {"adjust_code", "product_code", "product_name", "from_status", "to_status", "adjust_quantity", "actual_quantity"},
         [this](const Record* sel, QLabel* banner, QTableWidget* table) {
@@ -1599,13 +1660,14 @@ void MainWindow::setupPages()
     connect(auxSpecTableCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), [this](int idx) {
         if (idx < 0) return;
         QString tbl = auxSpecTableCombo->itemData(idx).toString();
-        // Đồng bộ danh sách Danh mục phụ trên Sidebar
-        for (int i = 0; i < auxSpecList->count(); ++i) {
-            if (auxSpecList->item(i)->data(Qt::UserRole).toString() == tbl) {
-                auxSpecList->blockSignals(true);
-                auxSpecList->setCurrentRow(i);
-                auxSpecList->blockSignals(false);
-                break;
+        if (auxSpecList) {
+            for (int i = 0; i < auxSpecList->count(); ++i) {
+                if (auxSpecList->item(i)->data(Qt::UserRole).toString() == tbl) {
+                    auxSpecList->blockSignals(true);
+                    auxSpecList->setCurrentRow(i);
+                    auxSpecList->blockSignals(false);
+                    break;
+                }
             }
         }
         loadAuxSpecData(tbl);
@@ -1654,10 +1716,10 @@ void MainWindow::setupPages()
         {"customer.customer_code", "customer.name", "individual_info.phone_number", "individual_info.email"}
     );
     individualCustomerWidget->setFilterColumns({
-        {"Mã khách hàng (customer_code)", "customer_code", FilterType::EXACT_TEXT, {}},
-        {"Tên khách hàng (name)", "name", FilterType::EXACT_TEXT, {}},
-        {"Số điện thoại (phone_number)", "phone_number", FilterType::EXACT_TEXT, {}},
-        {"Email (email)", "email", FilterType::EXACT_TEXT, {}}
+        {"Mã khách hàng", "customer_code", FilterType::EXACT_TEXT, {}},
+        {"Tên khách hàng", "name", FilterType::EXACT_TEXT, {}},
+        {"Số điện thoại", "phone_number", FilterType::EXACT_TEXT, {}},
+        {"Email", "email", FilterType::EXACT_TEXT, {}}
     });
     individualCustomerWidget->setRefreshCallback([this]() { refreshQuery(26); });
     individualCustomerWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
@@ -1677,19 +1739,20 @@ void MainWindow::setupPages()
     // ========================================================
     businessCustomerWidget = new QueryTableWidget(
         "Khách hàng Doanh nghiệp / Đối tác (BUSINESS_CUSTOMER)",
-        "Danh sách khách hàng doanh nghiệp kèm mã số thuế và thông tin liên hệ - Rule 9.4",
+        "Danh sách khách hàng doanh nghiệp kèm mã số thuế, địa chỉ và thông tin liên hệ - Rule 9.4",
         this
     );
     businessCustomerWidget->setColumns(
-        {"Mã đối tác / DN", "Tên doanh nghiệp", "Mã số thuế", "Số điện thoại", "Email"},
-        {"customer.customer_code", "customer.name", "business_info.tax_code", "business_info.phone_number", "business_info.email"}
+        {"Mã đối tác / DN", "Tên doanh nghiệp", "Mã số thuế", "Địa chỉ", "Số điện thoại", "Email"},
+        {"customer.customer_code", "customer.name", "business_info.tax_code", "business_info.address", "business_info.phone_number", "business_info.email"}
     );
     businessCustomerWidget->setFilterColumns({
-        {"Mã đối tác / DN (customer_code)", "customer_code", FilterType::EXACT_TEXT, {}},
-        {"Tên doanh nghiệp (name)", "name", FilterType::EXACT_TEXT, {}},
-        {"Mã số thuế (tax_code)", "tax_code", FilterType::EXACT_TEXT, {}},
-        {"Số điện thoại (phone_number)", "phone_number", FilterType::EXACT_TEXT, {}},
-        {"Email (email)", "email", FilterType::EXACT_TEXT, {}}
+        {"Mã đối tác / DN", "customer_code", FilterType::EXACT_TEXT, {}},
+        {"Tên doanh nghiệp", "name", FilterType::EXACT_TEXT, {}},
+        {"Mã số thuế", "tax_code", FilterType::EXACT_TEXT, {}},
+        {"Địa chỉ", "address", FilterType::EXACT_TEXT, {}},
+        {"Số điện thoại", "phone_number", FilterType::EXACT_TEXT, {}},
+        {"Email", "email", FilterType::EXACT_TEXT, {}}
     });
     businessCustomerWidget->setRefreshCallback([this]() { refreshQuery(27); });
     businessCustomerWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
@@ -1775,291 +1838,57 @@ void MainWindow::loadAuxSpecData(const QString& tableName)
 
 void MainWindow::setupSidebar()
 {
-    // 1. Warehouse List (11 bảng kho hàng)
-    warehouseList->addItem("📊 1. Tồn kho Sản phẩm (PRODUCT_QUANTITY)");
-    warehouseList->addItem("🏷️ 2. Danh sách Unit / Serial (UNIT_INVENTORY)");
-    warehouseList->addItem("📜 3. Lịch sử trạng thái Unit (STATUS_HISTORY)");
-
-    // Phân hệ Nhập kho: Hub & Chi tiết toàn màn hình
-    auto* inHubItem = new QListWidgetItem("📥 4. Quản lý Đơn Nhập kho (INBOUND HUB)", warehouseList);
-    QFont inHubFont = inHubItem->font();
-    inHubFont.setBold(true);
-    inHubItem->setFont(inHubFont);
-
-    auto* inDetailItem = new QListWidgetItem("      ↳ 5. Chi tiết Đơn nhập (Toàn màn hình)", warehouseList);
-    inDetailItem->setForeground(QColor("#94a3b8"));
-
-    auto* dlvItem = new QListWidgetItem("      ↳ 6. Đợt Nhận hàng (Toàn màn hình)", warehouseList);
-    dlvItem->setForeground(QColor("#94a3b8"));
-
-    auto* dlvDetailItem = new QListWidgetItem("      ↳ 7. Chi tiết Nhận hàng (Toàn màn hình)", warehouseList);
-    dlvDetailItem->setForeground(QColor("#94a3b8"));
-
-    // Phân hệ Xuất kho: Hub & Chi tiết toàn màn hình
-    auto* outHubItem = new QListWidgetItem("📤 8. Quản lý Đơn Xuất kho (OUTBOUND HUB)", warehouseList);
-    outHubItem->setFont(inHubFont);
-
-    auto* outDetailItem = new QListWidgetItem("      ↳ 9. Chi tiết Đơn xuất (Toàn màn hình)", warehouseList);
-    outDetailItem->setForeground(QColor("#94a3b8"));
-
-    auto* shipItem = new QListWidgetItem("      ↳ 10. Đợt Xuất hàng (Toàn màn hình)", warehouseList);
-    shipItem->setForeground(QColor("#94a3b8"));
-
-    auto* shipDetailItem = new QListWidgetItem("      ↳ 11. Chi tiết Xuất hàng (Toàn màn hình)", warehouseList);
-    shipDetailItem->setForeground(QColor("#94a3b8"));
-
-    // Phân hệ Kiểm kho & Điều chuyển
-    auto* chkHubItem = new QListWidgetItem("📋 12. Quản lý Đợt Kiểm kho (INVENTORY CHECK)", warehouseList);
-    chkHubItem->setFont(inHubFont);
-
-    auto* chkQuanItem = new QListWidgetItem("      ↳ 13. Chi tiết Số lượng Kiểm kê (Toàn màn hình)", warehouseList);
-    chkQuanItem->setForeground(QColor("#94a3b8"));
-
-    auto* chkUnitItem = new QListWidgetItem("      ↳ 14. Chi tiết Linh kiện Kiểm kê (Toàn màn hình)", warehouseList);
-    chkUnitItem->setForeground(QColor("#94a3b8"));
-
-    auto* adjHubItem = new QListWidgetItem("🔄 15. Quản lý Phiếu Điều chuyển (ADJUSTMENT MOVEMENT)", warehouseList);
-    adjHubItem->setFont(inHubFont);
-
-    auto* adjDetailItem = new QListWidgetItem("      ↳ 16. Chi tiết Điều chuyển Trạng thái (Toàn màn hình)", warehouseList);
-    adjDetailItem->setForeground(QColor("#94a3b8"));
-
-    warehouseList->addItem("📜 17. Lịch sử đổi trạng thái bán (IS_SOLD_CHANGING)");
-
-    // 2. Category List (8 bảng danh mục sản phẩm tách biệt - Rule 9.2)
-    categoryList->addItem("⚡ 1. Bộ vi xử lý (CPU)");
-    categoryList->addItem("🎮 2. Card màn hình (GPU)");
-    categoryList->addItem("🖲️ 3. Bo mạch chủ (Mainboard)");
-    categoryList->addItem("💾 4. Bộ nhớ trong (RAM)");
-    categoryList->addItem("💿 5. Ổ cứng thể rắn (SSD)");
-    categoryList->addItem("🔌 6. Nguồn máy tính (PSU)");
-    categoryList->addItem("❄️ 7. Tản nhiệt làm mát (Cooling)");
-    categoryList->addItem("🖥️ 8. Vỏ máy tính (Case)");
-
-    // 3. Customer List (Khách hàng tách riêng cá nhân & doanh nghiệp - Rule 9.4)
-    customerList->addItem("👤 1. Khách hàng Cá nhân (Individual)");
-    customerList->addItem("🏢 2. Khách hàng Doanh nghiệp (Business)");
-
-    // 4. Auxiliary Specs & Metadata List (Danh mục phụ - Rule 9.3)
-    auto addAuxItem = [this](const QString& label, const QString& tableCode) {
-        auto* item = new QListWidgetItem(label, auxSpecList);
-        item->setData(Qt::UserRole, tableCode);
-    };
-
-    addAuxItem("🏷️ Hãng sản xuất (brand)", "brand");
-    addAuxItem("📁 Danh mục chính (category)", "category");
-    addAuxItem("⚡ CPU - Socket (cpu_socket)", "cpu_socket");
-    addAuxItem("⚡ CPU - Phân khúc (cpu_tier)", "cpu_tier");
-    addAuxItem("⚡ CPU - Dòng (cpu_series)", "cpu_series");
-    addAuxItem("🎮 GPU - Dòng (gpu_series)", "gpu_series");
-    addAuxItem("🎮 GPU - Hãng chip (gpu_producer)", "gpu_producer");
-    addAuxItem("🎮 GPU - VRAM (gpu_vram)", "gpu_vram");
-    addAuxItem("🖲️ Mainboard - Hỗ trợ CPU (mainboard_cpu_support)", "mainboard_cpu_support");
-    addAuxItem("🖲️ Mainboard - Socket (mainboard_socket)", "mainboard_socket");
-    addAuxItem("🖲️ Mainboard - Kích cỡ (mainboard_size)", "mainboard_size");
-    addAuxItem("🖲️ Mainboard - Chipset (mainboard_chipset)", "mainboard_chipset");
-    addAuxItem("🖲️ Mainboard - Chuẩn RAM (mainboard_ram_support)", "mainboard_ram_support");
-    addAuxItem("💾 RAM - Thế hệ (ram_generation)", "ram_generation");
-    addAuxItem("💾 RAM - Dung lượng (ram_capacity)", "ram_capacity");
-    addAuxItem("💾 RAM - Tốc độ Bus (ram_bus)", "ram_bus");
-    addAuxItem("💿 SSD - Loại (ssd_type)", "ssd_type");
-    addAuxItem("💿 SSD - Giao tiếp (ssd_gen)", "ssd_gen");
-    addAuxItem("💿 SSD - Dung lượng (ssd_capacity)", "ssd_capacity");
-    addAuxItem("🔌 PSU - Chuẩn hiệu suất (psu_quality)", "psu_quality");
-    addAuxItem("🔌 PSU - Công suất (psu_capacity)", "psu_capacity");
-    addAuxItem("🔌 PSU - Kích cỡ (psu_size)", "psu_size");
-    addAuxItem("❄️ Cooling - Loại tản nhiệt (cooling_type)", "cooling_type");
-    addAuxItem("🖥️ Case - Kích cỡ vỏ (case_size)", "case_size");
-    addAuxItem("📑 Đơn nhập - Loại (inbound_type)", "inbound_type");
-    addAuxItem("📑 Đơn nhập - Trạng thái (inbound_status)", "inbound_status");
-    addAuxItem("📑 Đợt nhận - Trạng thái (delivery_status)", "delivery_status");
-    addAuxItem("📑 Đơn xuất - Loại (outbound_type)", "outbound_type");
-    addAuxItem("📑 Đơn xuất - Trạng thái (outbound_status)", "outbound_status");
-    addAuxItem("📑 Xuất kiện - Trạng thái (shipment_status)", "shipment_status");
-    addAuxItem("📑 Linh kiện - Trạng thái (unit_status)", "unit_status");
-
-    // 5. Periodic Report Item (Section 9)
-    reportList->addItem("📈 Báo cáo Xuất - Nhập - Tồn Định Kỳ");
-
-    // Connect domain tabs
-    connect(tabWarehouseBtn, &QPushButton::clicked, [this]() {
-        switchToDomain(0);
-    });
-    connect(tabCategoryBtn, &QPushButton::clicked, [this]() {
-        switchToDomain(1);
-    });
-    connect(tabCustomerBtn, &QPushButton::clicked, [this]() {
-        switchToDomain(2);
-    });
-    connect(tabAuxSpecBtn, &QPushButton::clicked, [this]() {
-        switchToDomain(3);
-    });
-    connect(tabReportBtn, &QPushButton::clicked, [this]() {
-        switchToDomain(4);
-    });
-    connect(reportList, &QListWidget::currentRowChanged, [this](int row) {
-        if (row >= 0) {
-            selectReportQuery();
-        }
-    });
-
-    // Connect list selection changes
-    connect(warehouseList, &QListWidget::currentRowChanged, [this](int row) {
-        if (row >= 0 && row < 17) {
-            selectWarehouseQuery(row);
-        }
-    });
-
-    connect(categoryList, &QListWidget::currentRowChanged, [this](int row) {
-        if (row >= 0 && row < 8) {
-            selectCategoryQuery(row);
-        }
-    });
-
-    connect(customerList, &QListWidget::currentRowChanged, [this](int row) {
-        if (row >= 0 && row < 2) {
-            selectCustomerQuery(row);
-        }
-    });
-
-    connect(auxSpecList, &QListWidget::currentRowChanged, [this](int row) {
-        if (row >= 0 && row < auxSpecList->count()) {
-            QString tbl = auxSpecList->item(row)->data(Qt::UserRole).toString();
-            selectAuxSpecQuery(tbl);
-        }
-    });
+    // Replaced by topNavBar
 }
 
 void MainWindow::switchToDomain(int domainIndex)
 {
-    sidebarStack->setCurrentIndex(domainIndex);
-
-    auto setTabStyle = [](QPushButton* btn, bool active) {
-        if (active) {
-            btn->setStyleSheet(
-                "QPushButton {"
-                "  background-color: #2563eb;"
-                "  color: #ffffff;"
-                "  font-weight: 600;"
-                "  border: none;"
-                "  border-radius: 6px;"
-                "  padding: 7px 4px;"
-                "  font-size: 11px;"
-                "}"
-            );
-        } else {
-            btn->setStyleSheet(
-                "QPushButton {"
-                "  background-color: #1e293b;"
-                "  color: #94a3b8;"
-                "  font-weight: 500;"
-                "  border: 1px solid #334155;"
-                "  border-radius: 6px;"
-                "  padding: 7px 4px;"
-                "  font-size: 11px;"
-                "}"
-                "QPushButton:hover { background-color: #334155; color: #ffffff; }"
-            );
-        }
-    };
-
-    setTabStyle(tabWarehouseBtn, domainIndex == 0);
-    setTabStyle(tabCategoryBtn, domainIndex == 1);
-    setTabStyle(tabCustomerBtn, domainIndex == 2);
-    setTabStyle(tabAuxSpecBtn, domainIndex == 3);
-    setTabStyle(tabReportBtn, domainIndex == 4);
-
     if (domainIndex == 0) {
-        if (warehouseList->currentRow() < 0) {
-            warehouseList->setCurrentRow(0);
-        } else {
-            selectWarehouseQuery(warehouseList->currentRow());
-        }
+        selectWarehouseQuery(0);
     } else if (domainIndex == 1) {
-        if (categoryList->currentRow() < 0) {
-            categoryList->setCurrentRow(0);
-        } else {
-            selectCategoryQuery(categoryList->currentRow());
-        }
+        selectCategoryQuery(0);
     } else if (domainIndex == 2) {
-        if (customerList->currentRow() < 0) {
-            customerList->setCurrentRow(0);
-        } else {
-            selectCustomerQuery(customerList->currentRow());
-        }
+        selectCustomerQuery(0);
     } else if (domainIndex == 3) {
-        if (auxSpecList->currentRow() < 0) {
-            auxSpecList->setCurrentRow(0);
-        } else {
-            QString tbl = auxSpecList->currentItem()->data(Qt::UserRole).toString();
-            selectAuxSpecQuery(tbl);
-        }
+        selectAuxSpecQuery("brand");
     } else if (domainIndex == 4) {
-        if (reportList->currentRow() < 0) {
-            reportList->setCurrentRow(0);
-        } else {
-            selectReportQuery();
-        }
+        selectReportQuery();
     }
 }
 
 void MainWindow::selectWarehouseQuery(int row)
 {
     if (row < 0 || row >= 17) return;
-    if (sidebarStack->currentIndex() != 0) {
-        switchToDomain(0);
-    }
-    warehouseList->blockSignals(true);
-    warehouseList->setCurrentRow(row);
-    warehouseList->blockSignals(false);
-
     stackedWidget->setCurrentIndex(row);
     refreshQuery(row);
+    if (row == 0) setActiveNavButton(navWarehouseBtn);
+    else if (row == 3) setActiveNavButton(navInboundBtn);
+    else if (row == 7) setActiveNavButton(navOutboundBtn);
+    else if (row == 11) setActiveNavButton(navCheckBtn);
+    else if (row == 14) setActiveNavButton(navAdjustmentBtn);
+    else setActiveNavButton(navMoreBtn);
 }
 
 void MainWindow::selectCategoryQuery(int row)
 {
     if (row < 0 || row >= 8) return;
-    if (sidebarStack->currentIndex() != 1) {
-        switchToDomain(1);
-    }
-    categoryList->blockSignals(true);
-    categoryList->setCurrentRow(row);
-    categoryList->blockSignals(false);
-
     stackedWidget->setCurrentIndex(17 + row);
     refreshQuery(17 + row);
+    setActiveNavButton(navProductBtn);
 }
 
 void MainWindow::selectCustomerQuery(int row)
 {
     if (row < 0 || row >= 2) return;
-    if (sidebarStack->currentIndex() != 2) {
-        switchToDomain(2);
-    }
-    customerList->blockSignals(true);
-    customerList->setCurrentRow(row);
-    customerList->blockSignals(false);
-
     stackedWidget->setCurrentIndex(26 + row);
     refreshQuery(26 + row);
+    setActiveNavButton(navCustomerBtn);
 }
 
 void MainWindow::selectAuxSpecQuery(const QString& tableName)
 {
-    if (sidebarStack->currentIndex() != 3) {
-        switchToDomain(3);
-    }
-    for (int i = 0; i < auxSpecList->count(); ++i) {
-        if (auxSpecList->item(i)->data(Qt::UserRole).toString() == tableName) {
-            auxSpecList->blockSignals(true);
-            auxSpecList->setCurrentRow(i);
-            auxSpecList->blockSignals(false);
-            break;
-        }
-    }
-
     stackedWidget->setCurrentIndex(25);
+    setActiveNavButton(navMoreBtn);
 
     if (auxSpecTableCombo) {
         for (int i = 0; i < auxSpecTableCombo->count(); ++i) {
@@ -2232,14 +2061,8 @@ void MainWindow::refreshQuery(int index)
 
 void MainWindow::selectReportQuery()
 {
-    if (sidebarStack->currentIndex() != 4) {
-        switchToDomain(4);
-    }
-    reportList->blockSignals(true);
-    reportList->setCurrentRow(0);
-    reportList->blockSignals(false);
-
     stackedWidget->setCurrentWidget(reportPageWidget);
+    setActiveNavButton(navReportBtn);
 
     // Rule 9.6: Ban đầu không hiển thị thông tin gì cả; chỉ hiển thị khi đã cache và dữ liệu chưa bị thay đổi
     if (reportDataCached) {

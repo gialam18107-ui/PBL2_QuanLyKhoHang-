@@ -151,9 +151,10 @@ OrderDialog::OrderDialog(HubType type, Database* database, QWidget* parent)
       multiBatchStatusLabel(nullptr)
 {
     setWindowTitle(hubType == HubType::INBOUND
-        ? "Tạo Đơn Nhập Kho & Đợt Giao Nhận (Inbound Order Wizard)"
-        : "Tạo Đơn Xuất Kho & Đợt Xuất Hàng (Outbound Order Wizard)");
+        ? "Tạo Đơn Nhập Kho & Đợt Giao Nhận"
+        : "Tạo Đơn Xuất Kho & Đợt Xuất Hàng");
     setWindowFlags(windowFlags() | Qt::WindowMaximizeButtonHint | Qt::WindowMinimizeButtonHint);
+    setWindowState(Qt::WindowMaximized);
     if (parent) {
         resize(parent->size());
     } else {
@@ -500,7 +501,7 @@ QWidget* OrderDialog::createStep2Widget()
     bottomActionLayout->addWidget(addItemBtn);
 
     if (hubType == HubType::OUTBOUND) {
-        pickUnitsBtn = new QPushButton("📦 Chọn Unit từ kho...", addBox);
+        pickUnitsBtn = new QPushButton("📦 Chọn đơn vị từ kho...", addBox);
         pickUnitsBtn->setCursor(Qt::PointingHandCursor);
         pickUnitsBtn->setMinimumHeight(34);
         pickUnitsBtn->setStyleSheet(
@@ -508,7 +509,7 @@ QWidget* OrderDialog::createStep2Widget()
             "QPushButton:hover { background-color: #6d28d9; }"
             "QPushButton:pressed { background-color: #5b21b6; }"
         );
-        pickUnitsBtn->setToolTip("Chọn cụ thể từng Unit có sẵn trong kho cho sản phẩm này");
+        pickUnitsBtn->setToolTip("Chọn cụ thể từng đơn vị có sẵn trong kho cho sản phẩm này");
         connect(pickUnitsBtn, &QPushButton::clicked, this, &OrderDialog::onPickUnitsForProduct);
         bottomActionLayout->addWidget(pickUnitsBtn);
     } else {
@@ -956,7 +957,6 @@ void OrderDialog::populateOrderTypes()
         typeCombo->addItem("SELLING — Xuất bán hàng thương mại (trừ Tồn khả dụng)", "SELLING");
         typeCombo->addItem("WARRANTY_RETURN — Xuất trả hàng bảo hành / lỗi cho hãng", "WARRANTY_RETURN");
         typeCombo->addItem("WARRANTY_REPLACEMENT_TO_CUSTOMER — Xuất đổi bảo hành cho khách", "WARRANTY_REPLACEMENT_TO_CUSTOMER");
-        typeCombo->addItem("RETURN_TO_SUPPLIER — Xuất trả lại hàng cho Nhà cung cấp", "RETURN_TO_SUPPLIER");
         typeCombo->addItem("ADJUSTMENT_OUT — Điều chỉnh giảm kiểm kê kho", "ADJUSTMENT_OUT");
     }
 }
@@ -1410,6 +1410,21 @@ void OrderDialog::onAddLineItem()
         lineItems.push_back(OrderLineItem{pid, pCode, pName, avail, wrt, scr, addQty, {}});
     }
 
+    if (hubType == HubType::OUTBOUND) {
+        QString curType = typeCombo ? typeCombo->currentData().toString() : "";
+        int eligibleStock = avail;
+        if (curType == "WARRANTY_RETURN") eligibleStock = wrt + scr;
+        else if (curType == "WARRANTY_REPLACEMENT_TO_CUSTOMER") eligibleStock = avail + wrt;
+        else if (curType == "ADJUSTMENT_OUT") eligibleStock = avail + wrt + scr;
+
+        if (newTotalQty > eligibleStock) {
+            QMessageBox::warning(this, "Cảnh báo vượt tồn kho",
+                QString("⚠️ Cảnh báo: [%1] đặt xuất %2 vượt quá tồn kho khả dụng (%3).\n"
+                        "Hệ thống vẫn ghi nhận đơn hàng theo yêu cầu, nhưng khi xuất kho thực tế cần có đủ hàng.")
+                    .arg(pCode).arg(newTotalQty).arg(eligibleStock));
+        }
+    }
+
     quantitySpin->setValue(1);
     renderLineItems();
     renderMultiBatchTable();
@@ -1474,8 +1489,8 @@ void OrderDialog::onPickUnitsForProduct()
 
         renderLineItems();
         renderMultiBatchTable();
-        QMessageBox::information(this, "Đã chọn Unit thành công",
-            QString("Đã chọn %1 Unit cho sản phẩm [%2] %3.\nCác Serial này sẽ tự động gán vào đợt xuất khi đơn được lưu.")
+        QMessageBox::information(this, "Đã chọn đơn vị thành công",
+            QString("Đã chọn %1 đơn vị cho sản phẩm [%2] %3.\nCác Serial này sẽ tự động gán vào đợt xuất khi đơn được lưu.")
                 .arg(chosen.size()).arg(pCode, pName));
     }
 }
@@ -1504,11 +1519,27 @@ void OrderDialog::renderLineItems()
         );
         QString qtyStr = QString::number(item.orderedQty);
         if (!item.assignedSerials.empty()) {
-            qtyStr += QString(" (%1 unit đã chọn)").arg(item.assignedSerials.size());
+            qtyStr += QString(" (%1 đơn vị đã chọn)").arg(item.assignedSerials.size());
         }
+
+        QString curType = typeCombo ? typeCombo->currentData().toString() : "";
+        int eligibleStock = item.availQty;
+        if (curType == "WARRANTY_RETURN") eligibleStock = item.warrantyQty + item.scrappedQty;
+        else if (curType == "WARRANTY_REPLACEMENT_TO_CUSTOMER") eligibleStock = item.availQty + item.warrantyQty;
+        else if (curType == "ADJUSTMENT_OUT") eligibleStock = item.availQty + item.warrantyQty + item.scrappedQty;
+
+        bool isOverStock = (hubType == HubType::OUTBOUND && item.orderedQty > eligibleStock);
+        if (isOverStock) {
+            qtyStr += QString(" ⚠️ (Vượt tồn: %1 > %2)").arg(item.orderedQty).arg(eligibleStock);
+        }
+
         auto* itQty = new QTableWidgetItem(qtyStr);
         itQty->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
         itQty->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
+        if (isOverStock) {
+            itQty->setForeground(QColor("#dc2626"));
+            itQty->setToolTip(QString("Cảnh báo: Số lượng đặt xuất (%1) vượt quá tồn kho cho phép (%2)!").arg(item.orderedQty).arg(eligibleStock));
+        }
 
         itemsTable->setItem(r, 0, itCode);
         itemsTable->setItem(r, 1, itName);
@@ -1587,6 +1618,32 @@ void OrderDialog::onSaveOrder()
         goToStep(1);
         productCombo->setFocus();
         return;
+    }
+
+    if (hubType == HubType::OUTBOUND) {
+        QStringList overWarnings;
+        for (const auto& item : lineItems) {
+            int eligibleStock = item.availQty;
+            if (txnType == "WARRANTY_RETURN") eligibleStock = item.warrantyQty + item.scrappedQty;
+            else if (txnType == "WARRANTY_REPLACEMENT_TO_CUSTOMER") eligibleStock = item.availQty + item.warrantyQty;
+            else if (txnType == "ADJUSTMENT_OUT") eligibleStock = item.availQty + item.warrantyQty + item.scrappedQty;
+
+            if (item.orderedQty > eligibleStock) {
+                overWarnings.append(QString("• <b>[%1] %2</b>: Đặt xuất %3 > Tồn kho cho phép %4")
+                    .arg(item.productCode, item.productName)
+                    .arg(item.orderedQty).arg(eligibleStock));
+            }
+        }
+        if (!overWarnings.isEmpty()) {
+            auto ans = QMessageBox::warning(
+                this, "Cảnh báo vượt tồn kho",
+                QString("<b>CẢNH BÁO:</b> Có sản phẩm trong đơn xuất lớn hơn tồn kho cho phép trong kho:<br><br>%1<br><br>"
+                        "Bạn có chắc chắn vẫn muốn tiếp tục lưu đơn xuất này không?")
+                    .arg(overWarnings.join("<br>")),
+                QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes
+            );
+            if (ans != QMessageBox::Yes) return;
+        }
     }
 
     QString orderDate = orderDateEdit->date().toString("yyyy-MM-dd");
@@ -1863,7 +1920,7 @@ TransactionStatusDialog::TransactionStatusDialog(
             statuses = {"PENDING", "PROCESSING"};
         }
     } else if (initialStatus == "PROCESSING" || initialStatus == "PARTIALLY_CONFIRMED") {
-        statuses = {"PROCESSING", "PARTIALLY_CONFIRMED", "CONFIRMED"};
+        statuses = {"PROCESSING", "CONFIRMED"};
     } else {
         statuses = {initialStatus};
     }
@@ -1886,11 +1943,11 @@ TransactionStatusDialog::TransactionStatusDialog(
     if (initialStatus == "PENDING") {
         if (!hasProgress) {
             tipText = isAdj
-                ? "ℹ️ <b>Quy tắc đơn điều chỉnh (Rule 5.6):</b> Đơn đang ở trạng thái PENDING và chưa phát sinh giao nhận nên được phép chuyển sang <b>CANCELLED</b> (Hủy đơn) hoặc bắt đầu <b>PROCESSING</b>."
+                ? "ℹ️ <b>Quy tắc đơn điều chỉnh:</b> Đơn đang ở trạng thái PENDING và chưa phát sinh giao nhận nên được phép chuyển sang <b>CANCELLED</b> (Hủy đơn) hoặc bắt đầu <b>PROCESSING</b>."
                 : "ℹ️ <b>Quy trình chuyển trạng thái:</b> Đơn đang ở trạng thái PENDING và chưa phát sinh giao nhận/vận chuyển thực tế. Có thể chọn <b>PROCESSING</b> để bắt đầu xử lý hoặc chọn <b>CANCELLED</b> để hủy bỏ đơn hàng.";
         } else {
             tipText = isAdj
-                ? "ℹ️ <b>Quy tắc đơn điều chỉnh (Rule 5.6):</b> Đơn đã phát sinh ghi nhận linh kiện, không thể hủy sang CANCELLED."
+                ? "ℹ️ <b>Quy tắc đơn điều chỉnh:</b> Đơn đã phát sinh ghi nhận linh kiện, không thể hủy sang CANCELLED."
                 : "ℹ️ <b>Quy trình chuyển trạng thái:</b> Đơn đã phát sinh ghi nhận linh kiện/vận chuyển thực tế, không thể hủy sang CANCELLED. Chỉ có thể chọn <b>PROCESSING</b>.";
         }
     } else if (initialStatus == "PROCESSING" || initialStatus == "PARTIALLY_CONFIRMED") {
@@ -1910,7 +1967,7 @@ TransactionStatusDialog::TransactionStatusDialog(
     bool isCompleted = (initialStatus == "COMPLETED" || initialStatus == "CONFIRMED" || initialStatus == "CANCELLED");
     if (isCompleted) {
         auto* warnLbl = new QLabel(
-            QString("🔒 <b>Đơn hàng đã ở trạng thái hoàn tất (%1).</b><br>Toàn bộ thông tin đơn và trạng thái đã bị khóa vĩnh viễn (Rule 5.3, Rule 4.5, Rule 5.6).")
+            QString("🔒 <b>Đơn hàng đã ở trạng thái hoàn tất (%1).</b><br>Toàn bộ thông tin đơn và trạng thái đã bị khóa vĩnh viễn.")
                 .arg(initialStatus),
             this
         );
@@ -2023,7 +2080,7 @@ CompletionConfirmationDialog::CompletionConfirmationDialog(
                     "• <b>Số lượng đã thực tế xử lý:</b> <span style='color:#16a34a; font-weight:bold;'>%3</span> cái<br>"
                     "• <b>Số lượng kế hoạch đặt ra:</b> <span style='color:#2563eb; font-weight:bold;'>%4</span> cái<br>"
                     "• <b>Số lượng còn thiếu:</b> <span style='color:#dc2626; font-weight:bold;'>%5</span> cái<br><br>"
-                    "<b>Lưu ý quan trọng (Rule 5.6 & Logistics Lock):</b><br>"
+                    "<b>Lưu ý quan trọng:</b><br>"
                     "• Sau khi xác nhận hoàn thành, đơn hàng sẽ được đóng lại vĩnh viễn.<br>"
                     "• Toàn bộ các đợt vận chuyển (delivery / shipment) liên quan sẽ <b>BỊ KHÓA VĨNH VIỄN</b>: không thể nhận/xuất thêm hoặc chỉnh sửa trạng thái linh kiện nữa.")
                 .arg(itemDescription, itemCode)
@@ -2046,7 +2103,7 @@ CompletionConfirmationDialog::CompletionConfirmationDialog(
 
         auto* msgLabel = new QLabel(
             QString("Bạn có chắc chắn muốn chuyển %1 <b>[%2]</b> sang trạng thái <b>HOÀN THÀNH (CONFIRMED / COMPLETED)</b>?<br><br>"
-                    "<b>Lưu ý quan trọng (Rule 4.5 & Rule 5.6):</b><br>"
+                    "<b>Lưu ý quan trọng:</b><br>"
                     "• Sau khi hoàn thành, toàn bộ các đợt vận chuyển liên quan sẽ bị <b>KHÓA VĨNH VIỄN</b>.<br>"
                     "• Bạn sẽ <b>KHÔNG THỂ</b> nhận thêm, xuất thêm hoặc thay đổi trạng thái bất kỳ linh kiện nào nữa.")
                 .arg(itemDescription, itemCode),
@@ -2106,7 +2163,7 @@ CancellationConfirmationDialog::CancellationConfirmationDialog(
 
     auto* msgLabel = new QLabel(
         QString("Bạn đang yêu cầu chuyển %1 <b>[%2]</b> sang trạng thái <b>HỦY (CANCELLED)</b>.<br><br>"
-                "<b>Lưu ý quan trọng (Rule 5.6):</b><br>"
+                "<b>Lưu ý quan trọng:</b><br>"
                 "• Đơn hàng sau khi hủy sẽ bị <b>KHÓA VĨNH VIỄN</b>, không thể mở lại hay chuyển ngược trạng thái.<br>"
                 "• Toàn bộ các đợt giao nhận / xuất hàng (delivery / shipment) chưa hoàn tất thuộc đơn này cũng sẽ tự động chuyển sang trạng thái <b>CANCELLED</b>.<br>"
                 "• Thao tác này chỉ được phép thực hiện khi đơn chưa có bất kỳ đợt giao nhận hoặc xuất hàng thực tế nào.")
@@ -2199,7 +2256,7 @@ LogisticsUpdateDialog::LogisticsUpdateDialog(
     titleLbl->setStyleSheet("font-size: 16px; font-weight: 700; color: #0f172a;");
     mainLayout->addWidget(titleLbl);
 
-    auto* group = new QGroupBox("Thông tin đợt vận chuyển & thời gian thực tế (Rule 5.3)", this);
+    auto* group = new QGroupBox("Thông tin đợt vận chuyển & thời gian thực tế", this);
     auto* grid = new QGridLayout(group);
     grid->setHorizontalSpacing(14);
     grid->setVerticalSpacing(9);
@@ -2283,7 +2340,7 @@ LogisticsUpdateDialog::LogisticsUpdateDialog(
     bool isCompleted = (initialStatusStr == "COMPLETED" || initialStatusStr == "CANCELLED");
     if (isCompleted) {
         auto* warnLbl = new QLabel(
-            QString("🔒 <b>Đợt giao nhận đã ở trạng thái hoàn tất (%1).</b><br>Toàn bộ thông tin và trạng thái đợt này đã bị khóa vĩnh viễn (Rule 4.5, Rule 5.3).")
+            QString("🔒 <b>Đợt giao nhận đã ở trạng thái hoàn tất (%1).</b><br>Toàn bộ thông tin và trạng thái đợt này đã bị khóa vĩnh viễn.")
                 .arg(initialStatusStr),
             this
         );
@@ -2943,7 +3000,7 @@ OutboundProductUnitPickerDialog::OutboundProductUnitPickerDialog(
     : QDialog(parent), db(database), prodId(productId), prodCode(productCode), prodName(productName), targetQty(targetQuantity),
       txnType(transactionType), excludeList(excludedSerials), sourceCode(srcCode)
 {
-    setWindowTitle(QString("Chọn Unit Xuất Kho: [%1] %2").arg(prodCode, prodName));
+    setWindowTitle(QString("Chọn đơn vị xuất kho: [%1] %2").arg(prodCode, prodName));
     setWindowFlags(windowFlags() | Qt::WindowMaximizeButtonHint | Qt::WindowMinimizeButtonHint);
     if (parent) resize(parent->size() * 0.85);
     else resize(850, 560);
@@ -2966,7 +3023,7 @@ void OutboundProductUnitPickerDialog::setupUI()
 
     QString headerText = QString("📦 <b>Sản phẩm:</b> [%1] %2").arg(prodCode, prodName);
     if (targetQty > 0) {
-        headerText += QString(" &nbsp;&nbsp;|&nbsp;&nbsp; <b>Cần chọn:</b> <span style='color: #2563eb;'>%1 unit</span>").arg(targetQty);
+        headerText += QString(" &nbsp;&nbsp;|&nbsp;&nbsp; <b>Cần chọn:</b> <span style='color: #2563eb;'>%1 đơn vị</span>").arg(targetQty);
     }
     if (!sourceCode.empty() && sourceCode.rfind("CHK-", 0) == 0) {
         headerText += QString(" &nbsp;&nbsp;|&nbsp;&nbsp; <b>Đợt kiểm kê:</b> <span style='color: #dc2626;'>%1 (Chỉ hiển thị linh kiện hao hụt)</span>").arg(QString::fromStdString(sourceCode));
@@ -2986,7 +3043,7 @@ void OutboundProductUnitPickerDialog::setupUI()
     filterBar->addWidget(searchInput, 1);
 
     if (targetQty > 0) {
-        quickSelectBtn = new QPushButton(QString("✓ Chọn nhanh %1 Unit").arg(targetQty), this);
+        quickSelectBtn = new QPushButton(QString("✓ Chọn nhanh %1 đơn vị").arg(targetQty), this);
         quickSelectBtn->setCursor(Qt::PointingHandCursor);
         quickSelectBtn->setStyleSheet("QPushButton { background-color: #f0fdf4; border: 1px solid #86efac; border-radius: 4px; padding: 5px 12px; font-weight: 600; color: #166534; } QPushButton:hover { background-color: #dcfce7; }");
         filterBar->addWidget(quickSelectBtn);
@@ -3015,7 +3072,7 @@ void OutboundProductUnitPickerDialog::setupUI()
     unitsTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
     mainLayout->addWidget(unitsTable, 1);
 
-    selectionCountLabel = new QLabel("Đã chọn: 0 unit (Kéo chuột hoặc nhấn Shift/Ctrl để chọn nhiều dòng).", this);
+    selectionCountLabel = new QLabel("Đã chọn: 0 đơn vị (Kéo chuột hoặc nhấn Shift/Ctrl để chọn nhiều dòng).", this);
     selectionCountLabel->setStyleSheet("font-weight: 600; color: #1e40af; font-size: 12px;");
     mainLayout->addWidget(selectionCountLabel);
 
@@ -3024,7 +3081,7 @@ void OutboundProductUnitPickerDialog::setupUI()
 
     cancelBtn = new QPushButton("Hủy bỏ", this);
     cancelBtn->setObjectName("cancelBtn");
-    confirmBtn = new QPushButton("🚀 Xác nhận chọn các Unit", this);
+    confirmBtn = new QPushButton("🚀 Xác nhận chọn", this);
     confirmBtn->setStyleSheet("QPushButton { background-color: #2563eb; color: #ffffff; border: none; border-radius: 6px; padding: 7px 18px; font-size: 13px; font-weight: 600; } QPushButton:hover { background-color: #1d4ed8; }");
 
     btnLayout->addWidget(cancelBtn);
@@ -3822,9 +3879,10 @@ UnitEntryDialog::UnitEntryDialog(
       simulationDialog(nullptr)
 {
     setWindowTitle(hubType == HubType::INBOUND
-        ? "Quản Lý Nhận Linh Kiện (Unit) - Đợt: " + batchCodeStr
-        : "Quản Lý Xuất Linh Kiện (Unit) - Đợt: " + batchCodeStr);
+        ? "Quản Lý Nhận Hàng - Đợt: " + batchCodeStr
+        : "Quản Lý Xuất Hàng - Đợt: " + batchCodeStr);
     setWindowFlags(windowFlags() | Qt::WindowMaximizeButtonHint | Qt::WindowMinimizeButtonHint);
+    setWindowState(Qt::WindowMaximized);
     if (parent) {
         resize(parent->size());
     } else {

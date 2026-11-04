@@ -225,7 +225,7 @@ namespace Schema
         auto table = new Table("individual_info");
         table->addColumn(Column("customer_id", DataType::INTEGER, 0, true, true, true, true));
         table->addColumn(Column("phone_number", DataType::VARCHAR, 50, false, true, true));
-        table->addColumn(Column("email", DataType::VARCHAR, 100, false, true, true));
+        table->addColumn(Column("email", DataType::VARCHAR, 100, false, true, false));
         table->addColumn(Column("next_code_no", DataType::INTEGER, 0, false, false, true, true));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_individual_info", "customer_id"));
@@ -242,9 +242,10 @@ namespace Schema
     {
         auto table = new Table("business_info");
         table->addColumn(Column("customer_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("phone_number", DataType::VARCHAR, 50, false, true, true));
-        table->addColumn(Column("email", DataType::VARCHAR, 100, false, true, true));
+        table->addColumn(Column("phone_number", DataType::VARCHAR, 50, false, true, false));
+        table->addColumn(Column("email", DataType::VARCHAR, 100, false, true, false));
         table->addColumn(Column("tax_code", DataType::VARCHAR, 50, false, true, true));
+        table->addColumn(Column("address", DataType::TEXT, 0, false, false, true));
         table->addColumn(Column("next_code_no", DataType::INTEGER, 0, false, false, true, true));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_business_info", "customer_id"));

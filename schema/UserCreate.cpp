@@ -379,7 +379,11 @@ namespace user_create
         Record rInfo;
         rInfo.set("customer_id", custId);
         rInfo.set("phone_number", phone);
-        rInfo.set("email", email);
+        if (email.empty()) {
+            rInfo.set("email", Value{});
+        } else {
+            rInfo.set("email", email);
+        }
         rInfo.set("next_code_no", newSeq + 1);
 
         OperationResult resInfo = db->insertRecord("individual_info", rInfo);
@@ -396,13 +400,14 @@ namespace user_create
         Database* db,
         const std::string& companyName,
         const std::string& taxCode,
+        const std::string& address,
         const std::string& phone,
         const std::string& email
     ) {
         if (!db) return OperationResult{false, "Cơ sở dữ liệu chưa được khởi tạo.", 0};
         if (companyName.empty()) return OperationResult{false, "Tên công ty/doanh nghiệp không được để trống.", 0};
         if (taxCode.empty()) return OperationResult{false, "Mã số thuế không được để trống.", 0};
-        if (phone.empty()) return OperationResult{false, "Số điện thoại không được để trống.", 0};
+        if (address.empty()) return OperationResult{false, "Địa chỉ doanh nghiệp không được để trống.", 0};
 
         Table* custTable = db->getTable("customer");
         Table* infoTable = db->getTable("business_info");
@@ -442,9 +447,18 @@ namespace user_create
 
         Record rInfo;
         rInfo.set("customer_id", custId);
-        rInfo.set("phone_number", phone);
-        rInfo.set("email", email);
+        if (phone.empty()) {
+            rInfo.set("phone_number", Value{});
+        } else {
+            rInfo.set("phone_number", phone);
+        }
+        if (email.empty()) {
+            rInfo.set("email", Value{});
+        } else {
+            rInfo.set("email", email);
+        }
         rInfo.set("tax_code", taxCode);
+        rInfo.set("address", address);
         rInfo.set("next_code_no", newSeq + 1);
 
         OperationResult resInfo = db->insertRecord("business_info", rInfo);
@@ -756,9 +770,12 @@ namespace user_create
             // Physical availability is enforced when dispatching units with serials.
         }
 
+        if (outboundType == "RETURN_TO_SUPPLIER" || outboundType == "RTS") {
+            return OperationResult{false, "Loại xuất kho RETURN_TO_SUPPLIER (RTS) không còn được hỗ trợ trong hệ thống.", 0};
+        }
+
         std::string typeCode = "SEL";
         if (outboundType == "ADJUSTMENT_OUT" || outboundType == "ADJ") typeCode = "ADJ";
-        else if (outboundType == "RETURN_TO_SUPPLIER" || outboundType == "RTS") typeCode = "RTS";
         else if (outboundType == "WARRANTY_RETURN" || outboundType == "WRT") typeCode = "WRT";
         else if (outboundType == "WARRANTY_REPLACEMENT_TO_CUSTOMER" || outboundType == "WRC") typeCode = "WRC";
 
@@ -1231,9 +1248,12 @@ namespace user_create
             }
         }
 
+        if (outboundType == "RETURN_TO_SUPPLIER" || outboundType == "RTS") {
+            return OperationResult{false, "Loại xuất kho RETURN_TO_SUPPLIER (RTS) không còn được hỗ trợ trong hệ thống.", 0};
+        }
+
         std::string typeCode = "SEL";
         if (outboundType == "ADJUSTMENT_OUT" || outboundType == "ADJ") typeCode = "ADJ";
-        else if (outboundType == "RETURN_TO_SUPPLIER" || outboundType == "RTS") typeCode = "RTS";
         else if (outboundType == "WARRANTY_RETURN" || outboundType == "WRT") typeCode = "WRT";
         else if (outboundType == "WARRANTY_REPLACEMENT_TO_CUSTOMER" || outboundType == "WRC") typeCode = "WRC";
 
@@ -1800,8 +1820,8 @@ namespace user_create
         const std::string& note
     ) {
         if (!db) return OperationResult{false, "Cơ sở dữ liệu chưa được khởi tạo.", 0};
-        if (checkType != "QUAN" && checkType != "UNIT") {
-            return OperationResult{false, "Loại kiểm kho không hợp lệ (chỉ chấp nhận 'QUAN' hoặc 'UNIT').", 0};
+        if (checkType != "UNIT") {
+            return OperationResult{false, "Loại kiểm kho không hợp lệ (hệ thống hiện tại chỉ áp dụng kiểm kê chi tiết theo đơn vị 'UNIT').", 0};
         }
         if (checkDate.empty()) {
             return OperationResult{false, "Ngày kiểm kho không được để trống.", 0};

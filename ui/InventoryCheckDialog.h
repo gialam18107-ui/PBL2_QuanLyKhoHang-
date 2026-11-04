@@ -155,27 +155,30 @@ private:
     QLabel* kpiStatusShiftLabel;
     QCheckBox* abnormalFilterCheck;
 
-    // Tier 2: Product Matrix Table
+    // Tier 2: Product Matrix Table (Bảng đối soát sản phẩm - 11 columns)
     QTableWidget* matrixTable;
 
     // Tier 3: 3 Action Buckets (Tabs)
     QTabWidget* bucketTabWidget;
 
-    // Bucket 1: Missing Units -> ADJUSTMENT_OUT
-    QTableWidget* missingProductTable;
+    // Bucket 1: Hàng cần nhập điều chỉnh
     QTableWidget* missingUnitTable;
-    QPushButton* createOutboundBtn;
-    QLabel* outboundStatusLabel;
-
-    // Bucket 2: Surplus Units -> ADJUSTMENT_IN
-    QTableWidget* surplusProductTable;
-    QTableWidget* surplusDetailTable;
+    QPushButton* missingSelectAllBtn;
+    QPushButton* missingDeselectAllBtn;
     QPushButton* createInboundBtn;
     QLabel* inboundStatusLabel;
 
-    // Bucket 3: Status Shift Units -> ADJUSTMENT_MOVEMENT
-    QTableWidget* movementSummaryTable;
+    // Bucket 2: Hàng cần xuất điều chỉnh
+    QTableWidget* surplusDetailTable;
+    QPushButton* surplusSelectAllBtn;
+    QPushButton* surplusDeselectAllBtn;
+    QPushButton* createOutboundBtn;
+    QLabel* outboundStatusLabel;
+
+    // Bucket 3: Điều chỉnh trạng thái
     QTableWidget* movementDetailTable;
+    QPushButton* movementSelectAllBtn;
+    QPushButton* movementDeselectAllBtn;
     QPushButton* createMovementBtn;
     QLabel* movementStatusLabel;
 
@@ -190,6 +193,12 @@ private:
         int missingCount;
         int statusShiftCount;
         int unrecordedSurplus;
+        int sysAvail = 0;
+        int actAvail = 0;
+        int sysWarr = 0;
+        int actWarr = 0;
+        int sysScrap = 0;
+        int actScrap = 0;
     };
     std::vector<ProductReconcileItem> productReconcileList;
 

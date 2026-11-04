@@ -637,7 +637,7 @@ void TransactionHubWidget::setupSplitterUI(QVBoxLayout* mainLayout)
     rightUpperHeaderLayout->addWidget(logisticsCountLabel);
     rightUpperHeaderLayout->addStretch();
 
-    manageUnitsBtn = new QPushButton(hubType == HubType::INBOUND ? "📦 Nhận Unit" : "📦 Xuất Unit", rightUpperContainer);
+    manageUnitsBtn = new QPushButton(hubType == HubType::INBOUND ? "📦 Nhận hàng" : "📦 Xuất hàng", rightUpperContainer);
     manageUnitsBtn->setCursor(Qt::PointingHandCursor);
     manageUnitsBtn->setStyleSheet(
         "QPushButton {"
@@ -2248,7 +2248,7 @@ void TransactionHubWidget::onUpdateLogisticsClicked()
     }
     if (parentOrderStatus == "CONFIRMED" || parentOrderStatus == "COMPLETED" || parentOrderStatus == "CANCELLED") {
         QMessageBox::warning(this, "Đợt giao nhận đã bị khóa",
-            QString("Đơn hàng %1 đang ở trạng thái [%2]. Toàn bộ các đợt vận chuyển liên quan đã bị khóa vĩnh viễn (Rule 5.6).")
+            QString("Đơn hàng %1 đang ở trạng thái [%2]. Toàn bộ các đợt vận chuyển liên quan đã bị khóa.")
                 .arg(parentCode, QString::fromStdString(parentOrderStatus)));
         return;
     }
@@ -2337,7 +2337,7 @@ void TransactionHubWidget::onAddLogisticsBatchClicked()
 {
     QMessageBox::warning(this, "Không được phép thực hiện",
         "Hệ thống không cho phép tạo thêm đợt giao/xuất hàng sau khi đã xác nhận đơn transaction.\n"
-        "Toàn bộ đợt giao nhận phải được ấn định và tạo đồng thời lúc tạo đơn transaction (Rule 4.3).");
+        "Toàn bộ đợt giao nhận phải được ấn định và tạo đồng thời lúc tạo đơn.");
     return;
 
     const Record* rec = getSelectedMasterRecord(true);
@@ -2398,7 +2398,7 @@ void TransactionHubWidget::onAddLogisticsBatchClicked()
 
     if (ordStatus == "CONFIRMED" || ordStatus == "COMPLETED" || ordStatus == "CANCELLED") {
         QMessageBox::warning(this, "Đơn hàng đã khóa",
-            QString("Đơn hàng %1 đang ở trạng thái [%2]. Không thể tạo thêm đợt giao nhận mới (Rule 5.6).")
+            QString("Đơn hàng %1 đang ở trạng thái [%2]. Không thể tạo thêm đợt giao nhận mới.")
                 .arg(orderCode, QString::fromStdString(ordStatus)));
         return;
     }

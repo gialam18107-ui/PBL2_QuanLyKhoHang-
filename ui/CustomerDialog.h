@@ -11,7 +11,7 @@
 
 /**
  * @brief Dedicated dialog for creating Individual / Business customers
- * and updating customer contact details while protecting immutable fields (Rule 4.1, 6.3, 6.3.1, 7.2).
+ * and updating customer contact details while protecting immutable fields.
  */
 class CustomerDialog : public QDialog
 {
@@ -49,10 +49,13 @@ private:
     QLineEdit* nameEdit;
     QLabel* taxFieldLabel;
     QLineEdit* taxCodeEdit;
+    QLabel* addressFieldLabel;
+    QLineEdit* addressEdit;
+    QLabel* phoneFieldLabel;
     QLineEdit* phoneEdit;
+    QLabel* emailFieldLabel;
     QLineEdit* emailEdit;
     QPushButton* saveBtn;
 };
 
 #endif // CUSTOMER_DIALOG_H
-

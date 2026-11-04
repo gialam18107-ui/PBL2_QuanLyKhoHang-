@@ -63,14 +63,16 @@ namespace user_update
 
             // UNIQUE check
             if (col->isUnique()) {
-                Vector<Record> matches = Query::filterRecords(*table, colName, val);
-                for (size_t m = 0; m < matches.size(); ++m) {
-                    const Record& mRec = matches[m];
-                    if (mRec.has(pkCol) && std::holds_alternative<int>(mRec.get(pkCol)) &&
-                        std::get<int>(mRec.get(pkCol)) == recordId) {
-                        continue;
+                if (!isNull(val) && !(std::holds_alternative<std::string>(val) && std::get<std::string>(val).empty())) {
+                    Vector<Record> matches = Query::filterRecords(*table, colName, val);
+                    for (size_t m = 0; m < matches.size(); ++m) {
+                        const Record& mRec = matches[m];
+                        if (mRec.has(pkCol) && std::holds_alternative<int>(mRec.get(pkCol)) &&
+                            std::get<int>(mRec.get(pkCol)) == recordId) {
+                            continue;
+                        }
+                        return OperationResult{false, "Giá trị cập nhật của cột '" + colName + "' đã tồn tại (vi phạm ràng buộc UNIQUE).", 0};
                     }
-                    return OperationResult{false, "Giá trị cập nhật của cột '" + colName + "' đã tồn tại (vi phạm ràng buộc UNIQUE).", 0};
                 }
             }
         }
@@ -693,7 +695,8 @@ namespace user_update
         const std::string& nameOrCompany,
         const std::string& phone,
         const std::string& email,
-        const std::string& taxCode
+        const std::string& taxCode,
+        const std::string& address
     ) {
         if (!db) return OperationResult{false, "Cơ sở dữ liệu chưa được khởi tạo.", 0};
         Table* custTable = db->getTable("customer");
@@ -730,7 +733,8 @@ namespace user_update
         if (custType == "individual") {
             Record iUp;
             if (!phone.empty()) iUp.set("phone_number", phone);
-            if (!email.empty()) iUp.set("email", email);
+            if (email.empty()) iUp.set("email", Value{});
+            else iUp.set("email", email);
             if (!iUp.getValues().empty()) {
                 OperationResult rInfo = db->update("individual_info", customerId, iUp);
                 if (!rInfo) {
@@ -740,9 +744,12 @@ namespace user_update
             }
         } else if (custType == "business") {
             Record bUp;
-            if (!phone.empty()) bUp.set("phone_number", phone);
-            if (!email.empty()) bUp.set("email", email);
+            if (phone.empty()) bUp.set("phone_number", Value{});
+            else bUp.set("phone_number", phone);
+            if (email.empty()) bUp.set("email", Value{});
+            else bUp.set("email", email);
             if (!taxCode.empty()) bUp.set("tax_code", taxCode);
+            if (!address.empty()) bUp.set("address", address);
             if (!bUp.getValues().empty()) {
                 OperationResult rInfo = db->update("business_info", customerId, bUp);
                 if (!rInfo) {
@@ -1782,7 +1789,7 @@ namespace user_update
         }
 
         Record adjUp;
-        adjUp.set("status", std::string(allCompleted ? "COMPLETED" : "PARTLY_COMPLETED"));
+        adjUp.set("status", std::string(allCompleted ? "COMPLETED" : "PROCESSING"));
         OperationResult rAdj = db->update("adjustment_movement", adjustId, adjUp);
         if (!rAdj) { db->rollback(); return rAdj; }
         totalAffected++;
