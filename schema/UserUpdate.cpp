@@ -2,12 +2,12 @@
 #include "UserCreate.h"
 #include "query/Query.h"
 #include "database/Constraint.h"
+#include "datastructure/hashmap/HashMap.h"
 #include <iostream>
 #include <sstream>
 #include <iomanip>
 #include <ctime>
 #include <algorithm>
-#include <set>
 
 namespace user_update
 {
@@ -1549,34 +1549,30 @@ namespace user_update
             }
         }
 
-        // Track affected check_quantity_ids so we recount them only once
-        std::set<int> affectedCqIds;
+        // Track affected check_quantity_ids using custom HashMap
+        HashMap<int, bool> affectedCqIds;
         int totalAffected = 0;
 
-        // 1. Process modified units
+        // 1. Process modified units directly in-place on cuTbl (O(1) per unit)
+        auto& cuRows = cuTbl->getRows();
         for (size_t i = 0; i < modifiedUnits.size(); ++i) {
             const auto& m = modifiedUnits[i];
-            const Record* cuRec = cuTbl->getRecordById(m.checkUnitId);
-            if (!cuRec) continue;
+            int idx = cuTbl->findRowIndexById(m.checkUnitId);
+            if (idx < 0) continue;
 
-            if (cuRec->has("check_quantity_id") && std::holds_alternative<int>(cuRec->get("check_quantity_id"))) {
-                affectedCqIds.insert(std::get<int>(cuRec->get("check_quantity_id")));
+            auto& r = cuRows[idx];
+            if (r.has("check_quantity_id") && std::holds_alternative<int>(r.get("check_quantity_id"))) {
+                affectedCqIds[std::get<int>(r.get("check_quantity_id"))] = true;
             }
 
-            Record cuUp;
-            cuUp.set("scanned_status", m.scannedStatus);
-            OperationResult rUp = db->update("inventory_check_unit", m.checkUnitId, cuUp);
-            if (!rUp) {
-                db->rollback();
-                return rUp;
-            }
+            r.set("scanned_status", m.scannedStatus);
             totalAffected++;
         }
 
-        // 2. Process surplus units
+        // 2. Process surplus units directly into cuTbl
         for (size_t i = 0; i < surplusUnits.size(); ++i) {
             const auto& s = surplusUnits[i];
-            affectedCqIds.insert(s.checkQuantityId);
+            affectedCqIds[s.checkQuantityId] = true;
 
             int cuId = nextCuId++;
             Record cuRec;
@@ -1591,48 +1587,61 @@ namespace user_update
             }
             cuRec.set("scanned_status", s.scannedStatus);
 
-            OperationResult rIns = db->insertRecord("inventory_check_unit", cuRec);
-            if (!rIns) {
-                db->rollback();
-                return rIns;
+            if (cuTbl->insert(cuRec)) {
+                totalAffected++;
             }
-            totalAffected++;
         }
 
-        // 3. Recalculate actual counts for affected check_quantities in one pass per cqId
-        for (int cqId : affectedCqIds) {
-            Vector<Record> allUnitsForCq = Query::filterRecords(*cuTbl, "check_quantity_id", Value(cqId));
-            int actAvail = 0, actWarr = 0, actScrap = 0;
-            for (size_t i = 0; i < allUnitsForCq.size(); ++i) {
-                const auto& u = allUnitsForCq[i];
-                std::string st = (u.has("scanned_status") && std::holds_alternative<std::string>(u.get("scanned_status")))
-                                    ? std::get<std::string>(u.get("scanned_status")) : "";
-                if (st == "AVAILABLE") actAvail++;
-                else if (st == "WARRANTY") actWarr++;
-                else if (st == "SCRAPPED") actScrap++;
-            }
+        // 3. Recalculate actual counts for affected check_quantities in a single pass using custom HashMap
+        struct QuanCount {
+            int avail = 0;
+            int warr = 0;
+            int scrap = 0;
+        };
+        HashMap<int, QuanCount> counts;
+        Vector<int> affectedList = affectedCqIds.getKeys();
+        for (size_t i = 0; i < affectedList.size(); ++i) {
+            counts[affectedList[i]] = QuanCount{0, 0, 0};
+        }
 
-            Record cqUp;
-            cqUp.set("actual_available_quan", actAvail);
-            cqUp.set("actual_warranty_quan", actWarr);
-            cqUp.set("actual_scrapped_quan", actScrap);
+        Vector<Record> checkUnits = Query::filterRecords(*cuTbl, "check_id", Value(checkId));
+        for (size_t i = 0; i < checkUnits.size(); ++i) {
+            const auto& u = checkUnits[i];
+            if (!u.has("check_quantity_id") || !std::holds_alternative<int>(u.get("check_quantity_id"))) continue;
 
-            OperationResult rCq = db->update("inventory_check_quantity", cqId, cqUp);
-            if (!rCq) {
-                db->rollback();
-                return rCq;
-            }
+            int cqId = std::get<int>(u.get("check_quantity_id"));
+            if (!affectedCqIds.contains(cqId)) continue;
+
+            std::string st = (u.has("scanned_status") && std::holds_alternative<std::string>(u.get("scanned_status")))
+                                ? std::get<std::string>(u.get("scanned_status")) : "";
+            if (st == "AVAILABLE") counts[cqId].avail++;
+            else if (st == "WARRANTY") counts[cqId].warr++;
+            else if (st == "SCRAPPED") counts[cqId].scrap++;
+        }
+
+        auto& cqRows = cqTbl->getRows();
+        for (size_t i = 0; i < affectedList.size(); ++i) {
+            int cqId = affectedList[i];
+            int idx = cqTbl->findRowIndexById(cqId);
+            if (idx < 0) continue;
+            const auto& c = counts[cqId];
+            cqRows[idx].set("actual_available_quan", c.avail);
+            cqRows[idx].set("actual_warranty_quan", c.warr);
+            cqRows[idx].set("actual_scrapped_quan", c.scrap);
             totalAffected++;
         }
 
         // 4. Update check status to IN_PROCESS if it was PENDING
         if (checkSt == "PENDING") {
-            Record chkUp;
-            chkUp.set("status", std::string("IN_PROCESS"));
-            db->update("inventory_check", checkId, chkUp);
+            int chkIdx = chkTbl->findRowIndexById(checkId);
+            if (chkIdx >= 0) {
+                chkTbl->getRows()[chkIdx].set("status", std::string("IN_PROCESS"));
+            }
         }
 
-        db->commit();
+        if (db->isInTransaction()) {
+            db->commit();
+        }
         return OperationResult{true, "Đã lưu thành công dữ liệu kiểm kê vào CSDL!", totalAffected};
     }
 
