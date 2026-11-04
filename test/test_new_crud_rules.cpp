@@ -292,7 +292,8 @@ int main() {
     assert(inTxnTbl != nullptr);
     Vector<Pair<int, int>> inItems;
     inItems.push_back(Pair<int, int>(1, 5));
-    OperationResult rInAdj = user_create::createInboundOrder(&db, "ADJUSTMENT_IN", "", inItems, "2026-11-02", "2026-11-03", "Test Inbound Adj", "CHK-UNIT-000025");
+    string unitChkCode = safeGetString(checks.back(), "check_code");
+    OperationResult rInAdj = user_create::createInboundOrder(&db, "ADJUSTMENT_IN", "", inItems, "2026-11-02", "2026-11-03", "Test Inbound Adj", unitChkCode);
     cout << "  - Create Inbound Adj: " << (rInAdj.success ? "SUCCESS" : "FAILED") << " | Msg: [" << rInAdj.message << "]\n";
     assert(rInAdj.success);
     size_t pos = rInAdj.message.find("Mã: ");

@@ -147,23 +147,23 @@ void MainWindow::setupMenuBar()
     // 1. Menu Kho hàng (Tách biệt khỏi danh mục sản phẩm và bảng phụ)
     warehouseMenu = mBar->addMenu("📦 Kho hàng");
     const QStringList whTitles = {
-        "1. Tồn kho Sản phẩm (PRODUCT_QUANTITY)",
-        "2. Danh sách Unit / Serial (UNIT_INVENTORY)",
-        "3. Lịch sử trạng thái Unit (STATUS_HISTORY)",
-        "4. Quản lý Đơn Nhập kho (INBOUND HUB)",
+        "1. Tồn kho Sản phẩm",
+        "2. Danh sách linh kiện",
+        "3. Lịch sử trạng thái linh kiện",
+        "4. Quản lý Đơn Nhập kho",
         "   ↳ 5. Chi tiết Đơn nhập (Toàn màn hình)",
         "   ↳ 6. Đợt Nhận hàng (Toàn màn hình)",
         "   ↳ 7. Chi tiết Nhận hàng (Toàn màn hình)",
-        "8. Quản lý Đơn Xuất kho (OUTBOUND HUB)",
+        "8. Quản lý Đơn Xuất kho",
         "   ↳ 9. Chi tiết Đơn xuất (Toàn màn hình)",
         "   ↳ 10. Đợt Xuất hàng (Toàn màn hình)",
         "   ↳ 11. Chi tiết Xuất hàng (Toàn màn hình)",
-        "12. Quản lý Đợt Kiểm kho (INVENTORY CHECK)",
+        "12. Quản lý Đợt Kiểm kho",
         "   ↳ 13. Chi tiết Số lượng Kiểm kê (Toàn màn hình)",
         "   ↳ 14. Chi tiết Linh kiện Kiểm kê (Toàn màn hình)",
-        "15. Quản lý Phiếu Điều chuyển (ADJUSTMENT MOVEMENT)",
+        "15. Quản lý Phiếu Điều chuyển",
         "   ↳ 16. Chi tiết Điều chuyển Trạng thái (Toàn màn hình)",
-        "17. Lịch sử đổi trạng thái bán (IS_SOLD_CHANGING)"
+        "17. Lịch sử đổi trạng thái bán"
     };
     for (int i = 0; i < whTitles.size(); ++i) {
         if (i == 3 || i == 7 || i == 11 || i == 14 || i == 16) {
@@ -418,24 +418,24 @@ void MainWindow::setupTopNavBar()
         });
     };
 
-    addMoreItem("🔢 Quản lý Serial linh kiện (unit_inventory)", 1);
-    addMoreItem("📜 Lịch sử biến động trạng thái (status_history)", 2);
+    addMoreItem("🔢 Quản lý Serial linh kiện", 1);
+    addMoreItem("📜 Lịch sử biến động trạng thái", 2);
     moreMenu->addSeparator();
-    addMoreItem("📥 Chi tiết đơn nhập (inbound_detail)", 4);
-    addMoreItem("🚚 Đợt nhận hàng nhập (delivery)", 5);
-    addMoreItem("📦 Kiện hàng nhận (delivery_detail)", 6);
+    addMoreItem("📥 Chi tiết đơn nhập", 4);
+    addMoreItem("🚚 Đợt nhận hàng nhập", 5);
+    addMoreItem("📦 Kiện hàng nhận", 6);
     moreMenu->addSeparator();
-    addMoreItem("📤 Chi tiết đơn xuất (outbound_detail)", 8);
-    addMoreItem("🚛 Đợt xuất kho (shipment)", 9);
-    addMoreItem("📦 Kiện hàng xuất (shipment_detail)", 10);
+    addMoreItem("📤 Chi tiết đơn xuất", 8);
+    addMoreItem("🚛 Đợt xuất kho", 9);
+    addMoreItem("📦 Kiện hàng xuất", 10);
     moreMenu->addSeparator();
-    addMoreItem("📋 Chi tiết kiểm kê số lượng (check_quantity)", 12);
-    addMoreItem("📋 Chi tiết kiểm kê đơn vị (check_unit)", 13);
+    addMoreItem("📋 Chi tiết kiểm kê số lượng", 12);
+    addMoreItem("📋 Chi tiết kiểm kê đơn vị", 13);
     moreMenu->addSeparator();
-    addMoreItem("🔄 Chi tiết điều chỉnh trạng thái (adjust_detail)", 15);
-    addMoreItem("🏷️ Lịch sử thay đổi trạng thái bán (is_sold)", 16);
+    addMoreItem("🔄 Chi tiết điều chỉnh trạng thái", 15);
+    addMoreItem("🏷️ Lịch sử thay đổi trạng thái bán", 16);
     moreMenu->addSeparator();
-    addMoreItem("⚙️ Thông số phụ & Thương hiệu (aux_specs)", 25);
+    addMoreItem("⚙️ Thông số phụ & Thương hiệu", 25);
     navMoreBtn->setMenu(moreMenu);
     navLayout->addWidget(navMoreBtn);
 
@@ -686,17 +686,17 @@ void MainWindow::setupPages()
     // 2. UNIT_INVENTORY_QUERY
     // ========================================================
     unitInventoryWidget = new QueryTableWidget(
-        "2. Tồn kho theo Serial / Unit (UNIT_INVENTORY)",
-        "Danh sách từng đơn vị linh kiện cụ thể theo số Serial Number và trạng thái hiện tại",
+        "2. Tồn kho theo Serial linh kiện",
+        "Danh sách từng linh kiện cụ thể theo số Serial Number và trạng thái hiện tại",
         this
     );
     unitInventoryWidget->setColumns(
-        {"Tên sản phẩm", "Số Serial (SN)", "Trạng thái Unit"},
+        {"Tên sản phẩm", "Số Serial", "Trạng thái linh kiện"},
         {"product.product_name", "unit_inventory.serial", "unit_inventory.status"}
     );
     unitInventoryWidget->setFilterColumns({
-        {"Số Serial (SN)", "serial", FilterType::EXACT_TEXT, {}},
-        {"Trạng thái (status)", "status", FilterType::SELECT_OR_TYPE, {"AVAILABLE", "WARRANTY", "OUT", "SCRAPPED"}}
+        {"Số Serial", "serial", FilterType::EXACT_TEXT, {}},
+        {"Trạng thái", "status", FilterType::SELECT_OR_TYPE, {"AVAILABLE", "WARRANTY", "OUT", "SCRAPPED"}}
     });
     unitInventoryWidget->setRefreshCallback([this]() { refreshQuery(1); });
     unitInventoryWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
@@ -706,7 +706,7 @@ void MainWindow::setupPages()
         Vector<Record> results;
         user_query::unit_inventory_query(db, results, col, Value(v1.toStdString()));
         unitInventoryWidget->setData(results);
-        statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên UNIT_INVENTORY [%1 = %2]: %3 bản ghi (%4 ms)")
+        statusLabel->setText(QString("Tìm kiếm trên UNIT_INVENTORY [%1 = %2]: %3 bản ghi (%4 ms)")
             .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(unitInventoryWidget);
@@ -715,7 +715,7 @@ void MainWindow::setupPages()
     // 3. STATUS_HISTORY_QUERY
     // ========================================================
     statusHistoryWidget = new QueryTableWidget(
-        "3. Lịch sử trạng thái Unit (STATUS_HISTORY)",
+        "3. Lịch sử trạng thái linh kiện (STATUS_HISTORY)",
         "Lịch sử biến động trạng thái vòng đời của từng linh kiện qua các giao dịch nhập/xuất kho",
         this
     );
@@ -1042,8 +1042,8 @@ void MainWindow::setupPages()
     // 12. INVENTORY_CHECK_QUERY
     // ========================================================
     inventoryCheckWidget = new QueryTableWidget(
-        "12. Quản lý Đợt Kiểm kho (INVENTORY_CHECK)",
-        "Quản lý danh sách các đợt kiểm kê kho chi tiết linh kiện (UNIT)",
+        "12. Quản lý Đợt Kiểm kho",
+        "Quản lý danh sách các đợt kiểm kê kho chi tiết linh kiện",
         this
     );
     inventoryCheckWidget->setColumns(
@@ -1207,8 +1207,8 @@ void MainWindow::setupPages()
     // 14. INVENTORY_CHECK_UNIT_QUERY
     // ========================================================
     inventoryCheckUnitWidget = new QueryTableWidget(
-        "14. Chi tiết Linh kiện Kiểm kê (INVENTORY_CHECK_UNIT)",
-        "Danh sách từng số Serial Number được kiểm tra trong đợt kiểm kê chi tiết (UNIT)",
+        "14. Chi tiết Linh kiện Kiểm kê",
+        "Danh sách từng số Serial Number được kiểm tra trong đợt kiểm kê chi tiết",
         this
     );
     inventoryCheckUnitWidget->setColumns(
@@ -3065,7 +3065,7 @@ void MainWindow::setupCrudWiring()
             dlg.exec();
         });
 
-        auto* manageUnitsDeliveryBtn = new QPushButton("📦 Nhận linh kiện (Unit)", this);
+        auto* manageUnitsDeliveryBtn = new QPushButton("📦 Nhận linh kiện", this);
         manageUnitsDeliveryBtn->setStyleSheet(
             "QPushButton {"
             "  background-color: #16a34a;"
@@ -3154,7 +3154,7 @@ void MainWindow::setupCrudWiring()
             dlg.exec();
         });
 
-        auto* manageUnitsShipmentBtn = new QPushButton("📦 Xuất linh kiện (Unit)", this);
+        auto* manageUnitsShipmentBtn = new QPushButton("📦 Xuất linh kiện", this);
         manageUnitsShipmentBtn->setStyleSheet(
             "QPushButton {"
             "  background-color: #16a34a;"

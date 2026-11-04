@@ -2485,7 +2485,7 @@ void LogisticsProductStatusSummaryDialog::setupUI()
     QStringList headers = {
         "Mã sản phẩm", "Tên sản phẩm", "SL Đợt này",
         (hubType == HubType::INBOUND ? "Thực nhận" : "Thực xuất"),
-        "Khả dụng (AVAILABLE)", "Bảo hành (WARRANTY)", "Lỗi (SCRAPPED)", "Tổng Unit"
+        "Khả dụng (AVAILABLE)", "Bảo hành (WARRANTY)", "Lỗi (SCRAPPED)", "Tổng số lượng"
     };
     summaryTable->setColumnCount(8);
     summaryTable->setHorizontalHeaderLabels(headers);
@@ -3100,12 +3100,12 @@ void OutboundProductUnitPickerDialog::setupUI()
             }
         }
         if (selectedSerials.empty()) {
-            QMessageBox::warning(this, "Chưa chọn linh kiện", "Vui lòng kéo chuột hoặc chọn ít nhất một Unit trong bảng.");
+            QMessageBox::warning(this, "Chưa chọn linh kiện", "Vui lòng kéo chuột hoặc chọn ít nhất một linh kiện trong bảng.");
             return;
         }
         if (targetQty > 0 && static_cast<int>(selectedSerials.size()) > targetQty) {
             auto ans = QMessageBox::question(this, "Xác nhận số lượng",
-                QString("Bạn đã chọn %1 Unit, nhiều hơn số lượng cần xuất (%2 Unit).\nBạn có chắc chắn muốn tiếp tục không?")
+                QString("Bạn đã chọn %1 cái, nhiều hơn số lượng cần xuất (%2 cái).\nBạn có chắc chắn muốn tiếp tục không?")
                     .arg(selectedSerials.size()).arg(targetQty),
                 QMessageBox::Yes | QMessageBox::No);
             if (ans != QMessageBox::Yes) return;
@@ -3277,9 +3277,9 @@ void OutboundProductUnitPickerDialog::filterTable()
 void OutboundProductUnitPickerDialog::updateSelectionCount()
 {
     int count = unitsTable->selectionModel() ? unitsTable->selectionModel()->selectedRows().size() : 0;
-    QString txt = QString("Đã chọn: %1 / %2 unit tồn kho").arg(count).arg(candidateList.size());
+    QString txt = QString("Đã chọn: %1 / %2 cái tồn kho").arg(count).arg(candidateList.size());
     if (targetQty > 0) {
-        txt += QString(" (Cần xuất: %1 unit)").arg(targetQty);
+        txt += QString(" (Cần xuất: %1 cái)").arg(targetQty);
     }
     txt += " (Kéo chuột hoặc nhấn Shift/Ctrl để chọn nhiều dòng).";
     selectionCountLabel->setText(txt);
@@ -3367,7 +3367,7 @@ QString SimulationToolDialog::getEligibilityReason(const std::string& status) co
         return (status != "OUT") ? "✅ Hợp lệ" : "❌ Không thể xuất";
     } else {
         if (transactionType == "ADJUSTMENT_IN" || transactionType == "ADJ")
-            return (status == "OUT") ? "✅ Hợp lệ tái phát hiện (Đang OUT)" : "❌ Đang trong kho (Chỉ nhận lại unit OUT)";
+            return (status == "OUT") ? "✅ Hợp lệ tái phát hiện (Đang OUT)" : "❌ Đang trong kho (Chỉ nhận lại linh kiện đã xuất)";
         bool isNew = (transactionType == "PURCHASING" || transactionType == "PUR" ||
                       transactionType == "WARRANTY_REPLACEMENT" || transactionType == "WRP");
         if (isNew) return "ℹ️ Đơn mua mới yêu cầu Serial mới (Không xuất/nhập lại)";
@@ -3501,7 +3501,7 @@ void SimulationToolDialog::setupUI()
     tab1Bottom->addWidget(selectionSummaryLabel);
     tab1Bottom->addStretch();
 
-    confirmBtn = new QPushButton("✓ Đưa các unit đã chọn vào đợt", tab1);
+    confirmBtn = new QPushButton("✓ Đưa các linh kiện đã chọn vào đợt", tab1);
     confirmBtn->setObjectName("saveBtn");
     confirmBtn->setCursor(Qt::PointingHandCursor);
     confirmBtn->setEnabled(false);
@@ -3568,7 +3568,7 @@ void SimulationToolDialog::setupUI()
     tab2Layout->addWidget(genBox);
 
     // Group 2: Batch auto-generator
-    auto* batchBox = new QGroupBox("⚡ Sinh hàng loạt Unit mới (Tự động nhận đủ số lượng đợt)", tab2);
+    auto* batchBox = new QGroupBox("⚡ Sinh hàng loạt linh kiện mới (Tự động nhận đủ số lượng đợt)", tab2);
     batchBox->setStyleSheet("QGroupBox { font-weight: bold; color: #1e293b; }");
     auto* batchLayout = new QVBoxLayout(batchBox);
     batchLayout->setContentsMargins(12, 12, 12, 12);
@@ -3818,7 +3818,7 @@ void SimulationToolDialog::updateMissingSummary()
         int needed = itm.batchQty - itm.actualQty;
         if (needed > 0) {
             totalNeeded += needed;
-            lines << QString(" • <b>[%1] %2</b>: Cần thêm <b>%3</b> unit (Đã có: %4 / %5)")
+            lines << QString(" • <b>[%1] %2</b>: Cần thêm <b>%3</b> cái (Đã có: %4 / %5)")
                 .arg(itm.productCode, itm.productName)
                 .arg(needed).arg(itm.actualQty).arg(itm.batchQty);
         }
@@ -3826,7 +3826,7 @@ void SimulationToolDialog::updateMissingSummary()
 
     if (totalNeeded > 0) {
         batchMissingSummaryLabel->setText(
-            QString("Tiến độ: Còn thiếu tổng cộng <b>%1</b> unit theo định mức đợt:<br>%2")
+            QString("Tiến độ: Còn thiếu tổng cộng <b>%1</b> cái theo định mức đợt:<br>%2")
                 .arg(totalNeeded).arg(lines.join("<br>"))
         );
         batchAutoReceiveBtn->setEnabled(true);
@@ -4316,7 +4316,7 @@ void UnitEntryDialog::setupUI()
 
     openSimulationToolsBtn = new QPushButton("🧪 Bộ Công Cụ Giả Lập & Kiểm Thử ↗", scanBox);
     openSimulationToolsBtn->setCursor(Qt::PointingHandCursor);
-    openSimulationToolsBtn->setToolTip("Mở cửa sổ công cụ kiểm thử song song: Chọn từ kho, tạo mã ngẫu nhiên, tạo hàng loạt unit");
+    openSimulationToolsBtn->setToolTip("Mở cửa sổ công cụ kiểm thử song song: Chọn từ kho, tạo mã ngẫu nhiên, tạo hàng loạt linh kiện");
     openSimulationToolsBtn->setStyleSheet(
         "QPushButton { background-color: #f8fafc; border: 1.5px solid #6366f1; border-radius: 5px; padding: 6px 14px; font-size: 12px; font-weight: bold; color: #4f46e5; }"
         "QPushButton:hover { background-color: #eef2ff; border-color: #4f46e5; }"
@@ -4443,12 +4443,12 @@ void UnitEntryDialog::setupUI()
 
     if (hubType == HubType::INBOUND) {
         setupProductEntryTab();
-        mainTabWidget->addTab(tabProductEntry, "📥 1. Nhập Unit theo Sản phẩm (*)");
+        mainTabWidget->addTab(tabProductEntry, "📥 1. Nhập linh kiện theo Sản phẩm (*)");
         mainTabWidget->addTab(tabBatchOverview, "📊 2. Tiến độ & Số lượng đợt");
-        mainTabWidget->addTab(tabAllUnits, "📋 3. Toàn bộ Unit trong đợt");
+        mainTabWidget->addTab(tabAllUnits, "📋 3. Toàn bộ linh kiện trong đợt");
     } else {
         mainTabWidget->addTab(tabBatchOverview, "📊 1. Tiến độ & Số lượng đợt");
-        mainTabWidget->addTab(tabAllUnits, "📋 2. Danh sách các unit trong đơn hiện tại");
+        mainTabWidget->addTab(tabAllUnits, "📋 2. Danh sách các linh kiện trong đơn hiện tại");
     }
 
     mainLayout->addWidget(mainTabWidget, 1);
@@ -4805,7 +4805,7 @@ void UnitEntryDialog::updateSaveButtonState()
 
     if (hubType == HubType::INBOUND) {
         if (pendingInCount > 0) {
-            saveChangesBtn->setText(QString("💾 Xác nhận lưu kết quả (%1 unit chờ lưu)").arg(pendingInCount));
+            saveChangesBtn->setText(QString("💾 Xác nhận lưu kết quả (%1 cái chờ lưu)").arg(pendingInCount));
         } else if (modCount > 0) {
             saveChangesBtn->setText(QString("💾 Xác nhận lưu kết quả (%1 thay đổi)").arg(modCount));
         } else {
@@ -4813,7 +4813,7 @@ void UnitEntryDialog::updateSaveButtonState()
         }
     } else {
         if (pendingOutCount > 0) {
-            saveChangesBtn->setText(QString("💾 Xác nhận xuất kho (%1 unit chờ xuất)").arg(pendingOutCount));
+            saveChangesBtn->setText(QString("💾 Xác nhận xuất kho (%1 cái chờ xuất)").arg(pendingOutCount));
         } else if (modCount > 0) {
             saveChangesBtn->setText(QString("💾 Xác nhận xuất kho (%1 thay đổi)").arg(modCount));
         } else {
@@ -4902,7 +4902,7 @@ void UnitEntryDialog::onOpenProductUnitPicker(int productId, const QString& pCod
         if (addedCount > 0) {
             hasModifiedUnits = true;
             refreshAllViews(true);
-            showToast(QString("✅ Đã chọn mềm %1 unit chờ xuất cho [%2]! (Nhớ bấm 'Xác nhận xuất kho')").arg(addedCount).arg(pCode), true);
+            showToast(QString("✅ Đã chọn mềm %1 cái chờ xuất cho [%2]! (Nhớ bấm 'Xác nhận xuất kho')").arg(addedCount).arg(pCode), true);
         } else if (!lastErr.isEmpty()) {
             showToast(QString("❌ Không thể chọn: %1").arg(lastErr), false);
         }
@@ -5276,11 +5276,11 @@ void UnitEntryDialog::setupProductEntryTab()
     auto* statRow = new QHBoxLayout();
     statRow->setSpacing(16);
 
-    prodTargetQtyLabel = new QLabel("Kế hoạch: <b>0</b> unit", prodProgressCard);
+    prodTargetQtyLabel = new QLabel("Kế hoạch: <b>0</b> cái", prodProgressCard);
     prodTargetQtyLabel->setStyleSheet("font-size: 13px; color: #334155;");
-    prodActualQtyLabel = new QLabel("Đã nhận: <b style='color:#16a34a;'>0</b> unit", prodProgressCard);
+    prodActualQtyLabel = new QLabel("Đã nhận: <b style='color:#16a34a;'>0</b> cái", prodProgressCard);
     prodActualQtyLabel->setStyleSheet("font-size: 13px; color: #334155;");
-    prodRemQtyLabel = new QLabel("Còn thiếu: <b style='color:#ea580c;'>0</b> unit", prodProgressCard);
+    prodRemQtyLabel = new QLabel("Còn thiếu: <b style='color:#ea580c;'>0</b> cái", prodProgressCard);
     prodRemQtyLabel->setStyleSheet("font-size: 13px; color: #334155;");
 
     statRow->addWidget(prodTargetQtyLabel);
@@ -5297,7 +5297,7 @@ void UnitEntryDialog::setupProductEntryTab()
     prodProgressBar->setRange(0, 100);
     prodProgressBar->setValue(0);
     prodProgressBar->setTextVisible(true);
-    prodProgressBar->setFormat("%p% (%v / %m unit)");
+    prodProgressBar->setFormat("%p% (%v / %m cái)");
     prodProgressBar->setMinimumHeight(22);
     prodProgressBar->setStyleSheet(
         "QProgressBar {"
@@ -5316,7 +5316,7 @@ void UnitEntryDialog::setupProductEntryTab()
     );
     cardLayout->addWidget(prodProgressBar);
 
-    overallBatchProgressLabel = new QLabel("Tổng tiến độ toàn đợt nhận: Đã nhận 0 / 0 unit.", prodProgressCard);
+    overallBatchProgressLabel = new QLabel("Tổng tiến độ toàn đợt nhận: Đã nhận 0 / 0 cái.", prodProgressCard);
     overallBatchProgressLabel->setStyleSheet("font-size: 12px; color: #64748b; font-style: italic;");
     cardLayout->addWidget(overallBatchProgressLabel);
 
@@ -5357,7 +5357,7 @@ void UnitEntryDialog::setupProductEntryTab()
     connect(inboundSerialInput, &QLineEdit::returnPressed, this, &UnitEntryDialog::onRecordInboundSerial);
     inputRow->addWidget(inboundSerialInput, 1);
 
-    recordInboundSerialBtn = new QPushButton("➕ Ghi nhận Unit", scanGroup);
+    recordInboundSerialBtn = new QPushButton("➕ Ghi nhận linh kiện", scanGroup);
     recordInboundSerialBtn->setCursor(Qt::PointingHandCursor);
     recordInboundSerialBtn->setMinimumHeight(36);
     recordInboundSerialBtn->setStyleSheet(
@@ -5391,12 +5391,12 @@ void UnitEntryDialog::setupProductEntryTab()
 
     // 4. Units Table for this selected product
     auto* tableHeaderRow = new QHBoxLayout();
-    auto* tblTitle = new QLabel("📋 <b>Danh sách Unit đã nhận của sản phẩm này trong đợt:</b>", tabProductEntry);
+    auto* tblTitle = new QLabel("📋 <b>Danh sách linh kiện đã nhận của sản phẩm này trong đợt:</b>", tabProductEntry);
     tblTitle->setStyleSheet("font-size: 13px; color: #1e293b;");
     tableHeaderRow->addWidget(tblTitle);
     tableHeaderRow->addStretch();
 
-    prodUnitsCountLabel = new QLabel("(0 unit)", tabProductEntry);
+    prodUnitsCountLabel = new QLabel("(0 cái)", tabProductEntry);
     prodUnitsCountLabel->setStyleSheet("font-size: 12px; color: #64748b; font-weight: 600;");
     tableHeaderRow->addWidget(prodUnitsCountLabel);
     mainLayout->addLayout(tableHeaderRow);
@@ -5462,12 +5462,12 @@ void UnitEntryDialog::refreshProductEntryTab(bool scrollToBottom)
 
     if (overallBatchProgressLabel) {
         int totalPending = static_cast<int>(pendingInboundUnits.size());
-        QString progText = QString("Tổng tiến độ toàn đợt nhận: Đã nhận <b>%1 / %2</b> unit")
+        QString progText = QString("Tổng tiến độ toàn đợt nhận: Đã nhận <b>%1 / %2</b> cái")
             .arg(totalActualUnits).arg(totalBatchUnits);
         if (totalPending > 0) {
-            progText += QString(" <span style='color: #2563eb;'>(trong đó <b>%1</b> unit đang chờ lưu)</span>").arg(totalPending);
+            progText += QString(" <span style='color: #2563eb;'>(trong đó <b>%1</b> cái đang chờ lưu)</span>").arg(totalPending);
         }
-        progText += QString(" (Còn thiếu: <b>%1</b> unit).").arg(std::max(0, totalBatchUnits - totalActualUnits));
+        progText += QString(" (Còn thiếu: <b>%1</b> cái).").arg(std::max(0, totalBatchUnits - totalActualUnits));
         overallBatchProgressLabel->setText(progText);
     }
 
@@ -5502,18 +5502,18 @@ void UnitEntryDialog::onInboundProductComboChanged(int index)
     int rem = std::max(0, target - totalActual);
 
     if (prodTargetQtyLabel) {
-        prodTargetQtyLabel->setText(QString("Kế hoạch: <b>%1</b> unit").arg(target));
+        prodTargetQtyLabel->setText(QString("Kế hoạch: <b>%1</b> cái").arg(target));
     }
     if (prodActualQtyLabel) {
         if (pendingCount > 0) {
-            prodActualQtyLabel->setText(QString("Đã nhận: <b style='color:#16a34a;'>%1</b> <span style='color:#2563eb;'>(+%2 chờ lưu)</span> unit")
+            prodActualQtyLabel->setText(QString("Đã nhận: <b style='color:#16a34a;'>%1</b> <span style='color:#2563eb;'>(+%2 chờ lưu)</span> cái")
                 .arg(totalActual).arg(pendingCount));
         } else {
-            prodActualQtyLabel->setText(QString("Đã nhận: <b style='color:#16a34a;'>%1</b> unit").arg(totalActual));
+            prodActualQtyLabel->setText(QString("Đã nhận: <b style='color:#16a34a;'>%1</b> cái").arg(totalActual));
         }
     }
     if (prodRemQtyLabel) {
-        prodRemQtyLabel->setText(QString("Còn thiếu: <b style='color:%1;'>%2</b> unit")
+        prodRemQtyLabel->setText(QString("Còn thiếu: <b style='color:%1;'>%2</b> cái")
             .arg(rem == 0 ? "#16a34a" : "#ea580c").arg(rem));
     }
 
@@ -5709,7 +5709,7 @@ void UnitEntryDialog::onInboundProductComboChanged(int index)
                     QString("(%1 đã lưu + <b style='color:#2563eb;'>%2 chờ lưu</b>)").arg(pUnits.size()).arg(pPending.size())
                 );
             } else {
-                prodUnitsCountLabel->setText(QString("(%1 unit)").arg(pUnits.size()));
+                prodUnitsCountLabel->setText(QString("(%1 cái)").arg(pUnits.size()));
             }
         }
     }
@@ -5778,7 +5778,7 @@ void UnitEntryDialog::onBatchPasteSerials()
 
     auto* layout = new QVBoxLayout(&dlg);
     layout->addWidget(new QLabel(QString("Nhập danh sách mã Serial cho sản phẩm <b>[%1] %2</b><br>"
-                                        "(Còn thiếu <b>%3</b> unit. Mỗi dòng một mã hoặc cách nhau bằng dấu phẩy):")
+                                        "(Còn thiếu <b>%3</b> cái. Mỗi dòng một mã hoặc cách nhau bằng dấu phẩy):")
                                         .arg(itm.productCode, itm.productName).arg(rem)));
 
     auto* textEdit = new QTextEdit(&dlg);
@@ -6985,7 +6985,7 @@ void UnitEntryDialog::onBatchAutoGenerateUnits()
         int needed = item.batchQty - effActual;
         if (needed > 0) {
             totalNeeded += needed;
-            breakdown << QString(" • [%1] %2: cần thêm <b>%3</b> unit").arg(item.productCode, item.productName).arg(needed);
+            breakdown << QString(" • [%1] %2: cần thêm <b>%3</b> cái").arg(item.productCode, item.productName).arg(needed);
         }
     }
 
@@ -6996,7 +6996,7 @@ void UnitEntryDialog::onBatchAutoGenerateUnits()
 
     QString msg = QString("Bạn có chắc chắn muốn giả lập tạo hàng loạt <b>%1</b> linh kiện cho đợt này không?<br><br>%2")
         .arg(totalNeeded).arg(breakdown.join("<br>"));
-    auto reply = QMessageBox::question(this, "Xác nhận tạo hàng loạt Unit", msg, QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
+    auto reply = QMessageBox::question(this, "Xác nhận tạo hàng loạt linh kiện", msg, QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
     if (reply != QMessageBox::Yes) return;
 
     QString targetSt = "AVAILABLE";

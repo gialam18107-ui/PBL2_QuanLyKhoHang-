@@ -911,12 +911,12 @@ void AdjustmentSimulationDialog::setupUI()
     t1Layout->addWidget(candidatesTable, 1);
 
     auto* t1Bottom = new QHBoxLayout();
-    selectionCountLabel = new QLabel("Đã chọn: 0 unit", tab1);
+    selectionCountLabel = new QLabel("Đã chọn: 0 linh kiện", tab1);
     selectionCountLabel->setStyleSheet("font-size: 13px; font-weight: 600; color: #1e293b;");
     t1Bottom->addWidget(selectionCountLabel);
     t1Bottom->addStretch();
 
-    confirmCandidatesBtn = new QPushButton("👉 Đẩy các Unit đã chọn vào danh sách chờ chuyển", tab1);
+    confirmCandidatesBtn = new QPushButton("👉 Đưa các linh kiện đã chọn vào danh sách chờ chuyển", tab1);
     confirmCandidatesBtn->setStyleSheet("background-color: #4f46e5; color: #ffffff; font-weight: bold; padding: 7px 18px; border-radius: 4px;");
     confirmCandidatesBtn->setEnabled(false);
     t1Bottom->addWidget(confirmCandidatesBtn);
@@ -1018,7 +1018,7 @@ void AdjustmentSimulationDialog::refreshData()
         if (rem == 0) itemText += "  ✅ ĐÃ ĐỦ";
         lineFilterCombo->addItem(itemText, dl.adjustDetailId);
 
-        summaryHtml += QString("<li><b>[%1] %2:</b> %3 ➔ %4 &nbsp;|&nbsp; Kế hoạch: <b>%5</b> &nbsp;|&nbsp; Đã chuyển: <b>%6</b> &nbsp;|&nbsp; Chờ chuyển: <b>%7</b> &nbsp;|&nbsp; Còn thiếu: <b style='color:%8;'>%9</b> &nbsp;|&nbsp; Kho hiện có: <b style='color:#2563eb;'>%10</b> unit hợp lệ.</li>")
+        summaryHtml += QString("<li><b>[%1] %2:</b> %3 ➔ %4 &nbsp;|&nbsp; Kế hoạch: <b>%5</b> &nbsp;|&nbsp; Đã chuyển: <b>%6</b> &nbsp;|&nbsp; Chờ chuyển: <b>%7</b> &nbsp;|&nbsp; Còn thiếu: <b style='color:%8;'>%9</b> &nbsp;|&nbsp; Kho hiện có: <b style='color:#2563eb;'>%10</b> cái hợp lệ.</li>")
             .arg(dl.productCode, dl.productName, dl.fromStatus, dl.toStatus)
             .arg(dl.adjustQuantity).arg(dl.actualQuantity).arg(stagedCount)
             .arg(rem == 0 ? "#16a34a" : "#dc2626").arg(rem).arg(availInStock);
@@ -1029,7 +1029,7 @@ void AdjustmentSimulationDialog::refreshData()
         summaryHtml += "<p style='color: #16a34a; font-weight: bold;'>🎉 Tất cả các dòng điều chuyển trong phiếu đã được lấp đầy đủ số lượng!</p>";
         autoPickAllBtn->setEnabled(false);
     } else {
-        summaryHtml += QString("<p>Tổng số lượng còn thiếu: <b style='color:#dc2626;'>%1</b> unit &nbsp;|&nbsp; Tổng số ứng viên khả dụng trong kho: <b style='color:#2563eb;'>%2</b> unit.</p>")
+        summaryHtml += QString("<p>Tổng số lượng còn thiếu: <b style='color:#dc2626;'>%1</b> cái &nbsp;|&nbsp; Khả dụng trong kho: <b style='color:#2563eb;'>%2</b> cái.</p>")
             .arg(totalRemainingNeeded).arg(totalCandidatesAvailable);
         autoPickAllBtn->setEnabled(true);
     }
@@ -1199,10 +1199,10 @@ void AdjustmentSimulationDialog::onSelectionChanged()
     for (const auto* it : selectedItems) rowSet.insert(it->row());
     int sel = static_cast<int>(rowSet.size());
 
-    if (selectionCountLabel) selectionCountLabel->setText(QString("Đã chọn: <b>%1</b> unit").arg(sel));
+    if (selectionCountLabel) selectionCountLabel->setText(QString("Đã chọn: <b>%1</b> linh kiện").arg(sel));
     if (confirmCandidatesBtn) {
         confirmCandidatesBtn->setEnabled(sel > 0);
-        confirmCandidatesBtn->setText(QString("👉 Đẩy %1 Unit đã chọn vào danh sách chờ chuyển").arg(sel));
+        confirmCandidatesBtn->setText(QString("👉 Đưa %1 linh kiện đã chọn vào danh sách chờ chuyển").arg(sel));
     }
 }
 
@@ -1611,7 +1611,7 @@ void AdjustmentMovementDetailDialog::refreshAllViews(bool scrollToBottom)
     if (confirmSaveUnitsBtn) {
         confirmSaveUnitsBtn->setEnabled(!isCompleted && !stagedUnits.empty());
         if (!stagedUnits.empty()) {
-            confirmSaveUnitsBtn->setText(QString("💾 Xác nhận thực hiện chuyển đổi (%1 unit chờ lưu)").arg(stagedUnits.size()));
+            confirmSaveUnitsBtn->setText(QString("💾 Xác nhận thực hiện chuyển đổi (%1 linh kiện chờ chuyển)").arg(stagedUnits.size()));
         } else {
             confirmSaveUnitsBtn->setText("💾 Xác nhận thực hiện chuyển đổi (Lưu kết quả)");
         }

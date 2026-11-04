@@ -2900,7 +2900,7 @@ void InventoryCheckDetailDialog::onCompleteCheck()
 
     if (checkType == "UNIT") {
         QMessageBox::information(this, "Hoàn tất kiểm kho",
-            "Đợt kiểm kho UNIT đã được chuyển sang trạng thái HOÀN THÀNH (COMPLETED) thành công!\n\n"
+            "Đợt kiểm kho chi tiết đã được chuyển sang trạng thái HOÀN THÀNH thành công!\n\n"
             "Bây giờ hệ thống sẽ hiển thị Báo Cáo Đối Soát 3 Rổ để bạn kiểm tra và tạo các chứng từ điều chỉnh tương ứng.");
         onOpenReconciliationDialog();
     } else {
@@ -3634,7 +3634,7 @@ void InventoryCheckInspectDialog::setupUI()
     }
     unitTable->setAlternatingRowColors(true);
     t2Layout->addWidget(unitTable);
-    tabWidget->addTab(tab2, "🔍 Chi Tiết Từng Linh Kiện (Unit)");
+    tabWidget->addTab(tab2, "🔍 Chi Tiết Từng Linh Kiện");
 
     mainLayout->addWidget(tabWidget, 1);
 
@@ -3984,7 +3984,7 @@ void InventoryCheckInspectDialog::renderSummaryTable()
                 }
             }
             for (auto& pair : prodMap) {
-                pair.second.detailNote = QString("%1 unit thừa / lạ ghi nhận trong đợt").arg(pair.second.totalQty);
+                pair.second.detailNote = QString("%1 linh kiện thừa / lạ ghi nhận trong đợt").arg(pair.second.totalQty);
                 summaryList.push_back(pair.second);
             }
         } else {
@@ -4074,7 +4074,7 @@ void InventoryCheckInspectDialog::renderSummaryTable()
                 }
             }
             for (auto& pair : prodMap) {
-                pair.second.detailNote = QString("%1 unit hao hụt / thiếu trong đợt").arg(pair.second.totalQty);
+                pair.second.detailNote = QString("%1 linh kiện hao hụt / thiếu trong đợt").arg(pair.second.totalQty);
                 summaryList.push_back(pair.second);
             }
         } else {
