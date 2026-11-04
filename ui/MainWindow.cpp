@@ -2803,10 +2803,37 @@ void MainWindow::setupCrudWiring()
                     refreshQuery(11);
                 }
             },
-            nullptr,
+            [this](const Record& rec) {
+                int chkId = rec.has("check_id") && holds_alternative<int>(rec.get("check_id")) ? get<int>(rec.get("check_id")) : 0;
+                if (chkId <= 0) return;
+                string code = rec.has("check_code") && holds_alternative<string>(rec.get("check_code")) ? get<string>(rec.get("check_code")) : to_string(chkId);
+                string st = rec.has("status") && holds_alternative<string>(rec.get("status")) ? get<string>(rec.get("status")) : "";
+                if (st == "COMPLETED") {
+                    QMessageBox::warning(this, "Không thể hủy", "Đợt kiểm kê đã hoàn thành (COMPLETED), không thể hủy.");
+                    return;
+                }
+                if (st == "CANCELLED") {
+                    QMessageBox::information(this, "Thông báo", "Đợt kiểm kê này đã ở trạng thái đã hủy.");
+                    return;
+                }
+                auto reply = QMessageBox::question(
+                    this, "Xác nhận hủy đợt kiểm kho",
+                    QString("Bạn có chắc chắn muốn hủy đợt kiểm kê <b>%1</b> không?").arg(QString::fromStdString(code)),
+                    QMessageBox::Yes | QMessageBox::No, QMessageBox::No
+                );
+                if (reply == QMessageBox::Yes) {
+                    OperationResult res = user_update::cancelInventoryCheck(db, chkId);
+                    if (res.success) {
+                        notifyDataChanged("Đã hủy đợt kiểm kê: " + QString::fromStdString(code));
+                        refreshQuery(11);
+                    } else {
+                        QMessageBox::critical(this, "Lỗi hủy đợt", QString::fromStdString(res.message));
+                    }
+                }
+            },
             "➕ Tạo đợt kiểm kho mới",
             "🔍 Mở giao diện kiểm kê chi tiết",
-            ""
+            "❌ Hủy đợt kiểm kho"
         );
         inventoryCheckWidget->setExtraAction("📋 Xem chi tiết SL", [this](const Record& rec) {
             int chkId = rec.has("check_id") && holds_alternative<int>(rec.get("check_id")) ? get<int>(rec.get("check_id")) : 0;

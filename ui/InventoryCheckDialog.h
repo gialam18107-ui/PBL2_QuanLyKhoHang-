@@ -178,6 +178,7 @@ private:
 
     // Tier 2: Product Matrix Table (Bảng đối soát sản phẩm - 11 columns)
     QTableWidget* matrixTable;
+    QLineEdit* matrixSearchEdit = nullptr;
 
     // Tier 3: 3 Action Buckets (Tabs)
     QTabWidget* bucketTabWidget;
@@ -293,6 +294,7 @@ public:
         bool isNew = false;         // newly added in this session (can be deleted before saving)
         bool isModified = false;    // modified in memory
         QString addedTime;
+        uint64_t lastTouchSeq = 0;  // action sequence counter for ordering newly touched units at the top
     };
 
     // Methods for Simulation Companion Dialog communication
@@ -333,6 +335,8 @@ private:
     void applyUnitTableFilters();
     bool processUnitScan(const QString& sn, const QString& chosenMode, QLabel* feedbackLabel, QLineEdit* inputLine);
     void removeStagedUnitBySerial(const QString& sn);
+    void revertStagedUnitBySerial(const QString& sn);
+    void rebuildSerialIndexMap();
 
     Database* db = nullptr;
     int checkId = 0;
@@ -360,6 +364,7 @@ private:
 
     // Master Product Table & Controls
     QWidget* masterWidget = nullptr;
+    QLineEdit* quantitySearchEdit = nullptr;
     QTableWidget* quantityTable = nullptr;
     QPushButton* saveQuantityBtn = nullptr;
     QPushButton* editRowNoteBtn = nullptr;
@@ -397,6 +402,8 @@ private:
     InventoryCheckSimulationDialog* simulationDialog = nullptr;
 
     std::vector<StagedCheckUnit> stagedUnits;
+    QHash<QString, int> serialToIndexMap;
+    uint64_t actionCounter = 0;
 
     struct ProductCheckItem {
         int checkQuantityId;
@@ -534,6 +541,7 @@ private:
     QString note;
 
     QLabel* infoLabel = nullptr;
+    QLineEdit* matrixSearchEdit = nullptr;
     QCheckBox* diffOnlyCheck = nullptr;
     QCheckBox* abnormalUnitsOnlyCheck = nullptr;
     QTableWidget* matrixTable = nullptr;

@@ -1493,6 +1493,8 @@ namespace user_create
         }
 
         int totalAffected = 0;
+        int nextUnitId = getNextTableId(db, "unit_inventory");
+        int nextHistId = getNextTableId(db, "status_history");
 
         // Process units
         if (isAdjustmentIn) {
@@ -1526,7 +1528,7 @@ namespace user_create
                     if (!rU) { db->rollback(); return rU; }
                     totalAffected++;
 
-                    int histId = getNextTableId(db, "status_history");
+                    int histId = nextHistId++;
                     Record hRec;
                     hRec.set("history_id", histId);
                     hRec.set("unit_id", targetUnitId);
@@ -1558,7 +1560,7 @@ namespace user_create
                         sn = generateUniqueSerial(db);
                     }
 
-                    int unitId = getNextTableId(db, "unit_inventory");
+                    int unitId = nextUnitId++;
                     Record uRec;
                     uRec.set("unit_id", unitId);
                     uRec.set("product_id", productId);
@@ -1569,7 +1571,7 @@ namespace user_create
                     if (!rU) { db->rollback(); return rU; }
                     totalAffected++;
 
-                    int histId = getNextTableId(db, "status_history");
+                    int histId = nextHistId++;
                     Record hRec;
                     hRec.set("history_id", histId);
                     hRec.set("unit_id", unitId);
@@ -1605,7 +1607,7 @@ namespace user_create
                     sn = generateUniqueSerial(db);
                 }
 
-                int unitId = getNextTableId(db, "unit_inventory");
+                int unitId = nextUnitId++;
                 Record uRec;
                 uRec.set("unit_id", unitId);
                 uRec.set("product_id", productId);
@@ -1616,7 +1618,7 @@ namespace user_create
                 if (!rU) { db->rollback(); return rU; }
                 totalAffected++;
 
-                int histId = getNextTableId(db, "status_history");
+                int histId = nextHistId++;
                 Record hRec;
                 hRec.set("history_id", histId);
                 hRec.set("unit_id", unitId);
@@ -1665,7 +1667,7 @@ namespace user_create
                 if (!rU) { db->rollback(); return rU; }
                 totalAffected++;
 
-                int histId = getNextTableId(db, "status_history");
+                int histId = nextHistId++;
                 Record hRec;
                 hRec.set("history_id", histId);
                 hRec.set("unit_id", targetUnitId);
@@ -1867,6 +1869,7 @@ namespace user_create
         HashMap<int, int> pidToCqId;
         int totalAffected = 1;
 
+        int nextCqId = getNextTableId(db, "inventory_check_quantity");
         for (size_t i = 0; i < productIds.size(); ++i) {
             int pid = productIds[i];
             const Record* pRec = prodTbl->getRecordById(pid);
@@ -1877,7 +1880,7 @@ namespace user_create
             int sysScrap = (pRec && pRec->has("scrapped_quantity") && std::holds_alternative<int>(pRec->get("scrapped_quantity")))
                          ? std::get<int>(pRec->get("scrapped_quantity")) : 0;
 
-            int cqId = getNextTableId(db, "inventory_check_quantity");
+            int cqId = nextCqId++;
             pidToCqId[pid] = cqId;
 
             Record cqRec;
@@ -1906,6 +1909,7 @@ namespace user_create
             HashMap<int, bool> allowedPids;
             for (size_t i = 0; i < productIds.size(); ++i) allowedPids[productIds[i]] = true;
 
+            int nextCuId = getNextTableId(db, "inventory_check_unit");
             const auto& uRows = unitTbl->getRows();
             for (size_t i = 0; i < uRows.size(); ++i) {
                 if (unitTbl->isRowDeleted(i)) continue;
@@ -1919,7 +1923,7 @@ namespace user_create
                 std::string sn = (u.has("serial") && std::holds_alternative<std::string>(u.get("serial"))) ? std::get<std::string>(u.get("serial")) : "";
                 int cqId = pidToCqId.contains(pid) ? pidToCqId[pid] : 0;
 
-                int cuId = getNextTableId(db, "inventory_check_unit");
+                int cuId = nextCuId++;
                 Record cuRec;
                 cuRec.set("check_unit_id", cuId);
                 cuRec.set("check_id", checkId);

@@ -7,6 +7,7 @@
 #include <iomanip>
 #include <ctime>
 #include <algorithm>
+#include <set>
 
 namespace user_update
 {
@@ -930,6 +931,16 @@ namespace user_update
         int decrementedWarr = 0;
         int decrementedScrap = 0;
 
+        // Pre-calculate next histId once before loop to prevent O(N^2) full table scans
+        int nextHistId = 1;
+        std::string pkHist = histTable->getPrimaryKeyColumn();
+        for (const auto& hRow : histTable->getRows()) {
+            if (hRow.has(pkHist) && std::holds_alternative<int>(hRow.get(pkHist))) {
+                int hid = std::get<int>(hRow.get(pkHist));
+                if (hid >= nextHistId) nextHistId = hid + 1;
+            }
+        }
+
         for (size_t i = 0; i < serials.size(); ++i) {
             const std::string& sn = serials[i];
             int unitId = -1;
@@ -991,16 +1002,8 @@ namespace user_update
             if (!rU) { db->rollback(); return rU; }
             totalAffected++;
 
-            // Insert into status_history
-            int histId = 1;
-            std::string pkHist = histTable->getPrimaryKeyColumn();
-            for (const auto& hRow : histTable->getRows()) {
-                if (hRow.has(pkHist) && std::holds_alternative<int>(hRow.get(pkHist))) {
-                    int hid = std::get<int>(hRow.get(pkHist));
-                    if (hid >= histId) histId = hid + 1;
-                }
-            }
-
+            // Insert into status_history using pre-incremented id
+            int histId = nextHistId++;
             Record hRec;
             hRec.set("history_id", histId);
             hRec.set("unit_id", unitId);
@@ -1492,6 +1495,170 @@ namespace user_update
 
         db->commit();
         return OperationResult{true, "Ghi nhận linh kiện thừa vào đợt kiểm kho thành công!", 2};
+    }
+
+    OperationResult saveInventoryCheckBatch(
+        Database* db,
+        int checkId,
+        const Vector<BatchCheckUnitUpdate>& modifiedUnits,
+        const Vector<BatchCheckUnitSurplus>& surplusUnits
+    ) {
+        if (!db || checkId <= 0) return OperationResult{false, "Tham số không hợp lệ.", 0};
+        if (modifiedUnits.empty() && surplusUnits.empty()) {
+            return OperationResult{true, "Không có dữ liệu thay đổi cần lưu.", 0};
+        }
+
+        Table* chkTbl = db->getTable("inventory_check");
+        Table* cqTbl = db->getTable("inventory_check_quantity");
+        Table* cuTbl = db->getTable("inventory_check_unit");
+        if (!chkTbl || !cqTbl || !cuTbl) {
+            return OperationResult{false, "Các bảng dữ liệu kiểm kê không tồn tại.", 0};
+        }
+
+        const Record* chkRec = chkTbl->getRecordById(checkId);
+        if (!chkRec) {
+            return OperationResult{false, "Không tìm thấy đợt kiểm kê với ID " + std::to_string(checkId) + ".", 0};
+        }
+        std::string checkSt = chkRec->has("status") && std::holds_alternative<std::string>(chkRec->get("status"))
+            ? std::get<std::string>(chkRec->get("status")) : "";
+        if (checkSt == "COMPLETED") {
+            return OperationResult{false, "Đợt kiểm kê đã HOÀN THÀNH (COMPLETED), không thể chỉnh sửa dữ liệu.", 0};
+        }
+        if (checkSt == "CANCELLED") {
+            return OperationResult{false, "Đợt kiểm kê đã bị HỦY (CANCELLED), không thể chỉnh sửa dữ liệu.", 0};
+        }
+
+        // Validate serials for surplus units upfront
+        for (size_t i = 0; i < surplusUnits.size(); ++i) {
+            const auto& s = surplusUnits[i];
+            if (!user_create::isValidSerialFormat(s.serial)) {
+                return OperationResult{false, "Mã serial '" + s.serial + "' không đúng định dạng chuẩn SN-XXXXXXX (Rule 5.5).", 0};
+            }
+        }
+
+        if (!db->beginTransaction()) {
+            return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
+        }
+
+        // Find max check_unit_id once
+        int nextCuId = 1;
+        for (const auto& r : cuTbl->getRows()) {
+            if (r.has("check_unit_id") && std::holds_alternative<int>(r.get("check_unit_id"))) {
+                int id = std::get<int>(r.get("check_unit_id"));
+                if (id >= nextCuId) nextCuId = id + 1;
+            }
+        }
+
+        // Track affected check_quantity_ids so we recount them only once
+        std::set<int> affectedCqIds;
+        int totalAffected = 0;
+
+        // 1. Process modified units
+        for (size_t i = 0; i < modifiedUnits.size(); ++i) {
+            const auto& m = modifiedUnits[i];
+            const Record* cuRec = cuTbl->getRecordById(m.checkUnitId);
+            if (!cuRec) continue;
+
+            if (cuRec->has("check_quantity_id") && std::holds_alternative<int>(cuRec->get("check_quantity_id"))) {
+                affectedCqIds.insert(std::get<int>(cuRec->get("check_quantity_id")));
+            }
+
+            Record cuUp;
+            cuUp.set("scanned_status", m.scannedStatus);
+            OperationResult rUp = db->update("inventory_check_unit", m.checkUnitId, cuUp);
+            if (!rUp) {
+                db->rollback();
+                return rUp;
+            }
+            totalAffected++;
+        }
+
+        // 2. Process surplus units
+        for (size_t i = 0; i < surplusUnits.size(); ++i) {
+            const auto& s = surplusUnits[i];
+            affectedCqIds.insert(s.checkQuantityId);
+
+            int cuId = nextCuId++;
+            Record cuRec;
+            cuRec.set("check_unit_id", cuId);
+            cuRec.set("check_id", checkId);
+            cuRec.set("check_quantity_id", s.checkQuantityId);
+            cuRec.set("serial", s.serial);
+            if (s.systemStatus.empty()) {
+                cuRec.set("system_status", Value{}); // NULL for brand new unrecorded unit
+            } else {
+                cuRec.set("system_status", s.systemStatus);
+            }
+            cuRec.set("scanned_status", s.scannedStatus);
+
+            OperationResult rIns = db->insertRecord("inventory_check_unit", cuRec);
+            if (!rIns) {
+                db->rollback();
+                return rIns;
+            }
+            totalAffected++;
+        }
+
+        // 3. Recalculate actual counts for affected check_quantities in one pass per cqId
+        for (int cqId : affectedCqIds) {
+            Vector<Record> allUnitsForCq = Query::filterRecords(*cuTbl, "check_quantity_id", Value(cqId));
+            int actAvail = 0, actWarr = 0, actScrap = 0;
+            for (size_t i = 0; i < allUnitsForCq.size(); ++i) {
+                const auto& u = allUnitsForCq[i];
+                std::string st = (u.has("scanned_status") && std::holds_alternative<std::string>(u.get("scanned_status")))
+                                    ? std::get<std::string>(u.get("scanned_status")) : "";
+                if (st == "AVAILABLE") actAvail++;
+                else if (st == "WARRANTY") actWarr++;
+                else if (st == "SCRAPPED") actScrap++;
+            }
+
+            Record cqUp;
+            cqUp.set("actual_available_quan", actAvail);
+            cqUp.set("actual_warranty_quan", actWarr);
+            cqUp.set("actual_scrapped_quan", actScrap);
+
+            OperationResult rCq = db->update("inventory_check_quantity", cqId, cqUp);
+            if (!rCq) {
+                db->rollback();
+                return rCq;
+            }
+            totalAffected++;
+        }
+
+        // 4. Update check status to IN_PROCESS if it was PENDING
+        if (checkSt == "PENDING") {
+            Record chkUp;
+            chkUp.set("status", std::string("IN_PROCESS"));
+            db->update("inventory_check", checkId, chkUp);
+        }
+
+        db->commit();
+        return OperationResult{true, "Đã lưu thành công dữ liệu kiểm kê vào CSDL!", totalAffected};
+    }
+
+    OperationResult cancelInventoryCheck(
+        Database* db,
+        int checkId
+    ) {
+        if (!db || checkId <= 0) return OperationResult{false, "Tham số không hợp lệ.", 0};
+        Table* chkTbl = db->getTable("inventory_check");
+        if (!chkTbl) return OperationResult{false, "Bảng inventory_check không tồn tại.", 0};
+
+        const Record* chkRec = chkTbl->getRecordById(checkId);
+        if (!chkRec) return OperationResult{false, "Không tìm thấy đợt kiểm kho với ID " + std::to_string(checkId) + ".", 0};
+
+        std::string curSt = chkRec->has("status") && std::holds_alternative<std::string>(chkRec->get("status"))
+            ? std::get<std::string>(chkRec->get("status")) : "";
+        if (curSt == "COMPLETED") {
+            return OperationResult{false, "Đợt kiểm kê đã hoàn thành (COMPLETED), không thể hủy.", 0};
+        }
+        if (curSt == "CANCELLED") {
+            return OperationResult{false, "Đợt kiểm kê đã ở trạng thái ĐÃ HỦY (CANCELLED).", 0};
+        }
+
+        Record up;
+        up.set("status", std::string("CANCELLED"));
+        return db->update("inventory_check", checkId, up);
     }
 
     OperationResult completeInventoryCheck(

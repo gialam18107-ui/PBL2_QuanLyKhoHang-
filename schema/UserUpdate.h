@@ -184,6 +184,37 @@ namespace user_update
         const std::string& scannedStatus
     );
 
+    struct BatchCheckUnitUpdate {
+        int checkUnitId = 0;
+        std::string scannedStatus;
+    };
+
+    struct BatchCheckUnitSurplus {
+        int checkQuantityId = 0;
+        std::string serial;
+        std::string systemStatus;
+        std::string scannedStatus;
+    };
+
+    /**
+     * @brief Lưu hàng loạt linh kiện kiểm kê (sửa đổi + hàng mới/thừa) trong 1 Transaction duy nhất.
+     * Tối ưu hóa hiệu năng O(N), tránh vòng lặp mở CSDL và quét bảng nhiều lần.
+     */
+    OperationResult saveInventoryCheckBatch(
+        Database* db,
+        int checkId,
+        const Vector<BatchCheckUnitUpdate>& modifiedUnits,
+        const Vector<BatchCheckUnitSurplus>& surplusUnits
+    );
+
+    /**
+     * @brief Hủy đợt kiểm kê kho (chuyển sang CANCELLED) nếu chưa COMPLETED.
+     */
+    OperationResult cancelInventoryCheck(
+        Database* db,
+        int checkId
+    );
+
     OperationResult completeInventoryCheck(
         Database* db,
         int checkId
