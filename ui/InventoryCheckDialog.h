@@ -23,6 +23,7 @@
 #include <QSplitter>
 #include <QFrame>
 #include <QScrollArea>
+#include <QPainter>
 #include <vector>
 #include <string>
 #include <utility>
@@ -31,6 +32,26 @@
 #include "schema/UserCreate.h"
 #include "schema/UserUpdate.h"
 #include "schema/UserQuery.h"
+
+/**
+ * @brief Custom 2-Tier Header View for Product Reconciliation Matrix and Progress Tables.
+ * Renders grouped columns:
+ * Columns 0..4: STT, Mã sản phẩm, Tên sản phẩm, Tổng tồn, Thực tế (full height)
+ * Columns 5..6: Khả dụng (sub: Tồn | Thực tế)
+ * Columns 7..8: Bảo hành (sub: Tồn | Thực tế)
+ * Columns 9..10: Hư hỏng (sub: Tồn | Thực tế)
+ */
+class GroupedReconcileHeaderView : public QHeaderView
+{
+public:
+    explicit GroupedReconcileHeaderView(Qt::Orientation orientation, QWidget* parent = nullptr);
+    ~GroupedReconcileHeaderView() override = default;
+
+    QSize sizeHint() const override;
+
+protected:
+    void paintEvent(QPaintEvent* event) override;
+};
 
 /**
  * @brief Dialog to create a new Inventory Check with upfront product scope declaration.

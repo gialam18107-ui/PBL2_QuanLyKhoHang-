@@ -2289,9 +2289,39 @@ LogisticsUpdateDialog::LogisticsUpdateDialog(
     }
     if (statuses.isEmpty()) {
         statuses = (hubType == HubType::INBOUND)
-            ? QStringList{"EXPECTED", "RECEIVING", "INSPECTING", "COMPLETED"}
+            ? QStringList{"EXPECTED", "RECEIVING", "INSPECTING", "COMPLETED", "CANCELLED"}
             : QStringList{"PENDING", "PICKING", "COMPLETED", "CANCELLED"};
     }
+
+    bool hasActualLogisticsProgress = false;
+    if (db) {
+        if (hubType == HubType::INBOUND) {
+            Table* ddTable = db->getTable("delivery_detail");
+            if (ddTable) {
+                Vector<Record> ddRecs = Query::filterRecords(*ddTable, "delivery_id", Value(logId));
+                for (const auto& dd : ddRecs) {
+                    int act = dd.has("actual_quantity") && std::holds_alternative<int>(dd.get("actual_quantity"))
+                            ? std::get<int>(dd.get("actual_quantity")) : 0;
+                    if (act > 0) { hasActualLogisticsProgress = true; break; }
+                }
+            }
+        } else {
+            Table* sdTable = db->getTable("shipment_detail");
+            if (sdTable) {
+                Vector<Record> sdRecs = Query::filterRecords(*sdTable, "shipment_id", Value(logId));
+                for (const auto& sd : sdRecs) {
+                    int act = sd.has("actual_quantity") && std::holds_alternative<int>(sd.get("actual_quantity"))
+                            ? std::get<int>(sd.get("actual_quantity")) : 0;
+                    if (act > 0) { hasActualLogisticsProgress = true; break; }
+                }
+            }
+        }
+    }
+
+    if (hasActualLogisticsProgress) {
+        statuses.removeAll("CANCELLED");
+    }
+
     statusCombo->addItems(statuses);
     int sIdx = statusCombo->findText(currentStatus, Qt::MatchFixedString);
     if (sIdx >= 0) statusCombo->setCurrentIndex(sIdx);

@@ -36,18 +36,17 @@ TransactionHubWidget::TransactionHubWidget(HubType type, Database* database, con
 void TransactionHubWidget::setupUI()
 {
     auto* mainLayout = new QVBoxLayout(this);
-    mainLayout->setContentsMargins(16, 16, 16, 16);
-    mainLayout->setSpacing(10);
+    mainLayout->setContentsMargins(14, 8, 14, 8);
+    mainLayout->setSpacing(6);
 
     // 1. Header info
     titleLabel = new QLabel(titleText, this);
     titleLabel->setStyleSheet("font-size: 18px; font-weight: bold; color: #0f172a;");
 
     descLabel = new QLabel(descText, this);
-    descLabel->setStyleSheet("font-size: 13px; color: #64748b; margin-bottom: 2px;");
+    descLabel->hide();
 
     mainLayout->addWidget(titleLabel);
-    mainLayout->addWidget(descLabel);
 
     // 2. Filter bar (Rule 9.1)
     setupFilterUI(mainLayout);
@@ -72,10 +71,10 @@ void TransactionHubWidget::setupFilterUI(QVBoxLayout* mainLayout)
     );
 
     auto* filterLayout = new QHBoxLayout(filterFrame);
-    filterLayout->setContentsMargins(12, 8, 12, 8);
-    filterLayout->setSpacing(10);
+    filterLayout->setContentsMargins(10, 4, 10, 4);
+    filterLayout->setSpacing(8);
 
-    auto* filterIconLabel = new QLabel("🎯 Tìm kiếm theo cấu trúc dữ liệu:", filterFrame);
+    auto* filterIconLabel = new QLabel("🎯 Lọc dữ liệu:", filterFrame);
     filterIconLabel->setStyleSheet("font-size: 13px; font-weight: 600; color: #334155; border: none;");
     filterLayout->addWidget(filterIconLabel);
 
@@ -500,8 +499,8 @@ void TransactionHubWidget::setupSplitterUI(QVBoxLayout* mainLayout)
         "  border: 1px solid #cbd5e1;"
         "  border-left: 4px solid #2563eb;"
         "  border-radius: 6px;"
-        "  padding: 6px 12px;"
-        "  font-size: 13px;"
+        "  padding: 4px 10px;"
+        "  font-size: 12px;"
         "  font-weight: 600;"
         "  color: #1e293b;"
         "}"
@@ -539,9 +538,7 @@ void TransactionHubWidget::setupSplitterUI(QVBoxLayout* mainLayout)
     leftLayout->setSpacing(4);
 
     auto* leftHeaderLayout = new QHBoxLayout();
-    QString leftTitle = (hubType == HubType::INBOUND)
-        ? "📋 Mặt hàng cam kết trong đơn (inbound_detail)"
-        : "📋 Mặt hàng cam kết trong đơn (outbound_detail)";
+    QString leftTitle = "📋 Mặt hàng cam kết trong đơn";
     auto* leftTitleLabel = new QLabel(leftTitle, leftContainer);
     leftTitleLabel->setStyleSheet("font-size: 13px; font-weight: bold; color: #1e293b;");
     orderDetailCountLabel = new QLabel("(0 mặt hàng)", leftContainer);
@@ -619,8 +616,8 @@ void TransactionHubWidget::setupSplitterUI(QVBoxLayout* mainLayout)
 
     auto* rightUpperHeaderLayout = new QHBoxLayout();
     QString rightUpperTitle = (hubType == HubType::INBOUND)
-        ? "🚚 Các đợt giao nhận (delivery)"
-        : "🚚 Các đợt xuất hàng (shipment)";
+        ? "🚚 Các đợt giao nhận"
+        : "🚚 Các đợt xuất hàng";
     auto* rightUpperTitleLabel = new QLabel(rightUpperTitle, rightUpperContainer);
     rightUpperTitleLabel->setStyleSheet("font-size: 13px; font-weight: bold; color: #1e293b;");
     logisticsCountLabel = new QLabel("(0 đợt)", rightUpperContainer);
@@ -722,8 +719,8 @@ void TransactionHubWidget::setupSplitterUI(QVBoxLayout* mainLayout)
 
     auto* rightLowerHeaderLayout = new QHBoxLayout();
     QString rightLowerTitle = (hubType == HubType::INBOUND)
-        ? "📦 Hàng của đợt nhận (delivery_detail)"
-        : "📦 Hàng của đợt xuất (shipment_detail)";
+        ? "📦 Hàng của đợt nhận"
+        : "📦 Hàng của đợt xuất";
     auto* rightLowerTitleLabel = new QLabel(rightLowerTitle, rightLowerContainer);
     rightLowerTitleLabel->setStyleSheet("font-size: 13px; font-weight: bold; color: #1e293b;");
     logisticsDetailCountLabel = new QLabel("(0 mục)", rightLowerContainer);
@@ -787,8 +784,10 @@ void TransactionHubWidget::setupSplitterUI(QVBoxLayout* mainLayout)
     bottomLayout->addWidget(horizontalSplitter, 1);
     mainSplitter->addWidget(bottomContainer);
 
-    // Set vertical splitter initial ratio 40% (master) : 60% (detail)
-    mainSplitter->setSizes({320, 480});
+    // Set vertical splitter initial ratio: compact master, expanded detail
+    mainSplitter->setSizes({260, 520});
+    mainSplitter->setStretchFactor(0, 3);
+    mainSplitter->setStretchFactor(1, 5);
     mainLayout->addWidget(mainSplitter, 1);
 
     // Signal connections for row selection and double-clicks

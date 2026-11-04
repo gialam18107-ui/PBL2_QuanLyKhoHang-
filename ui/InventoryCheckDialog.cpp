@@ -86,6 +86,123 @@ namespace {
 }
 
 // ============================================================================
+// GroupedReconcileHeaderView: 2-Tier Grouped Column Header
+// ============================================================================
+GroupedReconcileHeaderView::GroupedReconcileHeaderView(Qt::Orientation orientation, QWidget* parent)
+    : QHeaderView(orientation, parent)
+{
+    setDefaultAlignment(Qt::AlignCenter);
+}
+
+QSize GroupedReconcileHeaderView::sizeHint() const
+{
+    QSize s = QHeaderView::sizeHint();
+    s.setHeight(48);
+    return s;
+}
+
+void GroupedReconcileHeaderView::paintEvent(QPaintEvent* event)
+{
+    Q_UNUSED(event);
+    QPainter painter(viewport());
+
+    int fullH = height();
+    int halfH = fullH / 2;
+
+    QColor bgColor(0xf8, 0xfa, 0xfc);
+    QColor groupBgColor(0xee, 0xf2, 0xf6);
+    QColor borderColor(0xcb, 0xd5, 0xe1);
+    QColor textColor(0x0f, 0x17, 0x2a);
+
+    QFont mainFont = font();
+    mainFont.setPixelSize(12);
+
+    QFont boldFont = mainFont;
+    boldFont.setBold(true);
+
+    QFont subFont = mainFont;
+    subFont.setPixelSize(11);
+
+    painter.fillRect(viewport()->rect(), bgColor);
+
+    int totalCols = count();
+    for (int col = 0; col < totalCols; ++col) {
+        if (isSectionHidden(col)) continue;
+        int x = sectionPosition(col);
+        int w = sectionSize(col);
+        if (w <= 0) continue;
+
+        if (col < 5) {
+            // Columns 0..4: STT, Mã sản phẩm, Tên sản phẩm, Tổng tồn, Thực tế
+            QRect cellRect(x, 0, w, fullH);
+            painter.fillRect(cellRect, bgColor);
+            painter.setPen(borderColor);
+            painter.drawLine(cellRect.topRight(), cellRect.bottomRight());
+
+            painter.setPen(textColor);
+            painter.setFont(boldFont);
+            QString label = model() ? model()->headerData(col, Qt::Horizontal).toString() : "";
+            painter.drawText(cellRect.adjusted(3, 0, -3, 0), Qt::AlignCenter | Qt::TextWordWrap, label);
+        } else if (col == 5 || col == 7 || col == 9) {
+            // Group parent headers:
+            // col 5..6: Khả dụng
+            // col 7..8: Bảo hành
+            // col 9..10: Hư hỏng
+            int partnerCol = col + 1;
+            int wNext = (!isSectionHidden(partnerCol)) ? sectionSize(partnerCol) : 0;
+            int groupW = w + wNext;
+
+            // Top tier group header
+            QRect groupRect(x, 0, groupW, halfH);
+            painter.fillRect(groupRect, groupBgColor);
+            painter.setPen(borderColor);
+            painter.drawLine(groupRect.topRight(), groupRect.bottomRight());
+            painter.drawLine(groupRect.bottomLeft(), groupRect.bottomRight());
+
+            painter.setPen(textColor);
+            painter.setFont(boldFont);
+            QString groupTitle = (col == 5) ? "Khả dụng" : (col == 7 ? "Bảo hành" : "Hư hỏng");
+            painter.drawText(groupRect, Qt::AlignCenter, groupTitle);
+
+            // Bottom sub-cell for Tồn
+            QRect subRect(x, halfH, w, fullH - halfH);
+            painter.fillRect(subRect, bgColor);
+            painter.setPen(borderColor);
+            painter.drawLine(subRect.topRight(), subRect.bottomRight());
+
+            painter.setPen(textColor);
+            painter.setFont(subFont);
+            painter.drawText(subRect, Qt::AlignCenter, "Tồn");
+        } else if (col == 6 || col == 8 || col == 10) {
+            // Bottom sub-cell for Thực tế
+            QRect subRect(x, halfH, w, fullH - halfH);
+            painter.fillRect(subRect, bgColor);
+            painter.setPen(borderColor);
+            painter.drawLine(subRect.topRight(), subRect.bottomRight());
+
+            painter.setPen(textColor);
+            painter.setFont(subFont);
+            painter.drawText(subRect, Qt::AlignCenter, "Thực tế");
+        } else {
+            // Other extra columns (if any visible)
+            QRect cellRect(x, 0, w, fullH);
+            painter.fillRect(cellRect, bgColor);
+            painter.setPen(borderColor);
+            painter.drawLine(cellRect.topRight(), cellRect.bottomRight());
+
+            painter.setPen(textColor);
+            painter.setFont(mainFont);
+            QString label = model() ? model()->headerData(col, Qt::Horizontal).toString() : "";
+            painter.drawText(cellRect, Qt::AlignCenter, label);
+        }
+    }
+
+    // Bottom horizontal border across entire header
+    painter.setPen(borderColor);
+    painter.drawLine(0, fullH - 1, viewport()->width(), fullH - 1);
+}
+
+// ============================================================================
 // 1. InventoryCheckCreateDialog
 // ============================================================================
 
@@ -508,28 +625,24 @@ void InventoryCheckReconciliationDialog::setupUI()
     mainLayout->addLayout(titleBox);
 
     // ========================================================================
-    // TIER 1: KPI Summary Cards & Discrepancy Filter
+    // TIER 1: KPI Summary Badges & Discrepancy Filter
     // ========================================================================
-    auto* tier1Group = new QGroupBox("Tổng Hợp Chỉ Số Kiểm Kê Toàn Đợt", this);
-    auto* t1Layout = new QVBoxLayout(tier1Group);
-    t1Layout->setContentsMargins(12, 10, 12, 10);
+    auto* tier1Group = new QGroupBox("Tổng hợp chỉ số kiểm kê toàn đợt", this);
+    auto* t1Layout = new QHBoxLayout(tier1Group);
+    t1Layout->setContentsMargins(10, 4, 10, 4);
     t1Layout->setSpacing(8);
 
-    auto* cardsLayout = new QGridLayout();
-    cardsLayout->setHorizontalSpacing(10);
-    cardsLayout->setVerticalSpacing(10);
-
-    auto makeKpiCard = [](const QString& title, QLabel*& valLabel, const QString& bgCol, const QString& borderCol, const QString& textCol) -> QFrame* {
+    auto makeKpiBadge = [](const QString& title, QLabel*& valLabel, const QString& bgCol, const QString& borderCol, const QString& textCol) -> QFrame* {
         auto* card = new QFrame();
-        card->setStyleSheet(QString("QFrame { background-color: %1; border: 1px solid %2; border-radius: 8px; padding: 6px; }").arg(bgCol, borderCol));
-        auto* cLayout = new QVBoxLayout(card);
-        cLayout->setContentsMargins(8, 6, 8, 6);
-        cLayout->setSpacing(4);
+        card->setStyleSheet(QString("QFrame { background-color: %1; border: 1px solid %2; border-radius: 4px; padding: 2px 8px; }").arg(bgCol, borderCol));
+        auto* cLayout = new QHBoxLayout(card);
+        cLayout->setContentsMargins(4, 2, 4, 2);
+        cLayout->setSpacing(6);
 
-        auto* tLbl = new QLabel(title, card);
+        auto* tLbl = new QLabel(title + ":", card);
         tLbl->setStyleSheet("font-size: 11px; font-weight: 600; color: #475569;");
         valLabel = new QLabel("0", card);
-        valLabel->setStyleSheet(QString("font-size: 20px; font-weight: bold; color: %1;").arg(textCol));
+        valLabel->setStyleSheet(QString("font-size: 13px; font-weight: bold; color: %1;").arg(textCol));
         valLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
 
         cLayout->addWidget(tLbl);
@@ -537,22 +650,18 @@ void InventoryCheckReconciliationDialog::setupUI()
         return card;
     };
 
-    cardsLayout->addWidget(makeKpiCard("📦 TỒN SỔ SÁCH HT", kpiSystemStockLabel, "#f8fafc", "#cbd5e1", "#0f172a"), 0, 0);
-    cardsLayout->addWidget(makeKpiCard("📋 THỰC ĐẾM XÁC NHẬN", kpiActualStockLabel, "#eff6ff", "#bfdbfe", "#1d4ed8"), 0, 1);
-    cardsLayout->addWidget(makeKpiCard("🟢 KHỚP HOÀN TOÀN", kpiMatchedLabel, "#f0fdf4", "#bbf7d0", "#15803d"), 0, 2);
-    cardsLayout->addWidget(makeKpiCard("🔴 THIẾU / CẦN XUẤT ĐIỀU CHỈNH (-)", kpiMissingLabel, "#fef2f2", "#fecaca", "#b91c1c"), 0, 3);
-    cardsLayout->addWidget(makeKpiCard("🔵 THỪA / CẦN NHẬP ĐIỀU CHỈNH (+)", kpiSurplusLabel, "#fffbeb", "#fde68a", "#b45309"), 0, 4);
-    cardsLayout->addWidget(makeKpiCard("🟣 LỆCH TRẠNG THÁI (⇄)", kpiStatusShiftLabel, "#faf5ff", "#e9d5ff", "#7e22ce"), 0, 5);
+    t1Layout->addWidget(makeKpiBadge("Sổ sách HT", kpiSystemStockLabel, "#f8fafc", "#cbd5e1", "#0f172a"));
+    t1Layout->addWidget(makeKpiBadge("Thực đếm", kpiActualStockLabel, "#eff6ff", "#bfdbfe", "#1d4ed8"));
+    t1Layout->addWidget(makeKpiBadge("Khớp", kpiMatchedLabel, "#f0fdf4", "#bbf7d0", "#15803d"));
+    t1Layout->addWidget(makeKpiBadge("Thiếu (-)", kpiMissingLabel, "#fef2f2", "#fecaca", "#b91c1c"));
+    t1Layout->addWidget(makeKpiBadge("Thừa (+)", kpiSurplusLabel, "#fffbeb", "#fde68a", "#b45309"));
+    t1Layout->addWidget(makeKpiBadge("Lệch TT (⇄)", kpiStatusShiftLabel, "#faf5ff", "#e9d5ff", "#7e22ce"));
+    t1Layout->addStretch(1);
 
-    t1Layout->addLayout(cardsLayout);
-
-    auto* t1FilterBar = new QHBoxLayout();
-    abnormalFilterCheck = new QCheckBox("🔍 Chỉ hiển thị các mặt hàng / linh kiện có bất thường", tier1Group);
+    abnormalFilterCheck = new QCheckBox("🔍 Chỉ hiển thị bất thường", tier1Group);
     abnormalFilterCheck->setChecked(true);
     abnormalFilterCheck->setStyleSheet("font-weight: 600; color: #1e40af; font-size: 12px;");
-    t1FilterBar->addWidget(abnormalFilterCheck);
-    t1FilterBar->addStretch();
-    t1Layout->addLayout(t1FilterBar);
+    t1Layout->addWidget(abnormalFilterCheck);
 
     mainLayout->addWidget(tier1Group);
 
@@ -565,10 +674,11 @@ void InventoryCheckReconciliationDialog::setupUI()
     t2Layout->setSpacing(6);
 
     matrixTable = new QTableWidget(tier2Group);
+    matrixTable->setHorizontalHeader(new GroupedReconcileHeaderView(Qt::Horizontal, matrixTable));
     matrixTable->setColumnCount(11);
     matrixTable->setHorizontalHeaderLabels({
         "STT", "Mã sản phẩm", "Tên sản phẩm", "Tổng tồn", "Thực tế",
-        "Tồn KD", "Thực tế KD", "Tồn BH", "Thực tế BH", "Tồn Hư hỏng", "Thực tế Hư hỏng"
+        "Tồn", "Thực tế", "Tồn", "Thực tế", "Tồn", "Thực tế"
     });
     matrixTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
     matrixTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
@@ -576,12 +686,9 @@ void InventoryCheckReconciliationDialog::setupUI()
     for (int c = 3; c <= 10; ++c) {
         matrixTable->horizontalHeader()->setSectionResizeMode(c, QHeaderView::ResizeToContents);
     }
-    matrixTable->setMaximumHeight(180);
     matrixTable->setAlternatingRowColors(true);
     matrixTable->setSelectionBehavior(QAbstractItemView::SelectRows);
     t2Layout->addWidget(matrixTable);
-
-    mainLayout->addWidget(tier2Group);
 
     // ========================================================================
     // TIER 3: Gom Rổ Xử Lý Điều Chỉnh (3 Action Buckets)
@@ -720,7 +827,15 @@ void InventoryCheckReconciliationDialog::setupUI()
     bucketTabWidget->addTab(b3Widget, "🔄 Điều chỉnh trạng thái");
 
     t3Layout->addWidget(bucketTabWidget);
-    mainLayout->addWidget(tier3Group, 1);
+
+    // Option B: Vertical QSplitter between Product Matrix and Adjustment Processing box
+    auto* reconSplitter = new QSplitter(Qt::Vertical, this);
+    reconSplitter->addWidget(tier2Group);
+    reconSplitter->addWidget(tier3Group);
+    reconSplitter->setStretchFactor(0, 2);
+    reconSplitter->setStretchFactor(1, 5);
+    reconSplitter->setSizes({220, 520});
+    mainLayout->addWidget(reconSplitter, 1);
 
     // Bottom Close Bar
     auto* bottomBar = new QHBoxLayout();
@@ -1487,10 +1602,11 @@ void InventoryCheckDetailDialog::setupUI()
     masterLayout->addLayout(masterToolbar);
 
     quantityTable = new QTableWidget(masterWidget);
+    quantityTable->setHorizontalHeader(new GroupedReconcileHeaderView(Qt::Horizontal, quantityTable));
     quantityTable->setColumnCount(13);
     quantityTable->setHorizontalHeaderLabels({
         "STT", "Mã sản phẩm", "Tên sản phẩm", "Tổng tồn", "Thực tế",
-        "Tồn KD", "Thực tế KD", "Tồn BH", "Thực tế BH", "Tồn Hư hỏng", "Thực tế Hư hỏng",
+        "Tồn", "Thực tế", "Tồn", "Thực tế", "Tồn", "Thực tế",
         "CheckQuantityId", "ProductId"
     });
 

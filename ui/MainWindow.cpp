@@ -98,6 +98,11 @@ MainWindow::MainWindow(Database* database, QWidget* parent)
         }
     });
 
+    auto* saveShortcut = new QShortcut(QKeySequence::Save, this);
+    connect(saveShortcut, &QShortcut::activated, [this]() {
+        saveDatabase(true);
+    });
+
     setupMenuBar();
     setupUI();
     setupPages();
@@ -285,6 +290,9 @@ void MainWindow::setupMenuBar()
     connect(actReport, &QAction::triggered, [this]() {
         selectReportQuery();
     });
+
+    // Hide classic top menubar as requested to maximize vertical space and eliminate clutter
+    mBar->hide();
 }
 
 void MainWindow::setupUI()
@@ -650,7 +658,7 @@ void MainWindow::setupPages()
     // 1. PRODUCT_QUANTITY_QUERY (Tồn kho sản phẩm)
     // ========================================================
     productQuantityWidget = new QueryTableWidget(
-        "1. Tồn kho Sản phẩm (PRODUCT_QUANTITY)",
+        "Tồn kho sản phẩm",
         "Thống kê số lượng tồn kho khả dụng, bảo hành và hư hỏng theo từng sản phẩm",
         this
     );
@@ -677,7 +685,7 @@ void MainWindow::setupPages()
             user_query::product_quantity_query(db, results, col, Value(v1.toStdString()));
         }
         productQuantityWidget->setData(results);
-        statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên PRODUCT_QUANTITY [%1 = %2]: %3 bản ghi (%4 ms)")
+        statusLabel->setText(QString("Lọc dữ liệu trên PRODUCT_QUANTITY [%1 = %2]: %3 bản ghi (%4 ms)")
             .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(productQuantityWidget);
@@ -686,7 +694,7 @@ void MainWindow::setupPages()
     // 2. UNIT_INVENTORY_QUERY
     // ========================================================
     unitInventoryWidget = new QueryTableWidget(
-        "2. Tồn kho theo Serial linh kiện",
+        "Tồn kho theo Serial linh kiện",
         "Danh sách từng linh kiện cụ thể theo số Serial Number và trạng thái hiện tại",
         this
     );
@@ -706,7 +714,7 @@ void MainWindow::setupPages()
         Vector<Record> results;
         user_query::unit_inventory_query(db, results, col, Value(v1.toStdString()));
         unitInventoryWidget->setData(results);
-        statusLabel->setText(QString("Tìm kiếm trên UNIT_INVENTORY [%1 = %2]: %3 bản ghi (%4 ms)")
+        statusLabel->setText(QString("Lọc dữ liệu trên UNIT_INVENTORY [%1 = %2]: %3 bản ghi (%4 ms)")
             .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(unitInventoryWidget);
@@ -715,7 +723,7 @@ void MainWindow::setupPages()
     // 3. STATUS_HISTORY_QUERY
     // ========================================================
     statusHistoryWidget = new QueryTableWidget(
-        "3. Lịch sử trạng thái linh kiện (STATUS_HISTORY)",
+        "Lịch sử trạng thái linh kiện",
         "Lịch sử biến động trạng thái vòng đời của từng linh kiện qua các giao dịch nhập/xuất kho",
         this
     );
@@ -737,11 +745,11 @@ void MainWindow::setupPages()
         Vector<Record> results;
         if (isRange) {
             user_query::status_history_query(db, results, col, Value(v1.toStdString()), Value(v2.toStdString()));
-            statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên STATUS_HISTORY [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
+            statusLabel->setText(QString("Lọc dữ liệu trên STATUS_HISTORY [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
                 .arg(QString::fromStdString(col)).arg(v1).arg(v2).arg(results.size()).arg(timer.elapsed()));
         } else {
             user_query::status_history_query(db, results, col, Value(v1.toStdString()));
-            statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên STATUS_HISTORY [%1 = %2]: %3 bản ghi (%4 ms)")
+            statusLabel->setText(QString("Lọc dữ liệu trên STATUS_HISTORY [%1 = %2]: %3 bản ghi (%4 ms)")
                 .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
         }
         statusHistoryWidget->setData(results);
@@ -753,7 +761,7 @@ void MainWindow::setupPages()
     // ========================================================
     inboundTxnWidget = new TransactionHubWidget(
         HubType::INBOUND, db,
-        "4. Quản lý Đơn Nhập kho & Giao nhận (INBOUND HUB)",
+        "Quản lý đơn nhập kho",
         "Khung hiển thị đối chiếu Kế hoạch đặt hàng và Tiến độ thực tế các đợt giao nhận (Format A)",
         this
     );
@@ -777,11 +785,11 @@ void MainWindow::setupPages()
         Vector<Record> results;
         if (isRange) {
             user_query::inbound_transaction_query(db, results, col, Value(v1.toStdString()), Value(v2.toStdString()));
-            statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên INBOUND_TRANSACTION [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
+            statusLabel->setText(QString("Lọc dữ liệu trên INBOUND_TRANSACTION [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
                 .arg(QString::fromStdString(col)).arg(v1).arg(v2).arg(results.size()).arg(timer.elapsed()));
         } else {
             user_query::inbound_transaction_query(db, results, col, Value(v1.toStdString()));
-            statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên INBOUND_TRANSACTION [%1 = %2]: %3 bản ghi (%4 ms)")
+            statusLabel->setText(QString("Lọc dữ liệu trên INBOUND_TRANSACTION [%1 = %2]: %3 bản ghi (%4 ms)")
                 .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
         }
         inboundTxnWidget->setData(results);
@@ -792,7 +800,7 @@ void MainWindow::setupPages()
     // 5. INBOUND_DETAIL_QUERY
     // ========================================================
     inboundDetailWidget = new QueryTableWidget(
-        "5. Chi tiết Đơn nhập (INBOUND_DETAIL)",
+        "Chi tiết đơn nhập",
         "Chi tiết số lượng từng mã sản phẩm được đặt trong các đơn nhập kho",
         this
     );
@@ -813,7 +821,7 @@ void MainWindow::setupPages()
         Vector<Record> results;
         user_query::inbound_detail_query(db, results, col, Value(v1.toStdString()));
         inboundDetailWidget->setData(results);
-        statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên INBOUND_DETAIL [%1 = %2]: %3 bản ghi (%4 ms)")
+        statusLabel->setText(QString("Lọc dữ liệu trên INBOUND_DETAIL [%1 = %2]: %3 bản ghi (%4 ms)")
             .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(inboundDetailWidget);
@@ -822,7 +830,7 @@ void MainWindow::setupPages()
     // 6. DELIVERY_QUERY
     // ========================================================
     deliveryWidget = new QueryTableWidget(
-        "6. Đợt Nhận hàng (DELIVERY)",
+        "Đợt nhận hàng",
         "Danh sách các đợt giao nhận hàng thực tế từ đối tác vào kho",
         this
     );
@@ -845,11 +853,11 @@ void MainWindow::setupPages()
         Vector<Record> results;
         if (isRange) {
             user_query::delivery_query(db, results, col, Value(v1.toStdString()), Value(v2.toStdString()));
-            statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên DELIVERY [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
+            statusLabel->setText(QString("Lọc dữ liệu trên DELIVERY [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
                 .arg(QString::fromStdString(col)).arg(v1).arg(v2).arg(results.size()).arg(timer.elapsed()));
         } else {
             user_query::delivery_query(db, results, col, Value(v1.toStdString()));
-            statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên DELIVERY [%1 = %2]: %3 bản ghi (%4 ms)")
+            statusLabel->setText(QString("Lọc dữ liệu trên DELIVERY [%1 = %2]: %3 bản ghi (%4 ms)")
                 .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
         }
         deliveryWidget->setData(results);
@@ -860,7 +868,7 @@ void MainWindow::setupPages()
     // 7. DELIVERY_DETAIL_QUERY
     // ========================================================
     deliveryDetailWidget = new QueryTableWidget(
-        "7. Chi tiết Nhận hàng (DELIVERY_DETAIL)",
+        "Chi tiết nhận hàng",
         "Chi tiết các mặt hàng và số lượng thực nhận qua từng đợt giao nhận hàng",
         this
     );
@@ -882,11 +890,11 @@ void MainWindow::setupPages()
         Vector<Record> results;
         if (isRange) {
             user_query::delivery_detail_query(db, results, col, Value(v1.toStdString()), Value(v2.toStdString()));
-            statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên DELIVERY_DETAIL [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
+            statusLabel->setText(QString("Lọc dữ liệu trên DELIVERY_DETAIL [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
                 .arg(QString::fromStdString(col)).arg(v1).arg(v2).arg(results.size()).arg(timer.elapsed()));
         } else {
             user_query::delivery_detail_query(db, results, col, Value(v1.toStdString()));
-            statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên DELIVERY_DETAIL [%1 = %2]: %3 bản ghi (%4 ms)")
+            statusLabel->setText(QString("Lọc dữ liệu trên DELIVERY_DETAIL [%1 = %2]: %3 bản ghi (%4 ms)")
                 .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
         }
         deliveryDetailWidget->setData(results);
@@ -898,7 +906,7 @@ void MainWindow::setupPages()
     // ========================================================
     outboundTxnWidget = new TransactionHubWidget(
         HubType::OUTBOUND, db,
-        "8. Quản lý Đơn Xuất kho & Xuất hàng (OUTBOUND HUB)",
+        "Quản lý đơn xuất kho",
         "Khung hiển thị đối chiếu Kế hoạch đặt hàng và Tiến độ thực tế các đợt xuất hàng (Format A)",
         this
     );
@@ -922,11 +930,11 @@ void MainWindow::setupPages()
         Vector<Record> results;
         if (isRange) {
             user_query::outbound_transaction_query(db, results, col, Value(v1.toStdString()), Value(v2.toStdString()));
-            statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên OUTBOUND_TRANSACTION [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
+            statusLabel->setText(QString("Lọc dữ liệu trên OUTBOUND_TRANSACTION [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
                 .arg(QString::fromStdString(col)).arg(v1).arg(v2).arg(results.size()).arg(timer.elapsed()));
         } else {
             user_query::outbound_transaction_query(db, results, col, Value(v1.toStdString()));
-            statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên OUTBOUND_TRANSACTION [%1 = %2]: %3 bản ghi (%4 ms)")
+            statusLabel->setText(QString("Lọc dữ liệu trên OUTBOUND_TRANSACTION [%1 = %2]: %3 bản ghi (%4 ms)")
                 .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
         }
         outboundTxnWidget->setData(results);
@@ -937,7 +945,7 @@ void MainWindow::setupPages()
     // 9. OUTBOUND_DETAIL_QUERY
     // ========================================================
     outboundDetailWidget = new QueryTableWidget(
-        "9. Chi tiết Đơn xuất (OUTBOUND_DETAIL)",
+        "Chi tiết đơn xuất",
         "Chi tiết các sản phẩm và số lượng cần xuất theo từng đơn hàng",
         this
     );
@@ -958,7 +966,7 @@ void MainWindow::setupPages()
         Vector<Record> results;
         user_query::outbound_detail_query(db, results, col, Value(v1.toStdString()));
         outboundDetailWidget->setData(results);
-        statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên OUTBOUND_DETAIL [%1 = %2]: %3 bản ghi (%4 ms)")
+        statusLabel->setText(QString("Lọc dữ liệu trên OUTBOUND_DETAIL [%1 = %2]: %3 bản ghi (%4 ms)")
             .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(outboundDetailWidget);
@@ -967,7 +975,7 @@ void MainWindow::setupPages()
     // 10. SHIPMENT_QUERY
     // ========================================================
     shipmentWidget = new QueryTableWidget(
-        "10. Đợt Xuất hàng (SHIPMENT)",
+        "Đợt xuất hàng",
         "Danh sách các đợt bốc dỡ, giao hàng xuất kho cho khách hàng",
         this
     );
@@ -990,11 +998,11 @@ void MainWindow::setupPages()
         Vector<Record> results;
         if (isRange) {
             user_query::shipment_query(db, results, col, Value(v1.toStdString()), Value(v2.toStdString()));
-            statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên SHIPMENT [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
+            statusLabel->setText(QString("Lọc dữ liệu trên SHIPMENT [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
                 .arg(QString::fromStdString(col)).arg(v1).arg(v2).arg(results.size()).arg(timer.elapsed()));
         } else {
             user_query::shipment_query(db, results, col, Value(v1.toStdString()));
-            statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên SHIPMENT [%1 = %2]: %3 bản ghi (%4 ms)")
+            statusLabel->setText(QString("Lọc dữ liệu trên SHIPMENT [%1 = %2]: %3 bản ghi (%4 ms)")
                 .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
         }
         shipmentWidget->setData(results);
@@ -1005,7 +1013,7 @@ void MainWindow::setupPages()
     // 11. SHIPMENT_DETAIL_QUERY
     // ========================================================
     shipmentDetailWidget = new QueryTableWidget(
-        "11. Chi tiết Xuất hàng (SHIPMENT_DETAIL)",
+        "Chi tiết xuất hàng",
         "Chi tiết các lô xuất kiện hàng (Shipment) thực tế được gửi đi",
         this
     );
@@ -1027,11 +1035,11 @@ void MainWindow::setupPages()
         Vector<Record> results;
         if (isRange) {
             user_query::shipment_detail_query(db, results, col, Value(v1.toStdString()), Value(v2.toStdString()));
-            statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên SHIPMENT_DETAIL [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
+            statusLabel->setText(QString("Lọc dữ liệu trên SHIPMENT_DETAIL [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
                 .arg(QString::fromStdString(col)).arg(v1).arg(v2).arg(results.size()).arg(timer.elapsed()));
         } else {
             user_query::shipment_detail_query(db, results, col, Value(v1.toStdString()));
-            statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên SHIPMENT_DETAIL [%1 = %2]: %3 bản ghi (%4 ms)")
+            statusLabel->setText(QString("Lọc dữ liệu trên SHIPMENT_DETAIL [%1 = %2]: %3 bản ghi (%4 ms)")
                 .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
         }
         shipmentDetailWidget->setData(results);
@@ -1042,7 +1050,7 @@ void MainWindow::setupPages()
     // 12. INVENTORY_CHECK_QUERY
     // ========================================================
     inventoryCheckWidget = new QueryTableWidget(
-        "12. Quản lý Đợt Kiểm kho",
+        "Quản lý đợt kiểm kho",
         "Quản lý danh sách các đợt kiểm kê kho chi tiết linh kiện",
         this
     );
@@ -1116,7 +1124,7 @@ void MainWindow::setupPages()
     // 13. INVENTORY_CHECK_QUANTITY_QUERY
     // ========================================================
     inventoryCheckQuantityWidget = new QueryTableWidget(
-        "13. Chi tiết Số lượng Kiểm kê (INVENTORY_CHECK_QUANTITY)",
+        "Chi tiết số lượng kiểm kê",
         "Bảng theo dõi số lượng hệ thống và số lượng thực tế kiểm đếm theo từng sản phẩm",
         this
     );
@@ -1207,7 +1215,7 @@ void MainWindow::setupPages()
     // 14. INVENTORY_CHECK_UNIT_QUERY
     // ========================================================
     inventoryCheckUnitWidget = new QueryTableWidget(
-        "14. Chi tiết Linh kiện Kiểm kê",
+        "Chi tiết linh kiện kiểm kê",
         "Danh sách từng số Serial Number được kiểm tra trong đợt kiểm kê chi tiết",
         this
     );
@@ -1243,7 +1251,7 @@ void MainWindow::setupPages()
     // 15. ADJUSTMENT_MOVEMENT_QUERY
     // ========================================================
     adjustmentMovementWidget = new QueryTableWidget(
-        "15. Quản lý Phiếu Điều chỉnh Trạng thái (ADJUSTMENT_MOVEMENT)",
+        "Quản lý phiếu điều chuyển",
         "Điều chỉnh trạng thái tồn kho giữa Khả dụng, Bảo hành và Hư hỏng",
         this
     );
@@ -1314,7 +1322,7 @@ void MainWindow::setupPages()
     // 16. ADJUST_MOVEMENT_DETAIL_QUERY
     // ========================================================
     adjustMovementDetailWidget = new QueryTableWidget(
-        "16. Chi tiết Điều chuyển Trạng thái (ADJUST_MOVEMENT_DETAIL)",
+        "Chi tiết điều chuyển trạng thái",
         "Chi tiết số lượng và trạng thái nguồn / đích của các sản phẩm được điều chuyển",
         this
     );
@@ -1350,7 +1358,7 @@ void MainWindow::setupPages()
     // 17. IS_SOLD_CHANGING_QUERY
     // ========================================================
     isSoldChangingWidget = new QueryTableWidget(
-        "17. Lịch sử Đổi Trạng thái Bán (IS_SOLD_CHANGING)",
+        "Lịch sử đổi trạng thái bán",
         "Nhật ký kiểm toán ghi lại mọi thay đổi trạng thái kinh doanh của sản phẩm",
         this
     );
@@ -1384,7 +1392,7 @@ void MainWindow::setupPages()
     // CPU_QUERY (Danh mục sản phẩm - Rule 9.2)
     // ========================================================
     cpuWidget = new QueryTableWidget(
-        "Bộ vi xử lý CPU (CPU_QUERY)",
+        "Bộ vi xử lý CPU",
         "Bảng danh mục Bộ vi xử lý (CPU) kèm socket, tier, series và trạng thái bán (Tách biệt khỏi kho hàng)",
         this
     );
@@ -1400,7 +1408,7 @@ void MainWindow::setupPages()
         Vector<Record> results;
         user_query::cpu_query(db, results, col, Value(v1.toStdString()));
         cpuWidget->setData(results);
-        statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên CPU_QUERY [%1 = %2]: %3 bản ghi (%4 ms)")
+        statusLabel->setText(QString("Lọc dữ liệu trên CPU_QUERY [%1 = %2]: %3 bản ghi (%4 ms)")
             .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(cpuWidget);
@@ -1409,7 +1417,7 @@ void MainWindow::setupPages()
     // 13. GPU_QUERY (Danh mục sản phẩm - Rule 9.2)
     // ========================================================
     gpuWidget = new QueryTableWidget(
-        "Card màn hình GPU (GPU_QUERY)",
+        "Card màn hình GPU",
         "Bảng danh mục Card màn hình (GPU) kèm series, hãng chip, vram và trạng thái bán (Tách biệt khỏi kho hàng)",
         this
     );
@@ -1433,7 +1441,7 @@ void MainWindow::setupPages()
         }
         user_query::gpu_query(db, results, col, val);
         gpuWidget->setData(results);
-        statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên GPU_QUERY [%1 = %2]: %3 bản ghi (%4 ms)")
+        statusLabel->setText(QString("Lọc dữ liệu trên GPU_QUERY [%1 = %2]: %3 bản ghi (%4 ms)")
             .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(gpuWidget);
@@ -1442,7 +1450,7 @@ void MainWindow::setupPages()
     // 14. MAINBOARD_QUERY (Danh mục sản phẩm - Rule 9.2)
     // ========================================================
     mainboardWidget = new QueryTableWidget(
-        "Bo mạch chủ Mainboard (MAINBOARD_QUERY)",
+        "Bo mạch chủ Mainboard",
         "Bảng danh mục Bo mạch chủ kèm hỗ trợ CPU, socket, kích cỡ, chipset, RAM và trạng thái bán (Tách biệt khỏi kho hàng)",
         this
     );
@@ -1458,7 +1466,7 @@ void MainWindow::setupPages()
         Vector<Record> results;
         user_query::mainboard_query(db, results, col, Value(v1.toStdString()));
         mainboardWidget->setData(results);
-        statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên MAINBOARD_QUERY [%1 = %2]: %3 bản ghi (%4 ms)")
+        statusLabel->setText(QString("Lọc dữ liệu trên MAINBOARD_QUERY [%1 = %2]: %3 bản ghi (%4 ms)")
             .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(mainboardWidget);
@@ -1467,7 +1475,7 @@ void MainWindow::setupPages()
     // 15. RAM_QUERY (Danh mục sản phẩm - Rule 9.2)
     // ========================================================
     ramWidget = new QueryTableWidget(
-        "Bộ nhớ RAM (RAM_QUERY)",
+        "Bộ nhớ RAM",
         "Bảng danh mục Bộ nhớ RAM kèm thế hệ, số thanh, dung lượng, bus và trạng thái bán (Tách biệt khỏi kho hàng)",
         this
     );
@@ -1483,7 +1491,7 @@ void MainWindow::setupPages()
         Vector<Record> results;
         user_query::ram_query(db, results, col, Value(v1.toStdString()));
         ramWidget->setData(results);
-        statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên RAM_QUERY [%1 = %2]: %3 bản ghi (%4 ms)")
+        statusLabel->setText(QString("Lọc dữ liệu trên RAM_QUERY [%1 = %2]: %3 bản ghi (%4 ms)")
             .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(ramWidget);
@@ -1492,7 +1500,7 @@ void MainWindow::setupPages()
     // 16. SSD_QUERY (Danh mục sản phẩm - Rule 9.2)
     // ========================================================
     ssdWidget = new QueryTableWidget(
-        "Ổ cứng thể rắn SSD (SSD_QUERY)",
+        "Ổ cứng SSD",
         "Bảng danh mục Ổ cứng SSD kèm loại kết nối, thế hệ giao tiếp, dung lượng và trạng thái bán (Tách biệt khỏi kho hàng)",
         this
     );
@@ -1508,7 +1516,7 @@ void MainWindow::setupPages()
         Vector<Record> results;
         user_query::ssd_query(db, results, col, Value(v1.toStdString()));
         ssdWidget->setData(results);
-        statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên SSD_QUERY [%1 = %2]: %3 bản ghi (%4 ms)")
+        statusLabel->setText(QString("Lọc dữ liệu trên SSD_QUERY [%1 = %2]: %3 bản ghi (%4 ms)")
             .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(ssdWidget);
@@ -1517,7 +1525,7 @@ void MainWindow::setupPages()
     // 17. PSU_QUERY (Danh mục sản phẩm - Rule 9.2)
     // ========================================================
     psuWidget = new QueryTableWidget(
-        "Nguồn máy tính PSU (PSU_QUERY)",
+        "Nguồn máy tính PSU",
         "Bảng danh mục Nguồn PSU kèm chuẩn hiệu suất, công suất, kích cỡ và trạng thái bán (Tách biệt khỏi kho hàng)",
         this
     );
@@ -1541,7 +1549,7 @@ void MainWindow::setupPages()
         }
         user_query::psu_query(db, results, col, val);
         psuWidget->setData(results);
-        statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên PSU_QUERY [%1 = %2]: %3 bản ghi (%4 ms)")
+        statusLabel->setText(QString("Lọc dữ liệu trên PSU_QUERY [%1 = %2]: %3 bản ghi (%4 ms)")
             .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(psuWidget);
@@ -1550,7 +1558,7 @@ void MainWindow::setupPages()
     // 18. COOLING_QUERY (Danh mục sản phẩm - Rule 9.2)
     // ========================================================
     coolingWidget = new QueryTableWidget(
-        "Tản nhiệt Cooling (COOLING_QUERY)",
+        "Tản nhiệt Cooling",
         "Bảng danh mục Tản nhiệt làm mát kèm loại tản nhiệt và trạng thái bán (Tách biệt khỏi kho hàng)",
         this
     );
@@ -1566,7 +1574,7 @@ void MainWindow::setupPages()
         Vector<Record> results;
         user_query::cooling_query(db, results, col, Value(v1.toStdString()));
         coolingWidget->setData(results);
-        statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên COOLING_QUERY [%1 = %2]: %3 bản ghi (%4 ms)")
+        statusLabel->setText(QString("Lọc dữ liệu trên COOLING_QUERY [%1 = %2]: %3 bản ghi (%4 ms)")
             .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(coolingWidget);
@@ -1575,7 +1583,7 @@ void MainWindow::setupPages()
     // 19. CASE_QUERY (Danh mục sản phẩm - Rule 9.2)
     // ========================================================
     caseWidget = new QueryTableWidget(
-        "Vỏ máy tính Case (CASE_QUERY)",
+        "Vỏ máy tính Case",
         "Bảng danh mục Vỏ case kèm kích cỡ khung và trạng thái bán (Tách biệt khỏi kho hàng)",
         this
     );
@@ -1591,7 +1599,7 @@ void MainWindow::setupPages()
         Vector<Record> results;
         user_query::case_query(db, results, col, Value(v1.toStdString()));
         caseWidget->setData(results);
-        statusLabel->setText(QString("Tìm kiếm theo cấu trúc dữ liệu trên CASE_QUERY [%1 = %2]: %3 bản ghi (%4 ms)")
+        statusLabel->setText(QString("Lọc dữ liệu trên CASE_QUERY [%1 = %2]: %3 bản ghi (%4 ms)")
             .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(caseWidget);
@@ -1603,7 +1611,7 @@ void MainWindow::setupPages()
     // 20. AUXILIARY SPECS & METADATA QUERY (Danh mục phụ - Rule 9.3)
     // ========================================================
     auxSpecWidget = new QueryTableWidget(
-        "Danh mục phụ & Thông số chi tiết (SPECS & METADATA)",
+        "Danh mục phụ & Thông số chi tiết",
         "Truy vấn danh mục phụ bao gồm bảng Brand, bảng Category và toàn bộ các bảng thông số linh kiện (Rule 9.3)",
         this
     );
@@ -1697,7 +1705,7 @@ void MainWindow::setupPages()
     }
 
     auxSpecWidget->setData(results);
-        statusLabel->setText(QString("Tìm kiếm trên %1 [%2 = %3]: %4 bản ghi (%5 ms)")
+        statusLabel->setText(QString("Lọc dữ liệu trên %1 [%2 = %3]: %4 bản ghi (%5 ms)")
             .arg(QString::fromStdString(tbl)).arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
     });
 
@@ -1707,7 +1715,7 @@ void MainWindow::setupPages()
     // 21. INDIVIDUAL_CUSTOMER_QUERY (Khách hàng cá nhân - Rule 9.4)
     // ========================================================
     individualCustomerWidget = new QueryTableWidget(
-        "Khách hàng Cá nhân (INDIVIDUAL_CUSTOMER)",
+        "Khách hàng cá nhân",
         "Danh sách khách hàng cá nhân kèm thông tin liên hệ (số điện thoại, email) - Rule 9.4",
         this
     );
@@ -1729,7 +1737,7 @@ void MainWindow::setupPages()
         Vector<Record> results;
         user_query::individual_customer_query(db, results, col, Value(v1.toStdString()));
         individualCustomerWidget->setData(results);
-        statusLabel->setText(QString("Tìm kiếm trên KHÁCH HÀNG CÁ NHÂN [%1 = %2]: %3 bản ghi (%4 ms)")
+        statusLabel->setText(QString("Lọc dữ liệu trên KHÁCH HÀNG CÁ NHÂN [%1 = %2]: %3 bản ghi (%4 ms)")
             .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(individualCustomerWidget);
@@ -1738,7 +1746,7 @@ void MainWindow::setupPages()
     // 22. BUSINESS_CUSTOMER_QUERY (Khách hàng doanh nghiệp - Rule 9.4)
     // ========================================================
     businessCustomerWidget = new QueryTableWidget(
-        "Khách hàng Doanh nghiệp / Đối tác (BUSINESS_CUSTOMER)",
+        "Khách hàng doanh nghiệp",
         "Danh sách khách hàng doanh nghiệp kèm mã số thuế, địa chỉ và thông tin liên hệ - Rule 9.4",
         this
     );
@@ -1762,7 +1770,7 @@ void MainWindow::setupPages()
         Vector<Record> results;
         user_query::business_customer_query(db, results, col, Value(v1.toStdString()));
         businessCustomerWidget->setData(results);
-        statusLabel->setText(QString("Tìm kiếm trên KHÁCH HÀNG DOANH NGHIỆP [%1 = %2]: %3 bản ghi (%4 ms)")
+        statusLabel->setText(QString("Lọc dữ liệu trên KHÁCH HÀNG DOANH NGHIỆP [%1 = %2]: %3 bản ghi (%4 ms)")
             .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(businessCustomerWidget);

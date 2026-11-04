@@ -24,11 +24,9 @@ QueryTableWidget::QueryTableWidget(const QString& title, const QString& descript
     titleLabel->setStyleSheet("font-size: 18px; font-weight: bold; color: #0f172a;");
 
     descLabel = new QLabel(descText, this);
-    descLabel->setObjectName("viewDescription");
-    descLabel->setStyleSheet("font-size: 13px; color: #64748b; margin-bottom: 2px;");
+    descLabel->hide();
 
     mainLayout->addWidget(titleLabel);
-    mainLayout->addWidget(descLabel);
 
     // 2. Setup dynamic filter bar (Rule 9.1)
     setupFilterUI(mainLayout);
@@ -190,7 +188,7 @@ void QueryTableWidget::setupFilterUI(QVBoxLayout* mainLayout)
     filterLayout->addWidget(filterSelectCombo);
 
     // Filter Buttons
-    applyFilterBtn = new QPushButton("🔍 Tìm kiếm theo cấu trúc dữ liệu", filterFrame);
+    applyFilterBtn = new QPushButton("🔍 Lọc dữ liệu", filterFrame);
     applyFilterBtn->setStyleSheet(
         "QPushButton {"
         "  background-color: #2563eb;"

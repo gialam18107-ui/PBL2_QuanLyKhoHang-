@@ -244,6 +244,22 @@ namespace user_update
                     if ((oldDelSt == "COMPLETED" || oldDelSt == "completed") && newDelSt != "COMPLETED") {
                         return OperationResult{false, "Đợt giao nhận đã ở trạng thái HOÀN THÀNH (COMPLETED), không thể chuyển ngược trạng thái (Rule 4.5).", 0};
                     }
+                    if (oldDelSt == "CANCELLED" && newDelSt != "CANCELLED") {
+                        return OperationResult{false, "Đợt nhận hàng đã bị HỦY (CANCELLED), trạng thái bị khóa vĩnh viễn (Rule 5.6).", 0};
+                    }
+                    if (newDelSt == "CANCELLED") {
+                        Table* ddTable = db->getTable("delivery_detail");
+                        if (ddTable) {
+                            Vector<Record> ddRecs = Query::filterRecords(*ddTable, "delivery_id", Value(recordId));
+                            for (const auto& dd : ddRecs) {
+                                int act = dd.has("actual_quantity") && std::holds_alternative<int>(dd.get("actual_quantity"))
+                                        ? std::get<int>(dd.get("actual_quantity")) : 0;
+                                if (act > 0) {
+                                    return OperationResult{false, "Không thể hủy đợt nhận hàng: Đã có linh kiện được ghi nhận thực tế (" + std::to_string(act) + " cái).", 0};
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // Chronological Date Validation: delivery_at >= inbound_transaction.order_at
@@ -308,6 +324,22 @@ namespace user_update
                                           ? std::get<std::string>(modifyingValues[i]) : "";
                     if ((oldShipSt == "COMPLETED" || oldShipSt == "completed") && newShipSt != "COMPLETED") {
                         return OperationResult{false, "Đợt xuất hàng đã ở trạng thái HOÀN THÀNH (COMPLETED), không thể chuyển ngược trạng thái (Rule 4.5).", 0};
+                    }
+                    if (oldShipSt == "CANCELLED" && newShipSt != "CANCELLED") {
+                        return OperationResult{false, "Đợt xuất hàng đã bị HỦY (CANCELLED), trạng thái bị khóa vĩnh viễn (Rule 5.6).", 0};
+                    }
+                    if (newShipSt == "CANCELLED") {
+                        Table* sdTable = db->getTable("shipment_detail");
+                        if (sdTable) {
+                            Vector<Record> sdRecs = Query::filterRecords(*sdTable, "shipment_id", Value(recordId));
+                            for (const auto& sd : sdRecs) {
+                                int act = sd.has("actual_quantity") && std::holds_alternative<int>(sd.get("actual_quantity"))
+                                        ? std::get<int>(sd.get("actual_quantity")) : 0;
+                                if (act > 0) {
+                                    return OperationResult{false, "Không thể hủy đợt xuất hàng: Đã có linh kiện được xuất thực tế (" + std::to_string(act) + " cái).", 0};
+                                }
+                            }
+                        }
                     }
                 }
 
