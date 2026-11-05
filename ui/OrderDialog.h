@@ -529,7 +529,7 @@ public:
     std::vector<std::pair<int, QString>> getOrderProductsList() const;
     const std::vector<BatchItemOverview>& getBatchItems() const { return batchItems; }
 
-    bool recordPendingInboundSerial(int productId, const QString& serial, const QString& status, QString& outErrMsg);
+    bool recordPendingInboundSerial(int productId, const QString& serial, const QString& status, QString& outErrMsg, bool refreshViews = true);
     bool isSerialInPendingOutbound(const std::string& sn) const;
 
 protected:

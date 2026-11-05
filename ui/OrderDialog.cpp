@@ -4007,7 +4007,7 @@ UnitEntryDialog::UnitEntryDialog(
                                              (!scannedSt.empty() && scannedSt != "OUT" && scannedSt != "MISSING" && scannedSt != "UNCHECKED");
                             if (isSurplus && pid > 0 && !sn.empty()) {
                                 QString errMsg;
-                                if (recordPendingInboundSerial(pid, QString::fromStdString(sn), QString::fromStdString(scannedSt), errMsg)) {
+                                if (recordPendingInboundSerial(pid, QString::fromStdString(sn), QString::fromStdString(scannedSt), errMsg, false)) {
                                     preloadedCount++;
                                 }
                             }
@@ -4931,6 +4931,7 @@ void UnitEntryDialog::onOpenProductUnitPicker(int productId, const QString& pCod
 
         if (addedCount > 0) {
             hasModifiedUnits = true;
+        
             refreshAllViews(true);
             showToast(QString("✅ Đã chọn mềm %1 cái chờ xuất cho [%2]! (Nhớ bấm 'Xác nhận xuất kho')").arg(addedCount).arg(pCode), true);
         } else if (!lastErr.isEmpty()) {
@@ -4972,7 +4973,7 @@ void UnitEntryDialog::removePendingUnitBySerial(const std::string& sn)
     }
 }
 
-bool UnitEntryDialog::recordPendingInboundSerial(int productId, const QString& serial, const QString& status, QString& outErrMsg)
+bool UnitEntryDialog::recordPendingInboundSerial(int productId, const QString& serial, const QString& status, QString& outErrMsg, bool refreshViews)
 {
     if (!db || isLogisticsCompleted) {
         outErrMsg = "Đợt giao nhận đã hoàn thành hoặc CSDL chưa sẵn sàng.";
@@ -5057,14 +5058,19 @@ bool UnitEntryDialog::recordPendingInboundSerial(int productId, const QString& s
     pending.addedTime = QDateTime::currentDateTime().toString("HH:mm:ss");
 
     pendingInboundUnits.push_back(pending);
+    hasModifiedUnits = true;
 
-    refreshAllViews(true);
 
-    showToast(QString("⚡ Đã thêm [%1] vào danh sách chờ lưu cho '%2'!").arg(sn, itm.productName), true);
-    if (inboundFeedbackLabel) {
-        inboundFeedbackLabel->setText(QString("✅ Đã thêm [%1] vào danh sách chờ lưu. (Nhớ bấm 'Xác nhận lưu kết quả' để ghi vào CSDL)").arg(sn));
-        inboundFeedbackLabel->setStyleSheet("font-size: 12px; color: #2563eb; font-weight: 600;");
+
+    if (refreshViews) {
+        refreshAllViews(true);
+        showToast(QString("⚡ Đã thêm [%1] vào danh sách chờ lưu cho '%2'!").arg(sn, itm.productName), true);
+        if (inboundFeedbackLabel) {
+            inboundFeedbackLabel->setText(QString("✅ Đã thêm [%1] vào danh sách chờ lưu. (Nhớ bấm 'Xác nhận lưu kết quả' để ghi vào CSDL)").arg(sn));
+            inboundFeedbackLabel->setStyleSheet("font-size: 12px; color: #2563eb; font-weight: 600;");
+        }
     }
+
     return true;
 }
 
@@ -5633,19 +5639,31 @@ void UnitEntryDialog::onInboundProductComboChanged(int index)
             auto* itSn = new QTableWidgetItem(QString::fromStdString(u->serial));
             itSn->setFont(QFont("Consolas", font().pointSize(), QFont::Bold));
 
-            auto* stCombo = new QComboBox();
-            QStringList opts = allowedOpts;
             QString curSt = QString::fromStdString(u->currentStatus);
-            if (!curSt.isEmpty() && !opts.contains(curSt)) opts << curSt;
-            stCombo->addItems(opts);
-            int curIdx = stCombo->findText(curSt);
-            if (curIdx >= 0) stCombo->setCurrentIndex(curIdx);
-            stCombo->setEnabled(!isLogisticsCompleted);
-            stCombo->setStyleSheet("QComboBox { font-size: 11px; font-weight: bold; padding: 2px 6px; }");
-            int uId = u->unitId;
-            connect(stCombo, &QComboBox::currentTextChanged, [this, uId](const QString& newSt) {
-                onUnitStatusChanged(uId, newSt);
-            });
+            if (isLogisticsCompleted) {
+                auto* itSt = new QTableWidgetItem(curSt);
+                itSt->setTextAlignment(Qt::AlignCenter);
+                itSt->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
+                if (curSt == "AVAILABLE") itSt->setForeground(QColor(22, 163, 74));
+                else if (curSt == "WARRANTY") itSt->setForeground(QColor(37, 99, 235));
+                else if (curSt == "SCRAPPED") itSt->setForeground(QColor(220, 38, 38));
+                else if (curSt == "OUT") itSt->setForeground(QColor(234, 88, 12));
+                else itSt->setForeground(QColor(71, 85, 105));
+                prodUnitsTable->setItem(rowIdx, 2, itSt);
+            } else {
+                auto* stCombo = new QComboBox();
+                QStringList opts = allowedOpts;
+                if (!curSt.isEmpty() && !opts.contains(curSt)) opts << curSt;
+                stCombo->addItems(opts);
+                int curIdx = stCombo->findText(curSt);
+                if (curIdx >= 0) stCombo->setCurrentIndex(curIdx);
+                stCombo->setStyleSheet("QComboBox { font-size: 11px; font-weight: bold; padding: 2px 6px; }");
+                int uId = u->unitId;
+                connect(stCombo, &QComboBox::currentTextChanged, [this, uId](const QString& newSt) {
+                    onUnitStatusChanged(uId, newSt);
+                });
+                prodUnitsTable->setCellWidget(rowIdx, 2, stCombo);
+            }
 
             auto* itTime = new QTableWidgetItem("Đã lưu CSDL");
             itTime->setTextAlignment(Qt::AlignCenter);
@@ -5662,7 +5680,6 @@ void UnitEntryDialog::onInboundProductComboChanged(int index)
 
             prodUnitsTable->setItem(rowIdx, 0, itStt);
             prodUnitsTable->setItem(rowIdx, 1, itSn);
-            prodUnitsTable->setCellWidget(rowIdx, 2, stCombo);
             prodUnitsTable->setItem(rowIdx, 3, itTime);
             prodUnitsTable->setItem(rowIdx, 4, itClass);
             prodUnitsTable->setItem(rowIdx, 5, itAct);
@@ -5843,7 +5860,7 @@ void UnitEntryDialog::onBatchPasteSerials()
         if (sn.isEmpty()) continue;
 
         QString errMsg;
-        if (recordPendingInboundSerial(pid, sn, targetSt, errMsg)) {
+        if (recordPendingInboundSerial(pid, sn, targetSt, errMsg, false)) {
             successCount++;
         } else {
             lastError = errMsg;
@@ -5851,6 +5868,7 @@ void UnitEntryDialog::onBatchPasteSerials()
     }
 
     if (successCount > 0) {
+        refreshAllViews(true);
         QMessageBox::information(this, "Kết quả nhập hàng",
             QString("Đã thêm thành công <b>%1 / %2</b> mã Serial vào danh sách chờ lưu cho sản phẩm [%3]!<br><br>"
                     "<i>Lưu ý:</i> Các mã này đang ở trạng thái <b>Chờ lưu</b> trên giao diện. "
@@ -5913,25 +5931,32 @@ void UnitEntryDialog::refreshBatchUnitsTable(bool scrollToBottom)
         batchUnitsTable->setItem(rowIdx, 3, itName);
         batchUnitsTable->setItem(rowIdx, 4, itOrig);
 
-        auto* combo = new QComboBox();
-        QStringList opts = allowedStatuses;
         QString curStatusStr = QString::fromStdString(u.currentStatus);
-        if (!curStatusStr.isEmpty() && !opts.contains(curStatusStr)) {
-            opts << curStatusStr;
-        }
-        combo->addItems(opts);
-        int curIdx = combo->findText(curStatusStr);
-        if (curIdx >= 0) combo->setCurrentIndex(curIdx);
-        combo->setStyleSheet("QComboBox { font-size: 11px; font-weight: bold; padding: 2px 6px; }");
-
         if (isLogisticsCompleted) {
-            combo->setEnabled(false);
+            auto* itSt = new QTableWidgetItem(curStatusStr);
+            itSt->setTextAlignment(Qt::AlignCenter);
+            itSt->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
+            if (curStatusStr == "AVAILABLE") itSt->setForeground(QColor(22, 163, 74));
+            else if (curStatusStr == "WARRANTY") itSt->setForeground(QColor(37, 99, 235));
+            else if (curStatusStr == "SCRAPPED") itSt->setForeground(QColor(220, 38, 38));
+            else if (curStatusStr == "OUT") itSt->setForeground(QColor(234, 88, 12));
+            else itSt->setForeground(QColor(71, 85, 105));
+            batchUnitsTable->setItem(rowIdx, 5, itSt);
         } else {
+            auto* combo = new QComboBox();
+            QStringList opts = allowedStatuses;
+            if (!curStatusStr.isEmpty() && !opts.contains(curStatusStr)) {
+                opts << curStatusStr;
+            }
+            combo->addItems(opts);
+            int curIdx = combo->findText(curStatusStr);
+            if (curIdx >= 0) combo->setCurrentIndex(curIdx);
+            combo->setStyleSheet("QComboBox { font-size: 11px; font-weight: bold; padding: 2px 6px; }");
             connect(combo, &QComboBox::currentTextChanged, [this, unitId = u.unitId](const QString& newSt) {
                 onUnitStatusChanged(unitId, newSt);
             });
+            batchUnitsTable->setCellWidget(rowIdx, 5, combo);
         }
-        batchUnitsTable->setCellWidget(rowIdx, 5, combo);
 
         QString savedSt = QString::fromStdString(u.savedStatus);
         auto* itSaved = new QTableWidgetItem(savedSt);
@@ -6183,25 +6208,16 @@ void UnitEntryDialog::refreshAllUnitsTable(bool scrollToBottom)
         allUnitsTable->setItem(rowIdx, 3, itName);
         allUnitsTable->setItem(rowIdx, 4, itOrigStatus);
 
-        auto* combo = new QComboBox();
-        QStringList opts = allowedStatuses;
         QString curStatusStr = QString::fromStdString(u->currentStatus);
-        if (!curStatusStr.isEmpty() && !opts.contains(curStatusStr)) {
-            opts << curStatusStr;
-        }
-        combo->addItems(opts);
-        int curIdx = combo->findText(curStatusStr);
-        if (curIdx >= 0) combo->setCurrentIndex(curIdx);
-        combo->setStyleSheet("QComboBox { font-size: 11px; font-weight: bold; padding: 2px 6px; }");
-
-        if (isLogisticsCompleted) {
-            combo->setEnabled(false);
-        } else {
-            connect(combo, &QComboBox::currentTextChanged, [this, unitId = u->unitId](const QString& newSt) {
-                onUnitStatusChanged(unitId, newSt);
-            });
-        }
-        allUnitsTable->setCellWidget(rowIdx, 5, combo);
+        auto* itSt = new QTableWidgetItem(curStatusStr);
+        itSt->setTextAlignment(Qt::AlignCenter);
+        itSt->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
+        if (curStatusStr == "AVAILABLE") itSt->setForeground(QColor(22, 163, 74));
+        else if (curStatusStr == "WARRANTY") itSt->setForeground(QColor(37, 99, 235));
+        else if (curStatusStr == "SCRAPPED") itSt->setForeground(QColor(220, 38, 38));
+        else if (curStatusStr == "OUT") itSt->setForeground(QColor(234, 88, 12));
+        else itSt->setForeground(QColor(71, 85, 105));
+        allUnitsTable->setItem(rowIdx, 5, itSt);
 
         QString savedStatusStr = QString::fromStdString(u->savedStatus);
         auto* itSavedStatus = new QTableWidgetItem(savedStatusStr);
@@ -6646,6 +6662,7 @@ void UnitEntryDialog::onDirectSerialEntered()
             }
             unifiedSerialInput->clear();
             unifiedSerialInput->setFocus();
+        
             refreshAllViews(true);
             showToast(QString("✅ Đã chọn mềm [%1] cho '%2' (Chờ xác nhận xuất kho)").arg(inputSn, batchItems[itemIdx].productName), true);
             return;
@@ -6658,13 +6675,14 @@ void UnitEntryDialog::onDirectSerialEntered()
         }
 
         QString errMsg;
-        if (!recordPendingInboundSerial(pid, inputSn, targetSt, errMsg)) {
+        if (!recordPendingInboundSerial(pid, inputSn, targetSt, errMsg, false)) {
             showToast(QString("❌ %1").arg(errMsg), false);
             return;
         }
 
         unifiedSerialInput->clear();
         unifiedSerialInput->setFocus();
+    
         refreshAllViews(true);
         showToast(QString("✅ Đã ghi nhận mềm [%1] cho '%2' (Chờ xác nhận lưu)").arg(inputSn, batchItems[itemIdx].productName), true);
     } else {
@@ -6718,7 +6736,7 @@ void UnitEntryDialog::onDirectSerialEntered()
         }
 
         QString errMsg;
-        if (!recordPendingInboundSerial(pid, inputSn, targetSt, errMsg)) {
+        if (!recordPendingInboundSerial(pid, inputSn, targetSt, errMsg, false)) {
             showToast(QString("❌ %1").arg(errMsg), false);
             return;
         }
@@ -6837,7 +6855,7 @@ bool UnitEntryDialog::recordCustomSerial(const QString& serial, QString& outErrM
                 unifiedSerialInput->clear();
                 unifiedSerialInput->setFocus();
             }
-            refreshAllViews(true);
+        
             showToast(QString("✅ Đã chọn mềm [%1] cho '%2' (Chờ xác nhận xuất kho)").arg(inputSn, batchItems[itemIdx].productName), true);
             return true;
         }
@@ -6868,8 +6886,9 @@ bool UnitEntryDialog::recordCustomSerial(const QString& serial, QString& outErrM
             }
         }
 
-        refreshAllViews(true);
+    
 
+        refreshAllViews(true);
         showToast(QString("✅ Đã ghi nhận [%1] cho '%2'").arg(inputSn, batchItems[itemIdx].productName), true);
         return true;
     } else {
@@ -6919,8 +6938,9 @@ bool UnitEntryDialog::recordCustomSerial(const QString& serial, QString& outErrM
             }
         }
 
-        refreshAllViews(true);
+    
 
+        refreshAllViews(true);
         showToast(QString("✅ Đã tạo mới và nhận [%1] cho '%2'").arg(inputSn, batchItems[itemIdx].productName), true);
         return true;
     }
@@ -6947,6 +6967,7 @@ void UnitEntryDialog::onCandidateSerialsSelected(const Vector<std::string>& seri
         }
         if (added > 0) {
             hasModifiedUnits = true;
+        
             refreshAllViews(true);
             showToast(QString("✅ Đã chọn mềm %1 linh kiện chờ xuất kho!").arg(added), true);
         } else if (!lastErr.isEmpty()) {
@@ -6983,7 +7004,7 @@ void UnitEntryDialog::onCandidateSerialsSelected(const Vector<std::string>& seri
                 targetSt = "WARRANTY";
             }
             QString recErr;
-            if (recordPendingInboundSerial(pid, QString::fromStdString(sn), targetSt, recErr)) {
+            if (recordPendingInboundSerial(pid, QString::fromStdString(sn), targetSt, recErr, false)) {
                 successCount++;
             } else {
                 errMsg = recErr.toStdString();
@@ -6993,6 +7014,7 @@ void UnitEntryDialog::onCandidateSerialsSelected(const Vector<std::string>& seri
 
     if (successCount > 0) {
         hasModifiedUnits = true;
+    
         refreshAllViews(true);
         showToast(QString("✅ Đã chọn mềm thành công %1 linh kiện! (Nhớ bấm 'Xác nhận lưu kết quả')").arg(successCount), true);
     } else if (!errMsg.empty()) {
@@ -7055,11 +7077,13 @@ void UnitEntryDialog::onBatchAutoGenerateUnits()
                 pending.status = targetSt.toStdString();
                 pending.addedTime = QDateTime::currentDateTime().toString("HH:mm:ss");
                 pendingInboundUnits.push_back(pending);
+                hasModifiedUnits = true;
                 totalCreated++;
             }
         }
 
         if (totalCreated > 0) {
+        
             refreshAllViews(true);
             showToast(QString("⚡ Đã giả lập tạo %1 linh kiện mới vào danh sách chờ lưu!").arg(totalCreated), true);
         }
@@ -7151,6 +7175,7 @@ void UnitEntryDialog::onBatchAutoGenerateUnits()
 
         if (totalPicked > 0) {
             hasModifiedUnits = true;
+        
             refreshAllViews(true);
             showToast(QString("⚡ Đã tự động chọn mềm %1 linh kiện từ kho vào danh sách chờ xuất!").arg(totalPicked), true);
         } else {
