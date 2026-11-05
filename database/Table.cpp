@@ -386,20 +386,6 @@ bool Table::checkDataType(const Column& column, const Value& value) const
 
 bool Table::checkConstraints(const Record& record, int ignoreRowIndex) const
 {
-    const Vector<Record>* targetRows = &rows;
-    Vector<Record> validRows;
-    if (ignoreRowIndex >= 0 && ignoreRowIndex < static_cast<int>(rows.size()))
-    {
-        for (size_t i = 0; i < rows.size(); i++)
-        {
-            if (static_cast<int>(i) != ignoreRowIndex && !isRowDeleted(i))
-            {
-                validRows.push_back(rows[i]);
-            }
-        }
-        targetRows = &validRows;
-    }
-
     for (size_t i = 0; i < constraints.size(); i++)
     {
         const Constraint* c = constraints[i];
@@ -470,11 +456,32 @@ bool Table::checkConstraints(const Record& record, int ignoreRowIndex) const
                         }
                         continue; // Index check passed!
                     }
+                    else
+                    {
+                        // Fallback linear scan without allocating validRows
+                        bool violated = false;
+                        for (size_t rIdx = 0; rIdx < rows.size(); ++rIdx)
+                        {
+                            if (static_cast<int>(rIdx) == ignoreRowIndex || isRowDeleted(rIdx)) continue;
+                            const Record& existing = rows[rIdx];
+                            if (existing.has(colName) && existing.get(colName) == val)
+                            {
+                                violated = true;
+                                break;
+                            }
+                        }
+                        if (violated)
+                        {
+                            cout << "Constraint failed: " << c->getName() << " on table '" << name << "' (duplicate key on " << colName << ")" << endl;
+                            return false;
+                        }
+                        continue;
+                    }
                 }
             }
         }
 
-        if (!c->validate(record, *targetRows, {}))
+        if (!c->validate(record, rows, {}))
         {
             cout << "Constraint failed: " << c->getName() << " on table '" << name << "'" << endl;
             return false;
@@ -732,6 +739,63 @@ const Vector<Record>& Table::getRows() const
 Vector<Record>& Table::getRows()
 {
     return rows;
+}
+
+size_t Table::rawRowCount() const
+{
+    return rows.size();
+}
+
+const Record& Table::getRawRow(size_t rowIndex) const
+{
+    return rows[rowIndex];
+}
+
+TableView Table::view() const
+{
+    return TableView(this);
+}
+
+TableView Table::view(const string& columnName, const Value& value) const
+{
+    const Index* index = nullptr;
+    for (size_t i = 0; i < indexes.size(); ++i)
+    {
+        if (indexes[i] != nullptr && (indexes[i]->getColumnName() == columnName || indexes[i]->getName() == columnName))
+        {
+            index = indexes[i];
+            break;
+        }
+    }
+
+    if (index == nullptr)
+    {
+        return TableView();
+    }
+
+    Vector<size_t> matched = index->find(value);
+    return TableView(this, std::move(matched));
+}
+
+TableView Table::view(const string& columnName, const Value& minVal, const Value& maxVal) const
+{
+    const Index* index = nullptr;
+    for (size_t i = 0; i < indexes.size(); ++i)
+    {
+        if (indexes[i] != nullptr && (indexes[i]->getColumnName() == columnName || indexes[i]->getName() == columnName))
+        {
+            index = indexes[i];
+            break;
+        }
+    }
+
+    if (index == nullptr)
+    {
+        return TableView();
+    }
+
+    Vector<size_t> matched = index->findRange(minVal, maxVal);
+    return TableView(this, std::move(matched));
 }
 
 void Table::clear()

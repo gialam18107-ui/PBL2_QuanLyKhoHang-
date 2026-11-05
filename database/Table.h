@@ -9,11 +9,14 @@
 #include "Record.h"
 #include "Constraint.h"
 #include "Index.h"
+#include "TableView.h"
 
 using namespace std;
 
 class Table
 {
+    friend class TableView;
+
 private:
     string name;
     Vector<Column> columns;
@@ -28,6 +31,12 @@ private:
     bool checkConstraints(const Record& record, int ignoreRowIndex = -1) const;
     void compactRows();
     void rebuildIndexes();
+
+    /// Get raw row count including deleted rows (used internally by TableView).
+    size_t rawRowCount() const;
+
+    /// Get reference to raw record by physical row index (used internally by TableView).
+    const Record& getRawRow(size_t rowIndex) const;
 
 public:
     explicit Table(const string& name = "");
@@ -142,9 +151,29 @@ public:
     /// Undo a remove operation at the given row index without constraint re-validation.
     void undoRemove(size_t rowIndex);
 
-    /// Get total number of rows in the table.
+    /// Get total number of active rows in the table.
     int getRowCount() const;
+
+    /// Check if a specific physical row index is marked as deleted.
     bool isRowDeleted(size_t rowIndex) const;
+
+    // ========================================================
+    // TABLE VIEW: UNIFIED ITERATION (ZERO-COPY & DELETED-SAFE)
+    // ========================================================
+
+    /// Return a view to iterate over all active records.
+    TableView view() const;
+
+    /// Return a view filtering by indexed column exact match (col == val).
+    TableView view(const string& columnName, const Value& value) const;
+
+    /// Return a view filtering by indexed column range match (minVal <= col <= maxVal).
+    TableView view(const string& columnName, const Value& minVal, const Value& maxVal) const;
+
+    // ========================================================
+    // COMPATIBILITY ACCESSORS
+    // ========================================================
+
     const Vector<Record>& getRows() const;
 
     /// Get mutable reference to stored rows.
@@ -160,4 +189,125 @@ public:
     void clear();
 };
 
-#endif
+// ============================================================
+// TABLEVIEW INLINE IMPLEMENTATION
+// ============================================================
+
+inline TableView::TableView()
+    : table(nullptr), useIndex(false)
+{
+}
+
+inline TableView::TableView(const Table* tbl)
+    : table(tbl), useIndex(false)
+{
+}
+
+inline TableView::TableView(const Table* tbl, Vector<size_t>&& matches)
+    : table(tbl), indexMatches(std::move(matches)), useIndex(true)
+{
+}
+
+inline TableView::Iterator::Iterator(const Table* tbl, const Vector<size_t>* m, size_t p)
+    : table(tbl), matches(m), pos(p)
+{
+    skipDeleted();
+}
+
+inline void TableView::Iterator::skipDeleted()
+{
+    if (!table) return;
+    if (!matches)
+    {
+        while (pos < table->rawRowCount() && table->isRowDeleted(pos))
+        {
+            ++pos;
+        }
+    }
+    else
+    {
+        while (pos < matches->size())
+        {
+            size_t idx = (*matches)[pos];
+            if (idx < table->rawRowCount() && !table->isRowDeleted(idx))
+            {
+                break;
+            }
+            ++pos;
+        }
+    }
+}
+
+inline const Record& TableView::Iterator::operator*() const
+{
+    size_t actualIdx = matches ? (*matches)[pos] : pos;
+    return table->getRawRow(actualIdx);
+}
+
+inline const Record* TableView::Iterator::operator->() const
+{
+    size_t actualIdx = matches ? (*matches)[pos] : pos;
+    return &table->getRawRow(actualIdx);
+}
+
+inline TableView::Iterator& TableView::Iterator::operator++()
+{
+    ++pos;
+    skipDeleted();
+    return *this;
+}
+
+inline TableView::Iterator TableView::Iterator::operator++(int)
+{
+    Iterator tmp = *this;
+    ++(*this);
+    return tmp;
+}
+
+inline bool TableView::Iterator::operator==(const Iterator& other) const
+{
+    return table == other.table && pos == other.pos;
+}
+
+inline bool TableView::Iterator::operator!=(const Iterator& other) const
+{
+    return !(*this == other);
+}
+
+inline size_t TableView::Iterator::rowIndex() const
+{
+    return matches ? (*matches)[pos] : pos;
+}
+
+inline TableView::Iterator TableView::begin() const
+{
+    if (!table) return Iterator(nullptr, nullptr, 0);
+    return useIndex
+        ? Iterator(table, &indexMatches, 0)
+        : Iterator(table, nullptr, 0);
+}
+
+inline TableView::Iterator TableView::end() const
+{
+    if (!table) return Iterator(nullptr, nullptr, 0);
+    return useIndex
+        ? Iterator(table, &indexMatches, indexMatches.size())
+        : Iterator(table, nullptr, table->rawRowCount());
+}
+
+inline bool TableView::empty() const
+{
+    return begin() == end();
+}
+
+inline size_t TableView::size() const
+{
+    size_t count = 0;
+    for (auto it = begin(); it != end(); ++it)
+    {
+        ++count;
+    }
+    return count;
+}
+
+#endif // TABLE_H

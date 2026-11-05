@@ -329,51 +329,22 @@ void querySort(Vector<Record> &data, const Pair<string, string> &groupedColumns,
         return ascending ? less : !less;
     });
 }
-    const Index* findIndexForFilter(const Table& table, const string& selectedColumn)
-    {
-        const Index* index = table.getIndex(selectedColumn);
-        if (index != nullptr) return index;
-
-        for (const Index* idx : table.getIndexes())
-        {
-            if (idx != nullptr && idx->getColumnName() == selectedColumn)
-            {
-                return idx;
-            }
-        }
-        return nullptr;
-    }
-
     Vector<Record> filterRecords(const Table &table, string selectedColumn, const Value &value){
-        const Index *index = findIndexForFilter(table, selectedColumn);
-        if (index == nullptr) return Vector<Record>();
-
-        Vector<size_t> data_id = index->find(value);
-        const Vector<Record> &data = table.getRows();
-
-        Vector<Record> results(data_id.size());
-
-        for (size_t i : data_id){
-            if (!table.isRowDeleted(i)) {
-                results.push_back(data[i]);
-            }
+        TableView tv = table.view(selectedColumn, value);
+        Vector<Record> results;
+        results.reserve(tv.size());
+        for (const Record& r : tv) {
+            results.push_back(r);
         }
         return results;
     }
 
     Vector<Record> filterRecords(const Table &table, string selectedColumn, const Value &minVal, const Value &maxVal){
-        const Index *index = findIndexForFilter(table, selectedColumn);
-        if (index == nullptr) return Vector<Record>();
-
-        Vector<size_t> data_id = index->findRange(minVal, maxVal);
-        const Vector<Record> &data = table.getRows();
-
-        Vector<Record> results(data_id.size());
-
-        for (size_t i : data_id){
-            if (!table.isRowDeleted(i)) {
-                results.push_back(data[i]);
-            }
+        TableView tv = table.view(selectedColumn, minVal, maxVal);
+        Vector<Record> results;
+        results.reserve(tv.size());
+        for (const Record& r : tv) {
+            results.push_back(r);
         }
         return results;
     }
