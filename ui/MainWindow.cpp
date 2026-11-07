@@ -502,10 +502,7 @@ QStringList MainWindow::loadColumnOptions(const QString& tableName, const QStrin
     if (!table) return options;
 
     string col = colName.toStdString();
-    const auto& rows = table->getRows();
-    for (size_t i = 0; i < rows.size(); ++i) {
-        if (table->isRowDeleted(i)) continue;
-        const Record& r = rows[i];
+    for (const auto& r : table->view()) {
         if (r.has(col)) {
             const Value& v = r.get(col);
             QString valStr;
@@ -2644,10 +2641,7 @@ int MainWindow::resolveProductId(const Record& rec, const std::string& catTable)
     if (!code.empty()) {
         const Table* prodTable = db->getTable("product");
         if (prodTable) {
-            const auto& rows = prodTable->getRows();
-            for (size_t i = 0; i < rows.size(); ++i) {
-                if (prodTable->isRowDeleted(i)) continue;
-                const Record& r = rows[i];
+            for (const auto& r : prodTable->view()) {
                 if (r.has("product_code") && holds_alternative<std::string>(r.get("product_code")) &&
                     get<std::string>(r.get("product_code")) == code) {
                     if (r.has("product_id") && holds_alternative<int>(r.get("product_id"))) {
@@ -2682,10 +2676,7 @@ int MainWindow::resolveCustomerId(const Record& rec) const
     if (!code.empty()) {
         const Table* custTable = db->getTable("customer");
         if (custTable) {
-            const auto& rows = custTable->getRows();
-            for (size_t i = 0; i < rows.size(); ++i) {
-                if (custTable->isRowDeleted(i)) continue;
-                const Record& r = rows[i];
+            for (const auto& r : custTable->view()) {
                 if (r.has("customer_code") && holds_alternative<std::string>(r.get("customer_code")) &&
                     get<std::string>(r.get("customer_code")) == code) {
                     if (r.has("customer_id") && holds_alternative<int>(r.get("customer_id"))) {
@@ -3323,9 +3314,7 @@ void MainWindow::onAddAuxSpecOrBrand()
         std::string tblStd = tbl.toStdString();
         const Table* t = db->getTable(tblStd);
         if (t) {
-            for (size_t i = 0; i < t->getRows().size(); ++i) {
-                if (t->isRowDeleted(i)) continue;
-                const Record& r = t->getRows()[i];
+            for (const auto& r : t->view()) {
                 if (r.has("spec") && holds_alternative<std::string>(r.get("spec")) &&
                     QString::fromStdString(get<std::string>(r.get("spec"))).compare(val, Qt::CaseInsensitive) == 0) {
                     QMessageBox::critical(&dlg, "Trùng lặp dữ liệu", "Giá trị thông số này đã tồn tại trong bảng " + tbl + "!");
@@ -3378,9 +3367,7 @@ void MainWindow::onEditAuxSpecOrBrand(const Record& rec)
         bool referencedByProduct = false;
         const Table* prodTable = db->getTable("product");
         if (prodTable) {
-            for (size_t i = 0; i < prodTable->getRows().size(); ++i) {
-                if (prodTable->isRowDeleted(i)) continue;
-                const Record& pr = prodTable->getRows()[i];
+            for (const auto& pr : prodTable->view()) {
                 if (pr.has("brand") && holds_alternative<std::string>(pr.get("brand")) &&
                     QString::fromStdString(get<std::string>(pr.get("brand"))) == oldBrand) {
                     referencedByProduct = true;
@@ -3454,9 +3441,7 @@ void MainWindow::onEditAuxSpecOrBrand(const Record& rec)
                 }
                 // Cascade brand name update to product rows so FK remains valid
                 if (prodTable) {
-                    for (size_t i = 0; i < prodTable->getRows().size(); ++i) {
-                        if (prodTable->isRowDeleted(i)) continue;
-                        const Record& pr = prodTable->getRows()[i];
+                    for (const auto& pr : prodTable->view()) {
                         if (pr.has("brand") && holds_alternative<std::string>(pr.get("brand")) &&
                             QString::fromStdString(get<std::string>(pr.get("brand"))) == oldBrand) {
                             int pid = (pr.has("product_id") && holds_alternative<int>(pr.get("product_id")))
@@ -3522,9 +3507,7 @@ void MainWindow::onEditAuxSpecOrBrand(const Record& rec)
         std::string tblStd = tbl.toStdString();
         const Table* t = db->getTable(tblStd);
         if (t) {
-            for (size_t i = 0; i < t->getRows().size(); ++i) {
-                if (t->isRowDeleted(i)) continue;
-                const Record& r = t->getRows()[i];
+            for (const auto& r : t->view()) {
                 int rid = (r.has("id") && holds_alternative<int>(r.get("id"))) ? get<int>(r.get("id")) : -1;
                 if (rid != specId && r.has("spec") && holds_alternative<std::string>(r.get("spec")) &&
                     QString::fromStdString(get<std::string>(r.get("spec"))).compare(newSpec, Qt::CaseInsensitive) == 0) {
@@ -3564,9 +3547,7 @@ void MainWindow::onEditAuxSpecOrBrand(const Record& rec)
             const Table* catTbl = db->getTable(catTblName);
             if (catTbl) {
                 std::string pkCol = catTbl->getPrimaryKeyColumn();
-                for (size_t i = 0; i < catTbl->getRows().size(); ++i) {
-                    if (catTbl->isRowDeleted(i)) continue;
-                    const Record& cr = catTbl->getRows()[i];
+                for (const auto& cr : catTbl->view()) {
                     if (!cr.has(colName) || !cr.has(pkCol) || !holds_alternative<int>(cr.get(pkCol))) continue;
                     bool matches = false;
                     if (isIntCol && holds_alternative<int>(cr.get(colName))) {

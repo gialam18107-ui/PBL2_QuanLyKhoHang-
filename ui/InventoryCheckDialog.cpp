@@ -331,10 +331,7 @@ void InventoryCheckCreateDialog::loadProducts()
     if (!prodTable) return;
 
     productList.clear();
-    const auto& rows = prodTable->getRows();
-    for (size_t i = 0; i < rows.size(); ++i) {
-        if (prodTable->isRowDeleted(i)) continue;
-        const auto& r = rows[i];
+    for (const auto& r : prodTable->view()) {
         int pid = safeGetInt(r, "product_id");
         QString code = safeGetQString(r, "product_code");
         QString name = safeGetQString(r, "product_name");
@@ -4009,9 +4006,7 @@ void InventoryCheckInspectDialog::loadCheckData()
     if (!chkTbl) return;
 
     const Record* cRec = nullptr;
-    for (size_t i = 0; i < chkTbl->getRows().size(); ++i) {
-        if (chkTbl->isRowDeleted(i)) continue;
-        const auto& r = chkTbl->getRows()[i];
+    for (const auto& r : chkTbl->view()) {
         if (r.has("check_code") && std::holds_alternative<std::string>(r.get("check_code"))) {
             if (QString::fromStdString(std::get<std::string>(r.get("check_code"))) == targetCheckCode) {
                 cRec = &r;

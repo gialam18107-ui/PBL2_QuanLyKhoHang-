@@ -1,4 +1,4 @@
-﻿#include "OrderDialog.h"
+#include "OrderDialog.h"
 #include "CustomerDialog.h"
 #include "InventoryCheckDialog.h"
 #include "TableClipboardHelper.h"
@@ -323,10 +323,7 @@ QWidget* OrderDialog::createStep1Widget()
     if (db) {
         const Table* chkTable = db->getTable("inventory_check");
         if (chkTable) {
-            const auto& rows = chkTable->getRows();
-            for (size_t i = 0; i < rows.size(); ++i) {
-                if (chkTable->isRowDeleted(i)) continue;
-                const auto& r = rows[i];
+            for (const auto& r : chkTable->view()) {
                 std::string code = r.has("check_code") && std::holds_alternative<std::string>(r.get("check_code")) ? std::get<std::string>(r.get("check_code")) : "";
                 std::string type = r.has("check_type") && std::holds_alternative<std::string>(r.get("check_type")) ? std::get<std::string>(r.get("check_type")) : "";
                 std::string status = r.has("status") && std::holds_alternative<std::string>(r.get("status")) ? std::get<std::string>(r.get("status")) : "";
@@ -1254,11 +1251,9 @@ void OrderDialog::onAddLineItem()
             }
 
             // 2. Nếu người dùng gõ chữ thường/hoa khác case, quét lại case-insensitive trên product_code / barcode / sku
-            const auto& rows = prodTable->getRows();
+            
             if (matchedPid <= 0) {
-                for (size_t i = 0; i < rows.size(); ++i) {
-                    if (prodTable->isRowDeleted(i)) continue;
-                    const Record& r = rows[i];
+                for (const auto& r : prodTable->view()) {
                     if (r.has("product_code") && holds_alternative<std::string>(r.get("product_code"))) {
                         if (QString::fromStdString(get<std::string>(r.get("product_code"))).compare(currentText, Qt::CaseInsensitive) == 0) {
                             matchedPid = get<int>(r.get("product_id"));
@@ -1291,9 +1286,7 @@ void OrderDialog::onAddLineItem()
 
             // 3. Exact match on product_name (case-insensitive)
             if (matchedPid <= 0) {
-                for (size_t i = 0; i < rows.size(); ++i) {
-                    if (prodTable->isRowDeleted(i)) continue;
-                    const Record& r = rows[i];
+                for (const auto& r : prodTable->view()) {
                     if (r.has("product_name") && holds_alternative<std::string>(r.get("product_name"))) {
                         if (QString::fromStdString(get<std::string>(r.get("product_name"))).compare(currentText, Qt::CaseInsensitive) == 0) {
                             matchedPid = get<int>(r.get("product_id"));
@@ -1308,9 +1301,7 @@ void OrderDialog::onAddLineItem()
 
             // 4. Substring match on product_code or product_name
             if (matchedPid <= 0) {
-                for (size_t i = 0; i < rows.size(); ++i) {
-                    if (prodTable->isRowDeleted(i)) continue;
-                    const Record& r = rows[i];
+                for (const auto& r : prodTable->view()) {
                     QString pCode = (r.has("product_code") && holds_alternative<std::string>(r.get("product_code")))
                         ? QString::fromStdString(get<std::string>(r.get("product_code"))) : "";
                     QString pName = (r.has("product_name") && holds_alternative<std::string>(r.get("product_name")))
@@ -1730,8 +1721,10 @@ void OrderDialog::onSaveOrder()
     }
     if (createdOrderCode.isEmpty() && db) {
         const Table* tbl = db->getTable(hubType == HubType::INBOUND ? "inbound_transaction" : "outbound_transaction");
-        if (tbl && !tbl->getRows().empty()) {
-            const Record& r = tbl->getRows().back();
+        if (tbl && !tbl->view().empty()) {
+            const Record* lastRec = nullptr;
+            for (const auto& itRec : tbl->view()) { lastRec = &itRec; }
+            const Record& r = *lastRec;
             std::string col = (hubType == HubType::INBOUND) ? "inbound_code" : "outbound_code";
             if (r.has(col) && holds_alternative<std::string>(r.get(col))) {
                 createdOrderCode = QString::fromStdString(get<std::string>(r.get(col)));
@@ -2227,10 +2220,7 @@ LogisticsUpdateDialog::LogisticsUpdateDialog(
         std::string codeCol = (hubType == HubType::INBOUND) ? "inbound_code" : "outbound_code";
         const Table* txnTbl = db->getTable(txnTblName);
         if (txnTbl) {
-            const auto& rows = txnTbl->getRows();
-            for (size_t i = 0; i < rows.size(); ++i) {
-                if (txnTbl->isRowDeleted(i)) continue;
-                const Record& r = rows[i];
+            for (const auto& r : txnTbl->view()) {
                 if (r.has(codeCol) && holds_alternative<std::string>(r.get(codeCol))) {
                     if (QString::fromStdString(get<std::string>(r.get(codeCol))) == parentOrderCode) {
                         if (r.has("order_at") && holds_alternative<std::string>(r.get("order_at"))) {
@@ -2999,8 +2989,10 @@ void LogisticsBatchDialog::onSave()
     }
     if (createdBatchCode.isEmpty() && db) {
         const Table* tbl = db->getTable(hubType == HubType::INBOUND ? "delivery" : "shipment");
-        if (tbl && !tbl->getRows().empty()) {
-            const Record& r = tbl->getRows().back();
+        if (tbl && !tbl->view().empty()) {
+            const Record* lastRec = nullptr;
+            for (const auto& itRec : tbl->view()) { lastRec = &itRec; }
+            const Record& r = *lastRec;
             std::string col = (hubType == HubType::INBOUND) ? "delivery_code" : "shipment_code";
             if (r.has(col) && holds_alternative<std::string>(r.get(col))) {
                 createdBatchCode = QString::fromStdString(get<std::string>(r.get(col)));

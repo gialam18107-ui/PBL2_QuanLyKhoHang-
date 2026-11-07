@@ -282,10 +282,7 @@ void AdjustmentMovementCreateDialog::populateProducts(const QString& filterCheck
         }
     }
 
-    const auto& rows = pTable->getRows();
-    for (size_t i = 0; i < rows.size(); ++i) {
-        if (pTable->isRowDeleted(i)) continue;
-        const auto& r = rows[i];
+    for (const auto& r : pTable->view()) {
         int pid = r.has("product_id") && std::holds_alternative<int>(r.get("product_id")) ? std::get<int>(r.get("product_id")) : 0;
         if (pid <= 0) continue;
         if (filterActive && allowedPids.find(pid) == allowedPids.end()) continue;
@@ -305,10 +302,7 @@ void AdjustmentMovementCreateDialog::populateReasons()
 
     const Table* rTable = db->getTable("reason");
     if (rTable) {
-        const auto& rows = rTable->getRows();
-        for (size_t i = 0; i < rows.size(); ++i) {
-            if (rTable->isRowDeleted(i)) continue;
-            const auto& r = rows[i];
+        for (const auto& r : rTable->view()) {
             if (r.has("reason") && std::holds_alternative<std::string>(r.get("reason"))) {
                 QString rName = QString::fromStdString(std::get<std::string>(r.get("reason")));
                 reasonCombo->addItem(rName, rName);
@@ -332,10 +326,7 @@ void AdjustmentMovementCreateDialog::populateChecks()
     const Table* chkTable = db->getTable("inventory_check");
     if (!chkTable) return;
 
-    const auto& rows = chkTable->getRows();
-    for (size_t i = 0; i < rows.size(); ++i) {
-        if (chkTable->isRowDeleted(i)) continue;
-        const auto& r = rows[i];
+    for (const auto& r : chkTable->view()) {
         if (r.has("check_code") && std::holds_alternative<std::string>(r.get("check_code"))) {
             QString code = QString::fromStdString(std::get<std::string>(r.get("check_code")));
             QString type = r.has("check_type") && std::holds_alternative<std::string>(r.get("check_type")) ? QString::fromStdString(std::get<std::string>(r.get("check_type"))) : "";
@@ -995,10 +986,7 @@ void AdjustmentSimulationDialog::refreshData()
 
         int availInStock = 0;
         if (uTbl) {
-            const auto& rows = uTbl->getRows();
-            for (size_t i = 0; i < rows.size(); ++i) {
-                if (uTbl->isRowDeleted(i)) continue;
-                const auto& r = rows[i];
+            for (const auto& r : uTbl->view()) {
                 int pid = r.has("product_id") && std::holds_alternative<int>(r.get("product_id")) ? std::get<int>(r.get("product_id")) : 0;
                 std::string st = r.has("status") && std::holds_alternative<std::string>(r.get("status")) ? std::get<std::string>(r.get("status")) : "";
                 std::string sn = r.has("serial") && std::holds_alternative<std::string>(r.get("serial")) ? std::get<std::string>(r.get("serial")) : "";
@@ -1118,10 +1106,7 @@ void AdjustmentSimulationDialog::loadCandidatesForSelectedLine()
         }
     }
 
-    const auto& rows = uTbl->getRows();
-    for (size_t i = 0; i < rows.size(); ++i) {
-        if (uTbl->isRowDeleted(i)) continue;
-        const auto& r = rows[i];
+    for (const auto& r : uTbl->view()) {
         int uid = r.has("unit_id") && std::holds_alternative<int>(r.get("unit_id")) ? std::get<int>(r.get("unit_id")) : 0;
         int pid = r.has("product_id") && std::holds_alternative<int>(r.get("product_id")) ? std::get<int>(r.get("product_id")) : 0;
         std::string st = r.has("status") && std::holds_alternative<std::string>(r.get("status")) ? std::get<std::string>(r.get("status")) : "";
@@ -1528,10 +1513,7 @@ void AdjustmentMovementDetailDialog::loadExecutedUnits()
     const Table* prodTbl = db->getTable("product");
     if (!histTbl || !unitTbl || !prodTbl) return;
 
-    const auto& rows = histTbl->getRows();
-    for (size_t i = 0; i < rows.size(); ++i) {
-        if (histTbl->isRowDeleted(i)) continue;
-        const auto& r = rows[i];
+    for (const auto& r : histTbl->view()) {
         std::string typ = r.has("type") && std::holds_alternative<std::string>(r.get("type")) ? std::get<std::string>(r.get("type")) : "";
         int txn = r.has("transaction") && std::holds_alternative<int>(r.get("transaction")) ? std::get<int>(r.get("transaction")) : 0;
         if (typ != "ADJUSTMENT" || txn != adjustId) continue;
@@ -2357,10 +2339,7 @@ void AdjustmentMovementDetailDialog::autoPickAllAccordingToPlan()
         int remaining = std::max(0, dl.adjustQuantity - dl.actualQuantity - stagedCount);
         if (remaining <= 0) continue;
 
-        const auto& rows = uTbl->getRows();
-        for (size_t i = 0; i < rows.size(); ++i) {
-            if (uTbl->isRowDeleted(i)) continue;
-            const auto& r = rows[i];
+        for (const auto& r : uTbl->view()) {
             int pid = r.has("product_id") && std::holds_alternative<int>(r.get("product_id")) ? std::get<int>(r.get("product_id")) : 0;
             std::string st = r.has("status") && std::holds_alternative<std::string>(r.get("status")) ? std::get<std::string>(r.get("status")) : "";
             std::string sn = r.has("serial") && std::holds_alternative<std::string>(r.get("serial")) ? std::get<std::string>(r.get("serial")) : "";
