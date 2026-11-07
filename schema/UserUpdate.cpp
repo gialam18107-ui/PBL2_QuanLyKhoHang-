@@ -25,7 +25,7 @@ namespace user_update
     ) {
         // 1. Schema & Existence Validation
         if (!db) return OperationResult{false, "Cơ sở dữ liệu chưa được khởi tạo.", 0};
-        Table* table = db->getTable(tableName);
+        const Table* table = db->getTable(tableName);
         if (!table) return OperationResult{false, "Bảng '" + tableName + "' không tồn tại trong CSDL.", 0};
         if (modifiedColumns.size() != modifyingValues.size()) {
             return OperationResult{false, "Số lượng cột và giá trị cần cập nhật không khớp.", 0};
@@ -36,11 +36,11 @@ namespace user_update
             return OperationResult{false, "Không tìm thấy khóa chính của bảng '" + tableName + "'.", 0};
         }
 
-        int targetRowIdx = table->findRowIndexById(recordId);
-        if (targetRowIdx < 0) {
+        const Record* pOld = table->getRecordById(recordId);
+        if (!pOld) {
             return OperationResult{false, "Không tìm thấy bản ghi với ID " + std::to_string(recordId) + " trong bảng '" + tableName + "'.", 0};
         }
-        const Record& oldRecord = table->getRows()[targetRowIdx];
+        const Record& oldRecord = *pOld;
 
         // 2. Validate columns, types, and constraints
         for (size_t i = 0; i < modifiedColumns.size(); ++i) {
@@ -106,8 +106,8 @@ namespace user_update
                             return OperationResult{false, "Chỉ được phép hủy đơn giao dịch khi đơn đang ở trạng thái PENDING (Rule 5.6).", 0};
                         }
                         if (tableName == "inbound_transaction") {
-                            Table* dTable = db->getTable("delivery");
-                            Table* ddTable = db->getTable("delivery_detail");
+                            const Table* dTable = db->getTable("delivery");
+                            const Table* ddTable = db->getTable("delivery_detail");
                             if (dTable) {
                                 Vector<Record> dRecs = Query::filterRecords(*dTable, "inbound_transaction_id", Value(recordId));
                                 if (dRecs.empty()) dRecs = Query::filterRecords(*dTable, "inbound_id", Value(recordId));
@@ -128,8 +128,8 @@ namespace user_update
                                 }
                             }
                         } else {
-                            Table* sTable = db->getTable("shipment");
-                            Table* sdTable = db->getTable("shipment_detail");
+                            const Table* sTable = db->getTable("shipment");
+                            const Table* sdTable = db->getTable("shipment_detail");
                             if (sTable) {
                                 Vector<Record> sRecs = Query::filterRecords(*sTable, "outbound_transaction_id", Value(recordId));
                                 if (sRecs.empty()) sRecs = Query::filterRecords(*sTable, "outbound_id", Value(recordId));
@@ -151,7 +151,7 @@ namespace user_update
                             }
                         }
                     } else if (newTxnSt == "CONFIRMED" || newTxnSt == "COMPLETED") {
-                        Table* itmTbl = db->getTable(tableName == "inbound_transaction" ? "inbound_detail" : "outbound_detail");
+                        const Table* itmTbl = db->getTable(tableName == "inbound_transaction" ? "inbound_detail" : "outbound_detail");
                         std::string fkCol = (tableName == "inbound_transaction") ? "inbound_transaction_id" : "outbound_transaction_id";
                         Vector<Record> itmRecs;
                         if (itmTbl) {
@@ -170,8 +170,8 @@ namespace user_update
 
                         int totalAct = 0;
                         if (tableName == "inbound_transaction") {
-                            Table* dTable = db->getTable("delivery");
-                            Table* ddTable = db->getTable("delivery_detail");
+                            const Table* dTable = db->getTable("delivery");
+                            const Table* ddTable = db->getTable("delivery_detail");
                             if (dTable && ddTable) {
                                 Vector<Record> dRecs = Query::filterRecords(*dTable, "inbound_transaction_id", Value(recordId));
                                 if (dRecs.empty()) dRecs = Query::filterRecords(*dTable, "inbound_id", Value(recordId));
@@ -187,8 +187,8 @@ namespace user_update
                                 }
                             }
                         } else {
-                            Table* sTable = db->getTable("shipment");
-                            Table* sdTable = db->getTable("shipment_detail");
+                            const Table* sTable = db->getTable("shipment");
+                            const Table* sdTable = db->getTable("shipment_detail");
                             if (sTable && sdTable) {
                                 Vector<Record> sRecs = Query::filterRecords(*sTable, "outbound_transaction_id", Value(recordId));
                                 if (sRecs.empty()) sRecs = Query::filterRecords(*sTable, "outbound_id", Value(recordId));
@@ -220,7 +220,7 @@ namespace user_update
                 inId = std::get<int>(oldRecord.get("inbound_id"));
             }
             if (inId != -1) {
-                Table* inTab = db->getTable("inbound_transaction");
+                const Table* inTab = db->getTable("inbound_transaction");
                 if (inTab) {
                     const Record* inRec = inTab->getRecordById(inId);
                     if (inRec && inRec->has("status") && std::holds_alternative<std::string>(inRec->get("status"))) {
@@ -249,7 +249,7 @@ namespace user_update
                         return OperationResult{false, "Đợt nhận hàng đã bị HỦY (CANCELLED), trạng thái bị khóa vĩnh viễn (Rule 5.6).", 0};
                     }
                     if (newDelSt == "CANCELLED") {
-                        Table* ddTable = db->getTable("delivery_detail");
+                        const Table* ddTable = db->getTable("delivery_detail");
                         if (ddTable) {
                             Vector<Record> ddRecs = Query::filterRecords(*ddTable, "delivery_id", Value(recordId));
                             for (const auto& dd : ddRecs) {
@@ -274,7 +274,7 @@ namespace user_update
                     }
 
                     if (inId != -1) {
-                        Table* inTab = db->getTable("inbound_transaction");
+                        const Table* inTab = db->getTable("inbound_transaction");
                         if (inTab) {
                             const Record* inRec = inTab->getRecordById(inId);
                             if (inRec && inRec->has("order_at") && std::holds_alternative<std::string>(inRec->get("order_at"))) {
@@ -301,7 +301,7 @@ namespace user_update
                 outId = std::get<int>(oldRecord.get("outbound_id"));
             }
             if (outId != -1) {
-                Table* outTab = db->getTable("outbound_transaction");
+                const Table* outTab = db->getTable("outbound_transaction");
                 if (outTab) {
                     const Record* outRec = outTab->getRecordById(outId);
                     if (outRec && outRec->has("status") && std::holds_alternative<std::string>(outRec->get("status"))) {
@@ -330,7 +330,7 @@ namespace user_update
                         return OperationResult{false, "Đợt xuất hàng đã bị HỦY (CANCELLED), trạng thái bị khóa vĩnh viễn (Rule 5.6).", 0};
                     }
                     if (newShipSt == "CANCELLED") {
-                        Table* sdTable = db->getTable("shipment_detail");
+                        const Table* sdTable = db->getTable("shipment_detail");
                         if (sdTable) {
                             Vector<Record> sdRecs = Query::filterRecords(*sdTable, "shipment_id", Value(recordId));
                             for (const auto& sd : sdRecs) {
@@ -357,7 +357,7 @@ namespace user_update
                     }
 
                     if (outId != -1) {
-                        Table* outTab = db->getTable("outbound_transaction");
+                        const Table* outTab = db->getTable("outbound_transaction");
                         if (outTab) {
                             const Record* outRec = outTab->getRecordById(outId);
                             if (outRec && outRec->has("order_at") && std::holds_alternative<std::string>(outRec->get("order_at"))) {
@@ -399,7 +399,7 @@ namespace user_update
                         if (oldAdjSt != "PENDING") {
                             return OperationResult{false, "Chỉ được phép hủy phiếu điều chuyển khi phiếu đang ở trạng thái PENDING (Rule 5.6).", 0};
                         }
-                        Table* detTbl = db->getTable("adjust_movement_detail");
+                        const Table* detTbl = db->getTable("adjust_movement_detail");
                         if (detTbl) {
                             Vector<Record> dRecs = Query::filterRecords(*detTbl, "adjust_id", Value(recordId));
                             for (const auto& d : dRecs) {
@@ -476,7 +476,7 @@ namespace user_update
         else if (tableName == "brand") {
             for (size_t i = 0; i < modifiedColumns.size(); ++i) {
                 if (modifiedColumns[i] == "code") {
-                    Table* prodTable = db->getTable("product");
+                    const Table* prodTable = db->getTable("product");
                     if (prodTable && oldRecord.has("brand") && std::holds_alternative<std::string>(oldRecord.get("brand"))) {
                         std::string bName = std::get<std::string>(oldRecord.get("brand"));
                         Vector<Record> pRecs = Query::filterRecords(*prodTable, "brand", Value(bName));
@@ -501,17 +501,16 @@ namespace user_update
                     bool newSold = std::holds_alternative<bool>(modifyingValues[i]) ? std::get<bool>(modifyingValues[i]) : true;
                     bool oldSold = (oldRecord.has("is_sold") && std::holds_alternative<bool>(oldRecord.get("is_sold"))) ? std::get<bool>(oldRecord.get("is_sold")) : true;
                     if (oldSold != newSold) {
-                        Table* histTable = db->getTable("is_sold_changing");
+                        const Table* histTable = db->getTable("is_sold_changing");
                         if (histTable) {
                             time_t now = time(nullptr);
                             tm* t = localtime(&now);
                             char buf[32];
                             strftime(buf, sizeof(buf), "%Y-%m-%d", t);
                             int hId = 1;
-                            const auto& hRows = histTable->getRows();
-                            for (size_t h = 0; h < hRows.size(); ++h) {
-                                if (hRows[h].has("history_id") && std::holds_alternative<int>(hRows[h].get("history_id"))) {
-                                    int hidVal = std::get<int>(hRows[h].get("history_id"));
+                            for (const auto& hr : histTable->view()) {
+                                if (hr.has("history_id") && std::holds_alternative<int>(hr.get("history_id"))) {
+                                    int hidVal = std::get<int>(hr.get("history_id"));
                                     if (hidVal >= hId) hId = hidVal + 1;
                                 }
                             }
@@ -536,7 +535,7 @@ namespace user_update
                                          ? std::get<std::string>(modifyingValues[i]) : "";
                     if (newTxnSt == "CANCELLED") {
                         if (tableName == "inbound_transaction") {
-                            Table* dTable = db->getTable("delivery");
+                            const Table* dTable = db->getTable("delivery");
                             if (dTable) {
                                 Vector<Record> dRecs = Query::filterRecords(*dTable, "inbound_transaction_id", Value(recordId));
                                 if (dRecs.empty()) dRecs = Query::filterRecords(*dTable, "inbound_id", Value(recordId));
@@ -551,7 +550,7 @@ namespace user_update
                                 }
                             }
                         } else {
-                            Table* sTable = db->getTable("shipment");
+                            const Table* sTable = db->getTable("shipment");
                             if (sTable) {
                                 Vector<Record> sRecs = Query::filterRecords(*sTable, "outbound_transaction_id", Value(recordId));
                                 if (sRecs.empty()) sRecs = Query::filterRecords(*sTable, "outbound_id", Value(recordId));
@@ -650,8 +649,8 @@ namespace user_update
         const std::string& dateStr
     ) {
         if (!db) return OperationResult{false, "Cơ sở dữ liệu chưa được khởi tạo.", 0};
-        Table* prodTable = db->getTable("product");
-        Table* histTable = db->getTable("is_sold_changing");
+        const Table* prodTable = db->getTable("product");
+        const Table* histTable = db->getTable("is_sold_changing");
         if (!prodTable) return OperationResult{false, "Bảng product không tồn tại.", 0};
 
         const Record* pRec = prodTable->getRecordById(productId);
@@ -700,7 +699,7 @@ namespace user_update
             }
 
             int hId = 1;
-            for (const auto& r : histTable->getRows()) {
+            for (const auto& r : histTable->view()) {
                 if (r.has("history_id") && std::holds_alternative<int>(r.get("history_id"))) {
                     int id = std::get<int>(r.get("history_id"));
                     if (id >= hId) hId = id + 1;
@@ -732,7 +731,7 @@ namespace user_update
         const std::string& address
     ) {
         if (!db) return OperationResult{false, "Cơ sở dữ liệu chưa được khởi tạo.", 0};
-        Table* custTable = db->getTable("customer");
+        const Table* custTable = db->getTable("customer");
         if (!custTable) return OperationResult{false, "Bảng customer không tồn tại.", 0};
 
         const Record* cRec = custTable->getRecordById(customerId);
@@ -805,7 +804,7 @@ namespace user_update
         if (newBrandName.empty()) {
             return OperationResult{false, "Tên thương hiệu không được để trống.", 0};
         }
-        Table* brandTable = db->getTable("brand");
+        const Table* brandTable = db->getTable("brand");
         if (!brandTable) return OperationResult{false, "Bảng brand không tồn tại.", 0};
 
         const Record* bRec = brandTable->getRecordById(brandId);
@@ -831,13 +830,13 @@ namespace user_update
         if (!db) return OperationResult{false, "Cơ sở dữ liệu chưa được khởi tạo.", 0};
         if (serials.empty()) return OperationResult{false, "Danh sách serial xuất kho không được để trống.", 0};
 
-        Table* shipTable = db->getTable("shipment");
-        Table* shipDetTable = db->getTable("shipment_detail");
-        Table* outTxnTable = db->getTable("outbound_transaction");
-        Table* outDetTable = db->getTable("outbound_detail");
-        Table* unitTable = db->getTable("unit_inventory");
-        Table* histTable = db->getTable("status_history");
-                Table* prodTable = db->getTable("product");
+        const Table* shipTable = db->getTable("shipment");
+        const Table* shipDetTable = db->getTable("shipment_detail");
+        const Table* outTxnTable = db->getTable("outbound_transaction");
+        const Table* outDetTable = db->getTable("outbound_detail");
+        const Table* unitTable = db->getTable("unit_inventory");
+        const Table* histTable = db->getTable("status_history");
+                const Table* prodTable = db->getTable("product");
 
         if (!shipTable || !shipDetTable || !outTxnTable || !outDetTable || !unitTable || !histTable || !prodTable) {
             return OperationResult{false, "Các bảng dữ liệu xuất kho không đầy đủ.", 0};
@@ -934,7 +933,7 @@ namespace user_update
         // Pre-calculate next histId once before loop to prevent O(N^2) full table scans
         int nextHistId = 1;
         std::string pkHist = histTable->getPrimaryKeyColumn();
-        for (const auto& hRow : histTable->getRows()) {
+        for (const auto& hRow : histTable->view()) {
             if (hRow.has(pkHist) && std::holds_alternative<int>(hRow.get(pkHist))) {
                 int hid = std::get<int>(hRow.get(pkHist));
                 if (hid >= nextHistId) nextHistId = hid + 1;
@@ -1095,10 +1094,10 @@ namespace user_update
 
         std::string tbl = isInbound ? "delivery" : "shipment";
         std::string codeCol = isInbound ? "delivery_code" : "shipment_code";
-        Table* logTable = db->getTable(tbl);
-        Table* unitTable = db->getTable("unit_inventory");
-        Table* histTable = db->getTable("status_history");
-        Table* prodTable = db->getTable("product");
+        const Table* logTable = db->getTable(tbl);
+        const Table* unitTable = db->getTable("unit_inventory");
+        const Table* histTable = db->getTable("status_history");
+        const Table* prodTable = db->getTable("product");
         if (!logTable || !unitTable || !histTable || !prodTable) {
             return OperationResult{false, "Các bảng dữ liệu giao vận hoặc linh kiện không đầy đủ.", 0};
         }
@@ -1131,7 +1130,7 @@ namespace user_update
             } else if (logRec.has("inbound_id") && std::holds_alternative<int>(logRec.get("inbound_id"))) {
                 inTxnId = std::get<int>(logRec.get("inbound_id"));
             }
-            Table* inTxnTable = db->getTable("inbound_transaction");
+            const Table* inTxnTable = db->getTable("inbound_transaction");
             if (inTxnTable && inTxnId > 0) {
                 const Record* inTxnRec = inTxnTable->getRecordById(inTxnId);
                 if (inTxnRec) {
@@ -1154,7 +1153,7 @@ namespace user_update
             } else if (logRec.has("outbound_id") && std::holds_alternative<int>(logRec.get("outbound_id"))) {
                 outTxnId = std::get<int>(logRec.get("outbound_id"));
             }
-            Table* outTxnTable = db->getTable("outbound_transaction");
+            const Table* outTxnTable = db->getTable("outbound_transaction");
             if (outTxnTable && outTxnId > 0) {
                 const Record* outTxnRec = outTxnTable->getRecordById(outTxnId);
                 if (outTxnRec) {
@@ -1253,10 +1252,7 @@ namespace user_update
         int maxHistId = 0;
         int logPk = isInbound ? std::get<int>(logRec.get("delivery_id")) : std::get<int>(logRec.get("shipment_id"));
 
-        const auto& hRows = histTable->getRows();
-        for (size_t i = 0; i < hRows.size(); ++i) {
-            if (histTable->isRowDeleted(i)) continue;
-            const auto& hRow = hRows[i];
+        for (const auto& hRow : histTable->view()) {
             if (hRow.has(pkHist) && std::holds_alternative<int>(hRow.get(pkHist))) {
                 int hid = std::get<int>(hRow.get(pkHist));
                 if (hid > maxHistId) maxHistId = hid;
@@ -1322,7 +1318,7 @@ namespace user_update
         const std::string& note
     ) {
         if (!db || checkQuantityId <= 0) return OperationResult{false, "Tham số không hợp lệ.", 0};
-        Table* cqTbl = db->getTable("inventory_check_quantity");
+        const Table* cqTbl = db->getTable("inventory_check_quantity");
         if (!cqTbl) return OperationResult{false, "Bảng inventory_check_quantity không tồn tại.", 0};
 
         const Record* cqRec = cqTbl->getRecordById(checkQuantityId);
@@ -1337,7 +1333,7 @@ namespace user_update
         OperationResult res = db->update("inventory_check_quantity", checkQuantityId, up);
         if (res.success) {
             int checkId = cqRec->has("check_id") && std::holds_alternative<int>(cqRec->get("check_id")) ? std::get<int>(cqRec->get("check_id")) : 0;
-            Table* chkTbl = db->getTable("inventory_check");
+            const Table* chkTbl = db->getTable("inventory_check");
             if (chkTbl && checkId > 0) {
                 const Record* chk = chkTbl->getRecordById(checkId);
                 if (chk && chk->has("status") && std::holds_alternative<std::string>(chk->get("status")) && std::get<std::string>(chk->get("status")) == "PENDING") {
@@ -1356,8 +1352,8 @@ namespace user_update
         const std::string& scannedStatus
     ) {
         if (!db || checkUnitId <= 0) return OperationResult{false, "Tham số không hợp lệ.", 0};
-        Table* cuTbl = db->getTable("inventory_check_unit");
-        Table* cqTbl = db->getTable("inventory_check_quantity");
+        const Table* cuTbl = db->getTable("inventory_check_unit");
+        const Table* cqTbl = db->getTable("inventory_check_quantity");
         if (!cuTbl || !cqTbl) return OperationResult{false, "Bảng kiểm kê không tồn tại.", 0};
 
         const Record* cuRec = cuTbl->getRecordById(checkUnitId);
@@ -1395,7 +1391,7 @@ namespace user_update
         if (!rCq) { db->rollback(); return rCq; }
 
         int checkId = cuRec->has("check_id") && std::holds_alternative<int>(cuRec->get("check_id")) ? std::get<int>(cuRec->get("check_id")) : 0;
-        Table* chkTbl = db->getTable("inventory_check");
+        const Table* chkTbl = db->getTable("inventory_check");
         if (chkTbl && checkId > 0) {
             const Record* chk = chkTbl->getRecordById(checkId);
             if (chk && chk->has("status") && std::holds_alternative<std::string>(chk->get("status")) && std::get<std::string>(chk->get("status")) == "PENDING") {
@@ -1420,8 +1416,8 @@ namespace user_update
         if (!db || checkId <= 0 || checkQuantityId <= 0 || serial.empty()) {
             return OperationResult{false, "Tham số không hợp lệ.", 0};
         }
-        Table* cuTbl = db->getTable("inventory_check_unit");
-        Table* cqTbl = db->getTable("inventory_check_quantity");
+        const Table* cuTbl = db->getTable("inventory_check_unit");
+        const Table* cqTbl = db->getTable("inventory_check_quantity");
         if (!cuTbl || !cqTbl) return OperationResult{false, "Bảng kiểm kê không tồn tại.", 0};
 
         // Format check
@@ -1441,7 +1437,7 @@ namespace user_update
         if (!db->beginTransaction()) return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
 
         int cuId = 1;
-        for (const auto& r : cuTbl->getRows()) {
+        for (const auto& r : cuTbl->view()) {
             if (r.has("check_unit_id") && std::holds_alternative<int>(r.get("check_unit_id"))) {
                 int id = std::get<int>(r.get("check_unit_id"));
                 if (id >= cuId) cuId = id + 1;
@@ -1483,7 +1479,7 @@ namespace user_update
         OperationResult rCq = db->update("inventory_check_quantity", checkQuantityId, cqUp);
         if (!rCq) { db->rollback(); return rCq; }
 
-        Table* chkTbl = db->getTable("inventory_check");
+        const Table* chkTbl = db->getTable("inventory_check");
         if (chkTbl) {
             const Record* chk = chkTbl->getRecordById(checkId);
             if (chk && chk->has("status") && std::holds_alternative<std::string>(chk->get("status")) && std::get<std::string>(chk->get("status")) == "PENDING") {
@@ -1508,9 +1504,9 @@ namespace user_update
             return OperationResult{true, "Không có dữ liệu thay đổi cần lưu.", 0};
         }
 
-        Table* chkTbl = db->getTable("inventory_check");
-        Table* cqTbl = db->getTable("inventory_check_quantity");
-        Table* cuTbl = db->getTable("inventory_check_unit");
+        const Table* chkTbl = db->getTable("inventory_check");
+        const Table* cqTbl = db->getTable("inventory_check_quantity");
+        const Table* cuTbl = db->getTable("inventory_check_unit");
         if (!chkTbl || !cqTbl || !cuTbl) {
             return OperationResult{false, "Các bảng dữ liệu kiểm kê không tồn tại.", 0};
         }
@@ -1542,7 +1538,7 @@ namespace user_update
 
         // Find max check_unit_id once
         int nextCuId = 1;
-        for (const auto& r : cuTbl->getRows()) {
+        for (const auto& r : cuTbl->view()) {
             if (r.has("check_unit_id") && std::holds_alternative<int>(r.get("check_unit_id"))) {
                 int id = std::get<int>(r.get("check_unit_id"));
                 if (id >= nextCuId) nextCuId = id + 1;
@@ -1553,23 +1549,24 @@ namespace user_update
         HashMap<int, bool> affectedCqIds;
         int totalAffected = 0;
 
-        // 1. Process modified units directly in-place on cuTbl (O(1) per unit)
-        auto& cuRows = cuTbl->getRows();
+        // 1. Process modified units
         for (size_t i = 0; i < modifiedUnits.size(); ++i) {
             const auto& m = modifiedUnits[i];
-            int idx = cuTbl->findRowIndexById(m.checkUnitId);
-            if (idx < 0) continue;
+            const Record* r = cuTbl->getRecordById(m.checkUnitId);
+            if (!r) continue;
 
-            auto& r = cuRows[idx];
-            if (r.has("check_quantity_id") && std::holds_alternative<int>(r.get("check_quantity_id"))) {
-                affectedCqIds[std::get<int>(r.get("check_quantity_id"))] = true;
+            if (r->has("check_quantity_id") && std::holds_alternative<int>(r->get("check_quantity_id"))) {
+                affectedCqIds[std::get<int>(r->get("check_quantity_id"))] = true;
             }
 
-            r.set("scanned_status", m.scannedStatus);
-            totalAffected++;
+            Record updatedRec = *r;
+            updatedRec.set("scanned_status", m.scannedStatus);
+            if (db->update("inventory_check_unit", m.checkUnitId, updatedRec).success) {
+                totalAffected++;
+            }
         }
 
-        // 2. Process surplus units directly into cuTbl
+        // 2. Process surplus units
         for (size_t i = 0; i < surplusUnits.size(); ++i) {
             const auto& s = surplusUnits[i];
             affectedCqIds[s.checkQuantityId] = true;
@@ -1587,7 +1584,7 @@ namespace user_update
             }
             cuRec.set("scanned_status", s.scannedStatus);
 
-            if (cuTbl->insert(cuRec)) {
+            if (db->insert("inventory_check_unit", cuRec)) {
                 totalAffected++;
             }
         }
@@ -1604,9 +1601,7 @@ namespace user_update
             counts[affectedList[i]] = QuanCount{0, 0, 0};
         }
 
-        Vector<Record> checkUnits = Query::filterRecords(*cuTbl, "check_id", Value(checkId));
-        for (size_t i = 0; i < checkUnits.size(); ++i) {
-            const auto& u = checkUnits[i];
+        for (const auto& u : cuTbl->view("check_id", Value(checkId))) {
             if (!u.has("check_quantity_id") || !std::holds_alternative<int>(u.get("check_quantity_id"))) continue;
 
             int cqId = std::get<int>(u.get("check_quantity_id"));
@@ -1619,23 +1614,27 @@ namespace user_update
             else if (st == "SCRAPPED") counts[cqId].scrap++;
         }
 
-        auto& cqRows = cqTbl->getRows();
         for (size_t i = 0; i < affectedList.size(); ++i) {
             int cqId = affectedList[i];
-            int idx = cqTbl->findRowIndexById(cqId);
-            if (idx < 0) continue;
+            const Record* cqRec = cqTbl->getRecordById(cqId);
+            if (!cqRec) continue;
             const auto& c = counts[cqId];
-            cqRows[idx].set("actual_available_quan", c.avail);
-            cqRows[idx].set("actual_warranty_quan", c.warr);
-            cqRows[idx].set("actual_scrapped_quan", c.scrap);
-            totalAffected++;
+            Record updatedCq = *cqRec;
+            updatedCq.set("actual_available_quan", c.avail);
+            updatedCq.set("actual_warranty_quan", c.warr);
+            updatedCq.set("actual_scrapped_quan", c.scrap);
+            if (db->update("inventory_check_quantity", cqId, updatedCq).success) {
+                totalAffected++;
+            }
         }
 
         // 4. Update check status to IN_PROCESS if it was PENDING
         if (checkSt == "PENDING") {
-            int chkIdx = chkTbl->findRowIndexById(checkId);
-            if (chkIdx >= 0) {
-                chkTbl->getRows()[chkIdx].set("status", std::string("IN_PROCESS"));
+            const Record* chkRec = chkTbl->getRecordById(checkId);
+            if (chkRec) {
+                Record updatedChk = *chkRec;
+                updatedChk.set("status", std::string("IN_PROCESS"));
+                db->update("inventory_check", checkId, updatedChk);
             }
         }
 
@@ -1650,7 +1649,7 @@ namespace user_update
         int checkId
     ) {
         if (!db || checkId <= 0) return OperationResult{false, "Tham số không hợp lệ.", 0};
-        Table* chkTbl = db->getTable("inventory_check");
+        const Table* chkTbl = db->getTable("inventory_check");
         if (!chkTbl) return OperationResult{false, "Bảng inventory_check không tồn tại.", 0};
 
         const Record* chkRec = chkTbl->getRecordById(checkId);
@@ -1675,7 +1674,7 @@ namespace user_update
         int checkId
     ) {
         if (!db || checkId <= 0) return OperationResult{false, "Tham số không hợp lệ.", 0};
-        Table* chkTbl = db->getTable("inventory_check");
+        const Table* chkTbl = db->getTable("inventory_check");
         if (!chkTbl) return OperationResult{false, "Bảng inventory_check không tồn tại.", 0};
 
         const Record* chkRec = chkTbl->getRecordById(checkId);
@@ -1691,11 +1690,11 @@ namespace user_update
         int adjustId
     ) {
         if (!db || adjustId <= 0) return OperationResult{false, "Tham số không hợp lệ.", 0};
-        Table* adjTbl = db->getTable("adjustment_movement");
-        Table* detTbl = db->getTable("adjust_movement_detail");
-        Table* prodTbl = db->getTable("product");
-        Table* unitTbl = db->getTable("unit_inventory");
-        Table* histTbl = db->getTable("status_history");
+        const Table* adjTbl = db->getTable("adjustment_movement");
+        const Table* detTbl = db->getTable("adjust_movement_detail");
+        const Table* prodTbl = db->getTable("product");
+        const Table* unitTbl = db->getTable("unit_inventory");
+        const Table* histTbl = db->getTable("status_history");
 
         if (!adjTbl || !detTbl || !prodTbl || !unitTbl || !histTbl) {
             return OperationResult{false, "Các bảng dữ liệu điều chuyển không đầy đủ.", 0};
@@ -1719,8 +1718,8 @@ namespace user_update
         std::string sourceCode = (adjRec->has("source_code") && std::holds_alternative<std::string>(adjRec->get("source_code")))
             ? std::get<std::string>(adjRec->get("source_code")) : "";
         int checkId = 0;
-        Table* chkTbl = db->getTable("inventory_check");
-        Table* chkUnitTbl = db->getTable("inventory_check_unit");
+        const Table* chkTbl = db->getTable("inventory_check");
+        const Table* chkUnitTbl = db->getTable("inventory_check_unit");
         if (chkTbl && !sourceCode.empty()) {
             Vector<Record> cRecs = Query::filterRecords(*chkTbl, "check_code", Value(sourceCode));
             if (!cRecs.empty() && cRecs[0].has("check_id") && std::holds_alternative<int>(cRecs[0].get("check_id"))) {
@@ -1742,7 +1741,7 @@ namespace user_update
             HashMap<int, bool> pickedUnitIds;
 
             if (checkId > 0 && chkUnitTbl) {
-                for (const auto& cu : chkUnitTbl->getRows()) {
+                for (const auto& cu : chkUnitTbl->view()) {
                     if (cu.has("check_id") && std::holds_alternative<int>(cu.get("check_id")) && std::get<int>(cu.get("check_id")) == checkId) {
                         std::string cuSys = cu.has("system_status") && std::holds_alternative<std::string>(cu.get("system_status")) ? std::get<std::string>(cu.get("system_status")) : "";
                         std::string cuScan = cu.has("scanned_status") && std::holds_alternative<std::string>(cu.get("scanned_status")) ? std::get<std::string>(cu.get("scanned_status")) : "";
@@ -1767,7 +1766,7 @@ namespace user_update
 
             // Fill remainder if needed from unit_inventory
             if (static_cast<int>(candidates.size()) < reqQty) {
-                for (const auto& u : unitTbl->getRows()) {
+                for (const auto& u : unitTbl->view()) {
                     int uId = std::get<int>(u.get("unit_id"));
                     if (!pickedUnitIds.contains(uId) && std::get<int>(u.get("product_id")) == pid && std::get<std::string>(u.get("status")) == fromSt) {
                         candidates.push_back(u);
@@ -1787,7 +1786,7 @@ namespace user_update
 
                 // Log into status_history
                 int maxHId = 1;
-                for (const auto& h : histTbl->getRows()) {
+                for (const auto& h : histTbl->view()) {
                     if (h.has("history_id") && std::holds_alternative<int>(h.get("history_id"))) {
                         int hid = std::get<int>(h.get("history_id"));
                         if (hid >= maxHId) maxHId = hid + 1;
@@ -1856,11 +1855,11 @@ namespace user_update
         if (!db || adjustId <= 0 || stagedUnits.empty()) {
             return OperationResult{false, "Danh sách linh kiện điều chuyển trống hoặc tham số không hợp lệ.", 0};
         }
-        Table* adjTbl = db->getTable("adjustment_movement");
-        Table* detTbl = db->getTable("adjust_movement_detail");
-        Table* prodTbl = db->getTable("product");
-        Table* unitTbl = db->getTable("unit_inventory");
-        Table* histTbl = db->getTable("status_history");
+        const Table* adjTbl = db->getTable("adjustment_movement");
+        const Table* detTbl = db->getTable("adjust_movement_detail");
+        const Table* prodTbl = db->getTable("product");
+        const Table* unitTbl = db->getTable("unit_inventory");
+        const Table* histTbl = db->getTable("status_history");
 
         if (!adjTbl || !detTbl || !prodTbl || !unitTbl || !histTbl) {
             return OperationResult{false, "Các bảng dữ liệu điều chuyển không đầy đủ.", 0};
@@ -1931,7 +1930,7 @@ namespace user_update
                 if (!rU) { db->rollback(); return rU; }
 
                 int maxHId = 1;
-                for (const auto& h : histTbl->getRows()) {
+                for (const auto& h : histTbl->view()) {
                     if (h.has("history_id") && std::holds_alternative<int>(h.get("history_id"))) {
                         int hid = std::get<int>(h.get("history_id"));
                         if (hid >= maxHId) maxHId = hid + 1;

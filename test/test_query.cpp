@@ -1,4 +1,4 @@
-#include <iostream>
+﻿#include <iostream>
 #include <iomanip>
 #include <cassert>
 #include <string>
@@ -21,7 +21,7 @@ void test_query_sum_real_data(Database& db)
     cout << "[TEST 1] Testing Query::sum with real 'inbound_detail' data..." << endl;
     cout << "----------------------------------------------------------" << endl;
 
-    Table* table = db.getTable("inbound_detail");
+    const Table* table = db.getTable("inbound_detail");
     assert(table != nullptr);
 
     Vector<Record> rows = table->getRows();
@@ -88,7 +88,7 @@ void test_query_count_real_data(Database& db)
     cout << "----------------------------------------------------------" << endl;
 
     // 2.1. Đếm số sản phẩm trong mỗi category_id từ bảng 'product'
-    Table* productTable = db.getTable("product");
+    const Table* productTable = db.getTable("product");
     assert(productTable != nullptr);
     Vector<Record> productRows = productTable->getRows();
 
@@ -110,7 +110,7 @@ void test_query_count_real_data(Database& db)
          << productRows.size() << ")!" << endl;
 
     // 2.2. Đếm số unit theo Pair(product_id, status) từ bảng 'unit_inventory' (3200+ dòng)
-    Table* unitTable = db.getTable("unit_inventory");
+    const Table* unitTable = db.getTable("unit_inventory");
     assert(unitTable != nullptr);
     Vector<Record> unitRows = unitTable->getRows();
     cout << "  - Total unit_inventory records: " << unitRows.size() << endl;
@@ -138,7 +138,7 @@ void test_query_sort_real_data(Database& db)
     cout << "[TEST 3] Testing Query::querySort with real 'product' data..." << endl;
     cout << "----------------------------------------------------------" << endl;
 
-    Table* productTable = db.getTable("product");
+    const Table* productTable = db.getTable("product");
     assert(productTable != nullptr);
     Vector<Record> products = productTable->getRows();
 
@@ -195,7 +195,7 @@ void test_query_filter_records_real_data(Database& db)
     cout << "----------------------------------------------------------" << endl;
 
     // 4.1. Lọc giá trị chính xác trên HashTreeIndex (bảng 'product', cột 'is_sold')
-    Table* productTable = db.getTable("product");
+    const Table* productTable = db.getTable("product");
     assert(productTable != nullptr);
 
     for (bool soldStatus : {false, true})
@@ -232,7 +232,7 @@ void test_query_filter_records_real_data(Database& db)
     cout << "  [PASS] 4.1: Filter by exact match on 'is_sold' (HashTreeIndex) passed!" << endl;
 
     // 4.2. Lọc giá trị chuỗi trên HashTreeIndex (bảng 'cpu', cột 'socket')
-    Table* cpuTable = db.getTable("cpu");
+    const Table* cpuTable = db.getTable("cpu");
     assert(cpuTable != nullptr);
 
     Vector<Record> lga1700Cpus = Query::filterRecords(*cpuTable, "socket", Value(string("LGA1700")));
@@ -254,7 +254,7 @@ void test_query_filter_records_real_data(Database& db)
     cout << "  [PASS] 4.2: Filter by string exact match on 'cpu.socket' passed!" << endl;
 
     // 4.3. Lọc theo khoảng giá trị (findRange) trên AVLTreeIndex (bảng 'inbound_transaction', cột 'order_at')
-    Table* inboundTable = db.getTable("inbound_transaction");
+    const Table* inboundTable = db.getTable("inbound_transaction");
     assert(inboundTable != nullptr);
 
     Value minDate(string("2026-09-01"));

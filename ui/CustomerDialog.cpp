@@ -11,14 +11,11 @@
 #include "schema/UserCreate.h"
 #include "schema/UserUpdate.h"
 
-static int findMaxCustomerSeq(Table* custTable, const std::string& prefix)
+static int findMaxCustomerSeq(const Table* custTable, const std::string& prefix)
 {
     if (!custTable) return 0;
     int maxSeq = 0;
-    const auto& rows = custTable->getRows();
-    for (size_t i = 0; i < rows.size(); ++i) {
-        if (custTable->isRowDeleted(i)) continue;
-        const Record& r = rows[i];
+    for (const Record& r : custTable->view()) {
         if (r.has("customer_code") && holds_alternative<std::string>(r.get("customer_code"))) {
             std::string code = get<std::string>(r.get("customer_code"));
             if (code.rfind(prefix, 0) == 0 && code.length() > prefix.length()) {
@@ -248,7 +245,7 @@ void CustomerDialog::onKindChanged(int index)
 void CustomerDialog::updatePreviewCode()
 {
     if (!db || isEditMode) return;
-    Table* custTable = db->getTable("customer");
+    const Table* custTable = db->getTable("customer");
     bool isBus = (kindCombo->currentIndex() == 1);
     std::string prefix = isBus ? "BS-" : "IN-";
     int nextSeq = findMaxCustomerSeq(custTable, prefix) + 1;
@@ -260,7 +257,7 @@ void CustomerDialog::updatePreviewCode()
 void CustomerDialog::loadExistingCustomer()
 {
     if (!db || customerId < 0) return;
-    Table* custTable = db->getTable("customer");
+    const Table* custTable = db->getTable("customer");
     if (!custTable) return;
 
     const Record* cRec = custTable->getRecordById(customerId);
@@ -284,7 +281,7 @@ void CustomerDialog::loadExistingCustomer()
     nameEdit->setText(name);
 
     if (!isBus) {
-        Table* indTable = db->getTable("individual_info");
+        const Table* indTable = db->getTable("individual_info");
         const Record* iRec = indTable ? indTable->getRecordById(customerId) : nullptr;
         if (iRec) {
             if (iRec->has("phone_number") && holds_alternative<std::string>(iRec->get("phone_number"))) {
@@ -295,7 +292,7 @@ void CustomerDialog::loadExistingCustomer()
             }
         }
     } else {
-        Table* busTable = db->getTable("business_info");
+        const Table* busTable = db->getTable("business_info");
         const Record* bRec = busTable ? busTable->getRecordById(customerId) : nullptr;
         if (bRec) {
             if (bRec->has("tax_code") && holds_alternative<std::string>(bRec->get("tax_code"))) {
@@ -375,7 +372,7 @@ void CustomerDialog::onSaveClicked()
             return;
         }
 
-        Table* custTable = db->getTable("customer");
+        const Table* custTable = db->getTable("customer");
         if (custTable) {
             const auto& rows = custTable->getRows();
             for (int i = static_cast<int>(rows.size()) - 1; i >= 0; --i) {

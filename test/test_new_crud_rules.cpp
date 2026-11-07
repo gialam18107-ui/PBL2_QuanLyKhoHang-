@@ -1,4 +1,4 @@
-#include <iostream>
+﻿#include <iostream>
 #include <cassert>
 #include <string>
 #include "database/Database.h"
@@ -49,7 +49,7 @@ int main() {
     // "is_sold chỉ có thể đổi sang false nếu tổng số lượng = 0"
     // --------------------------------------------------------
     printHeader("TEST 1: Selling status (is_sold) & is_sold_changing history");
-    Table* prodTable = db.getTable("product");
+    const Table* prodTable = db.getTable("product");
     assert(prodTable != nullptr);
 
     // Find a product with stock > 0
@@ -169,8 +169,8 @@ int main() {
     assert(rGenAdj.success);
 
     // Verify that ADJUSTMENT_OUT transaction was created with customer_id == NULL and source_code == chkCode
-    Table* inTxnTbl = db.getTable("inbound_transaction");
-    Table* outTxnTbl = db.getTable("outbound_transaction");
+    const Table* inTxnTbl = db.getTable("inbound_transaction");
+    const Table* outTxnTbl = db.getTable("outbound_transaction");
     assert(outTxnTbl != nullptr);
     Vector<Record> adjOutTxns = Query::filterRecords(*outTxnTbl, "type", Value(string("ADJUSTMENT_OUT")));
     assert(!adjOutTxns.empty());
@@ -307,7 +307,7 @@ int main() {
     int inTxnId = safeGetInt(adjInRecs[0], "inbound_transaction_id");
 
     // Retrieve created delivery for this inbound order
-    Table* delTbl = db.getTable("delivery");
+    const Table* delTbl = db.getTable("delivery");
     assert(delTbl != nullptr);
     Vector<Record> delRecs = Query::filterRecords(*delTbl, "inbound_transaction_id", Value(inTxnId));
     assert(!delRecs.empty());
@@ -333,7 +333,7 @@ int main() {
     assert(!rUnitLocked.success);
 
     // 6.9 Partial execution of Adjustment Movement -> status must become PARTLY_COMPLETED (No FK Violation!)
-    Table* unitTable = db.getTable("unit_inventory");
+    const Table* unitTable = db.getTable("unit_inventory");
     assert(unitTable != nullptr);
     Vector<Record> availUnits = Query::filterRecords(*unitTable, "product_id", Value(1));
     string validSerial = "";
@@ -351,7 +351,7 @@ int main() {
     assert(rMov3.success);
     int testAdjId3 = rMov3.affectedCount;
 
-    Table* adjDetTbl = db.getTable("adjust_movement_detail");
+    const Table* adjDetTbl = db.getTable("adjust_movement_detail");
     assert(adjDetTbl != nullptr);
     Vector<Record> dRecs3 = Query::filterRecords(*adjDetTbl, "adjust_id", Value(testAdjId3));
     assert(!dRecs3.empty());
@@ -368,7 +368,7 @@ int main() {
          << " | Msg: " << rPartialExec.message << endl;
     assert(rPartialExec.success);
 
-    Table* adjMovTbl = db.getTable("adjustment_movement");
+    const Table* adjMovTbl = db.getTable("adjustment_movement");
     const Record* adjRecAfter = adjMovTbl->getRecordById(testAdjId3);
     assert(adjRecAfter != nullptr);
     string adjStAfter = safeGetString(*adjRecAfter, "status");

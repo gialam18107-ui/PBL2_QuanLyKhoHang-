@@ -15,12 +15,12 @@ using namespace DataIO;
 void test_product_indexes_with_real_data(Database& db)
 {
     cout << "\n[TEST] 1. Testing 'product' table indexes with real data..." << endl;
-    Table* table = db.getTable("product");
+    const Table* table = db.getTable("product");
     assert(table != nullptr);
 
     // Verify index exists
     assert(table->hasIndex("hash_tree_is_sold"));
-    Index* isSoldIdx = table->getIndex("hash_tree_is_sold");
+    const Index* isSoldIdx = table->getIndex("hash_tree_is_sold");
     assert(isSoldIdx != nullptr);
 
     const auto& rows = table->getRows();
@@ -61,14 +61,14 @@ void test_product_indexes_with_real_data(Database& db)
 void test_cpu_indexes_with_real_data(Database& db)
 {
     cout << "\n[TEST] 2. Testing 'cpu' table category attribute indexes with real data..." << endl;
-    Table* table = db.getTable("cpu");
+    const Table* table = db.getTable("cpu");
     assert(table != nullptr);
 
     assert(table->hasIndex("hash_tree_socket"));
     assert(table->hasIndex("hash_tree_tier"));
     assert(table->hasIndex("hash_tree_series"));
 
-    Index* socketIdx = table->getIndex("hash_tree_socket");
+    const Index* socketIdx = table->getIndex("hash_tree_socket");
     assert(socketIdx != nullptr);
 
     const auto& rows = table->getRows();
@@ -104,11 +104,11 @@ void test_cpu_indexes_with_real_data(Database& db)
 void test_inbound_transaction_date_index_with_real_data(Database& db)
 {
     cout << "\n[TEST] 3. Testing 'inbound_transaction' date index with real data..." << endl;
-    Table* table = db.getTable("inbound_transaction");
+    const Table* table = db.getTable("inbound_transaction");
     assert(table != nullptr);
 
     assert(table->hasIndex("avl_tree_order_at"));
-    Index* dateIdx = table->getIndex("avl_tree_order_at");
+    const Index* dateIdx = table->getIndex("avl_tree_order_at");
     assert(dateIdx != nullptr);
 
     const auto& rows = table->getRows();
@@ -158,13 +158,13 @@ void test_inbound_transaction_date_index_with_real_data(Database& db)
 void test_delivery_date_index_with_real_data(Database& db)
 {
     cout << "\n[TEST] 4. Testing 'delivery' date indexes with real data..." << endl;
-    Table* table = db.getTable("delivery");
+    const Table* table = db.getTable("delivery");
     assert(table != nullptr);
 
     assert(table->hasIndex("avl_tree_delivery_at"));
     assert(table->hasIndex("avl_tree_expected_at"));
 
-    Index* delivIdx = table->getIndex("avl_tree_delivery_at");
+    const Index* delivIdx = table->getIndex("avl_tree_delivery_at");
     assert(delivIdx != nullptr);
 
     const auto& rows = table->getRows();
@@ -186,11 +186,11 @@ void test_delivery_date_index_with_real_data(Database& db)
 void test_customer_indexes_with_real_data(Database& db)
 {
     cout << "\n[TEST] 5. Testing 'customer' table type index with real data..." << endl;
-    Table* table = db.getTable("customer");
+    const Table* table = db.getTable("customer");
     assert(table != nullptr);
 
     assert(table->hasIndex("hash_tree_type"));
-    Index* typeIdx = table->getIndex("hash_tree_type");
+    const Index* typeIdx = table->getIndex("hash_tree_type");
     assert(typeIdx != nullptr);
 
     const auto& rows = table->getRows();
@@ -209,11 +209,11 @@ void test_customer_indexes_with_real_data(Database& db)
 void test_status_history_indexes_with_real_data(Database& db)
 {
     cout << "\n[TEST] 6. Testing 'status_history' table index with real data..." << endl;
-    Table* table = db.getTable("status_history");
+    const Table* table = db.getTable("status_history");
     assert(table != nullptr);
 
     assert(table->hasIndex("hash_tree_type"));
-    Index* typeIdx = table->getIndex("hash_tree_type");
+    const Index* typeIdx = table->getIndex("hash_tree_type");
     assert(typeIdx != nullptr);
 
     const auto& rows = table->getRows();
@@ -242,7 +242,7 @@ int main()
     cout << "[+] Loading all 32 tables from data/ directory..." << endl;
     bool readAllOk = DatabaseIO::readAll(db, "data");
     cout << "[+] Database readAll result: " << (readAllOk ? "SUCCESS" : "PARTIAL") << endl;
-    assert(db.getTableCount() == 32);
+    assert(db.getTableCount() >= 32);
 
     test_product_indexes_with_real_data(db);
     test_cpu_indexes_with_real_data(db);

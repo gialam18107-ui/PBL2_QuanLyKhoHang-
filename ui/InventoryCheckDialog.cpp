@@ -1,4 +1,4 @@
-#include "ui/InventoryCheckDialog.h"
+﻿#include "ui/InventoryCheckDialog.h"
 #include <QHeaderView>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
@@ -327,7 +327,7 @@ void InventoryCheckCreateDialog::setupUI()
 void InventoryCheckCreateDialog::loadProducts()
 {
     if (!db) return;
-    Table* prodTable = db->getTable("product");
+    const Table* prodTable = db->getTable("product");
     if (!prodTable) return;
 
     productList.clear();
@@ -440,7 +440,7 @@ void InventoryCheckCreateDialog::onCreateCheck()
     }
 
     createdId = res.affectedCount;
-    Table* chkTable = db->getTable("inventory_check");
+    const Table* chkTable = db->getTable("inventory_check");
     if (chkTable && createdId > 0) {
         const Record* r = chkTable->getRecordById(createdId);
         if (r && r->has("check_code") && std::holds_alternative<std::string>(r->get("check_code"))) {
@@ -605,7 +605,7 @@ InventoryCheckReconciliationDialog::InventoryCheckReconciliationDialog(Database*
     resize(1200, 800);
     setStyleSheet(commonDialogStyleSheet());
 
-    Table* chkTbl = db ? db->getTable("inventory_check") : nullptr;
+    const Table* chkTbl = db ? db->getTable("inventory_check") : nullptr;
     if (chkTbl && checkId > 0) {
         const Record* r = chkTbl->getRecordById(checkId);
         if (r) {
@@ -1173,7 +1173,7 @@ void InventoryCheckReconciliationDialog::updateLockingState()
     bool isCompleted = (checkStatus == "COMPLETED");
 
     // 1. Inbound Adjustment (source_code == checkCode)
-    Table* inTbl = db->getTable("inbound_transaction");
+    const Table* inTbl = db->getTable("inbound_transaction");
     bool hasInOrder = false;
     QString inCode = "";
     if (inTbl) {
@@ -1203,7 +1203,7 @@ void InventoryCheckReconciliationDialog::updateLockingState()
     }
 
     // 2. Outbound Adjustment (source_code == checkCode)
-    Table* outTbl = db->getTable("outbound_transaction");
+    const Table* outTbl = db->getTable("outbound_transaction");
     bool hasOutOrder = false;
     QString outCode = "";
     if (outTbl) {
@@ -1233,7 +1233,7 @@ void InventoryCheckReconciliationDialog::updateLockingState()
     }
 
     // 3. Movement Adjustment (source_code == checkCode)
-    Table* movTbl = db->getTable("adjustment_movement");
+    const Table* movTbl = db->getTable("adjustment_movement");
     bool hasMovOrder = false;
     QString movCode = "";
     if (movTbl) {
@@ -1310,8 +1310,8 @@ void InventoryCheckReconciliationDialog::onCreateInboundAdj()
         return;
     }
 
-    Table* inTbl = db->getTable("inbound_transaction");
-    Table* delTbl = db->getTable("delivery");
+    const Table* inTbl = db->getTable("inbound_transaction");
+    const Table* delTbl = db->getTable("delivery");
     if (inTbl && delTbl) {
         Vector<Record> inRecs = Query::filterRecords(*inTbl, "source_code", Value(checkCode.toStdString()));
         if (!inRecs.empty()) {
@@ -1389,8 +1389,8 @@ void InventoryCheckReconciliationDialog::onCreateOutboundAdj()
         return;
     }
 
-    Table* outTbl = db->getTable("outbound_transaction");
-    Table* shipTbl = db->getTable("shipment");
+    const Table* outTbl = db->getTable("outbound_transaction");
+    const Table* shipTbl = db->getTable("shipment");
     if (outTbl && shipTbl) {
         Vector<Record> outRecs = Query::filterRecords(*outTbl, "source_code", Value(checkCode.toStdString()));
         if (!outRecs.empty()) {
@@ -1467,7 +1467,7 @@ void InventoryCheckReconciliationDialog::onCreateMovementAdj()
     }
 
     int adjustId = res.affectedCount;
-    Table* adjDetTbl = db->getTable("adjust_movement_detail");
+    const Table* adjDetTbl = db->getTable("adjust_movement_detail");
     Vector<user_update::AdjustUnitEntry> movementUnits;
     if (adjDetTbl && adjustId > 0) {
         Vector<Record> detRecs = Query::filterRecords(*adjDetTbl, "adjust_id", Value(adjustId));
@@ -1532,7 +1532,7 @@ InventoryCheckDetailDialog::InventoryCheckDetailDialog(Database* database, int i
 void InventoryCheckDetailDialog::loadCheckInfo()
 {
     if (!db || checkId <= 0) return;
-    Table* chkTable = db->getTable("inventory_check");
+    const Table* chkTable = db->getTable("inventory_check");
     if (!chkTable) return;
 
     const Record* r = chkTable->getRecordById(checkId);
@@ -2386,9 +2386,9 @@ bool InventoryCheckDetailDialog::processUnitScan(const QString& sn, const QStrin
     }
 
     // 2. SN not in candidate units: check unit_inventory
-    Table* unitTbl = db->getTable("unit_inventory");
-    Table* cqTbl = db->getTable("inventory_check_quantity");
-    Table* prodTbl = db->getTable("product");
+    const Table* unitTbl = db->getTable("unit_inventory");
+    const Table* cqTbl = db->getTable("inventory_check_quantity");
+    const Table* prodTbl = db->getTable("product");
 
     if (!unitTbl || !cqTbl || !prodTbl) return false;
 
@@ -4005,7 +4005,7 @@ void InventoryCheckInspectDialog::loadCheckData()
     matrixList.clear();
     unitList.clear();
 
-    Table* chkTbl = db->getTable("inventory_check");
+    const Table* chkTbl = db->getTable("inventory_check");
     if (!chkTbl) return;
 
     const Record* cRec = nullptr;
@@ -4065,8 +4065,8 @@ void InventoryCheckInspectDialog::loadCheckData()
     }
 
     // Load quantity matrix
-    Table* qTbl = db->getTable("inventory_check_quantity");
-    Table* pTbl = db->getTable("product");
+    const Table* qTbl = db->getTable("inventory_check_quantity");
+    const Table* pTbl = db->getTable("product");
     if (qTbl && pTbl) {
         Vector<Record> qRecs = Query::filterRecords(*qTbl, "check_id", Value(checkId));
         for (size_t i = 0; i < qRecs.size(); ++i) {
@@ -4097,8 +4097,8 @@ void InventoryCheckInspectDialog::loadCheckData()
 
     // Load unit details
     if (checkType == "UNIT") {
-        Table* uChk = db->getTable("inventory_check_unit");
-        Table* qChk = db->getTable("inventory_check_quantity");
+        const Table* uChk = db->getTable("inventory_check_unit");
+        const Table* qChk = db->getTable("inventory_check_quantity");
         std::unordered_map<int, int> qIdToPid;
         if (qChk) {
             Vector<Record> qRecs = Query::filterRecords(*qChk, "check_id", Value(checkId));

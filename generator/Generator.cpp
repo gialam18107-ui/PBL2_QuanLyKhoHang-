@@ -1,4 +1,4 @@
-#include "Generator.h"
+﻿#include "Generator.h"
 #include "data_io/DatabaseIO.h"
 
 #include <iostream>
@@ -94,7 +94,7 @@ namespace Generator
     void DataGenerator::scanExistingDatabase()
     {
         // 1. Scan Unit Inventory
-        Table* unitTbl = db.getTable("unit_inventory");
+        Table* unitTbl = db.getMutableTable("unit_inventory");
         if (unitTbl != nullptr)
         {
             const auto& rows = unitTbl->getRows();
@@ -110,7 +110,7 @@ namespace Generator
         }
 
         // 2. Scan Inbound Transaction
-        Table* inTxnTbl = db.getTable("inbound_transaction");
+        Table* inTxnTbl = db.getMutableTable("inbound_transaction");
         if (inTxnTbl != nullptr)
         {
             const auto& rows = inTxnTbl->getRows();
@@ -143,7 +143,7 @@ namespace Generator
         }
 
         // 3. Scan Inbound Detail
-        Table* inDetTbl = db.getTable("inbound_detail");
+        Table* inDetTbl = db.getMutableTable("inbound_detail");
         if (inDetTbl != nullptr)
         {
             const auto& rows = inDetTbl->getRows();
@@ -155,7 +155,7 @@ namespace Generator
         }
 
         // 4. Scan Delivery
-        Table* delTbl = db.getTable("delivery");
+        Table* delTbl = db.getMutableTable("delivery");
         if (delTbl != nullptr)
         {
             const auto& rows = delTbl->getRows();
@@ -167,7 +167,7 @@ namespace Generator
         }
 
         // 4b. Scan Delivery Detail
-        Table* delDetTbl = db.getTable("delivery_detail");
+        Table* delDetTbl = db.getMutableTable("delivery_detail");
         if (delDetTbl != nullptr)
         {
             const auto& rows = delDetTbl->getRows();
@@ -179,7 +179,7 @@ namespace Generator
         }
 
         // 5. Scan Outbound Transaction
-        Table* outTxnTbl = db.getTable("outbound_transaction");
+        Table* outTxnTbl = db.getMutableTable("outbound_transaction");
         if (outTxnTbl != nullptr)
         {
             const auto& rows = outTxnTbl->getRows();
@@ -212,7 +212,7 @@ namespace Generator
         }
 
         // 6. Scan Outbound Detail
-        Table* outDetTbl = db.getTable("outbound_detail");
+        Table* outDetTbl = db.getMutableTable("outbound_detail");
         if (outDetTbl != nullptr)
         {
             const auto& rows = outDetTbl->getRows();
@@ -224,7 +224,7 @@ namespace Generator
         }
 
         // 7. Scan Shipment
-        Table* shipTbl = db.getTable("shipment");
+        Table* shipTbl = db.getMutableTable("shipment");
         if (shipTbl != nullptr)
         {
             const auto& rows = shipTbl->getRows();
@@ -236,7 +236,7 @@ namespace Generator
         }
 
         // 7b. Scan Shipment Detail
-        Table* shipDetTbl = db.getTable("shipment_detail");
+        Table* shipDetTbl = db.getMutableTable("shipment_detail");
         if (shipDetTbl != nullptr)
         {
             const auto& rows = shipDetTbl->getRows();
@@ -248,7 +248,7 @@ namespace Generator
         }
 
         // 8. Scan Status History
-        Table* histTbl = db.getTable("status_history");
+        Table* histTbl = db.getMutableTable("status_history");
         if (histTbl != nullptr)
         {
             const auto& rows = histTbl->getRows();
@@ -260,7 +260,7 @@ namespace Generator
         }
 
         // 9. Scan Inventory Check
-        Table* chkTbl = db.getTable("inventory_check");
+        Table* chkTbl = db.getMutableTable("inventory_check");
         if (chkTbl != nullptr)
         {
             const auto& rows = chkTbl->getRows();
@@ -288,7 +288,7 @@ namespace Generator
         }
 
         // 10. Scan Inventory Check Quantity
-        Table* chkQuanTbl = db.getTable("inventory_check_quantity");
+        Table* chkQuanTbl = db.getMutableTable("inventory_check_quantity");
         if (chkQuanTbl != nullptr)
         {
             const auto& rows = chkQuanTbl->getRows();
@@ -300,7 +300,7 @@ namespace Generator
         }
 
         // 11. Scan Inventory Check Unit
-        Table* chkUnitTbl = db.getTable("inventory_check_unit");
+        Table* chkUnitTbl = db.getMutableTable("inventory_check_unit");
         if (chkUnitTbl != nullptr)
         {
             const auto& rows = chkUnitTbl->getRows();
@@ -312,7 +312,7 @@ namespace Generator
         }
 
         // 12. Scan Adjustment Movement
-        Table* adjTbl = db.getTable("adjustment_movement");
+        Table* adjTbl = db.getMutableTable("adjustment_movement");
         if (adjTbl != nullptr)
         {
             const auto& rows = adjTbl->getRows();
@@ -340,7 +340,7 @@ namespace Generator
         }
 
         // 13. Scan Adjustment Movement Detail
-        Table* adjDetTbl = db.getTable("adjust_movement_detail");
+        Table* adjDetTbl = db.getMutableTable("adjust_movement_detail");
         if (adjDetTbl != nullptr)
         {
             const auto& rows = adjDetTbl->getRows();
@@ -352,7 +352,7 @@ namespace Generator
         }
 
         // 14. Scan is_sold_changing
-        Table* isSoldTbl = db.getTable("is_sold_changing");
+        Table* isSoldTbl = db.getMutableTable("is_sold_changing");
         if (isSoldTbl != nullptr)
         {
             const auto& rows = isSoldTbl->getRows();
@@ -371,7 +371,7 @@ namespace Generator
 
     int DataGenerator::getAvailableStock(int productId) const
     {
-        Table* unitTbl = db.getTable("unit_inventory");
+        Table* unitTbl = db.getMutableTable("unit_inventory");
         if (unitTbl == nullptr) return 0;
 
         int count = 0;
@@ -389,8 +389,8 @@ namespace Generator
 
     void DataGenerator::syncProductQuantities()
     {
-        Table* prodTbl = db.getTable("product");
-        Table* unitTbl = db.getTable("unit_inventory");
+        Table* prodTbl = db.getMutableTable("product");
+        Table* unitTbl = db.getMutableTable("unit_inventory");
         if (prodTbl == nullptr || unitTbl == nullptr) return;
 
         HashMap<int, int> availableCounts;
@@ -427,9 +427,9 @@ namespace Generator
             int warr = warrantyCounts.contains(pid) ? warrantyCounts[pid] : 0;
             int scrap = scrappedCounts.contains(pid) ? scrappedCounts[pid] : 0;
 
-            prodRows[i].set("available_quantity", avail);
-            prodRows[i].set("warranty_quantity", warr);
-            prodRows[i].set("scrapped_quantity", scrap);
+            prodTbl->getRawRow(i).set("available_quantity", avail);
+            prodTbl->getRawRow(i).set("warranty_quantity", warr);
+            prodTbl->getRawRow(i).set("scrapped_quantity", scrap);
         }
     }
 
@@ -437,8 +437,8 @@ namespace Generator
     {
         (void)changedBy;
         (void)reason;
-        Table* prodTbl = db.getTable("product");
-        Table* histTbl = db.getTable("is_sold_changing");
+        Table* prodTbl = db.getMutableTable("product");
+        Table* histTbl = db.getMutableTable("is_sold_changing");
         if (!prodTbl) return false;
 
         auto& rows = prodTbl->getRows();
@@ -470,7 +470,7 @@ namespace Generator
                     }
                 }
 
-                rows[i].set("is_sold", newIsSold);
+                prodTbl->getRawRow(i).set("is_sold", newIsSold);
 
                 if (histTbl != nullptr)
                 {
@@ -497,7 +497,7 @@ namespace Generator
                                                 const string& checkDate,
                                                 const Vector<int>& productIds)
     {
-        Table* chkTbl = db.getTable("inventory_check");
+        Table* chkTbl = db.getMutableTable("inventory_check");
         if (!chkTbl) return "";
 
         string actualType = "UNIT";
@@ -515,9 +515,9 @@ namespace Generator
         chkRec.set("note", string("Inventory check audit (" + actualType + ") completed"));
         chkTbl->insert(chkRec);
 
-        Table* chkQuanTbl = db.getTable("inventory_check_quantity");
-        Table* unitTbl = db.getTable("unit_inventory");
-        Table* prodTbl = db.getTable("product");
+        Table* chkQuanTbl = db.getMutableTable("inventory_check_quantity");
+        Table* unitTbl = db.getMutableTable("unit_inventory");
+        Table* prodTbl = db.getMutableTable("product");
 
         Vector<int> pids = productIds;
         if (pids.empty() && prodTbl)
@@ -570,7 +570,7 @@ namespace Generator
 
         if (actualType == "UNIT")
         {
-            Table* chkUnitTbl = db.getTable("inventory_check_unit");
+            Table* chkUnitTbl = db.getMutableTable("inventory_check_unit");
             if (chkUnitTbl && unitTbl)
             {
                 HashMap<int, bool> filterPids;
@@ -616,13 +616,13 @@ namespace Generator
             return -1;
         }
 
-        Table* inTxnTbl = db.getTable("inbound_transaction");
-        Table* inDetTbl = db.getTable("inbound_detail");
-        Table* delTbl = db.getTable("delivery");
-        Table* delDetTbl = db.getTable("delivery_detail");
-        Table* unitTbl = db.getTable("unit_inventory");
-        Table* histTbl = db.getTable("status_history");
-        Table* prodTbl = db.getTable("product");
+        Table* inTxnTbl = db.getMutableTable("inbound_transaction");
+        Table* inDetTbl = db.getMutableTable("inbound_detail");
+        Table* delTbl = db.getMutableTable("delivery");
+        Table* delDetTbl = db.getMutableTable("delivery_detail");
+        Table* unitTbl = db.getMutableTable("unit_inventory");
+        Table* histTbl = db.getMutableTable("status_history");
+        Table* prodTbl = db.getMutableTable("product");
 
         if (!inTxnTbl || !inDetTbl || !delTbl || !delDetTbl || !unitTbl)
         {
@@ -805,7 +805,7 @@ namespace Generator
                             {
                                 uId = get<int>(uRows[r].get("unit_id"));
                                 serial = get<string>(uRows[r].get("serial"));
-                                uRows[r].set("status", string("WARRANTY"));
+                                unitTbl->getRawRow(r).set("status", string("WARRANTY"));
                                 foundOut = true;
                                 break;
                             }
@@ -838,7 +838,7 @@ namespace Generator
                             {
                                 uId = get<int>(uRows[r].get("unit_id"));
                                 serial = get<string>(uRows[r].get("serial"));
-                                uRows[r].set("status", string("AVAILABLE"));
+                                unitTbl->getRawRow(r).set("status", string("AVAILABLE"));
                                 foundOut = true;
                                 break;
                             }
@@ -871,7 +871,7 @@ namespace Generator
                                 serial = get<string>(uRows[r].get("serial"));
                                 oldStatus = "OUT";
                                 targetStatus = "AVAILABLE";
-                                uRows[r].set("status", targetStatus);
+                                unitTbl->getRawRow(r).set("status", targetStatus);
                                 foundOut = true;
                                 break;
                             }
@@ -915,7 +915,7 @@ namespace Generator
                                 get<int>(ddRows[r].get("product_id")) == pid)
                             {
                                 int curActual = get<int>(ddRows[r].get("actual_quantity"));
-                                ddRows[r].set("actual_quantity", curActual + 1);
+                                delDetTbl->getRawRow(r).set("actual_quantity", curActual + 1);
                                 break;
                             }
                         }
@@ -929,7 +929,7 @@ namespace Generator
                             get<int>(idRows[r].get("product_id")) == pid)
                         {
                             int curActual = get<int>(idRows[r].get("actual_quantity"));
-                            idRows[r].set("actual_quantity", curActual + 1);
+                            inDetTbl->getRawRow(r).set("actual_quantity", curActual + 1);
                             break;
                         }
                     }
@@ -961,13 +961,13 @@ namespace Generator
             return -1;
         }
 
-        Table* outTxnTbl = db.getTable("outbound_transaction");
-        Table* outDetTbl = db.getTable("outbound_detail");
-        Table* shipTbl = db.getTable("shipment");
-        Table* shipDetTbl = db.getTable("shipment_detail");
-        Table* unitTbl = db.getTable("unit_inventory");
-        Table* histTbl = db.getTable("status_history");
-        Table* prodTbl = db.getTable("product");
+        Table* outTxnTbl = db.getMutableTable("outbound_transaction");
+        Table* outDetTbl = db.getMutableTable("outbound_detail");
+        Table* shipTbl = db.getMutableTable("shipment");
+        Table* shipDetTbl = db.getMutableTable("shipment_detail");
+        Table* unitTbl = db.getMutableTable("unit_inventory");
+        Table* histTbl = db.getMutableTable("status_history");
+        Table* prodTbl = db.getMutableTable("product");
 
         if (!outTxnTbl || !outDetTbl || !shipTbl || !shipDetTbl || !unitTbl)
         {
@@ -1158,7 +1158,7 @@ namespace Generator
                             int uId = get<int>(unitRows[u].get("unit_id"));
 
                             // Transition unit status to OUT
-                            unitRows[u].set("status", string("OUT"));
+                            unitTbl->getRawRow(u).set("status", string("OUT"));
 
                             // Create StatusHistory record
                             if (histTbl != nullptr)
@@ -1183,7 +1183,7 @@ namespace Generator
                                         get<int>(sdRows[r].get("product_id")) == pid)
                                     {
                                         int curActual = get<int>(sdRows[r].get("actual_quantity"));
-                                        sdRows[r].set("actual_quantity", curActual + 1);
+                                        shipDetTbl->getRawRow(r).set("actual_quantity", curActual + 1);
                                         break;
                                     }
                                 }
@@ -1197,7 +1197,7 @@ namespace Generator
                                     get<int>(odRows[r].get("product_id")) == pid)
                                 {
                                     int curActual = get<int>(odRows[r].get("actual_quantity"));
-                                    odRows[r].set("actual_quantity", curActual + 1);
+                                    outDetTbl->getRawRow(r).set("actual_quantity", curActual + 1);
                                     break;
                                 }
                             }
@@ -1226,11 +1226,11 @@ namespace Generator
                                                   const string& sourceCode,
                                                   const string& note)
     {
-        Table* adjTbl = db.getTable("adjustment_movement");
-        Table* adjDetTbl = db.getTable("adjust_movement_detail");
-        Table* unitTbl = db.getTable("unit_inventory");
-        Table* histTbl = db.getTable("status_history");
-        Table* prodTbl = db.getTable("product");
+        Table* adjTbl = db.getMutableTable("adjustment_movement");
+        Table* adjDetTbl = db.getMutableTable("adjust_movement_detail");
+        Table* unitTbl = db.getMutableTable("unit_inventory");
+        Table* histTbl = db.getMutableTable("status_history");
+        Table* prodTbl = db.getMutableTable("product");
 
         if (!adjTbl || !adjDetTbl)
         {
@@ -1282,7 +1282,7 @@ namespace Generator
                     if (get<int>(uRows[u].get("product_id")) == item.productId &&
                         get<string>(uRows[u].get("status")) == item.fromStatus)
                     {
-                        uRows[u].set("status", item.toStatus);
+                        unitTbl->getRawRow(u).set("status", item.toStatus);
                         int uId = get<int>(uRows[u].get("unit_id"));
 
                         if (histTbl)
@@ -1324,7 +1324,7 @@ namespace Generator
     GenerationSummary DataGenerator::generateBatch(int numInbound, int numOutbound, int numChecks, const string& startDate)
     {
         GenerationSummary summary;
-        Table* prodTbl = db.getTable("product");
+        Table* prodTbl = db.getMutableTable("product");
         if (prodTbl == nullptr || prodTbl->getRowCount() == 0)
         {
             cerr << "[Generator Error] No products available in database for batch generation.\n";
@@ -1477,14 +1477,14 @@ namespace Generator
 
     bool DataGenerator::validateIntegrity() const
     {
-        Table* prodTbl = db.getTable("product");
-        Table* unitTbl = db.getTable("unit_inventory");
-        Table* inTxnTbl = db.getTable("inbound_transaction");
-        Table* delTbl = db.getTable("delivery");
-        Table* outTxnTbl = db.getTable("outbound_transaction");
-        Table* shipTbl = db.getTable("shipment");
-        Table* histTbl = db.getTable("status_history");
-        Table* chkTbl = db.getTable("inventory_check");
+        Table* prodTbl = db.getMutableTable("product");
+        Table* unitTbl = db.getMutableTable("unit_inventory");
+        Table* inTxnTbl = db.getMutableTable("inbound_transaction");
+        Table* delTbl = db.getMutableTable("delivery");
+        Table* outTxnTbl = db.getMutableTable("outbound_transaction");
+        Table* shipTbl = db.getMutableTable("shipment");
+        Table* histTbl = db.getMutableTable("status_history");
+        Table* chkTbl = db.getMutableTable("inventory_check");
 
         if (!prodTbl || !unitTbl || !inTxnTbl || !delTbl || !outTxnTbl || !shipTbl)
         {
@@ -1618,7 +1618,7 @@ namespace Generator
         }
 
         // 5. Verify actual_quantity constraints on detail tables
-        Table* inDetTbl = db.getTable("inbound_detail");
+        Table* inDetTbl = db.getMutableTable("inbound_detail");
         if (inDetTbl != nullptr)
         {
             for (const auto& row : inDetTbl->getRows())
@@ -1633,7 +1633,7 @@ namespace Generator
             }
         }
 
-        Table* delDetTbl = db.getTable("delivery_detail");
+        Table* delDetTbl = db.getMutableTable("delivery_detail");
         if (delDetTbl != nullptr)
         {
             for (const auto& row : delDetTbl->getRows())
@@ -1648,7 +1648,7 @@ namespace Generator
             }
         }
 
-        Table* outDetTbl = db.getTable("outbound_detail");
+        Table* outDetTbl = db.getMutableTable("outbound_detail");
         if (outDetTbl != nullptr)
         {
             for (const auto& row : outDetTbl->getRows())
@@ -1663,7 +1663,7 @@ namespace Generator
             }
         }
 
-        Table* shipDetTbl = db.getTable("shipment_detail");
+        Table* shipDetTbl = db.getMutableTable("shipment_detail");
         if (shipDetTbl != nullptr)
         {
             for (const auto& row : shipDetTbl->getRows())
@@ -1728,8 +1728,8 @@ namespace Generator
         }
 
         // 8. Verify Adjustment Movements & single-check uniqueness (Rule 5.4 & 5.5)
-        Table* adjTbl = db.getTable("adjustment_movement");
-        Table* adjDetTbl = db.getTable("adjust_movement_detail");
+        Table* adjTbl = db.getMutableTable("adjustment_movement");
+        Table* adjDetTbl = db.getMutableTable("adjust_movement_detail");
         if (adjTbl != nullptr)
         {
             HashMap<string, bool> seenAdjustCodes;
@@ -1815,14 +1815,14 @@ namespace Generator
 
     void DataGenerator::printInventorySummary() const
     {
-        Table* prodTbl = db.getTable("product");
-        Table* unitTbl = db.getTable("unit_inventory");
-        Table* inTxnTbl = db.getTable("inbound_transaction");
-        Table* delTbl = db.getTable("delivery");
-        Table* outTxnTbl = db.getTable("outbound_transaction");
-        Table* shipTbl = db.getTable("shipment");
-        Table* histTbl = db.getTable("status_history");
-        Table* chkTbl = db.getTable("inventory_check");
+        Table* prodTbl = db.getMutableTable("product");
+        Table* unitTbl = db.getMutableTable("unit_inventory");
+        Table* inTxnTbl = db.getMutableTable("inbound_transaction");
+        Table* delTbl = db.getMutableTable("delivery");
+        Table* outTxnTbl = db.getMutableTable("outbound_transaction");
+        Table* shipTbl = db.getMutableTable("shipment");
+        Table* histTbl = db.getMutableTable("status_history");
+        Table* chkTbl = db.getMutableTable("inventory_check");
 
         int totalProducts = prodTbl ? prodTbl->getRowCount() : 0;
         int activeProducts = 0;
@@ -1884,7 +1884,7 @@ namespace Generator
 
     void DataGenerator::printProductList() const
     {
-        Table* prodTbl = db.getTable("product");
+        Table* prodTbl = db.getMutableTable("product");
         if (prodTbl == nullptr || prodTbl->getRowCount() == 0)
         {
             cout << "[!] No products found in database.\n";

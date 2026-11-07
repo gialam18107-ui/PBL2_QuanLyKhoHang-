@@ -1,4 +1,4 @@
-#include "QueryTableWidget.h"
+﻿#include "QueryTableWidget.h"
 #include "schema/UserQuery.h"
 
 #include <QHeaderView>

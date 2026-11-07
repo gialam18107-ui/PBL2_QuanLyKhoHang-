@@ -1,4 +1,4 @@
-#include "ui/AdjustmentMovementDialog.h"
+﻿#include "ui/AdjustmentMovementDialog.h"
 #include "ui/OrderDialog.h"
 #include "ui/InventoryCheckDialog.h"
 #include "ui/TableClipboardHelper.h"
@@ -258,15 +258,15 @@ void AdjustmentMovementCreateDialog::populateProducts(const QString& filterCheck
     if (!db || !productCombo) return;
     productCombo->clear();
 
-    Table* pTable = db->getTable("product");
+    const Table* pTable = db->getTable("product");
     if (!pTable) return;
 
     std::unordered_set<int> allowedPids;
     bool filterActive = false;
 
     if (!filterCheckCode.isEmpty()) {
-        Table* chkTable = db->getTable("inventory_check");
-        Table* cqTable = db->getTable("inventory_check_quantity");
+        const Table* chkTable = db->getTable("inventory_check");
+        const Table* cqTable = db->getTable("inventory_check_quantity");
         if (chkTable && cqTable) {
             Vector<Record> cRecs = Query::filterRecords(*chkTable, "check_code", Value(filterCheckCode.toStdString()));
             if (!cRecs.empty()) {
@@ -303,7 +303,7 @@ void AdjustmentMovementCreateDialog::populateReasons()
     if (!db || !reasonCombo) return;
     reasonCombo->clear();
 
-    Table* rTable = db->getTable("reason");
+    const Table* rTable = db->getTable("reason");
     if (rTable) {
         const auto& rows = rTable->getRows();
         for (size_t i = 0; i < rows.size(); ++i) {
@@ -329,7 +329,7 @@ void AdjustmentMovementCreateDialog::populateChecks()
     sourceCheckCombo->clear();
     sourceCheckCombo->addItem("(Không gắn đợt kiểm kho)", "");
 
-    Table* chkTable = db->getTable("inventory_check");
+    const Table* chkTable = db->getTable("inventory_check");
     if (!chkTable) return;
 
     const auto& rows = chkTable->getRows();
@@ -481,7 +481,7 @@ void AdjustmentMovementCreateDialog::onSaveMovement()
     }
 
     createdId = res.affectedCount;
-    Table* aTable = db->getTable("adjustment_movement");
+    const Table* aTable = db->getTable("adjustment_movement");
     if (aTable && createdId > 0) {
         const Record* r = aTable->getRecordById(createdId);
         if (r && r->has("adjust_code") && std::holds_alternative<std::string>(r->get("adjust_code"))) {
@@ -677,15 +677,15 @@ void AdjustmentProductUnitPickerDialog::loadCandidates()
 {
     candidateList.clear();
     if (!db || prodId <= 0) return;
-    Table* unitTable = db->getTable("unit_inventory");
+    const Table* unitTable = db->getTable("unit_inventory");
     if (!unitTable) return;
 
     bool hasChkFilter = (!srcCode.empty() && srcCode.rfind("CHK-", 0) == 0);
     std::unordered_set<std::string> chkDiscrepancySerials;
     if (hasChkFilter) {
-        Table* chkTbl = db->getTable("inventory_check");
-        Table* chkUnitTbl = db->getTable("inventory_check_unit");
-        Table* chkQuanTbl = db->getTable("inventory_check_quantity");
+        const Table* chkTbl = db->getTable("inventory_check");
+        const Table* chkUnitTbl = db->getTable("inventory_check_unit");
+        const Table* chkQuanTbl = db->getTable("inventory_check_quantity");
         if (chkTbl && chkUnitTbl) {
             Vector<Record> cRecs = Query::filterRecords(*chkTbl, "check_code", Value(srcCode));
             if (!cRecs.empty()) {
@@ -986,7 +986,7 @@ void AdjustmentSimulationDialog::refreshData()
     int totalRemainingNeeded = 0;
     int totalCandidatesAvailable = 0;
 
-    Table* uTbl = db ? db->getTable("unit_inventory") : nullptr;
+    const Table* uTbl = db ? db->getTable("unit_inventory") : nullptr;
 
     for (const auto& dl : lines) {
         int stagedCount = mainDlg->getStagedCountForDetail(dl.adjustDetailId);
@@ -1074,7 +1074,7 @@ void AdjustmentSimulationDialog::loadCandidatesForSelectedLine()
         return;
     }
 
-    Table* uTbl = db->getTable("unit_inventory");
+    const Table* uTbl = db->getTable("unit_inventory");
     if (!uTbl) {
         filterCandidates();
         return;
@@ -1083,9 +1083,9 @@ void AdjustmentSimulationDialog::loadCandidatesForSelectedLine()
     bool hasChkFilter = (!srcCode.empty() && srcCode.rfind("CHK-", 0) == 0);
     std::unordered_set<std::string> chkDiscrepancies;
     if (hasChkFilter) {
-        Table* chkTbl = db->getTable("inventory_check");
-        Table* chkUnitTbl = db->getTable("inventory_check_unit");
-        Table* chkQuanTbl = db->getTable("inventory_check_quantity");
+        const Table* chkTbl = db->getTable("inventory_check");
+        const Table* chkUnitTbl = db->getTable("inventory_check_unit");
+        const Table* chkQuanTbl = db->getTable("inventory_check_quantity");
         if (chkTbl && chkUnitTbl) {
             Vector<Record> cRecs = Query::filterRecords(*chkTbl, "check_code", Value(srcCode));
             if (!cRecs.empty()) {
@@ -1275,7 +1275,7 @@ AdjustmentMovementDetailDialog::AdjustmentMovementDetailDialog(Database* databas
 void AdjustmentMovementDetailDialog::loadMovementInfo()
 {
     if (!db || adjustId <= 0) return;
-    Table* aTable = db->getTable("adjustment_movement");
+    const Table* aTable = db->getTable("adjustment_movement");
     if (!aTable) return;
 
     const Record* r = aTable->getRecordById(adjustId);
@@ -1523,9 +1523,9 @@ void AdjustmentMovementDetailDialog::loadExecutedUnits()
     executedUnits.clear();
     if (!db || adjustId <= 0) return;
 
-    Table* histTbl = db->getTable("status_history");
-    Table* unitTbl = db->getTable("unit_inventory");
-    Table* prodTbl = db->getTable("product");
+    const Table* histTbl = db->getTable("status_history");
+    const Table* unitTbl = db->getTable("unit_inventory");
+    const Table* prodTbl = db->getTable("product");
     if (!histTbl || !unitTbl || !prodTbl) return;
 
     const auto& rows = histTbl->getRows();
@@ -1944,7 +1944,7 @@ void AdjustmentMovementDetailDialog::onDirectSerialEntered()
         return;
     }
 
-    Table* uTbl = db->getTable("unit_inventory");
+    const Table* uTbl = db->getTable("unit_inventory");
     if (!uTbl) return;
     Vector<Record> matches = Query::filterRecords(*uTbl, "serial", Value(snStd));
     if (matches.empty()) {
@@ -1975,7 +1975,7 @@ void AdjustmentMovementDetailDialog::onDirectSerialEntered()
 
     if (candidateDetailIndices.empty()) {
         QString uProdCode = QString("ID %1").arg(uPid);
-        if (Table* pTbl = db->getTable("product")) {
+        if (const Table* pTbl = db->getTable("product")) {
             if (const Record* pRec = pTbl->getRecordById(uPid)) {
                 if (pRec->has("product_code") && std::holds_alternative<std::string>(pRec->get("product_code"))) {
                     uProdCode = QString::fromStdString(std::get<std::string>(pRec->get("product_code")));
@@ -2015,7 +2015,7 @@ void AdjustmentMovementDetailDialog::onDirectSerialEntered()
             }
         } else {
             QString uProdCode = QString("ID %1").arg(uPid);
-            if (Table* pTbl = db->getTable("product")) {
+            if (const Table* pTbl = db->getTable("product")) {
                 if (const Record* pRec = pTbl->getRecordById(uPid)) {
                     if (pRec->has("product_code") && std::holds_alternative<std::string>(pRec->get("product_code"))) {
                         uProdCode = QString::fromStdString(std::get<std::string>(pRec->get("product_code")));
@@ -2213,10 +2213,10 @@ void AdjustmentMovementDetailDialog::preloadUnitsFromCheck()
 {
     if (adjustStatus == "COMPLETED" || adjustStatus == "CANCELLED") return;
     if (!db || sourceCode.isEmpty() || !sourceCode.startsWith("CHK-")) return;
-    Table* chkTbl = db->getTable("inventory_check");
-    Table* chkUnitTbl = db->getTable("inventory_check_unit");
-    Table* chkQuanTbl = db->getTable("inventory_check_quantity");
-    Table* uTbl = db->getTable("unit_inventory");
+    const Table* chkTbl = db->getTable("inventory_check");
+    const Table* chkUnitTbl = db->getTable("inventory_check_unit");
+    const Table* chkQuanTbl = db->getTable("inventory_check_quantity");
+    const Table* uTbl = db->getTable("unit_inventory");
     if (!chkTbl || !chkUnitTbl || !uTbl) return;
 
     Vector<Record> cRecs = Query::filterRecords(*chkTbl, "check_code", Value(sourceCode.toStdString()));
@@ -2281,7 +2281,7 @@ void AdjustmentMovementDetailDialog::preloadUnitsFromCheck()
 void AdjustmentMovementDetailDialog::autoPickAllAccordingToPlan()
 {
     if (!db) return;
-    Table* uTbl = db->getTable("unit_inventory");
+    const Table* uTbl = db->getTable("unit_inventory");
     if (!uTbl) return;
 
     std::unordered_set<std::string> stagedSerials;
@@ -2292,9 +2292,9 @@ void AdjustmentMovementDetailDialog::autoPickAllAccordingToPlan()
 
     // 1. Prioritize discrepancies from source check CHK-UNIT
     if (sourceCode.startsWith("CHK-")) {
-        Table* chkTbl = db->getTable("inventory_check");
-        Table* chkUnitTbl = db->getTable("inventory_check_unit");
-        Table* chkQuanTbl = db->getTable("inventory_check_quantity");
+        const Table* chkTbl = db->getTable("inventory_check");
+        const Table* chkUnitTbl = db->getTable("inventory_check_unit");
+        const Table* chkQuanTbl = db->getTable("inventory_check_quantity");
         if (chkTbl && chkUnitTbl) {
             Vector<Record> cRecs = Query::filterRecords(*chkTbl, "check_code", Value(sourceCode.toStdString()));
             if (!cRecs.empty()) {

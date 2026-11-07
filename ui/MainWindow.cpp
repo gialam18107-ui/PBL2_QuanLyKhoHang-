@@ -1,4 +1,4 @@
-#include "MainWindow.h"
+﻿#include "MainWindow.h"
 
 #include <QHBoxLayout>
 #include <QVBoxLayout>
@@ -498,7 +498,7 @@ QStringList MainWindow::loadColumnOptions(const QString& tableName, const QStrin
     QStringList options;
     if (!db) return options;
 
-    Table* table = db->getTable(tableName.toStdString());
+    const Table* table = db->getTable(tableName.toStdString());
     if (!table) return options;
 
     string col = colName.toStdString();
@@ -2623,7 +2623,7 @@ int MainWindow::resolveProductId(const Record& rec, const std::string& catTable)
         std::string specPk = catTable + "_id";
         if (rec.has(specPk) && holds_alternative<int>(rec.get(specPk))) {
             int specId = get<int>(rec.get(specPk));
-            Table* specTbl = db->getTable(catTable);
+            const Table* specTbl = db->getTable(catTable);
             if (specTbl) {
                 const Record* sRec = specTbl->getRecordById(specId);
                 if (sRec && sRec->has("product_id") && holds_alternative<int>(sRec->get("product_id"))) {
@@ -2642,7 +2642,7 @@ int MainWindow::resolveProductId(const Record& rec, const std::string& catTable)
     }
 
     if (!code.empty()) {
-        Table* prodTable = db->getTable("product");
+        const Table* prodTable = db->getTable("product");
         if (prodTable) {
             const auto& rows = prodTable->getRows();
             for (size_t i = 0; i < rows.size(); ++i) {
@@ -2680,7 +2680,7 @@ int MainWindow::resolveCustomerId(const Record& rec) const
     }
 
     if (!code.empty()) {
-        Table* custTable = db->getTable("customer");
+        const Table* custTable = db->getTable("customer");
         if (custTable) {
             const auto& rows = custTable->getRows();
             for (size_t i = 0; i < rows.size(); ++i) {
@@ -2750,7 +2750,7 @@ void MainWindow::setupCrudWiring()
                     QMessageBox::critical(this, "Lỗi dữ liệu", "Không xác định được khóa chính sản phẩm cần xóa.");
                     return;
                 }
-                Table* prodTable = db ? db->getTable("product") : nullptr;
+                const Table* prodTable = db ? db->getTable("product") : nullptr;
                 const Record* pRec = prodTable ? prodTable->getRecordById(pid) : nullptr;
                 QString pCode = (pRec && pRec->has("product_code") && holds_alternative<std::string>(pRec->get("product_code")))
                     ? QString::fromStdString(get<std::string>(pRec->get("product_code"))) : QString::number(pid);
@@ -2900,7 +2900,7 @@ void MainWindow::setupCrudWiring()
         widget->setExtraAction("🔄 Đổi TT Bán", [this, catTable, widget](const Record& rec) {
             int pid = resolveProductId(rec, catTable);
             if (pid <= 0 || !db) return;
-            Table* prodTable = db->getTable("product");
+            const Table* prodTable = db->getTable("product");
             const Record* pRec = prodTable ? prodTable->getRecordById(pid) : nullptr;
             if (!pRec) return;
 
@@ -2985,7 +2985,7 @@ void MainWindow::setupCrudWiring()
                     QMessageBox::warning(this, "Khách hàng hệ thống", "Không thể xóa khách hàng hệ thống mặc định (BS-0000000).");
                     return;
                 }
-                Table* custTable = db ? db->getTable("customer") : nullptr;
+                const Table* custTable = db ? db->getTable("customer") : nullptr;
                 const Record* cRec = custTable ? custTable->getRecordById(cid) : nullptr;
                 QString cCode = (cRec && cRec->has("customer_code") && holds_alternative<std::string>(cRec->get("customer_code")))
                     ? QString::fromStdString(get<std::string>(cRec->get("customer_code"))) : QString::number(cid);
@@ -3321,7 +3321,7 @@ void MainWindow::onAddAuxSpecOrBrand()
         }
 
         std::string tblStd = tbl.toStdString();
-        Table* t = db->getTable(tblStd);
+        const Table* t = db->getTable(tblStd);
         if (t) {
             for (size_t i = 0; i < t->getRows().size(); ++i) {
                 if (t->isRowDeleted(i)) continue;
@@ -3376,7 +3376,7 @@ void MainWindow::onEditAuxSpecOrBrand(const Record& rec)
 
         // Check if any product references this brand
         bool referencedByProduct = false;
-        Table* prodTable = db->getTable("product");
+        const Table* prodTable = db->getTable("product");
         if (prodTable) {
             for (size_t i = 0; i < prodTable->getRows().size(); ++i) {
                 if (prodTable->isRowDeleted(i)) continue;
@@ -3520,7 +3520,7 @@ void MainWindow::onEditAuxSpecOrBrand(const Record& rec)
         }
 
         std::string tblStd = tbl.toStdString();
-        Table* t = db->getTable(tblStd);
+        const Table* t = db->getTable(tblStd);
         if (t) {
             for (size_t i = 0; i < t->getRows().size(); ++i) {
                 if (t->isRowDeleted(i)) continue;
@@ -3561,7 +3561,7 @@ void MainWindow::onEditAuxSpecOrBrand(const Record& rec)
         if (underscoreIdx > 0) {
             std::string catTblName = tbl.left(underscoreIdx).toStdString();
             std::string colName = tbl.mid(underscoreIdx + 1).toStdString();
-            Table* catTbl = db->getTable(catTblName);
+            const Table* catTbl = db->getTable(catTblName);
             if (catTbl) {
                 std::string pkCol = catTbl->getPrimaryKeyColumn();
                 for (size_t i = 0; i < catTbl->getRows().size(); ++i) {

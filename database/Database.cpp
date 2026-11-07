@@ -51,7 +51,7 @@ void Database::setName(const string& name) { databaseName = name; }
 
 Table* Database::createTable(const string& tableName)
 {
-    if (hasTable(tableName)) return getTable(tableName);
+    if (hasTable(tableName)) return getMutableTable(tableName);
     Table* table = new Table(tableName);
     tables[tableName] = table;
     return table;
@@ -83,13 +83,19 @@ bool Database::hasTable(const string& tableName) const
     return tables.find(tableName) != tables.end();
 }
 
-Table* Database::getTable(const string& tableName)
+Table* Database::getMutableTable(const string& tableName)
 {
     auto it = tables.find(tableName);
     return it == tables.end() ? nullptr : it->second;
 }
 
 const Table* Database::getTable(const string& tableName) const
+{
+    auto it = tables.find(tableName);
+    return it == tables.end() ? nullptr : it->second;
+}
+
+const Table* Database::getTable(const string& tableName)
 {
     auto it = tables.find(tableName);
     return it == tables.end() ? nullptr : it->second;
@@ -111,43 +117,12 @@ void Database::printTables() const
 
 static bool containsColumnValue(const Table& table, const string& columnName, const Value& value)
 {
-    const Vector<Index*>& indexes = table.getIndexes();
-    for (size_t index = 0; index < indexes.size(); ++index)
-    {
-        if (indexes[index]->getColumnName() != columnName) continue;
-        const Vector<size_t> candidates = indexes[index]->find(value);
-        const Vector<Record>& rows = table.getRows();
-        for (size_t candidate = 0; candidate < candidates.size(); ++candidate)
-        {
-            const size_t rowIndex = candidates[candidate];
-            if (rowIndex < rows.size()
-                && !table.isRowDeleted(rowIndex)
-                && rows[rowIndex].has(columnName)
-                && rows[rowIndex].get(columnName) == value)
-            {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    // Fallback scan for unindexed columns
-    const Vector<Record>& rows = table.getRows();
-    for (size_t rowIndex = 0; rowIndex < rows.size(); ++rowIndex)
-    {
-        if (!table.isRowDeleted(rowIndex)
-            && rows[rowIndex].has(columnName)
-            && rows[rowIndex].get(columnName) == value)
-        {
-            return true;
-        }
-    }
-    return false;
+    return table.contains(columnName, value);
 }
 
 bool Database::insert(const string& tableName, const Record& record)
 {
-    Table* table = getTable(tableName);
+    Table* table = getMutableTable(tableName);
     if (table == nullptr) return false;
 
     for (size_t index = 0; index < table->getConstraints().size(); ++index)
@@ -190,20 +165,7 @@ bool Database::insert(const string& tableName, const Record& record)
     return true;
 }
 
-Vector<Record> Database::selectAll(const string& tableName) const
-{
-    const Table* table = getTable(tableName);
-    Vector<Record> result;
-    if (table == nullptr) return result;
-    const Vector<Record>& rows = table->getRows();
-    for (size_t rowIndex = 0; rowIndex < rows.size(); ++rowIndex)
-    {
-        if (!table->isRowDeleted(rowIndex)) result.push_back(rows[rowIndex]);
-    }
-    return result;
-}
-
-static bool validateForeignKeyUpdates(
+bool Database::validateForeignKeyUpdates(
     Database& database,
     Table& table,
     const Record& current,
@@ -233,12 +195,12 @@ static bool validateForeignKeyUpdates(
     return true;
 }
 
-static bool isReferenced(Database& database, const string& tableName, const Vector<Record>& removedRows)
+bool Database::isReferenced(Database& database, const string& tableName, const Vector<Record>& removedRows)
 {
     Vector<string> names = database.getTableNames();
     for (size_t tableIndex = 0; tableIndex < names.size(); ++tableIndex)
     {
-        Table* childTable = database.getTable(names[tableIndex]);
+        const Table* childTable = database.getTable(names[tableIndex]);
         if (childTable == nullptr || childTable->getName() == tableName) continue;
         for (size_t constraintIndex = 0; constraintIndex < childTable->getConstraints().size(); ++constraintIndex)
         {
@@ -258,7 +220,7 @@ static bool isReferenced(Database& database, const string& tableName, const Vect
 
 OperationResult Database::insertRecord(const string& tableName, const Record& record)
 {
-    Table* table = getTable(tableName);
+    Table* table = getMutableTable(tableName);
     if (table == nullptr)
     {
         return OperationResult(false, "Bảng '" + tableName + "' không tồn tại trong CSDL.", 0);
@@ -272,7 +234,7 @@ OperationResult Database::insertRecord(const string& tableName, const Record& re
 
 OperationResult Database::update(const string& tableName, int recordId, const Record& newValues)
 {
-    Table* table = getTable(tableName);
+    Table* table = getMutableTable(tableName);
     if (table == nullptr)
     {
         return OperationResult(false, "Bảng '" + tableName + "' không tồn tại trong CSDL.", 0);
@@ -310,7 +272,7 @@ OperationResult Database::update(const string& tableName, int recordId, const Re
 
 OperationResult Database::remove(const string& tableName, int recordId)
 {
-    Table* table = getTable(tableName);
+    Table* table = getMutableTable(tableName);
     if (table == nullptr)
     {
         return OperationResult(false, "Bảng '" + tableName + "' không tồn tại trong cơ sở dữ liệu.", 0);

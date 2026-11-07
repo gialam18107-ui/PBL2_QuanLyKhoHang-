@@ -150,7 +150,7 @@ namespace DataIO
 
     bool DatabaseIO::readTable(Database& db, const string& tableName, const string& folderPath)
     {
-        auto table = db.getTable(tableName);
+        auto table = db.getMutableTable(tableName);
         if (table == nullptr)
         {
             table = Schema::createTable(tableName);
@@ -313,7 +313,7 @@ namespace DataIO
         for (const string& specName : specNames)
         {
             string dbTableName = cat + "_" + specName;
-            auto table = db.getTable(dbTableName);
+            auto table = db.getMutableTable(dbTableName);
             if (table == nullptr)
             {
                 table = Schema::createSpecTable(dbTableName);

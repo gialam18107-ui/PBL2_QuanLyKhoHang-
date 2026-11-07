@@ -25,43 +25,17 @@ namespace user_create
         return "";
     }
 
-    static bool isColumnValueUnique(Table* table, const std::string& colName, const std::string& val)
+    static bool isColumnValueUnique(const Table* table, const std::string& colName, const std::string& val)
     {
         if (!table) return true;
-        Vector<Record> recs = Query::filterRecords(*table, colName, Value(val));
-        if (!recs.empty()) return false;
-
-        // Defensive fallback only if no index covers colName
-        bool hasIndex = (table->getIndex(colName) != nullptr);
-        if (!hasIndex) {
-            for (const Index* idx : table->getIndexes()) {
-                if (idx != nullptr && idx->getColumnName() == colName) {
-                    hasIndex = true;
-                    break;
-                }
-            }
-        }
-        if (!hasIndex) {
-            const auto& rows = table->getRows();
-            for (size_t i = 0; i < rows.size(); ++i) {
-                if (table->isRowDeleted(i)) continue;
-                const Record& r = rows[i];
-                if (r.has(colName) && std::holds_alternative<std::string>(r.get(colName))) {
-                    if (std::get<std::string>(r.get(colName)) == val) return false;
-                }
-            }
-        }
-        return true;
+        return !table->contains(colName, Value(val));
     }
 
-    static int extractMaxSequence(Table* table, const std::string& colName, const std::string& prefix, size_t numOffset)
+    static int extractMaxSequence(const Table* table, const std::string& colName, const std::string& prefix, size_t numOffset)
     {
         if (!table) return 0;
         int maxSeq = 0;
-        const auto& rows = table->getRows();
-        for (size_t i = 0; i < rows.size(); ++i) {
-            if (table->isRowDeleted(i)) continue;
-            const Record& r = rows[i];
+        for (const Record& r : table->view()) {
             if (r.has(colName) && std::holds_alternative<std::string>(r.get(colName))) {
                 std::string code = std::get<std::string>(r.get(colName));
                 if (code.rfind(prefix, 0) == 0 && code.length() > numOffset) {
@@ -75,7 +49,7 @@ namespace user_create
         return maxSeq;
     }
 
-    static int findCustomerIdByCode(Table* custTable, const std::string& customerCode)
+    static int findCustomerIdByCode(const Table* custTable, const std::string& customerCode)
     {
         if (!custTable || customerCode.empty()) return -1;
         Vector<Record> recs = Query::filterRecords(*custTable, "customer_code", Value(customerCode));
@@ -91,16 +65,13 @@ namespace user_create
     int getNextTableId(Database* db, const std::string& tableName)
     {
         if (!db) return 1;
-        Table* table = db->getTable(tableName);
+        const Table* table = db->getTable(tableName);
         if (!table) return 1;
         std::string pkCol = table->getPrimaryKeyColumn();
         if (pkCol.empty()) return 1;
 
         int maxId = 0;
-        const auto& rows = table->getRows();
-        for (size_t i = 0; i < rows.size(); ++i) {
-            if (table->isRowDeleted(i)) continue;
-            const Record& r = rows[i];
+        for (const Record& r : table->view()) {
             if (r.has(pkCol) && std::holds_alternative<int>(r.get(pkCol))) {
                 int id = std::get<int>(r.get(pkCol));
                 if (id > maxId) maxId = id;
@@ -122,7 +93,7 @@ namespace user_create
         if (!db) return "";
 
         std::string brandCode = brandName;
-        Table* brandTable = db->getTable("brand");
+        const Table* brandTable = db->getTable("brand");
         if (brandTable) {
             Vector<Record> bRecs = Query::filterRecords(*brandTable, "brand", Value(brandName));
             if (!bRecs.empty()) {
@@ -134,7 +105,7 @@ namespace user_create
         }
 
         std::string catCode = categoryName;
-        Table* catTable = db->getTable("category");
+        const Table* catTable = db->getTable("category");
         if (catTable) {
             Vector<Record> cRecs = Query::filterRecords(*catTable, "category_name", Value(categoryName));
             if (!cRecs.empty()) {
@@ -147,7 +118,7 @@ namespace user_create
 
         int brandSeq = 0;
         int catSeq = 0;
-        Table* prodTable = db->getTable("product");
+        const Table* prodTable = db->getTable("product");
         if (prodTable) {
             brandSeq = static_cast<int>(Query::filterRecords(*prodTable, "brand", Value(brandName)).size());
             catSeq = static_cast<int>(Query::filterRecords(*prodTable, "category", Value(categoryName)).size());
@@ -236,7 +207,7 @@ namespace user_create
         std::string brandName = std::get<std::string>(productRecord.get("brand"));
 
         // Validate Brand exists
-        Table* brandTable = db->getTable("brand");
+        const Table* brandTable = db->getTable("brand");
         bool brandFound = false;
         if (brandTable) {
             Vector<Record> bRecs = Query::filterRecords(*brandTable, "brand", Value(brandName));
@@ -250,7 +221,7 @@ namespace user_create
         std::string catUpper = categoryName;
         for (auto& c : catUpper) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
 
-        Table* catTable = db->getTable("category");
+        const Table* catTable = db->getTable("category");
         bool catFound = false;
         if (catTable) {
             Vector<Record> cRecs = Query::filterRecords(*catTable, "category_name", Value(catUpper));
@@ -346,8 +317,8 @@ namespace user_create
         if (name.empty()) return OperationResult{false, "Họ tên khách hàng không được để trống.", 0};
         if (phone.empty()) return OperationResult{false, "Số điện thoại không được để trống.", 0};
 
-        Table* custTable = db->getTable("customer");
-        Table* infoTable = db->getTable("individual_info");
+        const Table* custTable = db->getTable("customer");
+        const Table* infoTable = db->getTable("individual_info");
         if (!custTable || !infoTable) {
             return OperationResult{false, "Bảng khách hàng không tồn tại trong CSDL.", 0};
         }
@@ -409,8 +380,8 @@ namespace user_create
         if (taxCode.empty()) return OperationResult{false, "Mã số thuế không được để trống.", 0};
         if (address.empty()) return OperationResult{false, "Địa chỉ doanh nghiệp không được để trống.", 0};
 
-        Table* custTable = db->getTable("customer");
-        Table* infoTable = db->getTable("business_info");
+        const Table* custTable = db->getTable("customer");
+        const Table* infoTable = db->getTable("business_info");
         if (!custTable || !infoTable) {
             return OperationResult{false, "Bảng khách hàng không tồn tại trong CSDL.", 0};
         }
@@ -481,7 +452,7 @@ namespace user_create
             return OperationResult{false, "Tên thương hiệu và mã thương hiệu không được để trống.", 0};
         }
 
-        Table* brandTable = db->getTable("brand");
+        const Table* brandTable = db->getTable("brand");
         if (!brandTable) return OperationResult{false, "Bảng 'brand' không tồn tại trong CSDL.", 0};
 
         if (!Query::filterRecords(*brandTable, "brand", Value(brandName)).empty()) {
@@ -502,7 +473,7 @@ namespace user_create
 
     static std::string getProductCodeStr(Database* db, int pid) {
         if (db) {
-            Table* prodTbl = db->getTable("product");
+            const Table* prodTbl = db->getTable("product");
             if (prodTbl) {
                 const Record* pRec = prodTbl->getRecordById(pid);
                 if (pRec && pRec->has("product_code") && std::holds_alternative<std::string>(pRec->get("product_code"))) {
@@ -534,13 +505,13 @@ namespace user_create
             if (sourceCode.empty()) {
                 return OperationResult{false, "Đơn điều chỉnh nhập kho (ADJ) bắt buộc phải có source_code tham chiếu đến đợt kiểm kho (check_code) hợp lệ.", 0};
             }
-            Table* chkTbl = db->getTable("inventory_check");
+            const Table* chkTbl = db->getTable("inventory_check");
             if (!chkTbl) return OperationResult{false, "Bảng 'inventory_check' không tồn tại.", 0};
             Vector<Record> chkRecs = Query::filterRecords(*chkTbl, "check_code", Value(sourceCode));
             if (chkRecs.empty()) {
                 return OperationResult{false, "Mã đợt kiểm kho source_code '" + sourceCode + "' không tồn tại trong hệ thống.", 0};
             }
-            Table* cqTbl = db->getTable("inventory_check_quantity");
+            const Table* cqTbl = db->getTable("inventory_check_quantity");
             if (cqTbl) {
                 int chkId = std::get<int>(chkRecs[0].get("check_id"));
                 Vector<Record> cqRecs = Query::filterRecords(*cqTbl, "check_id", Value(chkId));
@@ -569,7 +540,7 @@ namespace user_create
             return OperationResult{false, "Ngày dự kiến nhận hàng (" + expectedDeliveryDate + ") không được sớm hơn ngày đặt (" + orderDate + ").", 0};
         }
 
-        Table* custTable = db->getTable("customer");
+        const Table* custTable = db->getTable("customer");
         if (!custTable) return OperationResult{false, "Bảng 'customer' không tồn tại.", 0};
 
         int customerId = -1;
@@ -582,7 +553,7 @@ namespace user_create
             customerIdVal = Value(customerId);
         }
 
-        Table* prodTable = db->getTable("product");
+        const Table* prodTable = db->getTable("product");
         if (!prodTable) return OperationResult{false, "Bảng 'product' không tồn tại.", 0};
 
         for (size_t i = 0; i < items.size(); ++i) {
@@ -608,7 +579,7 @@ namespace user_create
         else if (inboundType == "WARRANTY_CHECKING" || inboundType == "WCK") typeCode = "WCK";
         else if (inboundType == "WARRANTY_REPLACEMENT" || inboundType == "WRP") typeCode = "WRP";
 
-        Table* inTxnTable = db->getTable("inbound_transaction");
+        const Table* inTxnTable = db->getTable("inbound_transaction");
         if (!inTxnTable) return OperationResult{false, "Bảng 'inbound_transaction' không tồn tại.", 0};
 
         int maxSeq = extractMaxSequence(inTxnTable, "inbound_code", "IN-" + typeCode + "-", 7);
@@ -697,13 +668,13 @@ namespace user_create
             if (sourceCode.empty()) {
                 return OperationResult{false, "Đơn điều chỉnh xuất kho (ADJ) bắt buộc phải có source_code tham chiếu đến đợt kiểm kho (check_code) hợp lệ.", 0};
             }
-            Table* chkTbl = db->getTable("inventory_check");
+            const Table* chkTbl = db->getTable("inventory_check");
             if (!chkTbl) return OperationResult{false, "Bảng 'inventory_check' không tồn tại.", 0};
             Vector<Record> chkRecs = Query::filterRecords(*chkTbl, "check_code", Value(sourceCode));
             if (chkRecs.empty()) {
                 return OperationResult{false, "Mã đợt kiểm kho source_code '" + sourceCode + "' không tồn tại trong hệ thống.", 0};
             }
-            Table* cqTbl = db->getTable("inventory_check_quantity");
+            const Table* cqTbl = db->getTable("inventory_check_quantity");
             if (cqTbl) {
                 int chkId = std::get<int>(chkRecs[0].get("check_id"));
                 Vector<Record> cqRecs = Query::filterRecords(*cqTbl, "check_id", Value(chkId));
@@ -732,7 +703,7 @@ namespace user_create
             return OperationResult{false, "Ngày dự kiến xuất hàng (" + expectedShipDate + ") không được sớm hơn ngày đặt (" + orderDate + ").", 0};
         }
 
-        Table* custTable = db->getTable("customer");
+        const Table* custTable = db->getTable("customer");
         if (!custTable) return OperationResult{false, "Bảng 'customer' không tồn tại.", 0};
 
         int customerId = -1;
@@ -745,7 +716,7 @@ namespace user_create
             customerIdVal = Value(customerId);
         }
 
-        Table* prodTable = db->getTable("product");
+        const Table* prodTable = db->getTable("product");
         if (!prodTable) {
             return OperationResult{false, "Bảng sản phẩm hoặc tồn kho không tồn tại.", 0};
         }
@@ -779,7 +750,7 @@ namespace user_create
         else if (outboundType == "WARRANTY_RETURN" || outboundType == "WRT") typeCode = "WRT";
         else if (outboundType == "WARRANTY_REPLACEMENT_TO_CUSTOMER" || outboundType == "WRC") typeCode = "WRC";
 
-        Table* outTxnTable = db->getTable("outbound_transaction");
+        const Table* outTxnTable = db->getTable("outbound_transaction");
         if (!outTxnTable) return OperationResult{false, "Bảng 'outbound_transaction' không tồn tại.", 0};
 
         int maxSeq = extractMaxSequence(outTxnTable, "outbound_code", "OUT-" + typeCode + "-", 8);
@@ -878,7 +849,7 @@ namespace user_create
     bool isSerialUnique(Database* db, const std::string& serial)
     {
         if (!db) return true;
-        Table* unitTab = db->getTable("unit_inventory");
+        const Table* unitTab = db->getTable("unit_inventory");
         if (!unitTab) return true;
         Vector<Record> recs = Query::filterRecords(*unitTab, "serial", Value(serial));
         return recs.empty();
@@ -913,7 +884,7 @@ namespace user_create
         (void)expectedDate;
         (void)items;
         if (!db) return OperationResult{false, "Cơ sở dữ liệu chưa được khởi tạo.", 0};
-        Table* inTxnTable = db->getTable("inbound_transaction");
+        const Table* inTxnTable = db->getTable("inbound_transaction");
         if (!inTxnTable) return OperationResult{false, "Bảng đơn nhập kho không tồn tại trong CSDL.", 0};
         const Record* inTxnRec = inTxnTable->getRecordById(inboundTransactionId);
         if (!inTxnRec) {
@@ -931,7 +902,7 @@ namespace user_create
         (void)expectedDate;
         (void)items;
         if (!db) return OperationResult{false, "Cơ sở dữ liệu chưa được khởi tạo.", 0};
-        Table* outTxnTable = db->getTable("outbound_transaction");
+        const Table* outTxnTable = db->getTable("outbound_transaction");
         if (!outTxnTable) return OperationResult{false, "Bảng đơn xuất kho không tồn tại trong CSDL.", 0};
         const Record* outTxnRec = outTxnTable->getRecordById(outboundTransactionId);
         if (!outTxnRec) {
@@ -960,13 +931,13 @@ namespace user_create
             if (sourceCode.empty()) {
                 return OperationResult{false, "Đơn điều chỉnh nhập kho (ADJ) bắt buộc phải có source_code tham chiếu đến đợt kiểm kho (check_code) hợp lệ.", 0};
             }
-            Table* chkTbl = db->getTable("inventory_check");
+            const Table* chkTbl = db->getTable("inventory_check");
             if (!chkTbl) return OperationResult{false, "Bảng 'inventory_check' không tồn tại.", 0};
             Vector<Record> chkRecs = Query::filterRecords(*chkTbl, "check_code", Value(sourceCode));
             if (chkRecs.empty()) {
                 return OperationResult{false, "Mã đợt kiểm kho source_code '" + sourceCode + "' không tồn tại trong hệ thống.", 0};
             }
-            Table* cqTbl = db->getTable("inventory_check_quantity");
+            const Table* cqTbl = db->getTable("inventory_check_quantity");
             if (cqTbl) {
                 int chkId = std::get<int>(chkRecs[0].get("check_id"));
                 Vector<Record> cqRecs = Query::filterRecords(*cqTbl, "check_id", Value(chkId));
@@ -989,7 +960,7 @@ namespace user_create
         if (deliveryBatches.empty()) return OperationResult{false, "Phải ấn định ít nhất một đợt nhận hàng.", 0};
         if (orderDate.empty()) return OperationResult{false, "Ngày đặt hàng không được để trống.", 0};
 
-        Table* custTable = db->getTable("customer");
+        const Table* custTable = db->getTable("customer");
         if (!custTable) return OperationResult{false, "Bảng 'customer' không tồn tại.", 0};
         int customerId = -1;
         Value customerIdVal = Value{};
@@ -999,7 +970,7 @@ namespace user_create
             customerIdVal = Value(customerId);
         }
 
-        Table* prodTable = db->getTable("product");
+        const Table* prodTable = db->getTable("product");
         if (!prodTable) return OperationResult{false, "Bảng 'product' không tồn tại.", 0};
 
         HashMap<int, int> orderedMap;
@@ -1057,7 +1028,7 @@ namespace user_create
         else if (inboundType == "WARRANTY_CHECKING" || inboundType == "WCK") typeCode = "WCK";
         else if (inboundType == "WARRANTY_REPLACEMENT" || inboundType == "WRP") typeCode = "WRP";
 
-        Table* inTxnTable = db->getTable("inbound_transaction");
+        const Table* inTxnTable = db->getTable("inbound_transaction");
         if (!inTxnTable) return OperationResult{false, "Bảng 'inbound_transaction' không tồn tại.", 0};
 
         int maxSeq = extractMaxSequence(inTxnTable, "inbound_code", "IN-" + typeCode + "-", 7);
@@ -1155,13 +1126,13 @@ namespace user_create
             if (sourceCode.empty()) {
                 return OperationResult{false, "Đơn điều chỉnh xuất kho (ADJ) bắt buộc phải có source_code tham chiếu đến đợt kiểm kho (check_code) hợp lệ.", 0};
             }
-            Table* chkTbl = db->getTable("inventory_check");
+            const Table* chkTbl = db->getTable("inventory_check");
             if (!chkTbl) return OperationResult{false, "Bảng 'inventory_check' không tồn tại.", 0};
             Vector<Record> chkRecs = Query::filterRecords(*chkTbl, "check_code", Value(sourceCode));
             if (chkRecs.empty()) {
                 return OperationResult{false, "Mã đợt kiểm kho source_code '" + sourceCode + "' không tồn tại trong hệ thống.", 0};
             }
-            Table* cqTbl = db->getTable("inventory_check_quantity");
+            const Table* cqTbl = db->getTable("inventory_check_quantity");
             if (cqTbl) {
                 int chkId = std::get<int>(chkRecs[0].get("check_id"));
                 Vector<Record> cqRecs = Query::filterRecords(*cqTbl, "check_id", Value(chkId));
@@ -1184,7 +1155,7 @@ namespace user_create
         if (shipmentBatches.empty()) return OperationResult{false, "Phải ấn định ít nhất một đợt xuất hàng.", 0};
         if (orderDate.empty()) return OperationResult{false, "Ngày đặt hàng không được để trống.", 0};
 
-        Table* custTable = db->getTable("customer");
+        const Table* custTable = db->getTable("customer");
         if (!custTable) return OperationResult{false, "Bảng 'customer' không tồn tại.", 0};
         int customerId = -1;
         Value customerIdVal = Value{};
@@ -1194,7 +1165,7 @@ namespace user_create
             customerIdVal = Value(customerId);
         }
 
-        Table* prodTable = db->getTable("product");
+        const Table* prodTable = db->getTable("product");
         if (!prodTable) return OperationResult{false, "Bảng 'product' không tồn tại.", 0};
 
         HashMap<int, int> orderedMap;
@@ -1257,7 +1228,7 @@ namespace user_create
         else if (outboundType == "WARRANTY_RETURN" || outboundType == "WRT") typeCode = "WRT";
         else if (outboundType == "WARRANTY_REPLACEMENT_TO_CUSTOMER" || outboundType == "WRC") typeCode = "WRC";
 
-        Table* outTxnTable = db->getTable("outbound_transaction");
+        const Table* outTxnTable = db->getTable("outbound_transaction");
         if (!outTxnTable) return OperationResult{false, "Bảng 'outbound_transaction' không tồn tại.", 0};
 
         int maxSeq = extractMaxSequence(outTxnTable, "outbound_code", "OUT-" + typeCode + "-", 8);
@@ -1346,13 +1317,13 @@ namespace user_create
         if (!db) return OperationResult{false, "Cơ sở dữ liệu chưa được khởi tạo.", 0};
         if (quantity <= 0) return OperationResult{false, "Số lượng unit cần nhận phải lớn hơn 0.", 0};
 
-        Table* delTable = db->getTable("delivery");
-        Table* delDetTable = db->getTable("delivery_detail");
-        Table* inTxnTable = db->getTable("inbound_transaction");
-        Table* inDetTable = db->getTable("inbound_detail");
-        Table* unitTable = db->getTable("unit_inventory");
-        Table* histTable = db->getTable("status_history");
-        Table* prodTable = db->getTable("product");
+        const Table* delTable = db->getTable("delivery");
+        const Table* delDetTable = db->getTable("delivery_detail");
+        const Table* inTxnTable = db->getTable("inbound_transaction");
+        const Table* inDetTable = db->getTable("inbound_detail");
+        const Table* unitTable = db->getTable("unit_inventory");
+        const Table* histTable = db->getTable("status_history");
+        const Table* prodTable = db->getTable("product");
 
         if (!delTable || !delDetTable || !inTxnTable || !inDetTable || !unitTable || !histTable || !prodTable) {
             return OperationResult{false, "Bảng liên quan đến nhận hàng và linh kiện không tồn tại trong CSDL.", 0};
@@ -1748,10 +1719,10 @@ namespace user_create
     // ========================================================
 
     std::string generateUniqueCheckCode(Database* db, const std::string& checkType) {
-        Table* tbl = db ? db->getTable("inventory_check") : nullptr;
+        const Table* tbl = db ? db->getTable("inventory_check") : nullptr;
         int maxSeq = 0;
         if (tbl) {
-            for (const auto& r : tbl->getRows()) {
+            for (const auto& r : tbl->view()) {
                 if (r.has("check_code") && std::holds_alternative<std::string>(r.get("check_code"))) {
                     std::string c = std::get<std::string>(r.get("check_code"));
                     // Format: CHK-{TYPE}-{SEQ:6}
@@ -1777,9 +1748,9 @@ namespace user_create
         else if (reason == "OTHER" || reason == "OTH") rCode = "OTH";
         else if (reason == "STOCKTAKE_DIFF" || reason == "STD") rCode = "STD";
         else if (db) {
-            Table* rsnTbl = db->getTable("reason");
+            const Table* rsnTbl = db->getTable("reason");
             if (rsnTbl) {
-                for (const auto& r : rsnTbl->getRows()) {
+                for (const auto& r : rsnTbl->view()) {
                     if (r.has("reason") && std::holds_alternative<std::string>(r.get("reason")) &&
                         std::get<std::string>(r.get("reason")) == reason) {
                         if (r.has("code") && std::holds_alternative<std::string>(r.get("code"))) {
@@ -1792,10 +1763,10 @@ namespace user_create
         }
 
         std::string prefix = "ADJ-" + rCode + "-";
-        Table* tbl = db ? db->getTable("adjustment_movement") : nullptr;
+        const Table* tbl = db ? db->getTable("adjustment_movement") : nullptr;
         int maxSeq = 0;
         if (tbl) {
-            for (const auto& r : tbl->getRows()) {
+            for (const auto& r : tbl->view()) {
                 if (r.has("adjust_code") && std::holds_alternative<std::string>(r.get("adjust_code"))) {
                     std::string c = std::get<std::string>(r.get("adjust_code"));
                     // Supports format ADJ-{REASON_CODE}-{SEQ:6} and fallback ADJ-{SEQ:6}
@@ -1832,10 +1803,10 @@ namespace user_create
             return OperationResult{false, "Đợt kiểm kho phải khai báo danh sách sản phẩm cần kiểm kê trước.", 0};
         }
 
-        Table* chkTbl = db->getTable("inventory_check");
-        Table* cqTbl = db->getTable("inventory_check_quantity");
-        Table* prodTbl = db->getTable("product");
-        Table* unitTbl = db->getTable("unit_inventory");
+        const Table* chkTbl = db->getTable("inventory_check");
+        const Table* cqTbl = db->getTable("inventory_check_quantity");
+        const Table* prodTbl = db->getTable("product");
+        const Table* unitTbl = db->getTable("unit_inventory");
 
         if (!chkTbl || !cqTbl || !prodTbl) {
             return OperationResult{false, "Các bảng dữ liệu kiểm kho không tồn tại.", 0};
@@ -1903,17 +1874,14 @@ namespace user_create
 
         // If UNIT check: pre-populate inventory_check_unit with all physical units currently in warehouse (status != OUT)
         if (checkType == "UNIT" && unitTbl) {
-            Table* cuTbl = db->getTable("inventory_check_unit");
+            const Table* cuTbl = db->getTable("inventory_check_unit");
             if (!cuTbl) { db->rollback(); return OperationResult{false, "Bảng inventory_check_unit không tồn tại.", 0}; }
 
             HashMap<int, bool> allowedPids;
             for (size_t i = 0; i < productIds.size(); ++i) allowedPids[productIds[i]] = true;
 
             int nextCuId = getNextTableId(db, "inventory_check_unit");
-            const auto& uRows = unitTbl->getRows();
-            for (size_t i = 0; i < uRows.size(); ++i) {
-                if (unitTbl->isRowDeleted(i)) continue;
-                const auto& u = uRows[i];
+            for (const auto& u : unitTbl->view()) {
                 int pid = (u.has("product_id") && std::holds_alternative<int>(u.get("product_id"))) ? std::get<int>(u.get("product_id")) : -1;
                 if (!allowedPids.contains(pid)) continue;
 
@@ -1979,7 +1947,7 @@ namespace user_create
             }
         }
 
-        Table* rTable = db->getTable("reason");
+        const Table* rTable = db->getTable("reason");
         if (rTable) {
             Vector<Record> rRecs = Query::filterRecords(*rTable, "reason", Value(reason));
             if (rRecs.empty()) {
@@ -1988,8 +1956,8 @@ namespace user_create
         }
 
         if (!sourceCheckCode.empty()) {
-            Table* chkTbl = db->getTable("inventory_check");
-            Table* cqTbl = db->getTable("inventory_check_quantity");
+            const Table* chkTbl = db->getTable("inventory_check");
+            const Table* cqTbl = db->getTable("inventory_check_quantity");
             if (chkTbl) {
                 Vector<Record> cRecs = Query::filterRecords(*chkTbl, "check_code", Value(sourceCheckCode));
                 if (cRecs.empty()) {
@@ -2013,9 +1981,9 @@ namespace user_create
             }
         }
 
-        Table* adjTbl = db->getTable("adjustment_movement");
-        Table* detTbl = db->getTable("adjust_movement_detail");
-        Table* prodTbl = db->getTable("product");
+        const Table* adjTbl = db->getTable("adjustment_movement");
+        const Table* detTbl = db->getTable("adjust_movement_detail");
+        const Table* prodTbl = db->getTable("product");
         if (!adjTbl || !detTbl || !prodTbl) {
             return OperationResult{false, "Các bảng dữ liệu điều chuyển không đầy đủ.", 0};
         }
@@ -2091,8 +2059,8 @@ namespace user_create
         const std::string& actionDate
     ) {
         if (!db || checkId <= 0) return OperationResult{false, "Tham số kiểm kho không hợp lệ.", 0};
-        Table* chkTbl = db->getTable("inventory_check");
-        Table* cqTbl = db->getTable("inventory_check_quantity");
+        const Table* chkTbl = db->getTable("inventory_check");
+        const Table* cqTbl = db->getTable("inventory_check_quantity");
         if (!chkTbl || !cqTbl) return OperationResult{false, "Bảng kiểm kho không tồn tại.", 0};
 
         const Record* chkRec = chkTbl->getRecordById(checkId);
@@ -2113,7 +2081,7 @@ namespace user_create
         Vector<AdjustMovementItem> movements;
 
         if (checkType == "UNIT") {
-            Table* cuTbl = db->getTable("inventory_check_unit");
+            const Table* cuTbl = db->getTable("inventory_check_unit");
             HashMap<int, int> inMap;
             HashMap<int, int> outMap;
             struct ShiftKey {

@@ -13,9 +13,36 @@
 
 using namespace std;
 
+namespace DataIO {
+    class TableIO;
+}
+
+namespace Generator {
+    class DataGenerator;
+}
+
+class Database;
+
+// Forward declarations for unit testing internal index structures
+void test_product_indexes_with_real_data(Database& db);
+void test_cpu_indexes_with_real_data(Database& db);
+void test_inbound_transaction_date_index_with_real_data(Database& db);
+void test_delivery_date_index_with_real_data(Database& db);
+void test_customer_indexes_with_real_data(Database& db);
+void test_status_history_indexes_with_real_data(Database& db);
+
 class Table
 {
     friend class TableView;
+    friend class Database;
+    friend class DataIO::TableIO;
+    friend class Generator::DataGenerator;
+    friend void test_product_indexes_with_real_data(Database& db);
+    friend void test_cpu_indexes_with_real_data(Database& db);
+    friend void test_inbound_transaction_date_index_with_real_data(Database& db);
+    friend void test_delivery_date_index_with_real_data(Database& db);
+    friend void test_customer_indexes_with_real_data(Database& db);
+    friend void test_status_history_indexes_with_real_data(Database& db);
 
 private:
     string name;
@@ -32,11 +59,31 @@ private:
     void compactRows();
     void rebuildIndexes();
 
-    /// Get raw row count including deleted rows (used internally by TableView).
+    // Internal physical access for TableView and internal friends
     size_t rawRowCount() const;
-
-    /// Get reference to raw record by physical row index (used internally by TableView).
     const Record& getRawRow(size_t rowIndex) const;
+    Record& getRawRow(size_t rowIndex);
+
+    // Internal row lookup for Database
+    int findRowIndexById(int id) const;
+
+    // Transaction & compaction management (Database only)
+    void compactIfNeeded();
+    const HashMap<string, int>& getAutoIncrementCounters() const;
+    void undoInsert(size_t rowIndex, const HashMap<string, int>& oldAutoIncrement);
+    void undoUpdate(size_t rowIndex, const Record& oldRecord);
+    void undoRemove(size_t rowIndex);
+
+    // Index & Constraint internal management
+    bool hasIndex(const string& indexName) const;
+    bool dropIndex(const string& indexName);
+    Index* getIndex(const string& indexName);
+    const Index* getIndex(const string& indexName) const;
+    const Vector<Index*>& getIndexes() const;
+    const Vector<Constraint*>& getConstraints() const;
+
+    // Mutable column pointer (internal use)
+    Column* getColumn(const string& columnName);
 
 public:
     explicit Table(const string& name = "");
@@ -61,9 +108,6 @@ public:
     /// Check if a column exists in the table by name.
     bool hasColumn(const string& columnName) const;
 
-    /// Find and return a pointer to a Column, or nullptr if not found.
-    Column* getColumn(const string& columnName);
-
     /// Const version of getColumn.
     const Column* getColumn(const string& columnName) const;
 
@@ -80,9 +124,6 @@ public:
      */
     bool addConstraint(Constraint* constraint);
 
-    /// Get reference to list of table constraints.
-    const Vector<Constraint*>& getConstraints() const;
-
     /**
      * @brief Create an index on a specific column.
      * @param indexName Unique identifier for the index.
@@ -91,19 +132,6 @@ public:
      * @return true if index was created and built.
      */
     bool createIndex(const string& indexName, const string& columnName, IndexType type = IndexType::HASH);
-
-    /// Drop an index by name.
-    bool dropIndex(const string& indexName);
-
-    /// Check if an index exists on the table.
-    bool hasIndex(const string& indexName) const;
-
-    /// Get pointer to an index by name.
-    Index* getIndex(const string& indexName);
-    const Index* getIndex(const string& indexName) const;
-
-    /// Get all indexes defined on this table.
-    const Vector<Index*>& getIndexes() const;
 
     /**
      * @brief Insert a record into the table, checking data types and table constraints.
@@ -114,9 +142,6 @@ public:
 
     /// Get the primary key column name of this table.
     string getPrimaryKeyColumn() const;
-
-    /// Find row index by record ID in the primary key column (-1 if not found or deleted).
-    int findRowIndexById(int id) const;
 
     /// Get pointer to record by record ID in the primary key column (nullptr if not found or deleted).
     const Record* getRecordById(int id) const;
@@ -136,26 +161,11 @@ public:
      */
     bool removeById(int id, bool allowCompact = true);
 
-    /// Compact deleted rows and rebuild indexes if deleted rows reach half the table size.
-    void compactIfNeeded();
-
-    /// Get current auto-increment counters of the table.
-    const HashMap<string, int>& getAutoIncrementCounters() const;
-
-    /// Undo an insert operation at the given row index without constraint re-validation.
-    void undoInsert(size_t rowIndex, const HashMap<string, int>& oldAutoIncrement);
-
-    /// Undo an update operation at the given row index without constraint re-validation.
-    void undoUpdate(size_t rowIndex, const Record& oldRecord);
-
-    /// Undo a remove operation at the given row index without constraint re-validation.
-    void undoRemove(size_t rowIndex);
-
     /// Get total number of active rows in the table.
     int getRowCount() const;
 
-    /// Check if a specific physical row index is marked as deleted.
-    bool isRowDeleted(size_t rowIndex) const;
+    /// Check if table contains a specific value in a column (using index if available).
+    bool contains(const string& columnName, const Value& value) const;
 
     // ========================================================
     // TABLE VIEW: UNIFIED ITERATION (ZERO-COPY & DELETED-SAFE)
@@ -175,9 +185,7 @@ public:
     // ========================================================
 
     const Vector<Record>& getRows() const;
-
-    /// Get mutable reference to stored rows.
-    Vector<Record>& getRows();
+    bool isRowDeleted(size_t rowIndex) const;
 
     /// Print table schema structure (columns, types, constraints, indexes).
     void printStructure() const;

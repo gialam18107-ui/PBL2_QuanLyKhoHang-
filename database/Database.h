@@ -9,12 +9,23 @@
 
 using namespace std;
 
+namespace DataIO {
+    class DatabaseIO;
+}
+
+namespace Generator {
+    class DataGenerator;
+}
+
 /**
  * @brief Represents a relational database containing tables and transaction state.
  * Implements full manual memory management without smart pointers or STL containers.
  */
 class Database
 {
+    friend class DataIO::DatabaseIO;
+    friend class Generator::DataGenerator;
+
 private:
     string databaseName;
     HashMap<string, Table*> tables;
@@ -40,7 +51,17 @@ private:
 
     Vector<UndoEntry> undoLog;
 
+    // Internal mutable table accessor for Database operations and friends
+    Table* getMutableTable(const string& tableName);
 
+    static bool validateForeignKeyUpdates(
+        Database& database,
+        Table& table,
+        const Record& current,
+        const Record& newValues
+    );
+
+    static bool isReferenced(Database& database, const string& tableName, const Vector<Record>& removedRows);
 
 public:
     /**
@@ -92,14 +113,12 @@ public:
     bool hasTable(const string& tableName) const;
 
     /**
-     * @brief Find and return a pointer to the table by name.
+     * @brief Public const accessor: callers can only read schema and view records, cannot mutate directly.
      * @param tableName Name of table to retrieve.
-     * @return Table* Pointer to table, or nullptr if not found.
+     * @return const Table* Pointer to table, or nullptr if not found.
      */
-    Table* getTable(const string& tableName);
-
-    /// Const version of getTable.
     const Table* getTable(const string& tableName) const;
+    const Table* getTable(const string& tableName);
 
     /// Get total number of tables registered in the database.
     int getTableCount() const;
@@ -111,7 +130,7 @@ public:
     void printTables() const;
 
     // ========================================================
-    // DATA MANIPULATION (INSERT, SELECT ALL, UPDATE, DELETE)
+    // DATA MANIPULATION (INSERT, UPDATE, DELETE)
     // ========================================================
 
     /**
@@ -121,13 +140,6 @@ public:
      * @return true if successfully inserted, false if constraint violation.
      */
     bool insert(const string& tableName, const Record& record);
-
-    /**
-     * @brief Retrieve all records stored in a table.
-     * @param tableName Name of the table.
-     * @return Vector<Record> List of all rows in the table.
-     */
-    Vector<Record> selectAll(const string& tableName) const;
 
     /**
      * @brief Insert a record and return OperationResult with detailed status.

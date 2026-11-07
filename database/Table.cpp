@@ -736,9 +736,16 @@ const Vector<Record>& Table::getRows() const
     return rows;
 }
 
-Vector<Record>& Table::getRows()
+bool Table::contains(const string& columnName, const Value& value) const
 {
-    return rows;
+    TableView tv = view(columnName, value);
+    if (!tv.empty()) return true;
+
+    for (const Record& r : view())
+    {
+        if (r.has(columnName) && r.get(columnName) == value) return true;
+    }
+    return false;
 }
 
 size_t Table::rawRowCount() const
@@ -747,6 +754,11 @@ size_t Table::rawRowCount() const
 }
 
 const Record& Table::getRawRow(size_t rowIndex) const
+{
+    return rows[rowIndex];
+}
+
+Record& Table::getRawRow(size_t rowIndex)
 {
     return rows[rowIndex];
 }

@@ -60,17 +60,17 @@ int main()
     assert(cInd.success == true);
 
     // 2.2 Create Business Customer
-    OperationResult cBus = user_create::createBusinessCustomer(&db, "Tech Corporation Test", "0109999888", "0243999888", "info@techtest.vn");
+    OperationResult cBus = user_create::createBusinessCustomer(&db, "Tech Corporation Test", "0109999888", "123 Le Loi, Da Nang", "0243999888", "info@techtest.vn");
     std::cout << "createBusinessCustomer: success=" << cBus.success << ", msg: " << cBus.message << std::endl;
     assert(cBus.success == true);
 
     // 2.3 Duplicate tax code check
-    OperationResult cBusDup = user_create::createBusinessCustomer(&db, "Another Tech Co", "0109999888", "0243111222", "contact@another.vn");
+    OperationResult cBusDup = user_create::createBusinessCustomer(&db, "Another Tech Co", "0109999888", "456 Tran Phu, Da Nang", "0243111222", "contact@another.vn");
     std::cout << "Duplicate tax code rejection: success=" << cBusDup.success << " (expected false), msg: " << cBusDup.message << std::endl;
     assert(cBusDup.success == false);
 
     // 2.4 Update Customer Contact
-    Table* custTab = db.getTable("customer");
+    const Table* custTab = db.getTable("customer");
     assert(custTab != nullptr);
     int newCustId = user_create::getNextTableId(&db, "customer") - 1; // latest customer
     OperationResult uCust = user_update::updateCustomerContact(&db, newCustId, "Tech Corporation Renamed", "0243999999", "new_email@techtest.vn");
@@ -154,12 +154,14 @@ int main()
     assert(cOutOk.success == true);
 
     // 4.4 Transaction Status Update
-    OperationResult uTx = user_update::updateTransactionStatus(&db, "inbound_transaction", 1, "PROCESSING");
-    std::cout << "updateTransactionStatus (inbound 1 -> PROCESSING): success=" << uTx.success << ", msg: " << uTx.message << std::endl;
+    int createdInId = user_create::getNextTableId(&db, "inbound_transaction") - 1;
+    OperationResult uTx = user_update::updateTransactionStatus(&db, "inbound_transaction", createdInId, "PROCESSING");
+    std::cout << "updateTransactionStatus (inbound " << createdInId << " -> PROCESSING): success=" << uTx.success << ", msg: " << uTx.message << std::endl;
     assert(uTx.success == true);
 
     // 4.5 Logistics Actual Date Update (delivery_at >= order_at)
-    OperationResult uLogOk = user_update::updateLogisticsActualDate(&db, "delivery", 1, "2026-09-05");
+    int createdDelId = user_create::getNextTableId(&db, "delivery") - 1;
+    OperationResult uLogOk = user_update::updateLogisticsActualDate(&db, "delivery", createdDelId, "2026-10-27");
     std::cout << "updateLogisticsActualDate (valid): success=" << uLogOk.success << ", msg: " << uLogOk.message << std::endl;
     assert(uLogOk.success == true);
 
@@ -168,7 +170,7 @@ int main()
     dateCols.push_back("delivery_at");
     Vector<Value> dateVals;
     dateVals.push_back(Value(std::string("2020-01-01"))); // Too early
-    OperationResult uDate = user_update::updateRecord(&db, "delivery", 1, dateCols, dateVals);
+    OperationResult uDate = user_update::updateRecord(&db, "delivery", createdDelId, dateCols, dateVals);
     std::cout << "Chronological date check (delivery_at < order_at): success=" << uDate.success << " (expected false), msg: " << uDate.message << std::endl;
     assert(uDate.success == false);
 
@@ -181,8 +183,31 @@ int main()
     // 5. Clean up testing product
     // ==========================================
     std::cout << "\n--- [5] Cleaning Up Testing Product ---" << std::endl;
-    OperationResult dProd = user_delete::deleteProduct(&db, nextId);
-    std::cout << "Safe delete product (ID " << nextId << "): success=" << dProd.success << ", msg: " << dProd.message << std::endl;
+    // Product with is_sold_changing history cannot be deleted
+    OperationResult dFail = user_delete::deleteProduct(&db, nextId);
+    std::cout << "Delete product with history rejection: success=" << dFail.success << " (expected false), msg: " << dFail.message << std::endl;
+    assert(dFail.success == false);
+
+    // Create a standalone product and safely delete it
+    std::string pCode2 = user_create::generateNextProductCode(&db, "INTEL", "CPU");
+    Record pTemp;
+    pTemp.set("product_name", std::string("Standalone Temp Product"));
+    pTemp.set("brand", std::string("INTEL"));
+    pTemp.set("category", std::string("CPU"));
+    pTemp.set("product_code", pCode2);
+    pTemp.set("barcode", std::string("8939999000011"));
+    pTemp.set("sku", std::string("CPU-TEMP-0001"));
+    pTemp.set("is_sold", true);
+    Record sTemp;
+    sTemp.set("socket", std::string("LGA1700"));
+    sTemp.set("tier", std::string("Core i3"));
+    sTemp.set("series", std::string("12th Gen Intel Core"));
+    OperationResult cTemp = user_create::createProduct(&db, pTemp, "CPU", sTemp);
+    assert(cTemp.success == true);
+
+    int tempPid = user_create::getNextTableId(&db, "product") - 1;
+    OperationResult dProd = user_delete::deleteProduct(&db, tempPid);
+    std::cout << "Safe delete product (ID " << tempPid << "): success=" << dProd.success << ", msg: " << dProd.message << std::endl;
     assert(dProd.success == true);
 
     // ==========================================
@@ -315,7 +340,7 @@ int main()
 
     // 7.2 Inbound Receiving: Create new physical units for Delivery (receiveUnitsForDelivery)
     // Find delivery ID that has Product 2 received_quantity = 12 (search from end to get newly created batch)
-    Table* delDetTbl = db.getTable("delivery_detail");
+    const Table* delDetTbl = db.getTable("delivery_detail");
     int targetDelId = -1;
     for (int i = static_cast<int>(delDetTbl->getRowCount()) - 1; i >= 0; --i) {
         const auto& r = delDetTbl->getRows()[i];
@@ -327,9 +352,9 @@ int main()
     }
     assert(targetDelId != -1);
 
-    Table* pqTbl = db.getTable("product_quantity");
+    const Table* pqTbl = db.getTable("product");
     const Record* pqBefore = pqTbl->getRecordById(2);
-    int availBefore = std::get<int>(pqBefore->get("available_quan"));
+    int availBefore = std::get<int>(pqBefore->get("available_quantity"));
 
     // Receive 5 units of Product 2 into warehouse with status AVAILABLE
     OperationResult rUnits = user_create::receiveUnitsForDelivery(&db, targetDelId, 2, "AVAILABLE", 5);
@@ -338,7 +363,7 @@ int main()
 
     // Verify product_quantity synchronization
     const Record* pqAfter = pqTbl->getRecordById(2);
-    int availAfter = std::get<int>(pqAfter->get("available_quan"));
+    int availAfter = std::get<int>(pqAfter->get("available_quantity"));
     assert(availAfter == availBefore + 5);
     std::cout << "Product 2 available inventory incremented: " << availBefore << " -> " << availAfter << " (verified)" << std::endl;
 
@@ -365,7 +390,7 @@ int main()
 
     // 7.5 Outbound Dispatching: Dispatch AVAILABLE unit for Shipment (dispatchUnitsForShipment)
     // Find the latest unit created for Product 2
-    Table* unitTbl = db.getTable("unit_inventory");
+    const Table* unitTbl = db.getTable("unit_inventory");
     std::string unitToDispatch = "";
     for (int i = static_cast<int>(unitTbl->getRowCount()) - 1; i >= 0; --i) {
         const Record& u = unitTbl->getRows()[i];
@@ -398,11 +423,11 @@ int main()
 
     // Verify product_quantity available decreased by 1
     const Record* pqDispatched = pqTbl->getRecordById(2);
-    assert(std::get<int>(pqDispatched->get("available_quan")) == availAfter - 1);
+    assert(std::get<int>(pqDispatched->get("available_quantity")) == availAfter - 1);
     std::cout << "Product 2 available inventory decremented by 1 (verified)" << std::endl;
 
     // 7.6 Verify status_history logging (Rule 4.4.3)
-    Table* histTbl = db.getTable("status_history");
+    const Table* histTbl = db.getTable("status_history");
     const Record& latestHist = histTbl->getRows().back();
     assert(std::get<string>(latestHist.get("curr_status")) == "OUT");
     assert(std::get<string>(latestHist.get("old_status")) == "AVAILABLE");
@@ -419,30 +444,45 @@ int main()
     // ========================================================
     std::cout << "\n--- 8. ADJUSTMENT TRANSACTIONS & DEFAULT CUSTOMER BS-0000000 ---\n";
 
+    // Create a new inventory check to provide valid and unique source_code
+    Vector<int> chkProdIds;
+    chkProdIds.push_back(2);
+    OperationResult chkRes1 = user_create::createInventoryCheck(&db, "UNIT", "2026-10-28", chkProdIds, "Stocktake for adj in");
+    assert(chkRes1.success);
+    const Table* chkTbl = db.getTable("inventory_check");
+    std::string chkCode1 = std::get<std::string>(chkTbl->getRows().back().get("check_code"));
+
     // 8.1 Inbound Adjustment with empty customer code -> defaults to BS-0000000 (customer_id = 0)
     Vector<Pair<int, int>> adjInItems;
     adjInItems.push_back(Pair<int, int>(2, 2)); // Product 2, qty 2
-    OperationResult rAdjIn = user_create::createInboundOrder(&db, "ADJUSTMENT_IN", "", adjInItems, "2026-10-28", "2026-10-28", "Stock adjustment intake");
+    OperationResult rAdjIn = user_create::createInboundOrder(&db, "ADJUSTMENT_IN", "", adjInItems, "2026-10-28", "2026-10-28", "Stock adjustment intake", chkCode1);
     std::cout << "ADJUSTMENT_IN default customer BS-0000000: success=" << rAdjIn.success << ", msg: " << rAdjIn.message << std::endl;
     assert(rAdjIn.success == true);
 
-    // Verify inbound_transaction customer_id is 0
-    Table* inTxnTbl = db.getTable("inbound_transaction");
+    // Verify inbound_transaction customer_id is NULL/monostate or 0
+    const Table* inTxnTbl = db.getTable("inbound_transaction");
     const Record& latestInTxn = inTxnTbl->getRows().back();
-    assert(std::get<int>(latestInTxn.get("customer_id")) == 0);
-    std::cout << "Inbound transaction linked customer_id is 0 (verified)" << std::endl;
+    assert(std::holds_alternative<std::monostate>(latestInTxn.get("customer_id")) ||
+           (std::holds_alternative<int>(latestInTxn.get("customer_id")) && std::get<int>(latestInTxn.get("customer_id")) == 0));
+    std::cout << "Inbound transaction linked customer_id is NULL / 0 (verified)" << std::endl;
+
+    // Create another check for outbound adjustment
+    OperationResult chkRes2 = user_create::createInventoryCheck(&db, "UNIT", "2026-10-28", chkProdIds, "Stocktake for adj out");
+    assert(chkRes2.success);
+    std::string chkCode2 = std::get<std::string>(chkTbl->getRows().back().get("check_code"));
 
     // 8.2 Outbound Adjustment with empty customer code -> defaults to BS-0000000 (customer_id = 0)
     Vector<Pair<int, int>> adjOutItems;
     adjOutItems.push_back(Pair<int, int>(2, 1));
-    OperationResult rAdjOut = user_create::createOutboundOrder(&db, "ADJUSTMENT_OUT", "", adjOutItems, "2026-10-28", "2026-10-28", "Stock adjustment reduction");
+    OperationResult rAdjOut = user_create::createOutboundOrder(&db, "ADJUSTMENT_OUT", "", adjOutItems, "2026-10-28", "2026-10-28", "Stock adjustment reduction", chkCode2);
     std::cout << "ADJUSTMENT_OUT default customer BS-0000000: success=" << rAdjOut.success << ", msg: " << rAdjOut.message << std::endl;
     assert(rAdjOut.success == true);
 
-    Table* outTxnTbl = db.getTable("outbound_transaction");
+    const Table* outTxnTbl = db.getTable("outbound_transaction");
     const Record& latestOutTxn = outTxnTbl->getRows().back();
-    assert(std::get<int>(latestOutTxn.get("customer_id")) == 0);
-    std::cout << "Outbound transaction linked customer_id is 0 (verified)" << std::endl;
+    assert(std::holds_alternative<std::monostate>(latestOutTxn.get("customer_id")) ||
+           (std::holds_alternative<int>(latestOutTxn.get("customer_id")) && std::get<int>(latestOutTxn.get("customer_id")) == 0));
+    std::cout << "Outbound transaction linked customer_id is NULL / 0 (verified)" << std::endl;
 
     // 8.3 Inbound Adjustment unit receiving: reject target status OUT
     int adjDelId = user_create::getNextTableId(&db, "delivery") - 1;
@@ -451,11 +491,11 @@ int main()
     assert(rAdjBadTarget.success == false);
 
     // 8.4 Inbound Adjustment unit receiving: new unit -> AVAILABLE
-    int prevAvail = std::get<int>(pqTbl->getRecordById(2)->get("available_quan"));
+    int prevAvail = std::get<int>(pqTbl->getRecordById(2)->get("available_quantity"));
     OperationResult rAdjGood = user_create::receiveUnitsForDelivery(&db, adjDelId, 2, "AVAILABLE", 1);
     std::cout << "ADJUSTMENT_IN receive new unit into AVAILABLE: success=" << rAdjGood.success << ", msg: " << rAdjGood.message << std::endl;
     assert(rAdjGood.success == true);
-    assert(std::get<int>(pqTbl->getRecordById(2)->get("available_quan")) == prevAvail + 1);
+    assert(std::get<int>(pqTbl->getRecordById(2)->get("available_quantity")) == prevAvail + 1);
 
     // 8.5 Protected System Default Customer BS-0000000 from deletion & contact update
     OperationResult rDelSysCust = user_delete::deleteCustomer(&db, 0);

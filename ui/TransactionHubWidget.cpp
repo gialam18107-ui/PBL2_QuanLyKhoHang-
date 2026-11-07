@@ -1,4 +1,4 @@
-#include "TransactionHubWidget.h"
+﻿#include "TransactionHubWidget.h"
 #include "schema/UserQuery.h"
 #include "schema/UserUpdate.h"
 #include "ui/TableClipboardHelper.h"
@@ -2236,7 +2236,7 @@ void TransactionHubWidget::onUpdateLogisticsClicked()
 
     std::string parentOrderStatus = "";
     if (db) {
-        Table* ordTbl = db->getTable(hubType == HubType::INBOUND ? "inbound_transaction" : "outbound_transaction");
+        const Table* ordTbl = db->getTable(hubType == HubType::INBOUND ? "inbound_transaction" : "outbound_transaction");
         std::string codeCol = (hubType == HubType::INBOUND ? "inbound_code" : "outbound_code");
         if (ordTbl) {
             Vector<Record> ordRecs = Query::filterRecords(*ordTbl, codeCol, Value(parentCode.toStdString()));

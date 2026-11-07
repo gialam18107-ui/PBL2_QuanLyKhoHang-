@@ -1,4 +1,4 @@
-#include <iostream>
+﻿#include <iostream>
 #include <iomanip>
 #include <chrono>
 #include <cassert>
@@ -42,118 +42,7 @@ OperationResult saveInventoryCheckBatchDirect(
     const Vector<user_update::BatchCheckUnitUpdate>& modifiedUnits,
     const Vector<user_update::BatchCheckUnitSurplus>& surplusUnits
 ) {
-    if (!db || checkId <= 0) return OperationResult{false, "Tham so khong hop le.", 0};
-    if (modifiedUnits.empty() && surplusUnits.empty()) {
-        return OperationResult{true, "Khong co du lieu thay doi can luu.", 0};
-    }
-
-    Table* chkTbl = db->getTable("inventory_check");
-    Table* cqTbl  = db->getTable("inventory_check_quantity");
-    Table* cuTbl  = db->getTable("inventory_check_unit");
-    if (!chkTbl || !cqTbl || !cuTbl) {
-        return OperationResult{false, "Bang du lieu khong ton tai.", 0};
-    }
-
-    const Record* chkRec = chkTbl->getRecordById(checkId);
-    if (!chkRec) {
-        return OperationResult{false, "Khong tim thay dot kiem ke.", 0};
-    }
-
-    // 1. Tim check_unit_id tiep theo
-    int nextCuId = 1;
-    for (const auto& r : cuTbl->getRows()) {
-        if (r.has("check_unit_id") && holds_alternative<int>(r.get("check_unit_id"))) {
-            int id = get<int>(r.get("check_unit_id"));
-            if (id >= nextCuId) nextCuId = id + 1;
-        }
-    }
-
-    HashMap<int, bool> affectedCqIds;
-    int totalAffected = 0;
-
-    // 2. Cap nhat modified units truc tiep vao mutable rows cua cuTbl
-    auto& cuRows = cuTbl->getRows();
-    for (size_t i = 0; i < modifiedUnits.size(); ++i) {
-        const auto& m = modifiedUnits[i];
-        int idx = cuTbl->findRowIndexById(m.checkUnitId);
-        if (idx < 0) continue;
-
-        auto& r = cuRows[idx];
-        if (r.has("check_quantity_id") && holds_alternative<int>(r.get("check_quantity_id"))) {
-            affectedCqIds[get<int>(r.get("check_quantity_id"))] = true;
-        }
-
-        r.set("scanned_status", m.scannedStatus);
-        totalAffected++;
-    }
-
-    // 3. Chen surplus units truc tiep vao cuTbl bang cuTbl->insert (khong bi copy bang)
-    for (size_t i = 0; i < surplusUnits.size(); ++i) {
-        const auto& s = surplusUnits[i];
-        affectedCqIds[s.checkQuantityId] = true;
-
-        int cuId = nextCuId++;
-        Record cuRec;
-        cuRec.set("check_unit_id", cuId);
-        cuRec.set("check_id", checkId);
-        cuRec.set("check_quantity_id", s.checkQuantityId);
-        cuRec.set("serial", s.serial);
-        if (s.systemStatus.empty()) {
-            cuRec.set("system_status", Value{});
-        } else {
-            cuRec.set("system_status", s.systemStatus);
-        }
-        cuRec.set("scanned_status", s.scannedStatus);
-
-        if (cuTbl->insert(cuRec)) {
-            totalAffected++;
-        }
-    }
-
-    // 4. Tinh lai actual counts cho cac check_quantity bi anh huong trong 1 pass duy nhat
-    HashMap<int, QuanCount> counts;
-    Vector<int> affectedList = affectedCqIds.getKeys();
-    for (size_t i = 0; i < affectedList.size(); ++i) {
-        counts[affectedList[i]] = QuanCount{0, 0, 0};
-    }
-
-    Vector<Record> checkUnits = Query::filterRecords(*cuTbl, "check_id", Value(checkId));
-    for (size_t i = 0; i < checkUnits.size(); ++i) {
-        const auto& r = checkUnits[i];
-        if (!r.has("check_quantity_id") || !holds_alternative<int>(r.get("check_quantity_id"))) continue;
-        int cqId = get<int>(r.get("check_quantity_id"));
-        if (!affectedCqIds.contains(cqId)) continue;
-
-        string st = (r.has("scanned_status") && holds_alternative<string>(r.get("scanned_status")))
-                    ? get<string>(r.get("scanned_status")) : "";
-        if (st == "AVAILABLE") counts[cqId].avail++;
-        else if (st == "WARRANTY") counts[cqId].warr++;
-        else if (st == "SCRAPPED") counts[cqId].scrap++;
-    }
-
-    auto& cqRows = cqTbl->getRows();
-    for (size_t i = 0; i < affectedList.size(); ++i) {
-        int cqId = affectedList[i];
-        int idx = cqTbl->findRowIndexById(cqId);
-        if (idx < 0) continue;
-        const auto& c = counts[cqId];
-        cqRows[idx].set("actual_available_quan", c.avail);
-        cqRows[idx].set("actual_warranty_quan", c.warr);
-        cqRows[idx].set("actual_scrapped_quan", c.scrap);
-        totalAffected++;
-    }
-
-    // 5. Cap nhat status dot kiem ke sang IN_PROCESS neu dang PENDING
-    string checkSt = (chkRec->has("status") && holds_alternative<string>(chkRec->get("status")))
-                   ? get<string>(chkRec->get("status")) : "";
-    if (checkSt == "PENDING") {
-        int chkIdx = chkTbl->findRowIndexById(checkId);
-        if (chkIdx >= 0) {
-            chkTbl->getRows()[chkIdx].set("status", string("IN_PROCESS"));
-        }
-    }
-
-    return OperationResult{true, "Da luu truc tiep thanh cong vao Table!", totalAffected};
+    return user_update::saveInventoryCheckBatch(db, checkId, modifiedUnits, surplusUnits);
 }
 
 int main() {
@@ -169,9 +58,9 @@ int main() {
     cout << "[+] Nap CSDL: " << db.getTableCount() << " bang ("
          << fixed << setprecision(1) << chrono::duration<double, milli>(tLoadEnd - tLoadStart).count() << " ms)\n";
 
-    Table* prodTbl = db.getTable("product");
-    Table* cqTbl   = db.getTable("inventory_check_quantity");
-    Table* cuTbl   = db.getTable("inventory_check_unit");
+    const Table* prodTbl = db.getTable("product");
+    const Table* cqTbl = db.getTable("inventory_check_quantity");
+    const Table* cuTbl = db.getTable("inventory_check_unit");
     assert(prodTbl && cqTbl && cuTbl);
 
     Vector<int> productIds;

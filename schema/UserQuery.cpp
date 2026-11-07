@@ -1,4 +1,4 @@
-#include "UserQuery.h"
+﻿#include "UserQuery.h"
 #include "datastructure/hashmap/HashMap.h"
 #include "query/Query.h"
 #include <fstream>
@@ -68,7 +68,7 @@ void product_quantity_query(Database *db, Vector<Record> &results,
 	if (!db)
 		return;
 
-	Table *pTable = db->getTable("product");
+	const Table* pTable = db->getTable("product");
 	if (!pTable)
 		return;
 
@@ -156,8 +156,8 @@ void unit_inventory_query(Database *db, Vector<Record> &results,
 	if (!db)
 		return;
 
-	Table *uTable = db->getTable("unit_inventory");
-	Table *pTable = db->getTable("product");
+	const Table* uTable = db->getTable("unit_inventory");
+	const Table* pTable = db->getTable("product");
 	if (!uTable || !pTable)
 		return;
 
@@ -231,11 +231,11 @@ void status_history_query(Database *db, Vector<Record> &results,
 	if (!db)
 		return;
 
-	Table *shTable = db->getTable("status_history");
-	Table *uTable = db->getTable("unit_inventory");
-	Table *dTable = db->getTable("delivery");
-	Table *sTable = db->getTable("shipment");
-	Table *aTable = db->getTable("adjustment_movement");
+	const Table* shTable = db->getTable("status_history");
+	const Table* uTable = db->getTable("unit_inventory");
+	const Table* dTable = db->getTable("delivery");
+	const Table* sTable = db->getTable("shipment");
+	const Table* aTable = db->getTable("adjustment_movement");
 	if (!shTable || !uTable)
 		return;
 
@@ -471,8 +471,8 @@ void inbound_transaction_query_impl(Database *db, Vector<Record> &results,
 	if (!db)
 		return;
 
-	Table *itTable = db->getTable("inbound_transaction");
-	Table *cTable = db->getTable("customer");
+	const Table* itTable = db->getTable("inbound_transaction");
+	const Table* cTable = db->getTable("customer");
 	if (!itTable || !cTable)
 		return;
 
@@ -582,9 +582,9 @@ void inbound_detail_query(Database *db, Vector<Record> &results,
 	if (!db)
 		return;
 
-	Table *idTable = db->getTable("inbound_detail");
-	Table *itTable = db->getTable("inbound_transaction");
-	Table *pTable = db->getTable("product");
+	const Table* idTable = db->getTable("inbound_detail");
+	const Table* itTable = db->getTable("inbound_transaction");
+	const Table* pTable = db->getTable("product");
 	if (!idTable || !itTable || !pTable)
 		return;
 
@@ -690,8 +690,8 @@ void delivery_query_impl(Database *db, Vector<Record> &results,
 	if (!db)
 		return;
 
-	Table *dTable = db->getTable("delivery");
-	Table *itTable = db->getTable("inbound_transaction");
+	const Table* dTable = db->getTable("delivery");
+	const Table* itTable = db->getTable("inbound_transaction");
 	if (!dTable || !itTable)
 		return;
 
@@ -787,9 +787,9 @@ void delivery_detail_query_impl(Database *db, Vector<Record> &results,
 	if (!db)
 		return;
 
-	Table *ddTable = db->getTable("delivery_detail");
-	Table *dTable = db->getTable("delivery");
-	Table *pTable = db->getTable("product");
+	const Table* ddTable = db->getTable("delivery_detail");
+	const Table* dTable = db->getTable("delivery");
+	const Table* pTable = db->getTable("product");
 	if (!ddTable || !dTable || !pTable)
 		return;
 
@@ -924,8 +924,8 @@ void outbound_transaction_query_impl(Database *db, Vector<Record> &results,
 	if (!db)
 		return;
 
-	Table *otTable = db->getTable("outbound_transaction");
-	Table *cTable = db->getTable("customer");
+	const Table* otTable = db->getTable("outbound_transaction");
+	const Table* cTable = db->getTable("customer");
 	if (!otTable || !cTable)
 		return;
 
@@ -1036,9 +1036,9 @@ void outbound_detail_query(Database *db, Vector<Record> &results,
 	if (!db)
 		return;
 
-	Table *odTable = db->getTable("outbound_detail");
-	Table *otTable = db->getTable("outbound_transaction");
-	Table *pTable = db->getTable("product");
+	const Table* odTable = db->getTable("outbound_detail");
+	const Table* otTable = db->getTable("outbound_transaction");
+	const Table* pTable = db->getTable("product");
 	if (!odTable || !otTable || !pTable)
 		return;
 
@@ -1151,8 +1151,8 @@ void shipment_query_impl(Database *db, Vector<Record> &results,
 	if (!db)
 		return;
 
-	Table *sTable = db->getTable("shipment");
-	Table *otTable = db->getTable("outbound_transaction");
+	const Table* sTable = db->getTable("shipment");
+	const Table* otTable = db->getTable("outbound_transaction");
 	if (!sTable || !otTable)
 		return;
 
@@ -1255,9 +1255,9 @@ void shipment_detail_query_impl(Database *db, Vector<Record> &results,
 	if (!db)
 		return;
 
-	Table *sdTable = db->getTable("shipment_detail");
-	Table *sTable = db->getTable("shipment");
-	Table *pTable = db->getTable("product");
+	const Table* sdTable = db->getTable("shipment_detail");
+	const Table* sTable = db->getTable("shipment");
+	const Table* pTable = db->getTable("product");
 	if (!sdTable || !sTable || !pTable)
 		return;
 
@@ -1396,8 +1396,8 @@ void category_hardware_query(Database *db, const string &categoryName,
 		return;
 
 	string cat = toLowerStr(categoryName);
-	Table *catTable = db->getTable(cat);
-	Table *prodTable = db->getTable("product");
+	const Table* catTable = db->getTable(cat);
+	const Table* prodTable = db->getTable("product");
 	if (!catTable || !prodTable)
 		return;
 
@@ -1529,7 +1529,7 @@ void auxiliary_spec_query(Database *db, const string &tableName,
 		return;
 
 	string tblName = toLowerStr(tableName);
-	Table *table = db->getTable(tblName);
+	const Table* table = db->getTable(tblName);
 	if (!table)
 		return;
 
@@ -1571,8 +1571,8 @@ void individual_customer_query(Database *db, Vector<Record> &results,
 	if (!db)
 		return;
 
-	Table *cTable = db->getTable("customer");
-	Table *iTable = db->getTable("individual_info");
+	const Table* cTable = db->getTable("customer");
+	const Table* iTable = db->getTable("individual_info");
 	if (!cTable || !iTable)
 		return;
 
@@ -1666,8 +1666,8 @@ void business_customer_query(Database *db, Vector<Record> &results,
 	if (!db)
 		return;
 
-	Table *cTable = db->getTable("customer");
-	Table *bTable = db->getTable("business_info");
+	const Table* cTable = db->getTable("customer");
+	const Table* bTable = db->getTable("business_info");
 	if (!cTable || !bTable)
 		return;
 
@@ -1775,11 +1775,11 @@ void periodic_inventory_report(Database *db, int month, int year,
 	if (!db || month < 1 || month > 12 || year < 1900)
 		return;
 
-	Table *pTable = db->getTable("product");
-		Table *delTable = db->getTable("delivery");
-	Table *delDetailTable = db->getTable("delivery_detail");
-	Table *shipTable = db->getTable("shipment");
-	Table *shipDetailTable = db->getTable("shipment_detail");
+	const Table* pTable = db->getTable("product");
+		const Table* delTable = db->getTable("delivery");
+	const Table* delDetailTable = db->getTable("delivery_detail");
+	const Table* shipTable = db->getTable("shipment");
+	const Table* shipDetailTable = db->getTable("shipment_detail");
 
 	if (!pTable || !delTable || !delDetailTable || !shipTable || !shipDetailTable)
 		return;
@@ -2072,11 +2072,11 @@ void logistics_units_history_query(Database *db, const string& logisticsCode, Ve
 	if (!db || logisticsCode.empty())
 		return;
 
-	Table *shTable = db->getTable("status_history");
-	Table *uTable = db->getTable("unit_inventory");
-	Table *pTable = db->getTable("product");
-	Table *dTable = db->getTable("delivery");
-	Table *sTable = db->getTable("shipment");
+	const Table* shTable = db->getTable("status_history");
+	const Table* uTable = db->getTable("unit_inventory");
+	const Table* pTable = db->getTable("product");
+	const Table* dTable = db->getTable("delivery");
+	const Table* sTable = db->getTable("shipment");
 	if (!shTable || !uTable || !pTable)
 		return;
 
@@ -2237,7 +2237,7 @@ string get_transaction_type_by_order_code(Database *db, const string& orderCode,
 	if (!db || orderCode.empty()) return "";
 	string tbl = isInbound ? "inbound_transaction" : "outbound_transaction";
 	string codeCol = isInbound ? "inbound_code" : "outbound_code";
-	Table *t = db->getTable(tbl);
+	const Table* t = db->getTable(tbl);
 	if (!t) return "";
 
 	Vector<Record> matched = Query::filterRecords(*t, codeCol, Value(orderCode));
@@ -2251,7 +2251,7 @@ string get_logistics_status_by_code(Database *db, const string& logisticsCode, b
 	if (!db || logisticsCode.empty()) return "";
 	string tbl = isInbound ? "delivery" : "shipment";
 	string codeCol = isInbound ? "delivery_code" : "shipment_code";
-	Table *t = db->getTable(tbl);
+	const Table* t = db->getTable(tbl);
 	if (!t) return "";
 
 	Vector<Record> matched = Query::filterRecords(*t, codeCol, Value(logisticsCode));
@@ -2268,7 +2268,7 @@ bool is_logistics_completed(Database *db, const string& logisticsCode, bool isIn
 
 int get_product_id_by_serial(Database *db, const string& serial) {
 	if (!db || serial.empty()) return -1;
-	Table *uTable = db->getTable("unit_inventory");
+	const Table* uTable = db->getTable("unit_inventory");
 	if (!uTable) return -1;
 
 	Vector<Record> matched = Query::filterRecords(*uTable, "serial", Value(serial));
@@ -2280,7 +2280,7 @@ int get_product_id_by_serial(Database *db, const string& serial) {
 
 string get_unit_status_by_serial(Database *db, const string& serial) {
 	if (!db || serial.empty()) return "";
-	Table *uTable = db->getTable("unit_inventory");
+	const Table* uTable = db->getTable("unit_inventory");
 	if (!uTable) return "";
 
 	Vector<Record> matched = Query::filterRecords(*uTable, "serial", Value(serial));
@@ -2298,8 +2298,8 @@ void get_candidate_units_for_order(Database *db, const Vector<int>& productIds, 
 	results.clear();
 	if (!db || productIds.empty()) return;
 
-	Table *uTable = db->getTable("unit_inventory");
-	Table *pTable = db->getTable("product");
+	const Table* uTable = db->getTable("unit_inventory");
+	const Table* pTable = db->getTable("product");
 	if (!uTable || !pTable) return;
 
 	HashMap<Value, const Record*> pMap;
@@ -2339,7 +2339,7 @@ void get_candidate_units_for_order(Database *db, const Vector<int>& productIds, 
 void all_customers_query(Database *db, Vector<Record> &results) {
 	results.clear();
 	if (!db) return;
-	Table *custTable = db->getTable("customer");
+	const Table* custTable = db->getTable("customer");
 	if (!custTable) return;
 
 	const auto &rows = custTable->getRows();
@@ -2352,7 +2352,7 @@ void all_customers_query(Database *db, Vector<Record> &results) {
 void get_all_statuses_for_table(Database *db, const string& tableName, Vector<string> &statuses) {
 	statuses.clear();
 	if (!db || tableName.empty()) return;
-	Table *t = db->getTable(tableName);
+	const Table* t = db->getTable(tableName);
 	if (!t) return;
 
 	const auto &rows = t->getRows();
@@ -2369,7 +2369,7 @@ void get_logistics_batch_allocation_info(Database* db, int txnId, bool isInbound
 	items.clear();
 	if (!db || txnId <= 0) return;
 
-	Table* prodTable = db->getTable("product");
+	const Table* prodTable = db->getTable("product");
 		if (!prodTable) return;
 
 	HashMap<Value, const Record*> prodMap;
@@ -2383,9 +2383,9 @@ void get_logistics_batch_allocation_info(Database* db, int txnId, bool isInbound
 
 
 	if (isInbound) {
-		Table* inDetTable = db->getTable("inbound_detail");
-		Table* delTable = db->getTable("delivery");
-		Table* delDetTable = db->getTable("delivery_detail");
+		const Table* inDetTable = db->getTable("inbound_detail");
+		const Table* delTable = db->getTable("delivery");
+		const Table* delDetTable = db->getTable("delivery_detail");
 		if (!inDetTable || !delTable || !delDetTable) return;
 
 		HashMap<int, int> allocatedMap;
@@ -2447,9 +2447,9 @@ void get_logistics_batch_allocation_info(Database* db, int txnId, bool isInbound
 			}
 		}
 	} else {
-		Table* outDetTable = db->getTable("outbound_detail");
-		Table* shipTable = db->getTable("shipment");
-		Table* shipDetTable = db->getTable("shipment_detail");
+		const Table* outDetTable = db->getTable("outbound_detail");
+		const Table* shipTable = db->getTable("shipment");
+		const Table* shipDetTable = db->getTable("shipment_detail");
 		if (!outDetTable || !shipTable || !shipDetTable) return;
 
 		HashMap<int, int> allocatedMap;
@@ -2598,7 +2598,7 @@ void inventory_check_query(Database *db, Vector<Record> &results,
 	const string &indexedColumn, const Value &val) {
 	results.clear();
 	if (!db) return;
-	Table *chkTable = db->getTable("inventory_check");
+	const Table* chkTable = db->getTable("inventory_check");
 	if (!chkTable) return;
 
 	string col = stripPrefix(indexedColumn, "inventory_check.");
@@ -2631,7 +2631,7 @@ void inventory_check_query(Database *db, Vector<Record> &results,
 	const string &indexedColumn, const Value &minVal, const Value &maxVal) {
 	results.clear();
 	if (!db) return;
-	Table *chkTable = db->getTable("inventory_check");
+	const Table* chkTable = db->getTable("inventory_check");
 	if (!chkTable) return;
 
 	string col = stripPrefix(indexedColumn, "inventory_check.");
@@ -2641,9 +2641,9 @@ void inventory_check_query(Database *db, Vector<Record> &results,
 void inventory_check_quantity_query(Database *db, int checkId, Vector<Record> &results) {
 	results.clear();
 	if (!db) return;
-	Table *cqTable = db->getTable("inventory_check_quantity");
-	Table *chkTable = db->getTable("inventory_check");
-	Table *pTable = db->getTable("product");
+	const Table* cqTable = db->getTable("inventory_check_quantity");
+	const Table* chkTable = db->getTable("inventory_check");
+	const Table* pTable = db->getTable("product");
 	if (!cqTable) return;
 
 	HashMap<Value, const Record*> pMap;
@@ -2726,10 +2726,10 @@ void inventory_check_quantity_query(Database *db, int checkId, Vector<Record> &r
 void inventory_check_unit_query(Database *db, int checkId, Vector<Record> &results) {
 	results.clear();
 	if (!db) return;
-	Table *cuTable = db->getTable("inventory_check_unit");
-	Table *chkTable = db->getTable("inventory_check");
-	Table *cqTable = db->getTable("inventory_check_quantity");
-	Table *pTable = db->getTable("product");
+	const Table* cuTable = db->getTable("inventory_check_unit");
+	const Table* chkTable = db->getTable("inventory_check");
+	const Table* cqTable = db->getTable("inventory_check_quantity");
+	const Table* pTable = db->getTable("product");
 	if (!cuTable) return;
 
 	HashMap<Value, const Record*> chkMap;
@@ -2832,7 +2832,7 @@ void adjustment_movement_query(Database *db, Vector<Record> &results,
 	const string &indexedColumn, const Value &val) {
 	results.clear();
 	if (!db) return;
-	Table *adjTable = db->getTable("adjustment_movement");
+	const Table* adjTable = db->getTable("adjustment_movement");
 	if (!adjTable) return;
 
 	string col = stripPrefix(indexedColumn, "adjustment_movement.");
@@ -2853,7 +2853,7 @@ void adjustment_movement_query(Database *db, Vector<Record> &results,
 	const string &indexedColumn, const Value &minVal, const Value &maxVal) {
 	results.clear();
 	if (!db) return;
-	Table *adjTable = db->getTable("adjustment_movement");
+	const Table* adjTable = db->getTable("adjustment_movement");
 	if (!adjTable) return;
 
 	string col = stripPrefix(indexedColumn, "adjustment_movement.");
@@ -2863,9 +2863,9 @@ void adjustment_movement_query(Database *db, Vector<Record> &results,
 void adjust_movement_detail_query(Database *db, int adjustId, Vector<Record> &results) {
 	results.clear();
 	if (!db) return;
-	Table *amdTable = db->getTable("adjust_movement_detail");
-	Table *adjTable = db->getTable("adjustment_movement");
-	Table *pTable = db->getTable("product");
+	const Table* amdTable = db->getTable("adjust_movement_detail");
+	const Table* adjTable = db->getTable("adjustment_movement");
+	const Table* pTable = db->getTable("product");
 	if (!amdTable) return;
 
 	HashMap<Value, const Record*> adjMap;
@@ -2926,8 +2926,8 @@ void adjust_movement_detail_query(Database *db, int adjustId, Vector<Record> &re
 void is_sold_changing_query(Database *db, Vector<Record> &results, int productId) {
 	results.clear();
 	if (!db) return;
-	Table *iscTable = db->getTable("is_sold_changing");
-	Table *pTable = db->getTable("product");
+	const Table* iscTable = db->getTable("is_sold_changing");
+	const Table* pTable = db->getTable("product");
 	if (!iscTable) return;
 
 	HashMap<Value, const Record*> pMap;

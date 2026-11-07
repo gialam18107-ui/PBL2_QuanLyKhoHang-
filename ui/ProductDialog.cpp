@@ -1,4 +1,4 @@
-#include "ProductDialog.h"
+﻿#include "ProductDialog.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -86,7 +86,7 @@ QStringList ProductDialog::loadSpecList(const std::string& tableName, const std:
 {
     QStringList list;
     if (!db) return list;
-    Table* t = db->getTable(tableName);
+    const Table* t = db->getTable(tableName);
     if (!t) return list;
 
     const auto& rows = t->getRows();
@@ -112,7 +112,7 @@ QStringList ProductDialog::loadSpecList(const std::string& tableName, const std:
 void ProductDialog::ensureSpecOptionExists(const std::string& specTableName, const std::string& specValue)
 {
     if (!db || specValue.empty()) return;
-    Table* t = db->getTable(specTableName);
+    const Table* t = db->getTable(specTableName);
     if (!t) return;
 
     const auto& rows = t->getRows();
@@ -594,7 +594,7 @@ void ProductDialog::loadExistingProductData()
 {
     if (!db || editProductId <= 0) return;
 
-    Table* prodTable = db->getTable("product");
+    const Table* prodTable = db->getTable("product");
     if (!prodTable) return;
     const Record* pRec = prodTable->getRecordById(editProductId);
     if (!pRec) return;
@@ -636,7 +636,7 @@ void ProductDialog::loadExistingProductData()
     editSpecTableName = categoryToTableName(catStr);
     if (editSpecTableName.empty()) return;
 
-    Table* specTable = db->getTable(editSpecTableName);
+    const Table* specTable = db->getTable(editSpecTableName);
     if (!specTable) return;
 
     std::string pkCol = specTable->getPrimaryKeyColumn();

@@ -1,4 +1,4 @@
-#include "UserDelete.h"
+﻿#include "UserDelete.h"
 #include "query/Query.h"
 #include <iostream>
 #include <cctype>
@@ -20,39 +20,16 @@ namespace user_delete
         return "";
     }
 
-    static bool hasMatchingRecord(Table* table, const std::string& colName, int value)
+    static bool hasMatchingRecord(const Table* table, const std::string& colName, int value)
     {
         if (!table) return false;
-        Vector<Record> matches = Query::filterRecords(*table, colName, Value(value));
-        if (!matches.empty()) return true;
-
-        // Defensive fallback only if no index exists on colName
-        bool hasIndex = (table->getIndex(colName) != nullptr);
-        if (!hasIndex) {
-            for (const Index* idx : table->getIndexes()) {
-                if (idx != nullptr && idx->getColumnName() == colName) {
-                    hasIndex = true;
-                    break;
-                }
-            }
-        }
-        if (!hasIndex) {
-            const auto& rows = table->getRows();
-            for (size_t i = 0; i < rows.size(); ++i) {
-                if (table->isRowDeleted(i)) continue;
-                const Record& r = rows[i];
-                if (r.has(colName) && std::holds_alternative<int>(r.get(colName)) && std::get<int>(r.get(colName)) == value) {
-                    return true;
-                }
-            }
-        }
-        return false;
+        return table->contains(colName, Value(value));
     }
 
     OperationResult deleteProduct(Database* db, int productId)
     {
         if (!db) return OperationResult{false, "Cơ sở dữ liệu chưa được khởi tạo.", 0};
-        Table* prodTable = db->getTable("product");
+        const Table* prodTable = db->getTable("product");
         if (!prodTable) return OperationResult{false, "Bảng 'product' không tồn tại.", 0};
 
         // 1. Locate product and get category
@@ -100,7 +77,7 @@ namespace user_delete
 
         // Delete from hardware spec table first (child)
         if (!specTable.empty() && db->hasTable(specTable)) {
-            Table* sTab = db->getTable(specTable);
+            const Table* sTab = db->getTable(specTable);
             if (sTab) {
                 std::string pkCol = sTab->getPrimaryKeyColumn();
                 Vector<int> specIds;
@@ -139,7 +116,7 @@ namespace user_delete
     OperationResult deleteCustomer(Database* db, int customerId)
     {
         if (!db) return OperationResult{false, "Cơ sở dữ liệu chưa được khởi tạo.", 0};
-        Table* custTable = db->getTable("customer");
+        const Table* custTable = db->getTable("customer");
         if (!custTable) return OperationResult{false, "Bảng customer không tồn tại.", 0};
 
         const Record* cRec = custTable->getRecordById(customerId);
@@ -166,13 +143,13 @@ namespace user_delete
 
         // Remove from individual_info or business_info first
         if (db->hasTable("individual_info")) {
-            Table* iTab = db->getTable("individual_info");
+            const Table* iTab = db->getTable("individual_info");
             if (iTab && iTab->getRecordById(customerId)) {
                 db->remove("individual_info", customerId);
             }
         }
         if (db->hasTable("business_info")) {
-            Table* bTab = db->getTable("business_info");
+            const Table* bTab = db->getTable("business_info");
             if (bTab && bTab->getRecordById(customerId)) {
                 db->remove("business_info", customerId);
             }
@@ -191,7 +168,7 @@ namespace user_delete
     OperationResult deleteBrand(Database* db, int brandId)
     {
         if (!db) return OperationResult{false, "Cơ sở dữ liệu chưa được khởi tạo.", 0};
-        Table* brandTable = db->getTable("brand");
+        const Table* brandTable = db->getTable("brand");
         if (!brandTable) return OperationResult{false, "Bảng brand không tồn tại.", 0};
 
         const Record* bRec = brandTable->getRecordById(brandId);
@@ -203,7 +180,7 @@ namespace user_delete
                               ? std::get<std::string>(bRec->get("brand")) : "";
 
         // Check if referenced by product
-        Table* prodTable = db->getTable("product");
+        const Table* prodTable = db->getTable("product");
         if (prodTable && !brandName.empty()) {
             Vector<Record> matchedProds = Query::filterRecords(*prodTable, "brand", Value(brandName));
             if (!matchedProds.empty()) {
@@ -224,9 +201,9 @@ namespace user_delete
             tableName == "outbound_transaction" || tableName == "outbound_detail" ||
             tableName == "shipment" || tableName == "shipment_detail" ||
             tableName == "unit_inventory" || tableName == "status_history" ||
-            tableName == "category" || tableName == "is_sold_changing" ||
-            tableName == "inventory_check" || tableName == "inventory_check_quantity" ||
-            tableName == "inventory_check_unit" || tableName == "adjustment_movement" ||
+            tableName == "category" || tableName == "is_sold_changing" ||
+            tableName == "inventory_check" || tableName == "inventory_check_quantity" ||
+            tableName == "inventory_check_unit" || tableName == "adjustment_movement" ||
             tableName == "adjust_movement_detail") {
             return OperationResult{false, "Bảng '" + tableName + "' là dữ liệu hệ thống / chứng từ giao dịch đã xác nhận, không được phép xóa (Rule 5.3).", 0};
         }
