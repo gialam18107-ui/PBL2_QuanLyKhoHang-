@@ -297,10 +297,10 @@ int main() {
   cout << "[+] Read ssd_specs/type.csv via TableIO: " << ssdTypeTable.getRowCount() << " rows, "
        << ssdTypeTable.getColumnCount() << " columns.\n";
   assert(ssdTypeTable.getColumnCount() == 2);
-  assert(ssdTypeTable.getColumn("id") != nullptr);
-  assert(ssdTypeTable.getColumn("spec") != nullptr);
+  assert(ssdTypeTable.hasColumn("id"));
+  assert(ssdTypeTable.hasColumn("spec"));
   assert(ssdTypeTable.getRowCount() > 0);
-  for (const auto &row : ssdTypeTable.getRows()) {
+  for (const auto &row : ssdTypeTable.view()) {
     cout << "   * ID: " << get<int>(row.get("id"))
          << ", Spec: " << get<string>(row.get("spec")) << endl;
   }
@@ -358,7 +358,7 @@ int main() {
   bool readSpecReloadOk = io.readSpecTable(reloadedSpec, "ssd", "test_custom");
   assert(readSpecReloadOk);
   assert(reloadedSpec.getRowCount() == 2);
-  assert(get<string>(reloadedSpec.getRows()[0].get("spec")) == "PCIe 5.0");
+  assert(get<string>((*reloadedSpec.view().begin()).get("spec")) == "PCIe 5.0");
   cout << "[+] Spec sub-table write and read round-trip verified.\n";
 
   // Clean up test spec file

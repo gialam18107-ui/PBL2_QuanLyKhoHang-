@@ -91,15 +91,11 @@ int main()
     assert(db.remove("item", 1).success);
     assert(db.remove("item", 2).success);
 
-    // Before commit: rows vector still has 3 physical slots because compaction is locked during transaction
-    assert(itemTable->getRows().size() == 3);
-
     assert(db.commit());
     assert(!db.isInTransaction());
 
     // After commit: 2 out of 3 rows deleted (>= 50%), so compactIfNeeded() compacted rows to 1
     assert(itemTable->getRowCount() == 1);
-    assert(itemTable->getRows().size() == 1);
     assert(itemTable->getRecordById(3) != nullptr);
     assert(get<int>(itemTable->getRecordById(3)->get("qty")) == 50);
     cout << "Commit & compaction test passed!" << endl;

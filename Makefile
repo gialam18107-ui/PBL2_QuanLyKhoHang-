@@ -1,3 +1,6 @@
+.SUFFIXES:
+MAKEFLAGS += --no-builtin-rules
+
 CXX = g++
 CXXFLAGS = -g -std=c++17 -Wall -Wextra -I. -MMD -MP
 
@@ -83,10 +86,10 @@ test: $(patsubst test/%.cpp, run_%, $(TEST_SRCS))
 crawl:
 	python -m data_crawler.main --output-dir data --validate
 
--include $(CORE_OBJS:.o=.d) $(UI_OBJS:.o=.d) $(TEST_OBJS:.o=.d) $(wildcard $(BUILD_DIR)/*.d) $(wildcard $(BUILD_DIR)/test/*.d)
+-include $(CORE_OBJS:.o=.d) $(GENERATOR_OBJS:.o=.d) $(UI_OBJS:.o=.d) $(TEST_OBJS:.o=.d) $(wildcard $(BUILD_DIR)/*.d) $(wildcard $(BUILD_DIR)/test/*.d)
 
 clean:
-	powershell -Command "if (Test-Path '$(BUILD_DIR)') { Remove-Item -Recurse -Force '$(BUILD_DIR)' }; Remove-Item -Force -ErrorAction SilentlyContinue *.exe, test/*.exe, database/*.o, database/*.d, schema/*.o, schema/*.d, data_io/*.o, data_io/*.d, ui/*.o, ui/*.d, *.o, *.d"
+	powershell -Command "if (Test-Path '$(BUILD_DIR)') { Remove-Item -Recurse -Force '$(BUILD_DIR)' }; Remove-Item -Force -ErrorAction SilentlyContinue *.exe, test/*.exe, database/*.o, database/*.d, schema/*.o, schema/*.d, data_io/*.o, data_io/*.d, generator/*.o, generator/*.d, query/*.o, query/*.d, ui/*.o, ui/*.d, *.o, *.d"
 
 .PHONY: all clean crawl test
 .SECONDARY:

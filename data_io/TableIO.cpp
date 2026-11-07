@@ -201,15 +201,9 @@ namespace DataIO
 
         file << CSVHelper::formatLine(headerNames) << "\n";
 
-        const auto& rows = table.getRows();
-        for (size_t i = 0; i < rows.size(); ++i)
+        for (const auto& r : table.view())
         {
-            // Check if record is deleted before writing
-            if (table.isRowDeleted(i))
-            {
-                continue;
-            }
-            file << CSVHelper::formatLine(rows[i], columns) << "\n";
+            file << CSVHelper::formatLine(r, columns) << "\n";
         }
 
         return true;

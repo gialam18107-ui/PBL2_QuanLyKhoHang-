@@ -13,10 +13,6 @@ namespace DataIO {
     class DatabaseIO;
 }
 
-namespace Generator {
-    class DataGenerator;
-}
-
 /**
  * @brief Represents a relational database containing tables and transaction state.
  * Implements full manual memory management without smart pointers or STL containers.
@@ -24,7 +20,6 @@ namespace Generator {
 class Database
 {
     friend class DataIO::DatabaseIO;
-    friend class Generator::DataGenerator;
 
 private:
     string databaseName;
@@ -61,7 +56,7 @@ private:
         const Record& newValues
     );
 
-    static bool isReferenced(Database& database, const string& tableName, const Vector<Record>& removedRows);
+    static bool isReferenced(Database& database, const string& tableName, const Record& parent);
 
 public:
     /**

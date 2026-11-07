@@ -45,7 +45,6 @@ TABLE_DOMAINS: Dict[str, str] = {
     "unit_inventory": "unit",
 
     # 10.3 Products
-    "product_quantity": "products",
     "product": "products",
     "cpu": "products",
     "mainboard": "products",
@@ -241,7 +240,7 @@ class SchemaExporter:
         summary["individual_info"] = len(INDIVIDUAL_INFO)
 
         # 12. BUSINESS_INFO (customers/)
-        biz_headers = ["customer_id", "phone_number", "email", "tax_code", "next_code_no"]
+        biz_headers = ["customer_id", "phone_number", "email", "tax_code", "address", "next_code_no"]
         self._write_csv("business_info.csv", biz_headers, BUSINESS_INFO)
         summary["business_info"] = len(BUSINESS_INFO)
 
@@ -262,12 +261,7 @@ class SchemaExporter:
         self._write_csv("product.csv", prod_headers, crawler.products)
         summary["product"] = len(crawler.products)
 
-        # 14. PRODUCT_QUANTITY (products/)
-        prod_quan_headers = ["product_id", "available_quan", "warranty_quan", "scrapped_quan"]
-        self._write_csv("product_quantity.csv", prod_quan_headers, crawler.product_quantities)
-        summary["product_quantity"] = len(crawler.product_quantities)
-
-        # 15. CPU (products/)
+        # 14. CPU (products/)
         cpu_headers = ["cpu_id", "product_id", "socket", "tier", "series"]
         self._write_csv("cpu.csv", cpu_headers, crawler.specs_by_category["CPU"])
         summary["cpu"] = len(crawler.specs_by_category["CPU"])
@@ -344,12 +338,13 @@ class SchemaExporter:
         # 25. INBOUND_DETAIL (transactions/)
         inbound_details = [
             {
-                "inbound_detail_id": 1,
+                "inbound_detail_id": i + 1,
                 "inbound_transaction_id": 1,
-                "product_id": 1,
-                "ordered_quantity": 25,
-                "actual_quantity": 25,
+                "product_id": p["product_id"],
+                "ordered_quantity": p["available_quantity"],
+                "actual_quantity": p["available_quantity"],
             }
+            for i, p in enumerate(crawler.products)
         ]
         inbound_detail_headers = [
             "inbound_detail_id",
@@ -386,12 +381,13 @@ class SchemaExporter:
         # 27. DELIVERY_DETAIL (transactions/)
         delivery_details = [
             {
-                "delivery_detail_id": 1,
+                "delivery_detail_id": i + 1,
                 "delivery_id": 1,
-                "product_id": 1,
-                "received_quantity": 25,
-                "actual_quantity": 25,
+                "product_id": p["product_id"],
+                "received_quantity": p["available_quantity"],
+                "actual_quantity": p["available_quantity"],
             }
+            for i, p in enumerate(crawler.products)
         ]
         delivery_detail_headers = ["delivery_detail_id", "delivery_id", "product_id", "received_quantity", "actual_quantity"]
         self._write_csv("delivery_detail.csv", delivery_detail_headers, delivery_details)
@@ -526,7 +522,7 @@ class SchemaExporter:
         summary["inventory_check_quantity"] = 0
 
         # 40. INVENTORY_CHECK_UNIT (inventory_check/)
-        inv_check_unit_headers = ["check_unit_id", "check_id", "check_quantity_id", "unit_id", "system_status", "scanned_status"]
+        inv_check_unit_headers = ["check_unit_id", "check_id", "check_quantity_id", "serial", "system_status", "scanned_status"]
         self._write_csv("inventory_check_unit.csv", inv_check_unit_headers, [])
         summary["inventory_check_unit"] = 0
 

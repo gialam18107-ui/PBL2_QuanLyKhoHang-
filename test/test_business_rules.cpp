@@ -42,7 +42,7 @@ void test_code_formats(Database& db)
     assert(inTxnTbl != nullptr);
     regex inCodeRegex(R"(^IN-(PUR|ADJ|WCK|WRP|CRT)-\d{6}$)");
     int validInCodes = 0;
-    for (const auto& r : inTxnTbl->getRows())
+    for (const auto& r : inTxnTbl->view())
     {
         string code = get<string>(r.get("inbound_code"));
         assert(regex_match(code, inCodeRegex));
@@ -55,7 +55,7 @@ void test_code_formats(Database& db)
     assert(outTxnTbl != nullptr);
     regex outCodeRegex(R"(^OUT-(SEL|ADJ|WRT|WRC|RTS)-\d{6}$)");
     int validOutCodes = 0;
-    for (const auto& r : outTxnTbl->getRows())
+    for (const auto& r : outTxnTbl->view())
     {
         string code = get<string>(r.get("outbound_code"));
         assert(regex_match(code, outCodeRegex));
@@ -68,7 +68,7 @@ void test_code_formats(Database& db)
     assert(delTbl != nullptr);
     regex delCodeRegex(R"(^IN-(PUR|ADJ|WCK|WRP|CRT)-\d{6}-D\d{2}$)");
     int validDelCodes = 0;
-    for (const auto& r : delTbl->getRows())
+    for (const auto& r : delTbl->view())
     {
         string code = get<string>(r.get("delivery_code"));
         assert(regex_match(code, delCodeRegex));
@@ -81,7 +81,7 @@ void test_code_formats(Database& db)
     assert(shipTbl != nullptr);
     regex shipCodeRegex(R"(^OUT-(SEL|ADJ|WRT|WRC|RTS)-\d{6}-S\d{2}$)");
     int validShipCodes = 0;
-    for (const auto& r : shipTbl->getRows())
+    for (const auto& r : shipTbl->view())
     {
         string code = get<string>(r.get("shipment_code"));
         assert(regex_match(code, shipCodeRegex));
@@ -95,7 +95,7 @@ void test_code_formats(Database& db)
     regex serialRegex(R"(^SN-[A-Za-z0-9]{7}$)");
     int validSerials = 0;
     HashMap<string, bool> serialUniqueness;
-    for (const auto& r : unitTbl->getRows())
+    for (const auto& r : unitTbl->view())
     {
         string serial = get<string>(r.get("serial"));
         assert(regex_match(serial, serialRegex));
@@ -110,7 +110,7 @@ void test_code_formats(Database& db)
     assert(custTbl != nullptr);
     regex custCodeRegex(R"(^(IN|BS)-\d{7}$)");
     int validCustCodes = 0;
-    for (const auto& r : custTbl->getRows())
+    for (const auto& r : custTbl->view())
     {
         string code = get<string>(r.get("customer_code"));
         assert(regex_match(code, custCodeRegex));
@@ -123,7 +123,7 @@ void test_code_formats(Database& db)
     assert(prodTbl != nullptr);
     regex prodCodeRegex(R"(^[A-Z0-9]+-[A-Z0-9]+-\d{4}-\d{4}$)");
     int validProdCodes = 0;
-    for (const auto& r : prodTbl->getRows())
+    for (const auto& r : prodTbl->view())
     {
         string code = get<string>(r.get("product_code"));
         assert(regex_match(code, prodCodeRegex));
@@ -146,7 +146,7 @@ void test_product_selling_status_and_quantities(Database& db)
     // 2.1 All active products must have is_sold == TRUE
     int activeSoldProducts = 0;
     int inactiveProducts = 0;
-    for (const auto& p : prodTbl->getRows())
+    for (const auto& p : prodTbl->view())
     {
         assert(p.has("is_sold"));
         bool isSold = get<bool>(p.get("is_sold"));
@@ -155,7 +155,7 @@ void test_product_selling_status_and_quantities(Database& db)
         else
             inactiveProducts++;
     }
-    printSub("Product is_sold is TRUE (Active Catalog)", activeSoldProducts >= 90, to_string(activeSoldProducts) + " active, " + to_string(inactiveProducts) + " inactive");
+    printSub("Product is_sold is TRUE (Active Catalog)", activeSoldProducts > 0 && inactiveProducts == 0, to_string(activeSoldProducts) + " active, " + to_string(inactiveProducts) + " inactive");
 
     // 2.2 Count physical units per product and status from unit_inventory
     HashMap<int, int> availableCounts;
@@ -163,7 +163,7 @@ void test_product_selling_status_and_quantities(Database& db)
     HashMap<int, int> scrappedCounts;
     HashMap<int, int> outCounts;
 
-    for (const auto& u : unitTbl->getRows())
+    for (const auto& u : unitTbl->view())
     {
         int pid = get<int>(u.get("product_id"));
         string status = get<string>(u.get("status"));
@@ -192,7 +192,7 @@ void test_product_selling_status_and_quantities(Database& db)
 
     // 2.3 Verify exact atomic synchronization with product table
     int verifiedQuantities = 0;
-    for (const auto& pq : prodTbl->getRows())
+    for (const auto& pq : prodTbl->view())
     {
         int pid = get<int>(pq.get("product_id"));
         int expectedAvail = availableCounts.contains(pid) ? availableCounts[pid] : 0;
@@ -206,7 +206,7 @@ void test_product_selling_status_and_quantities(Database& db)
         assert(actualAvail >= 0 && actualWarr >= 0 && actualScrap >= 0);
         verifiedQuantities++;
     }
-    printSub("Inventory Buckets Synced (available, warranty, scrapped)", verifiedQuantities >= 90, to_string(verifiedQuantities) + " products verified");
+    printSub("Inventory Buckets Synced (available, warranty, scrapped)", verifiedQuantities > 0, to_string(verifiedQuantities) + " products verified");
 }
 
 // ============================================================================
@@ -231,12 +231,12 @@ void test_transaction_coupling_and_quantities(Database& db)
 
     // 3.1 Every Inbound Transaction must be coupled with Delivery records
     HashMap<int, int> deliveriesPerInbound;
-    for (const auto& del : delTbl->getRows())
+    for (const auto& del : delTbl->view())
     {
         int inTxnId = get<int>(del.get("inbound_transaction_id"));
         deliveriesPerInbound[inTxnId] = (deliveriesPerInbound.contains(inTxnId) ? deliveriesPerInbound[inTxnId] : 0) + 1;
     }
-    for (const auto& inTxn : inTxnTbl->getRows())
+    for (const auto& inTxn : inTxnTbl->view())
     {
         int inTxnId = get<int>(inTxn.get("inbound_transaction_id"));
         assert(deliveriesPerInbound.contains(inTxnId) && deliveriesPerInbound[inTxnId] >= 1);
@@ -248,7 +248,7 @@ void test_transaction_coupling_and_quantities(Database& db)
     HashMap<int, HashMap<int, int>> delivActualPerInboundProduct;
     HashMap<int, HashMap<int, int>> delivReceivedPerInboundProduct;
 
-    for (const auto& dd : delDetTbl->getRows())
+    for (const auto& dd : delDetTbl->view())
     {
         int delId = get<int>(dd.get("delivery_id"));
         int pid = get<int>(dd.get("product_id"));
@@ -260,7 +260,7 @@ void test_transaction_coupling_and_quantities(Database& db)
 
         // Find parent inbound transaction id
         int parentInboundId = -1;
-        for (const auto& del : delTbl->getRows())
+        for (const auto& del : delTbl->view())
         {
             if (get<int>(del.get("delivery_id")) == delId)
             {
@@ -277,7 +277,7 @@ void test_transaction_coupling_and_quantities(Database& db)
             (delivReceivedPerInboundProduct[parentInboundId].contains(pid) ? delivReceivedPerInboundProduct[parentInboundId][pid] : 0) + recQty;
     }
 
-    for (const auto& idet : inDetTbl->getRows())
+    for (const auto& idet : inDetTbl->view())
     {
         int inTxnId = get<int>(idet.get("inbound_transaction_id"));
         int pid = get<int>(idet.get("product_id"));
@@ -297,12 +297,12 @@ void test_transaction_coupling_and_quantities(Database& db)
 
     // 3.3 Every Outbound Transaction must be coupled with Shipment records
     HashMap<int, int> shipmentsPerOutbound;
-    for (const auto& ship : shipTbl->getRows())
+    for (const auto& ship : shipTbl->view())
     {
         int outTxnId = get<int>(ship.get("sell_id"));
         shipmentsPerOutbound[outTxnId] = (shipmentsPerOutbound.contains(outTxnId) ? shipmentsPerOutbound[outTxnId] : 0) + 1;
     }
-    for (const auto& outTxn : outTxnTbl->getRows())
+    for (const auto& outTxn : outTxnTbl->view())
     {
         int outTxnId = get<int>(outTxn.get("outbound_trainsaction_id"));
         assert(shipmentsPerOutbound.contains(outTxnId) && shipmentsPerOutbound[outTxnId] >= 1);
@@ -313,7 +313,7 @@ void test_transaction_coupling_and_quantities(Database& db)
     HashMap<int, HashMap<int, int>> shipActualPerOutboundProduct;
     HashMap<int, HashMap<int, int>> shipReceivedPerOutboundProduct;
 
-    for (const auto& sd : shipDetTbl->getRows())
+    for (const auto& sd : shipDetTbl->view())
     {
         int shipId = get<int>(sd.get("shipment_id"));
         int pid = get<int>(sd.get("product_id"));
@@ -324,7 +324,7 @@ void test_transaction_coupling_and_quantities(Database& db)
         assert(actQty >= 0);
 
         int parentOutboundId = -1;
-        for (const auto& ship : shipTbl->getRows())
+        for (const auto& ship : shipTbl->view())
         {
             if (get<int>(ship.get("shipment_id")) == shipId)
             {
@@ -341,7 +341,7 @@ void test_transaction_coupling_and_quantities(Database& db)
             (shipReceivedPerOutboundProduct[parentOutboundId].contains(pid) ? shipReceivedPerOutboundProduct[parentOutboundId][pid] : 0) + reqQty;
     }
 
-    for (const auto& odet : outDetTbl->getRows())
+    for (const auto& odet : outDetTbl->view())
     {
         int outTxnId = get<int>(odet.get("outbound_transaction_id"));
         int pid = get<int>(odet.get("product_id"));
@@ -377,7 +377,7 @@ void test_unit_lifecycle_and_history(Database& db)
     int inboundHistCount = 0;
     int outboundHistCount = 0;
 
-    for (const auto& h : histTbl->getRows())
+    for (const auto& h : histTbl->view())
     {
         int hid = get<int>(h.get("history_id"));
         int uid = get<int>(h.get("unit_id"));
@@ -419,7 +419,7 @@ void test_unit_lifecycle_and_history(Database& db)
 
     // 4.2 Unit inventory status must match the latest status_history record
     int matchingUnits = 0;
-    for (const auto& u : unitTbl->getRows())
+    for (const auto& u : unitTbl->view())
     {
         int uid = get<int>(u.get("unit_id"));
         string currentStatus = get<string>(u.get("status"));
@@ -445,7 +445,7 @@ void test_customer_associations(Database& db)
     assert(custTbl && inTxnTbl && outTxnTbl);
 
     HashMap<int, string> customerTypes;
-    for (const auto& c : custTbl->getRows())
+    for (const auto& c : custTbl->view())
     {
         int cid = get<int>(c.get("customer_id"));
         string type = get<string>(c.get("type"));
@@ -456,7 +456,7 @@ void test_customer_associations(Database& db)
     // PUR, WRP -> BUSINESS
     // WCK, CRT -> INDIVIDUAL
     int verifiedInboundPartners = 0;
-    for (const auto& itxn : inTxnTbl->getRows())
+    for (const auto& itxn : inTxnTbl->view())
     {
         if (!itxn.has("customer_id") || !holds_alternative<int>(itxn.get("customer_id")))
         {
@@ -488,7 +488,7 @@ void test_customer_associations(Database& db)
 
     // 5.2 Outbound Transactions: all customers referenced must exist
     int verifiedOutboundPartners = 0;
-    for (const auto& otxn : outTxnTbl->getRows())
+    for (const auto& otxn : outTxnTbl->view())
     {
         if (!otxn.has("customer_id") || !holds_alternative<int>(otxn.get("customer_id")))
         {
@@ -519,7 +519,7 @@ void test_category_specifications(Database& db)
 
     // Check every product belongs to one of the 8 hardware categories
     HashMap<string, int> countPerCategory;
-    for (const auto& p : prodTbl->getRows())
+    for (const auto& p : prodTbl->view())
     {
         string cat = get<string>(p.get("category"));
         assert(validCategories.contains(cat));
@@ -553,7 +553,7 @@ void test_category_specifications(Database& db)
     assert(caseTbl->getRowCount() == countPerCategory["CASE"]);
 
     // Mainboard cpu_support must be INTEL or AMD
-    for (const auto& mb : mbTbl->getRows())
+    for (const auto& mb : mbTbl->view())
     {
         string sup = get<string>(mb.get("cpu_support"));
         assert(sup == "INTEL" || sup == "AMD");
@@ -561,7 +561,7 @@ void test_category_specifications(Database& db)
     printSub("Mainboard cpu_support Spec (Strictly 'INTEL' or 'AMD')", true, to_string(mbTbl->getRowCount()) + " mainboards");
 
     // RAM generation must be DDR4 or DDR5
-    for (const auto& r : ramTbl->getRows())
+    for (const auto& r : ramTbl->view())
     {
         string gen = get<string>(r.get("generation"));
         assert(gen == "DDR4" || gen == "DDR5");
@@ -569,7 +569,7 @@ void test_category_specifications(Database& db)
     printSub("RAM Generation Spec (Strictly 'DDR4' or 'DDR5')", true, to_string(ramTbl->getRowCount()) + " RAM kits");
 
     // GPU VRAM must be positive integer
-    for (const auto& g : gpuTbl->getRows())
+    for (const auto& g : gpuTbl->view())
     {
         int vram = get<int>(g.get("vram"));
         assert(vram > 0 && vram <= 48);

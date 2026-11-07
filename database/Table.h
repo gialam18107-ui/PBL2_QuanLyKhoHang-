@@ -17,32 +17,13 @@ namespace DataIO {
     class TableIO;
 }
 
-namespace Generator {
-    class DataGenerator;
-}
-
 class Database;
-
-// Forward declarations for unit testing internal index structures
-void test_product_indexes_with_real_data(Database& db);
-void test_cpu_indexes_with_real_data(Database& db);
-void test_inbound_transaction_date_index_with_real_data(Database& db);
-void test_delivery_date_index_with_real_data(Database& db);
-void test_customer_indexes_with_real_data(Database& db);
-void test_status_history_indexes_with_real_data(Database& db);
 
 class Table
 {
     friend class TableView;
     friend class Database;
     friend class DataIO::TableIO;
-    friend class Generator::DataGenerator;
-    friend void test_product_indexes_with_real_data(Database& db);
-    friend void test_cpu_indexes_with_real_data(Database& db);
-    friend void test_inbound_transaction_date_index_with_real_data(Database& db);
-    friend void test_delivery_date_index_with_real_data(Database& db);
-    friend void test_customer_indexes_with_real_data(Database& db);
-    friend void test_status_history_indexes_with_real_data(Database& db);
 
 private:
     string name;
@@ -63,6 +44,7 @@ private:
     size_t rawRowCount() const;
     const Record& getRawRow(size_t rowIndex) const;
     Record& getRawRow(size_t rowIndex);
+    bool isRowDeleted(size_t rowIndex) const;
 
     // Internal row lookup for Database
     int findRowIndexById(int id) const;
@@ -180,12 +162,7 @@ public:
     /// Return a view filtering by indexed column range match (minVal <= col <= maxVal).
     TableView view(const string& columnName, const Value& minVal, const Value& maxVal) const;
 
-    // ========================================================
-    // COMPATIBILITY ACCESSORS
-    // ========================================================
 
-    const Vector<Record>& getRows() const;
-    bool isRowDeleted(size_t rowIndex) const;
 
     /// Print table schema structure (columns, types, constraints, indexes).
     void printStructure() const;

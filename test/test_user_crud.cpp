@@ -342,12 +342,10 @@ int main()
     // Find delivery ID that has Product 2 received_quantity = 12 (search from end to get newly created batch)
     const Table* delDetTbl = db.getTable("delivery_detail");
     int targetDelId = -1;
-    for (int i = static_cast<int>(delDetTbl->getRowCount()) - 1; i >= 0; --i) {
-        const auto& r = delDetTbl->getRows()[i];
+    for (const auto& r : delDetTbl->view()) {
         if (r.has("product_id") && std::get<int>(r.get("product_id")) == 2 &&
             r.has("received_quantity") && std::get<int>(r.get("received_quantity")) == 12) {
             targetDelId = std::get<int>(r.get("delivery_id"));
-            break;
         }
     }
     assert(targetDelId != -1);
@@ -369,7 +367,7 @@ int main()
 
     // Verify delivery_detail actual_quantity incremented to 5
     int actualInDelDet = 0;
-    for (const auto& r : delDetTbl->getRows()) {
+    for (const auto& r : delDetTbl->view()) {
         if (std::get<int>(r.get("delivery_id")) == targetDelId && std::get<int>(r.get("product_id")) == 2) {
             actualInDelDet = std::get<int>(r.get("actual_quantity"));
             break;
@@ -392,11 +390,9 @@ int main()
     // Find the latest unit created for Product 2
     const Table* unitTbl = db.getTable("unit_inventory");
     std::string unitToDispatch = "";
-    for (int i = static_cast<int>(unitTbl->getRowCount()) - 1; i >= 0; --i) {
-        const Record& u = unitTbl->getRows()[i];
+    for (const auto& u : unitTbl->view()) {
         if (std::get<int>(u.get("product_id")) == 2 && std::get<string>(u.get("status")) == "AVAILABLE") {
             unitToDispatch = std::get<string>(u.get("serial"));
-            break;
         }
     }
     assert(!unitToDispatch.empty());
@@ -413,7 +409,7 @@ int main()
     assert(rDispatch.success == true);
 
     // Verify unit status transitioned to OUT
-    for (const auto& u : unitTbl->getRows()) {
+    for (const auto& u : unitTbl->view()) {
         if (std::get<string>(u.get("serial")) == unitToDispatch) {
             assert(std::get<string>(u.get("status")) == "OUT");
             break;
@@ -428,10 +424,12 @@ int main()
 
     // 7.6 Verify status_history logging (Rule 4.4.3)
     const Table* histTbl = db.getTable("status_history");
-    const Record& latestHist = histTbl->getRows().back();
-    assert(std::get<string>(latestHist.get("curr_status")) == "OUT");
-    assert(std::get<string>(latestHist.get("old_status")) == "AVAILABLE");
-    assert(std::get<string>(latestHist.get("type")) == "OUTBOUND");
+    int lastHId = user_create::getNextTableId(&db, "status_history") - 1;
+    const Record* latestHist = histTbl->getRecordById(lastHId);
+    assert(latestHist != nullptr);
+    assert(std::get<string>(latestHist->get("curr_status")) == "OUT");
+    assert(std::get<string>(latestHist->get("old_status")) == "AVAILABLE");
+    assert(std::get<string>(latestHist->get("type")) == "OUTBOUND");
     std::cout << "status_history record logged: AVAILABLE -> OUT, type=OUTBOUND (verified)" << std::endl;
 
     // 7.7 Re-dispatching an already OUT unit must be rejected
@@ -450,7 +448,8 @@ int main()
     OperationResult chkRes1 = user_create::createInventoryCheck(&db, "UNIT", "2026-10-28", chkProdIds, "Stocktake for adj in");
     assert(chkRes1.success);
     const Table* chkTbl = db.getTable("inventory_check");
-    std::string chkCode1 = std::get<std::string>(chkTbl->getRows().back().get("check_code"));
+    int lastChkId1 = user_create::getNextTableId(&db, "inventory_check") - 1;
+    std::string chkCode1 = std::get<std::string>(chkTbl->getRecordById(lastChkId1)->get("check_code"));
 
     // 8.1 Inbound Adjustment with empty customer code -> defaults to BS-0000000 (customer_id = 0)
     Vector<Pair<int, int>> adjInItems;
@@ -461,15 +460,18 @@ int main()
 
     // Verify inbound_transaction customer_id is NULL/monostate or 0
     const Table* inTxnTbl = db.getTable("inbound_transaction");
-    const Record& latestInTxn = inTxnTbl->getRows().back();
-    assert(std::holds_alternative<std::monostate>(latestInTxn.get("customer_id")) ||
-           (std::holds_alternative<int>(latestInTxn.get("customer_id")) && std::get<int>(latestInTxn.get("customer_id")) == 0));
+    int lastInId = user_create::getNextTableId(&db, "inbound_transaction") - 1;
+    const Record* latestInTxn = inTxnTbl->getRecordById(lastInId);
+    assert(latestInTxn != nullptr);
+    assert(std::holds_alternative<std::monostate>(latestInTxn->get("customer_id")) ||
+           (std::holds_alternative<int>(latestInTxn->get("customer_id")) && std::get<int>(latestInTxn->get("customer_id")) == 0));
     std::cout << "Inbound transaction linked customer_id is NULL / 0 (verified)" << std::endl;
 
     // Create another check for outbound adjustment
     OperationResult chkRes2 = user_create::createInventoryCheck(&db, "UNIT", "2026-10-28", chkProdIds, "Stocktake for adj out");
     assert(chkRes2.success);
-    std::string chkCode2 = std::get<std::string>(chkTbl->getRows().back().get("check_code"));
+    int lastChkId2 = user_create::getNextTableId(&db, "inventory_check") - 1;
+    std::string chkCode2 = std::get<std::string>(chkTbl->getRecordById(lastChkId2)->get("check_code"));
 
     // 8.2 Outbound Adjustment with empty customer code -> defaults to BS-0000000 (customer_id = 0)
     Vector<Pair<int, int>> adjOutItems;
@@ -479,9 +481,11 @@ int main()
     assert(rAdjOut.success == true);
 
     const Table* outTxnTbl = db.getTable("outbound_transaction");
-    const Record& latestOutTxn = outTxnTbl->getRows().back();
-    assert(std::holds_alternative<std::monostate>(latestOutTxn.get("customer_id")) ||
-           (std::holds_alternative<int>(latestOutTxn.get("customer_id")) && std::get<int>(latestOutTxn.get("customer_id")) == 0));
+    int lastOutId = user_create::getNextTableId(&db, "outbound_transaction") - 1;
+    const Record* latestOutTxn = outTxnTbl->getRecordById(lastOutId);
+    assert(latestOutTxn != nullptr);
+    assert(std::holds_alternative<std::monostate>(latestOutTxn->get("customer_id")) ||
+           (std::holds_alternative<int>(latestOutTxn->get("customer_id")) && std::get<int>(latestOutTxn->get("customer_id")) == 0));
     std::cout << "Outbound transaction linked customer_id is NULL / 0 (verified)" << std::endl;
 
     // 8.3 Inbound Adjustment unit receiving: reject target status OUT

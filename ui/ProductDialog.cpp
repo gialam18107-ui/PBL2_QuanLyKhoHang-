@@ -1,4 +1,4 @@
-﻿#include "ProductDialog.h"
+#include "ProductDialog.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -89,10 +89,7 @@ QStringList ProductDialog::loadSpecList(const std::string& tableName, const std:
     const Table* t = db->getTable(tableName);
     if (!t) return list;
 
-    const auto& rows = t->getRows();
-    for (size_t i = 0; i < rows.size(); ++i) {
-        if (t->isRowDeleted(i)) continue;
-        const Record& r = rows[i];
+    for (const auto& r : t->view()) {
         if (r.has(colName)) {
             const Value& v = r.get(colName);
             QString s;
@@ -115,14 +112,8 @@ void ProductDialog::ensureSpecOptionExists(const std::string& specTableName, con
     const Table* t = db->getTable(specTableName);
     if (!t) return;
 
-    const auto& rows = t->getRows();
-    for (size_t i = 0; i < rows.size(); ++i) {
-        if (t->isRowDeleted(i)) continue;
-        if (rows[i].has("spec") && holds_alternative<std::string>(rows[i].get("spec"))) {
-            if (get<std::string>(rows[i].get("spec")) == specValue) {
-                return;
-            }
-        }
+    if (t->contains("spec", Value(specValue))) {
+        return;
     }
 
     Record rec;
@@ -641,14 +632,10 @@ void ProductDialog::loadExistingProductData()
 
     std::string pkCol = specTable->getPrimaryKeyColumn();
     const Record* foundSpec = nullptr;
-    const auto& rows = specTable->getRows();
-    for (size_t i = 0; i < rows.size(); ++i) {
-        if (specTable->isRowDeleted(i)) continue;
-        if (getIntField(rows[i], "product_id", -1) == editProductId) {
-            foundSpec = &rows[i];
-            editSpecRecordId = getIntField(rows[i], pkCol, -1);
-            break;
-        }
+    for (const auto& r : specTable->view("product_id", Value(editProductId))) {
+        foundSpec = &r;
+        editSpecRecordId = getIntField(r, pkCol, -1);
+        break;
     }
 
     if (!foundSpec) return;

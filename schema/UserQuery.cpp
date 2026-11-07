@@ -1,4 +1,4 @@
-﻿#include "UserQuery.h"
+#include "UserQuery.h"
 #include "datastructure/hashmap/HashMap.h"
 #include "query/Query.h"
 #include <fstream>
@@ -87,18 +87,12 @@ void product_quantity_query(Database *db, Vector<Record> &results,
 		}
 		prodSource = Query::filterRecords(*pTable, col, filterVal);
 	} else {
-		const auto &pRows = pTable->getRows();
-		prodSource.reserve(pRows.size());
-		for (size_t i = 0; i < pRows.size(); ++i) {
-			if (!pTable->isRowDeleted(i)) {
-				prodSource.push_back(pRows[i]);
-			}
+		for (const auto &r : pTable->view()) {
+			prodSource.push_back(r);
 		}
 	}
 
-	results.reserve(prodSource.size());
-	for (size_t i = 0; i < prodSource.size(); ++i) {
-		const Record &p = prodSource[i];
+	for (const Record &p : prodSource) {
 		Record out;
 		if (p.has("product_id")) {
 			out.set("product.product_id", p.get("product_id"));
@@ -166,10 +160,9 @@ void unit_inventory_query(Database *db, Vector<Record> &results,
 
 	// Map product_id -> const Record* (Zero deep copies)
 	HashMap<Value, const Record*> prodMap;
-	const auto &pRows = pTable->getRows();
-	for (size_t i = 0; i < pRows.size(); ++i) {
-		if (!pTable->isRowDeleted(i) && pRows[i].has("product_id")) {
-			prodMap[pRows[i].get("product_id")] = &pRows[i];
+	for (const auto &r : pTable->view()) {
+		if (r.has("product_id")) {
+			prodMap[r.get("product_id")] = &r;
 		}
 	}
 
@@ -201,14 +194,9 @@ void unit_inventory_query(Database *db, Vector<Record> &results,
 			processUnit(uSource[i]);
 		}
 	} else {
-		// Duyệt trực tiếp uTable->getRows() mà không sinh thêm vector trung gian
-		const auto &uRows = uTable->getRows();
-		results.reserve(uRows.size());
-		for (size_t i = 0; i < uRows.size(); ++i) {
-			if (!uTable->isRowDeleted(i)) {
-				processUnit(uRows[i]);
-			}
-		}
+		for (const auto &r : uTable->view()) {
+		processUnit(r);
+	}
 	}
 }
 
@@ -244,42 +232,38 @@ void status_history_query(Database *db, Vector<Record> &results,
 
 	// 1. Map unit_id -> const Record* (Zero deep copies)
 	HashMap<Value, const Record*> unitMap;
-	const auto &uRows = uTable->getRows();
-	for (size_t i = 0; i < uRows.size(); ++i) {
-		if (!uTable->isRowDeleted(i) && uRows[i].has("unit_id")) {
-			unitMap[uRows[i].get("unit_id")] = &uRows[i];
+	for (const auto &r : uTable->view()) {
+		if (r.has("unit_id")) {
+			unitMap[r.get("unit_id")] = &r;
 		}
 	}
 
 	// 2. Maps cho delivery, shipment và adjustment_movement (lưu con trỏ const Record*)
 	HashMap<Value, const Record*> delivMap;
 	if (dTable) {
-		const auto &dRows = dTable->getRows();
-		for (size_t i = 0; i < dRows.size(); ++i) {
-			if (!dTable->isRowDeleted(i) && dRows[i].has("delivery_id")) {
-				delivMap[dRows[i].get("delivery_id")] = &dRows[i];
-			}
+		for (const auto &r : dTable->view()) {
+		if (r.has("delivery_id")) {
+			delivMap[r.get("delivery_id")] = &r;
 		}
+	}
 	}
 
 	HashMap<Value, const Record*> shipMap;
 	if (sTable) {
-		const auto &sRows = sTable->getRows();
-		for (size_t i = 0; i < sRows.size(); ++i) {
-			if (!sTable->isRowDeleted(i) && sRows[i].has("shipment_id")) {
-				shipMap[sRows[i].get("shipment_id")] = &sRows[i];
-			}
+		for (const auto &r : sTable->view()) {
+		if (r.has("shipment_id")) {
+			shipMap[r.get("shipment_id")] = &r;
 		}
+	}
 	}
 
 	HashMap<Value, const Record*> adjMap;
 	if (aTable) {
-		const auto &aRows = aTable->getRows();
-		for (size_t i = 0; i < aRows.size(); ++i) {
-			if (!aTable->isRowDeleted(i) && aRows[i].has("adjust_id")) {
-				adjMap[aRows[i].get("adjust_id")] = &aRows[i];
-			}
+		for (const auto &r : aTable->view()) {
+		if (r.has("adjust_id")) {
+			adjMap[r.get("adjust_id")] = &r;
 		}
+	}
 	}
 
 	string col = stripPrefix(indexedColumn, "status_history.");
@@ -409,11 +393,7 @@ void status_history_query(Database *db, Vector<Record> &results,
 	};
 
 	if (filterByTxCode || filterByDate) {
-		const auto &shRows = shTable->getRows();
-		for (size_t i = 0; i < shRows.size(); ++i) {
-			if (shTable->isRowDeleted(i))
-				continue;
-			const auto &sh = shRows[i];
+		for (const auto &sh : shTable->view()) {
 			string t = (sh.has("type") && holds_alternative<string>(sh.get("type")))
 				? get<string>(sh.get("type"))
 				: "";
@@ -449,13 +429,9 @@ void status_history_query(Database *db, Vector<Record> &results,
 			processSh(shFiltered[i]);
 		}
 	} else {
-		const auto &shRows = shTable->getRows();
-		results.reserve(shRows.size());
-		for (size_t i = 0; i < shRows.size(); ++i) {
-			if (!shTable->isRowDeleted(i)) {
-				processSh(shRows[i]);
-			}
-		}
+		for (const auto &r : shTable->view()) {
+		processSh(r);
+	}
 	}
 }
 
@@ -481,10 +457,9 @@ void inbound_transaction_query_impl(Database *db, Vector<Record> &results,
 	col = stripPrefix(col, "inbound_type.");
 
 	HashMap<Value, const Record*> custMap;
-	const auto &cRows = cTable->getRows();
-	for (size_t i = 0; i < cRows.size(); ++i) {
-		if (!cTable->isRowDeleted(i) && cRows[i].has("customer_id")) {
-			custMap[cRows[i].get("customer_id")] = &cRows[i];
+	for (const auto &r : cTable->view()) {
+		if (r.has("customer_id")) {
+			custMap[r.get("customer_id")] = &r;
 		}
 	}
 
@@ -542,13 +517,9 @@ void inbound_transaction_query_impl(Database *db, Vector<Record> &results,
 			processIt(itSource[i]);
 		}
 	} else {
-		const auto &itRows = itTable->getRows();
-		results.reserve(itRows.size());
-		for (size_t i = 0; i < itRows.size(); ++i) {
-			if (!itTable->isRowDeleted(i)) {
-				processIt(itRows[i]);
-			}
-		}
+		for (const auto &r : itTable->view()) {
+		processIt(r);
+	}
 	}
 }
 
@@ -593,18 +564,16 @@ void inbound_detail_query(Database *db, Vector<Record> &results,
 	col = stripPrefix(col, "product.");
 
 	HashMap<Value, const Record*> itMap;
-	const auto &itRows = itTable->getRows();
-	for (size_t i = 0; i < itRows.size(); ++i) {
-		if (!itTable->isRowDeleted(i) && itRows[i].has("inbound_transaction_id")) {
-			itMap[itRows[i].get("inbound_transaction_id")] = &itRows[i];
+	for (const auto &r : itTable->view()) {
+		if (r.has("inbound_transaction_id")) {
+			itMap[r.get("inbound_transaction_id")] = &r;
 		}
 	}
 
 	HashMap<Value, const Record*> prodMap;
-	const auto &pRows = pTable->getRows();
-	for (size_t i = 0; i < pRows.size(); ++i) {
-		if (!pTable->isRowDeleted(i) && pRows[i].has("product_id")) {
-			prodMap[pRows[i].get("product_id")] = &pRows[i];
+	for (const auto &r : pTable->view()) {
+		if (r.has("product_id")) {
+			prodMap[r.get("product_id")] = &r;
 		}
 	}
 
@@ -668,13 +637,9 @@ void inbound_detail_query(Database *db, Vector<Record> &results,
 			processId(idSource[i]);
 		}
 	} else {
-		const auto &idRows = idTable->getRows();
-		results.reserve(idRows.size());
-		for (size_t i = 0; i < idRows.size(); ++i) {
-			if (!idTable->isRowDeleted(i)) {
-				processId(idRows[i]);
-			}
-		}
+		for (const auto &r : idTable->view()) {
+		processId(r);
+	}
 	}
 }
 
@@ -699,10 +664,9 @@ void delivery_query_impl(Database *db, Vector<Record> &results,
 	col = stripPrefix(col, "inbound_transaction.");
 
 	HashMap<Value, const Record*> inTxnMap;
-	const auto &itRows = itTable->getRows();
-	for (size_t i = 0; i < itRows.size(); ++i) {
-		if (!itTable->isRowDeleted(i) && itRows[i].has("inbound_transaction_id")) {
-			inTxnMap[itRows[i].get("inbound_transaction_id")] = &itRows[i];
+	for (const auto &r : itTable->view()) {
+		if (r.has("inbound_transaction_id")) {
+			inTxnMap[r.get("inbound_transaction_id")] = &r;
 		}
 	}
 
@@ -748,13 +712,9 @@ void delivery_query_impl(Database *db, Vector<Record> &results,
 			processDelivery(dSource[i]);
 		}
 	} else {
-		const auto &dRows = dTable->getRows();
-		results.reserve(dRows.size());
-		for (size_t i = 0; i < dRows.size(); ++i) {
-			if (!dTable->isRowDeleted(i)) {
-				processDelivery(dRows[i]);
-			}
-		}
+		for (const auto &r : dTable->view()) {
+		processDelivery(r);
+	}
 	}
 }
 
@@ -798,18 +758,16 @@ void delivery_detail_query_impl(Database *db, Vector<Record> &results,
 	col = stripPrefix(col, "product.");
 
 	HashMap<Value, const Record*> dMap;
-	const auto &dRows = dTable->getRows();
-	for (size_t i = 0; i < dRows.size(); ++i) {
-		if (!dTable->isRowDeleted(i) && dRows[i].has("delivery_id")) {
-			dMap[dRows[i].get("delivery_id")] = &dRows[i];
+	for (const auto &r : dTable->view()) {
+		if (r.has("delivery_id")) {
+			dMap[r.get("delivery_id")] = &r;
 		}
 	}
 
 	HashMap<Value, const Record*> prodMap;
-	const auto &pRows = pTable->getRows();
-	for (size_t i = 0; i < pRows.size(); ++i) {
-		if (!pTable->isRowDeleted(i) && pRows[i].has("product_id")) {
-			prodMap[pRows[i].get("product_id")] = &pRows[i];
+	for (const auto &r : pTable->view()) {
+		if (r.has("product_id")) {
+			prodMap[r.get("product_id")] = &r;
 		}
 	}
 
@@ -885,13 +843,9 @@ void delivery_detail_query_impl(Database *db, Vector<Record> &results,
 			processDd(ddSource[i]);
 		}
 	} else {
-		const auto &ddRows = ddTable->getRows();
-		results.reserve(ddRows.size());
-		for (size_t i = 0; i < ddRows.size(); ++i) {
-			if (!ddTable->isRowDeleted(i)) {
-				processDd(ddRows[i]);
-			}
-		}
+		for (const auto &r : ddTable->view()) {
+		processDd(r);
+	}
 	}
 }
 
@@ -934,10 +888,9 @@ void outbound_transaction_query_impl(Database *db, Vector<Record> &results,
 	col = stripPrefix(col, "outbound_type.");
 
 	HashMap<Value, const Record*> custMap;
-	const auto &cRows = cTable->getRows();
-	for (size_t i = 0; i < cRows.size(); ++i) {
-		if (!cTable->isRowDeleted(i) && cRows[i].has("customer_id")) {
-			custMap[cRows[i].get("customer_id")] = &cRows[i];
+	for (const auto &r : cTable->view()) {
+		if (r.has("customer_id")) {
+			custMap[r.get("customer_id")] = &r;
 		}
 	}
 
@@ -996,13 +949,9 @@ void outbound_transaction_query_impl(Database *db, Vector<Record> &results,
 			processOt(otSource[i]);
 		}
 	} else {
-		const auto &otRows = otTable->getRows();
-		results.reserve(otRows.size());
-		for (size_t i = 0; i < otRows.size(); ++i) {
-			if (!otTable->isRowDeleted(i)) {
-				processOt(otRows[i]);
-			}
-		}
+		for (const auto &r : otTable->view()) {
+		processOt(r);
+	}
 	}
 }
 
@@ -1047,21 +996,17 @@ void outbound_detail_query(Database *db, Vector<Record> &results,
 	col = stripPrefix(col, "product.");
 
 	HashMap<Value, const Record*> otMap;
-	const auto &otRows = otTable->getRows();
-	for (size_t i = 0; i < otRows.size(); ++i) {
-		if (otTable->isRowDeleted(i))
-			continue;
-		Value otId = extractOtId(otRows[i]);
+	for (const auto &ot : otTable->view()) {
+		Value otId = extractOtId(ot);
 		if (!holds_alternative<monostate>(otId)) {
-			otMap[otId] = &otRows[i];
+			otMap[otId] = &ot;
 		}
 	}
 
 	HashMap<Value, const Record*> prodMap;
-	const auto &pRows = pTable->getRows();
-	for (size_t i = 0; i < pRows.size(); ++i) {
-		if (!pTable->isRowDeleted(i) && pRows[i].has("product_id")) {
-			prodMap[pRows[i].get("product_id")] = &pRows[i];
+	for (const auto &r : pTable->view()) {
+		if (r.has("product_id")) {
+			prodMap[r.get("product_id")] = &r;
 		}
 	}
 
@@ -1129,13 +1074,9 @@ void outbound_detail_query(Database *db, Vector<Record> &results,
 			processOd(odSource[i]);
 		}
 	} else {
-		const auto &odRows = odTable->getRows();
-		results.reserve(odRows.size());
-		for (size_t i = 0; i < odRows.size(); ++i) {
-			if (!odTable->isRowDeleted(i)) {
-				processOd(odRows[i]);
-			}
-		}
+		for (const auto &r : odTable->view()) {
+		processOd(r);
+	}
 	}
 }
 
@@ -1160,13 +1101,10 @@ void shipment_query_impl(Database *db, Vector<Record> &results,
 	col = stripPrefix(col, "outbound_transaction.");
 
 	HashMap<Value, const Record*> outTxnMap;
-	const auto &otRows = otTable->getRows();
-	for (size_t i = 0; i < otRows.size(); ++i) {
-		if (otTable->isRowDeleted(i))
-			continue;
-		Value otId = extractOtId(otRows[i]);
+	for (const auto &ot : otTable->view()) {
+		Value otId = extractOtId(ot);
 		if (!holds_alternative<monostate>(otId)) {
-			outTxnMap[otId] = &otRows[i];
+			outTxnMap[otId] = &ot;
 		}
 	}
 
@@ -1216,13 +1154,9 @@ void shipment_query_impl(Database *db, Vector<Record> &results,
 			processShip(sSource[i]);
 		}
 	} else {
-		const auto &sRows = sTable->getRows();
-		results.reserve(sRows.size());
-		for (size_t i = 0; i < sRows.size(); ++i) {
-			if (!sTable->isRowDeleted(i)) {
-				processShip(sRows[i]);
-			}
-		}
+		for (const auto &r : sTable->view()) {
+		processShip(r);
+	}
 	}
 }
 
@@ -1266,18 +1200,16 @@ void shipment_detail_query_impl(Database *db, Vector<Record> &results,
 	col = stripPrefix(col, "product.");
 
 	HashMap<Value, const Record*> sMap;
-	const auto &sRows = sTable->getRows();
-	for (size_t i = 0; i < sRows.size(); ++i) {
-		if (!sTable->isRowDeleted(i) && sRows[i].has("shipment_id")) {
-			sMap[sRows[i].get("shipment_id")] = &sRows[i];
+	for (const auto &r : sTable->view()) {
+		if (r.has("shipment_id")) {
+			sMap[r.get("shipment_id")] = &r;
 		}
 	}
 
 	HashMap<Value, const Record*> prodMap;
-	const auto &pRows = pTable->getRows();
-	for (size_t i = 0; i < pRows.size(); ++i) {
-		if (!pTable->isRowDeleted(i) && pRows[i].has("product_id")) {
-			prodMap[pRows[i].get("product_id")] = &pRows[i];
+	for (const auto &r : pTable->view()) {
+		if (r.has("product_id")) {
+			prodMap[r.get("product_id")] = &r;
 		}
 	}
 
@@ -1353,13 +1285,9 @@ void shipment_detail_query_impl(Database *db, Vector<Record> &results,
 			processSd(sdSource[i]);
 		}
 	} else {
-		const auto &sdRows = sdTable->getRows();
-		results.reserve(sdRows.size());
-		for (size_t i = 0; i < sdRows.size(); ++i) {
-			if (!sdTable->isRowDeleted(i)) {
-				processSd(sdRows[i]);
-			}
-		}
+		for (const auto &r : sdTable->view()) {
+		processSd(r);
+	}
 	}
 }
 
@@ -1424,12 +1352,11 @@ void category_hardware_query(Database *db, const string &categoryName,
 			}
 		}
 	} else {
-		const auto &pRows = prodTable->getRows();
-		for (size_t i = 0; i < pRows.size(); ++i) {
-			if (!prodTable->isRowDeleted(i) && pRows[i].has("product_id")) {
-				prodMap[pRows[i].get("product_id")] = &pRows[i];
-			}
+		for (const auto &r : prodTable->view()) {
+		if (r.has("product_id")) {
+			prodMap[r.get("product_id")] = &r;
 		}
+	}
 	}
 
 	const auto &catCols = catTable->getColumns();
@@ -1475,13 +1402,9 @@ void category_hardware_query(Database *db, const string &categoryName,
 			processCatRow(catSource[i]);
 		}
 	} else {
-		const auto &cRows = catTable->getRows();
-		results.reserve(cRows.size());
-		for (size_t i = 0; i < cRows.size(); ++i) {
-			if (!catTable->isRowDeleted(i)) {
-				processCatRow(cRows[i]);
-			}
-		}
+		for (const auto &r : catTable->view()) {
+		processCatRow(r);
+	}
 	}
 }
 
@@ -1538,14 +1461,8 @@ void auxiliary_spec_query(Database *db, const string &tableName,
 		col = col.substr(tblName.length() + 1);
 
 	bool hasFilter = (!col.empty() && !holds_alternative<monostate>(val));
-	const auto &rows = table->getRows();
-	results.reserve(rows.size());
 	const auto &cols = table->getColumns();
-
-	for (size_t i = 0; i < rows.size(); ++i) {
-		if (table->isRowDeleted(i))
-			continue;
-		const auto &r = rows[i];
+	for (const auto &r : table->view()) {
 		if (hasFilter) {
 			if (!r.has(col) || !(r.get(col) == val))
 				continue;
@@ -1582,10 +1499,9 @@ void individual_customer_query(Database *db, Vector<Record> &results,
 	bool hasFilter = !col.empty() && !holds_alternative<monostate>(val);
 
 	HashMap<Value, const Record*> infoMap;
-	const auto &iRows = iTable->getRows();
-	for (size_t i = 0; i < iRows.size(); ++i) {
-		if (!iTable->isRowDeleted(i) && iRows[i].has("customer_id")) {
-			infoMap[iRows[i].get("customer_id")] = &iRows[i];
+	for (const auto &r : iTable->view()) {
+		if (r.has("customer_id")) {
+			infoMap[r.get("customer_id")] = &r;
 		}
 	}
 
@@ -1677,10 +1593,9 @@ void business_customer_query(Database *db, Vector<Record> &results,
 	bool hasFilter = !col.empty() && !holds_alternative<monostate>(val);
 
 	HashMap<Value, const Record*> bMap;
-	const auto &bRows = bTable->getRows();
-	for (size_t i = 0; i < bRows.size(); ++i) {
-		if (!bTable->isRowDeleted(i) && bRows[i].has("customer_id")) {
-			bMap[bRows[i].get("customer_id")] = &bRows[i];
+	for (const auto &r : bTable->view()) {
+		if (r.has("customer_id")) {
+			bMap[r.get("customer_id")] = &r;
 		}
 	}
 
@@ -1803,11 +1718,7 @@ void periodic_inventory_report(Database *db, int month, int year,
 	HashMap<Value, bool> validDelBefore;
 	HashMap<Value, bool> validDelMonth;
 	HashMap<Value, bool> validDelAfter;
-	const auto &delRows = delTable->getRows();
-	for (size_t i = 0; i < delRows.size(); ++i) {
-		if (delTable->isRowDeleted(i))
-			continue;
-		const auto &r = delRows[i];
+	for (const auto &r : delTable->view()) {
 		if (!r.has("delivery_id") || !r.has("delivery_at") || isNull(r.get("delivery_at")))
 			continue;
 		string dAt = holds_alternative<string>(r.get("delivery_at")) ? get<string>(r.get("delivery_at")) : "";
@@ -1827,15 +1738,7 @@ void periodic_inventory_report(Database *db, int month, int year,
 	Vector<Record> delRecsBefore;
 	Vector<Record> delRecsMonth;
 	Vector<Record> delRecsAfter;
-	const auto &delDetailRows = delDetailTable->getRows();
-	delRecsBefore.reserve(delDetailRows.size() / 2);
-	delRecsMonth.reserve(delDetailRows.size() / 2);
-	delRecsAfter.reserve(delDetailRows.size() / 2);
-
-	for (size_t i = 0; i < delDetailRows.size(); ++i) {
-		if (delDetailTable->isRowDeleted(i))
-			continue;
-		const auto &r = delDetailRows[i];
+	for (const auto &r : delDetailTable->view()) {
 		if (!r.has("delivery_id") || !r.has("product_id") || !r.has("actual_quantity"))
 			continue;
 		Value dId = r.get("delivery_id");
@@ -1880,11 +1783,7 @@ void periodic_inventory_report(Database *db, int month, int year,
 	HashMap<Value, bool> validShipBefore;
 	HashMap<Value, bool> validShipMonth;
 	HashMap<Value, bool> validShipAfter;
-	const auto &shipRows = shipTable->getRows();
-	for (size_t i = 0; i < shipRows.size(); ++i) {
-		if (shipTable->isRowDeleted(i))
-			continue;
-		const auto &r = shipRows[i];
+	for (const auto &r : shipTable->view()) {
 		if (!r.has("shipment_id") || !r.has("ship_at") || isNull(r.get("ship_at")))
 			continue;
 		string sAt = holds_alternative<string>(r.get("ship_at")) ? get<string>(r.get("ship_at")) : "";
@@ -1904,15 +1803,7 @@ void periodic_inventory_report(Database *db, int month, int year,
 	Vector<Record> shipRecsBefore;
 	Vector<Record> shipRecsMonth;
 	Vector<Record> shipRecsAfter;
-	const auto &shipDetailRows = shipDetailTable->getRows();
-	shipRecsBefore.reserve(shipDetailRows.size() / 2);
-	shipRecsMonth.reserve(shipDetailRows.size() / 2);
-	shipRecsAfter.reserve(shipDetailRows.size() / 2);
-
-	for (size_t i = 0; i < shipDetailRows.size(); ++i) {
-		if (shipDetailTable->isRowDeleted(i))
-			continue;
-		const auto &r = shipDetailRows[i];
+	for (const auto &r : shipDetailTable->view()) {
 		if (!r.has("shipment_id") || !r.has("product_id") || !r.has("actual_quantity"))
 			continue;
 		Value sId = r.get("shipment_id");
@@ -1961,9 +1852,6 @@ void periodic_inventory_report(Database *db, int month, int year,
 	int sumAvail = 0;
 	int sumWarr = 0;
 	int sumScrap = 0;
-
-	const auto &pRows = pTable->getRows();
-	results.reserve(pRows.size());
 
 	auto processProduct = [&](const Record &p) {
 		Value pId = p.get("product_id");
@@ -2044,10 +1932,8 @@ void periodic_inventory_report(Database *db, int month, int year,
 		results.push_back(std::move(out));
 	};
 
-	for (size_t i = 0; i < pRows.size(); ++i) {
-		if (!pTable->isRowDeleted(i)) {
-			processProduct(pRows[i]);
-		}
+	for (const auto &p : pTable->view()) {
+		processProduct(p);
 	}
 
 	// 7. Dòng tổng cộng (Grand Total)
@@ -2101,18 +1987,16 @@ void logistics_units_history_query(Database *db, const string& logisticsCode, Ve
 
 	// Maps for fast lookups
 	HashMap<Value, const Record*> unitMap;
-	const auto &uRows = uTable->getRows();
-	for (size_t i = 0; i < uRows.size(); ++i) {
-		if (!uTable->isRowDeleted(i) && uRows[i].has("unit_id")) {
-			unitMap[uRows[i].get("unit_id")] = &uRows[i];
+	for (const auto &r : uTable->view()) {
+		if (r.has("unit_id")) {
+			unitMap[r.get("unit_id")] = &r;
 		}
 	}
 
 	HashMap<Value, const Record*> prodMap;
-	const auto &pRows = pTable->getRows();
-	for (size_t i = 0; i < pRows.size(); ++i) {
-		if (!pTable->isRowDeleted(i) && pRows[i].has("product_id")) {
-			prodMap[pRows[i].get("product_id")] = &pRows[i];
+	for (const auto &r : pTable->view()) {
+		if (r.has("product_id")) {
+			prodMap[r.get("product_id")] = &r;
 		}
 	}
 
@@ -2131,10 +2015,7 @@ void logistics_units_history_query(Database *db, const string& logisticsCode, Ve
 	Vector<int> unitOrder;
 	HashMap<int, UnitHistoryTrack> unitTracker;
 
-	const auto &shRows = shTable->getRows();
-	for (size_t i = 0; i < shRows.size(); ++i) {
-		if (shTable->isRowDeleted(i)) continue;
-		const auto &r = shRows[i];
+	for (const auto &r : shTable->view()) {
 
 		if (!r.has("transaction") || !r.has("unit_id")) continue;
 
@@ -2303,10 +2184,9 @@ void get_candidate_units_for_order(Database *db, const Vector<int>& productIds, 
 	if (!uTable || !pTable) return;
 
 	HashMap<Value, const Record*> pMap;
-	const auto &pRows = pTable->getRows();
-	for (size_t i = 0; i < pRows.size(); ++i) {
-		if (!pTable->isRowDeleted(i) && pRows[i].has("product_id")) {
-			pMap[pRows[i].get("product_id")] = &pRows[i];
+	for (const auto &r : pTable->view()) {
+		if (r.has("product_id")) {
+			pMap[r.get("product_id")] = &r;
 		}
 	}
 
@@ -2315,10 +2195,7 @@ void get_candidate_units_for_order(Database *db, const Vector<int>& productIds, 
 		allowedPids[productIds[i]] = true;
 	}
 
-	const auto &uRows = uTable->getRows();
-	for (size_t i = 0; i < uRows.size(); ++i) {
-		if (uTable->isRowDeleted(i)) continue;
-		const auto &uRow = uRows[i];
+	for (const auto &uRow : uTable->view()) {
 		int pid = safeGetInt(uRow, "product_id", -1);
 		if (pid > 0 && allowedPids.contains(pid) && allowedPids[pid]) {
 			Record r;
@@ -2342,10 +2219,8 @@ void all_customers_query(Database *db, Vector<Record> &results) {
 	const Table* custTable = db->getTable("customer");
 	if (!custTable) return;
 
-	const auto &rows = custTable->getRows();
-	for (size_t i = 0; i < rows.size(); ++i) {
-		if (custTable->isRowDeleted(i)) continue;
-		results.push_back(rows[i]);
+	for (const auto &r : custTable->view()) {
+		results.push_back(r);
 	}
 }
 
@@ -2355,10 +2230,7 @@ void get_all_statuses_for_table(Database *db, const string& tableName, Vector<st
 	const Table* t = db->getTable(tableName);
 	if (!t) return;
 
-	const auto &rows = t->getRows();
-	for (size_t i = 0; i < rows.size(); ++i) {
-		if (t->isRowDeleted(i)) continue;
-		const Record &r = rows[i];
+	for (const auto &r : t->view()) {
 		if (r.has("status") && holds_alternative<string>(r.get("status"))) {
 			statuses.push_back(get<string>(r.get("status")));
 		}
@@ -2373,10 +2245,9 @@ void get_logistics_batch_allocation_info(Database* db, int txnId, bool isInbound
 		if (!prodTable) return;
 
 	HashMap<Value, const Record*> prodMap;
-	const auto &pRows = prodTable->getRows();
-	for (size_t i = 0; i < pRows.size(); ++i) {
-		if (!prodTable->isRowDeleted(i) && pRows[i].has("product_id")) {
-			prodMap[pRows[i].get("product_id")] = &pRows[i];
+	for (const auto &r : prodTable->view()) {
+		if (r.has("product_id")) {
+			prodMap[r.get("product_id")] = &r;
 		}
 	}
 
@@ -2389,33 +2260,16 @@ void get_logistics_batch_allocation_info(Database* db, int txnId, bool isInbound
 		if (!inDetTable || !delTable || !delDetTable) return;
 
 		HashMap<int, int> allocatedMap;
-		const auto& dRows = delTable->getRows();
-		const auto& ddRows = delDetTable->getRows();
-		for (size_t i = 0; i < dRows.size(); ++i) {
-			if (delTable->isRowDeleted(i)) continue;
-			const auto& del = dRows[i];
-			if (del.has("inbound_transaction_id") && holds_alternative<int>(del.get("inbound_transaction_id")) &&
-				get<int>(del.get("inbound_transaction_id")) == txnId) {
-				int delId = safeGetInt(del, "delivery_id", 0);
-				for (size_t j = 0; j < ddRows.size(); ++j) {
-					if (delDetTable->isRowDeleted(j)) continue;
-					const auto& dd = ddRows[j];
-					if (dd.has("delivery_id") && holds_alternative<int>(dd.get("delivery_id")) &&
-						get<int>(dd.get("delivery_id")) == delId) {
-						int pid = safeGetInt(dd, "product_id", 0);
-						int rq = safeGetInt(dd, "received_quantity", 0);
-						allocatedMap[pid] = (allocatedMap.contains(pid) ? allocatedMap[pid] : 0) + rq;
-					}
-				}
+		for (const auto& del : delTable->view("inbound_transaction_id", Value(txnId))) {
+			int delId = safeGetInt(del, "delivery_id", 0);
+			for (const auto& dd : delDetTable->view("delivery_id", Value(delId))) {
+				int pid = safeGetInt(dd, "product_id", 0);
+				int rq = safeGetInt(dd, "received_quantity", 0);
+				allocatedMap[pid] = (allocatedMap.contains(pid) ? allocatedMap[pid] : 0) + rq;
 			}
 		}
 
-		const auto& idRows = inDetTable->getRows();
-		for (size_t i = 0; i < idRows.size(); ++i) {
-			if (inDetTable->isRowDeleted(i)) continue;
-			const auto& idet = idRows[i];
-			if (idet.has("inbound_transaction_id") && holds_alternative<int>(idet.get("inbound_transaction_id")) &&
-				get<int>(idet.get("inbound_transaction_id")) == txnId) {
+		for (const auto& idet : inDetTable->view("inbound_transaction_id", Value(txnId))) {
 				int pid = safeGetInt(idet, "product_id", 0);
 				int ordQty = safeGetInt(idet, "ordered_quantity", 0);
 				int allocated = allocatedMap.contains(pid) ? allocatedMap[pid] : 0;
@@ -2445,7 +2299,6 @@ void get_logistics_batch_allocation_info(Database* db, int txnId, bool isInbound
 
 				items.push_back(std::move(info));
 			}
-		}
 	} else {
 		const Table* outDetTable = db->getTable("outbound_detail");
 		const Table* shipTable = db->getTable("shipment");
@@ -2453,39 +2306,16 @@ void get_logistics_batch_allocation_info(Database* db, int txnId, bool isInbound
 		if (!outDetTable || !shipTable || !shipDetTable) return;
 
 		HashMap<int, int> allocatedMap;
-		const auto& sRows = shipTable->getRows();
-		const auto& sdRows = shipDetTable->getRows();
-		for (size_t i = 0; i < sRows.size(); ++i) {
-			if (shipTable->isRowDeleted(i)) continue;
-			const auto& ship = sRows[i];
-			int sTxnId = 0;
-			if (ship.has("sell_id") && holds_alternative<int>(ship.get("sell_id"))) sTxnId = get<int>(ship.get("sell_id"));
-			else if (ship.has("outbound_transaction_id") && holds_alternative<int>(ship.get("outbound_transaction_id"))) sTxnId = get<int>(ship.get("outbound_transaction_id"));
-
-			if (sTxnId == txnId) {
-				int shipId = safeGetInt(ship, "shipment_id", 0);
-				for (size_t j = 0; j < sdRows.size(); ++j) {
-					if (shipDetTable->isRowDeleted(j)) continue;
-					const auto& sd = sdRows[j];
-					if (sd.has("shipment_id") && holds_alternative<int>(sd.get("shipment_id")) &&
-						get<int>(sd.get("shipment_id")) == shipId) {
-						int pid = safeGetInt(sd, "product_id", 0);
-						int rq = safeGetInt(sd, "received_quantity", 0);
-						allocatedMap[pid] = (allocatedMap.contains(pid) ? allocatedMap[pid] : 0) + rq;
-					}
-				}
+		for (const auto& ship : shipTable->view("outbound_transaction_id", Value(txnId))) {
+			int shipId = safeGetInt(ship, "shipment_id", 0);
+			for (const auto& sd : shipDetTable->view("shipment_id", Value(shipId))) {
+				int pid = safeGetInt(sd, "product_id", 0);
+				int rq = safeGetInt(sd, "received_quantity", 0);
+				allocatedMap[pid] = (allocatedMap.contains(pid) ? allocatedMap[pid] : 0) + rq;
 			}
 		}
 
-		const auto& odRows = outDetTable->getRows();
-		for (size_t i = 0; i < odRows.size(); ++i) {
-			if (outDetTable->isRowDeleted(i)) continue;
-			const auto& odet = odRows[i];
-			int oTxnId = 0;
-			if (odet.has("outbound_transaction_id") && holds_alternative<int>(odet.get("outbound_transaction_id"))) oTxnId = get<int>(odet.get("outbound_transaction_id"));
-			else if (odet.has("sell_id") && holds_alternative<int>(odet.get("sell_id"))) oTxnId = get<int>(odet.get("sell_id"));
-
-			if (oTxnId == txnId) {
+		for (const auto& odet : outDetTable->view("outbound_transaction_id", Value(txnId))) {
 				int pid = safeGetInt(odet, "product_id", 0);
 				int ordQty = safeGetInt(odet, "ordered_quantity", 0);
 				int allocated = allocatedMap.contains(pid) ? allocatedMap[pid] : 0;
@@ -2515,7 +2345,6 @@ void get_logistics_batch_allocation_info(Database* db, int txnId, bool isInbound
 
 				items.push_back(std::move(info));
 			}
-		}
 	}
 }
 
@@ -2606,12 +2435,8 @@ void inventory_check_query(Database *db, Vector<Record> &results,
 	if (!col.empty()) {
 		raw = Query::filterRecords(*chkTable, col, val);
 	} else {
-		const auto &rows = chkTable->getRows();
-		raw.reserve(rows.size());
-		for (size_t i = 0; i < rows.size(); ++i) {
-			if (!chkTable->isRowDeleted(i)) {
-				raw.push_back(rows[i]);
-			}
+		for (const auto &r : chkTable->view()) {
+			raw.push_back(r);
 		}
 	}
 
@@ -2648,33 +2473,27 @@ void inventory_check_quantity_query(Database *db, int checkId, Vector<Record> &r
 
 	HashMap<Value, const Record*> pMap;
 	if (pTable) {
-		const auto &pRows = pTable->getRows();
-		for (size_t i = 0; i < pRows.size(); ++i) {
-			if (!pTable->isRowDeleted(i) && pRows[i].has("product_id")) {
-				pMap[pRows[i].get("product_id")] = &pRows[i];
-			}
+		for (const auto &r : pTable->view()) {
+		if (r.has("product_id")) {
+			pMap[r.get("product_id")] = &r;
 		}
+	}
 	}
 
 	HashMap<Value, const Record*> chkMap;
 	if (chkTable) {
-		const auto &chkRows = chkTable->getRows();
-		for (size_t i = 0; i < chkRows.size(); ++i) {
-			if (!chkTable->isRowDeleted(i) && chkRows[i].has("check_id")) {
-				chkMap[chkRows[i].get("check_id")] = &chkRows[i];
-			}
+		for (const auto &r : chkTable->view()) {
+		if (r.has("check_id")) {
+			chkMap[r.get("check_id")] = &r;
 		}
+	}
 	}
 
 	Vector<Record> cqRows;
 	if (checkId > 0) {
 		cqRows = Query::filterRecords(*cqTable, "check_id", Value(checkId));
 	} else {
-		const auto &rows = cqTable->getRows();
-		cqRows.reserve(rows.size());
-		for (size_t i = 0; i < rows.size(); ++i) {
-			if (!cqTable->isRowDeleted(i)) cqRows.push_back(rows[i]);
-		}
+		for (const auto &r : cqTable->view()) cqRows.push_back(r);
 	}
 
 	results.reserve(cqRows.size());
@@ -2734,43 +2553,36 @@ void inventory_check_unit_query(Database *db, int checkId, Vector<Record> &resul
 
 	HashMap<Value, const Record*> chkMap;
 	if (chkTable) {
-		const auto &chkRows = chkTable->getRows();
-		for (size_t i = 0; i < chkRows.size(); ++i) {
-			if (!chkTable->isRowDeleted(i) && chkRows[i].has("check_id")) {
-				chkMap[chkRows[i].get("check_id")] = &chkRows[i];
-			}
+		for (const auto &r : chkTable->view()) {
+		if (r.has("check_id")) {
+			chkMap[r.get("check_id")] = &r;
 		}
+	}
 	}
 
 	HashMap<Value, const Record*> cqMap;
 	if (cqTable) {
-		const auto &cqRows = cqTable->getRows();
-		for (size_t i = 0; i < cqRows.size(); ++i) {
-			if (!cqTable->isRowDeleted(i) && cqRows[i].has("check_quantity_id")) {
-				cqMap[cqRows[i].get("check_quantity_id")] = &cqRows[i];
-			}
+		for (const auto &r : cqTable->view()) {
+		if (r.has("check_quantity_id")) {
+			cqMap[r.get("check_quantity_id")] = &r;
 		}
+	}
 	}
 
 	HashMap<Value, const Record*> pMap;
 	if (pTable) {
-		const auto &pRows = pTable->getRows();
-		for (size_t i = 0; i < pRows.size(); ++i) {
-			if (!pTable->isRowDeleted(i) && pRows[i].has("product_id")) {
-				pMap[pRows[i].get("product_id")] = &pRows[i];
-			}
+		for (const auto &r : pTable->view()) {
+		if (r.has("product_id")) {
+			pMap[r.get("product_id")] = &r;
 		}
+	}
 	}
 
 	Vector<Record> cuRows;
 	if (checkId > 0) {
 		cuRows = Query::filterRecords(*cuTable, "check_id", Value(checkId));
 	} else {
-		const auto &rows = cuTable->getRows();
-		cuRows.reserve(rows.size());
-		for (size_t i = 0; i < rows.size(); ++i) {
-			if (!cuTable->isRowDeleted(i)) cuRows.push_back(rows[i]);
-		}
+		for (const auto &r : cuTable->view()) cuRows.push_back(r);
 	}
 
 	results.reserve(cuRows.size());
@@ -2839,12 +2651,8 @@ void adjustment_movement_query(Database *db, Vector<Record> &results,
 	if (!col.empty()) {
 		results = Query::filterRecords(*adjTable, col, val);
 	} else {
-		const auto &rows = adjTable->getRows();
-		results.reserve(rows.size());
-		for (size_t i = 0; i < rows.size(); ++i) {
-			if (!adjTable->isRowDeleted(i)) {
-				results.push_back(rows[i]);
-			}
+		for (const auto &r : adjTable->view()) {
+			results.push_back(r);
 		}
 	}
 }
@@ -2870,33 +2678,27 @@ void adjust_movement_detail_query(Database *db, int adjustId, Vector<Record> &re
 
 	HashMap<Value, const Record*> adjMap;
 	if (adjTable) {
-		const auto &adjRows = adjTable->getRows();
-		for (size_t i = 0; i < adjRows.size(); ++i) {
-			if (!adjTable->isRowDeleted(i) && adjRows[i].has("adjust_id")) {
-				adjMap[adjRows[i].get("adjust_id")] = &adjRows[i];
-			}
+		for (const auto &r : adjTable->view()) {
+		if (r.has("adjust_id")) {
+			adjMap[r.get("adjust_id")] = &r;
 		}
+	}
 	}
 
 	HashMap<Value, const Record*> pMap;
 	if (pTable) {
-		const auto &pRows = pTable->getRows();
-		for (size_t i = 0; i < pRows.size(); ++i) {
-			if (!pTable->isRowDeleted(i) && pRows[i].has("product_id")) {
-				pMap[pRows[i].get("product_id")] = &pRows[i];
-			}
+		for (const auto &r : pTable->view()) {
+		if (r.has("product_id")) {
+			pMap[r.get("product_id")] = &r;
 		}
+	}
 	}
 
 	Vector<Record> amdRows;
 	if (adjustId > 0) {
 		amdRows = Query::filterRecords(*amdTable, "adjust_id", Value(adjustId));
 	} else {
-		const auto &rows = amdTable->getRows();
-		amdRows.reserve(rows.size());
-		for (size_t i = 0; i < rows.size(); ++i) {
-			if (!amdTable->isRowDeleted(i)) amdRows.push_back(rows[i]);
-		}
+		for (const auto &r : amdTable->view()) amdRows.push_back(r);
 	}
 
 	results.reserve(amdRows.size());
@@ -2932,23 +2734,18 @@ void is_sold_changing_query(Database *db, Vector<Record> &results, int productId
 
 	HashMap<Value, const Record*> pMap;
 	if (pTable) {
-		const auto &pRows = pTable->getRows();
-		for (size_t i = 0; i < pRows.size(); ++i) {
-			if (!pTable->isRowDeleted(i) && pRows[i].has("product_id")) {
-				pMap[pRows[i].get("product_id")] = &pRows[i];
-			}
+		for (const auto &r : pTable->view()) {
+		if (r.has("product_id")) {
+			pMap[r.get("product_id")] = &r;
 		}
+	}
 	}
 
 	Vector<Record> source;
 	if (productId > 0) {
 		source = Query::filterRecords(*iscTable, "product_id", Value(productId));
 	} else {
-		const auto &rows = iscTable->getRows();
-		source.reserve(rows.size());
-		for (size_t i = 0; i < rows.size(); ++i) {
-			if (!iscTable->isRowDeleted(i)) source.push_back(rows[i]);
-		}
+		for (const auto &r : iscTable->view()) source.push_back(r);
 	}
 
 	results.reserve(source.size());

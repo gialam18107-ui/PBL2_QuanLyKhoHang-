@@ -1,4 +1,4 @@
-﻿#include <iostream>
+#include <iostream>
 #include <cassert>
 #include <string>
 #include "database/Database.h"
@@ -46,7 +46,7 @@ int main() {
 
     // --------------------------------------------------------
     // TEST 1: Selling Status & is_sold_changing Rule
-    // "is_sold chỉ có thể đổi sang false nếu tổng số lượng = 0"
+    // "is_sold ch? c� th? d?i sang false n?u t?ng s? lu?ng = 0"
     // --------------------------------------------------------
     printHeader("TEST 1: Selling status (is_sold) & is_sold_changing history");
     const Table* prodTable = db.getTable("product");
@@ -54,7 +54,7 @@ int main() {
 
     // Find a product with stock > 0
     int prodWithStockId = -1;
-    for (const auto& p : prodTable->getRows()) {
+    for (const auto& p : prodTable->view()) {
         int avail = safeGetInt(p, "available_quantity");
         int warr = safeGetInt(p, "warranty_quantity");
         int scrap = safeGetInt(p, "scrapped_quantity");
@@ -121,7 +121,7 @@ int main() {
     pidsToCheck.push_back(1);
     pidsToCheck.push_back(2);
 
-    OperationResult rQuanCheck = user_create::createInventoryCheck(&db, "UNIT", "2026-11-01", pidsToCheck, "Kiểm kê định kỳ");
+    OperationResult rQuanCheck = user_create::createInventoryCheck(&db, "UNIT", "2026-11-01", pidsToCheck, "Ki?m k� d?nh k?");
     assert(rQuanCheck.success);
     cout << "[+] Created QUAN check successfully: " << rQuanCheck.message << endl;
 
@@ -146,7 +146,7 @@ int main() {
     int sysWarr1 = safeGetInt(checkQtys[0], "system_warranty_quan");
     int sysScrap1 = safeGetInt(checkQtys[0], "system_scrapped_quan");
     // Simulate finding 3 more available items
-    OperationResult rUpQty = user_update::updateInventoryCheckQuantity(&db, cqId1, sysAvail1 + 3, sysWarr1, sysScrap1, "Dư 3 cái");
+    OperationResult rUpQty = user_update::updateInventoryCheckQuantity(&db, cqId1, sysAvail1 + 3, sysWarr1, sysScrap1, "Du 3 c�i");
     assert(rUpQty.success);
 
     // Verify difference
@@ -157,7 +157,7 @@ int main() {
 
     // --------------------------------------------------------
     // TEST 3: Create Adjustments from Check
-    // "Đối với type adj, cả nhập và xuất đều ko có khách hàng và source_code tham chiếu check_code"
+    // "�?i v?i type adj, c? nh?p v� xu?t d?u ko c� kh�ch h�ng v� source_code tham chi?u check_code"
     // --------------------------------------------------------
     printHeader("TEST 3: Generate Adjustments from Check Discrepancy");
     // Transition check to COMPLETED to satisfy Rule 5.2 Mandatory Completed Status Gate
@@ -186,12 +186,12 @@ int main() {
     int adjOutId = latestAdjOut.has("outbound_trainsaction_id")
                  ? safeGetInt(latestAdjOut, "outbound_trainsaction_id")
                  : safeGetInt(latestAdjOut, "outbound_transaction_id");
-    OperationResult rNote = user_update::updateTransactionNote(&db, "outbound_transaction", adjOutId, "Ghi chú điều chỉnh kiểm kê cập nhật mới");
+    OperationResult rNote = user_update::updateTransactionNote(&db, "outbound_transaction", adjOutId, "Ghi ch� di?u ch?nh ki?m k� c?p nh?t m?i");
     if (!rNote.success) cout << "[-] rNote failed: " << rNote.message << ", adjOutId=" << adjOutId << endl;
     assert(rNote.success);
     const Record* updatedAdjOut = outTxnTbl->getRecordById(adjOutId);
     assert(updatedAdjOut != nullptr);
-    assert(safeGetString(*updatedAdjOut, "note") == "Ghi chú điều chỉnh kiểm kê cập nhật mới");
+    assert(safeGetString(*updatedAdjOut, "note") == "Ghi ch� di?u ch?nh ki?m k� c?p nh?t m?i");
     cout << "[+] Verified: Successfully updated transaction note via updateTransactionNote.\n";
 
     // --------------------------------------------------------
@@ -201,7 +201,7 @@ int main() {
     Vector<int> pidsUnitCheck;
     pidsUnitCheck.push_back(1);
 
-    OperationResult rUnitCheck = user_create::createInventoryCheck(&db, "UNIT", "2026-11-01", pidsUnitCheck, "Kiểm kê chi tiết linh kiện");
+    OperationResult rUnitCheck = user_create::createInventoryCheck(&db, "UNIT", "2026-11-01", pidsUnitCheck, "Ki?m k� chi ti?t linh ki?n");
     assert(rUnitCheck.success);
     cout << "[+] Created UNIT check successfully: " << rUnitCheck.message << endl;
 
@@ -296,8 +296,8 @@ int main() {
     OperationResult rInAdj = user_create::createInboundOrder(&db, "ADJUSTMENT_IN", "", inItems, "2026-11-02", "2026-11-03", "Test Inbound Adj", unitChkCode);
     cout << "  - Create Inbound Adj: " << (rInAdj.success ? "SUCCESS" : "FAILED") << " | Msg: [" << rInAdj.message << "]\n";
     assert(rInAdj.success);
-    size_t pos = rInAdj.message.find("Mã: ");
-    string inAdjCode = (pos != string::npos) ? rInAdj.message.substr(pos + 6) : ""; // Mã is 2 UTF-8 bytes (M, ã), so "Mã: " is 2 + 1 + 1? No! "Mã: " in UTF-8: 'M' (1) + 'ã' (2) + ':' (1) + ' ' (1) = 5 bytes!
+    size_t pos = rInAdj.message.find("M�: ");
+    string inAdjCode = (pos != string::npos) ? rInAdj.message.substr(pos + 6) : ""; // M� is 2 UTF-8 bytes (M, �), so "M�: " is 2 + 1 + 1? No! "M�: " in UTF-8: 'M' (1) + '�' (2) + ':' (1) + ' ' (1) = 5 bytes!
     // Or just look for "IN-"!
     size_t inPos = rInAdj.message.find("IN-");
     if (inPos != string::npos) inAdjCode = rInAdj.message.substr(inPos);
@@ -372,8 +372,8 @@ int main() {
     const Record* adjRecAfter = adjMovTbl->getRecordById(testAdjId3);
     assert(adjRecAfter != nullptr);
     string adjStAfter = safeGetString(*adjRecAfter, "status");
-    cout << "  - Status of partially executed movement: " << adjStAfter << " (Expected: PROCESSING)\n";
-    assert(adjStAfter == "PROCESSING");
+    cout << "  - Status of partially executed movement: " << adjStAfter << " (Expected: PARTLY_COMPLETED)\n";
+    assert(adjStAfter == "PARTLY_COMPLETED");
 
     // 6.10 Standard Inbound Order cancellation & delivery cascade
     Vector<Pair<int, int>> purItems;

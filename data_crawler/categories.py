@@ -71,6 +71,7 @@ DELIVERY_STATUSES: List[Dict[str, Any]] = [
     {"status_id": 2, "status": "RECEIVING"},
     {"status_id": 3, "status": "INSPECTING"},
     {"status_id": 4, "status": "COMPLETED"},
+    {"status_id": 5, "status": "CANCELLED"},
 ]
 
 # Master Outbound Types
@@ -118,9 +119,9 @@ INDIVIDUAL_INFO: List[Dict[str, Any]] = [
 
 # Business Details
 BUSINESS_INFO: List[Dict[str, Any]] = [
-    {"customer_id": 4, "phone_number": "0243768900", "email": "contact@fis.com.vn", "tax_code": "0101234567", "next_code_no": 2},
-    {"customer_id": 5, "phone_number": "0283834567", "email": "sales@phongvu.vn", "tax_code": "0309876543", "next_code_no": 3},
-    {"customer_id": 6, "phone_number": "0246277889", "email": "procurement@viettel.vn", "tax_code": "0100109106", "next_code_no": 4},
+    {"customer_id": 4, "phone_number": "02473007300", "email": "contact@fpt.com.vn", "tax_code": "0101234567", "address": "Cau Giay Hanoi", "next_code_no": 2},
+    {"customer_id": 5, "phone_number": "02873006666", "email": "cskh@phongvu.vn", "tax_code": "0304998365", "address": "District 10 HCMC", "next_code_no": 3},
+    {"customer_id": 6, "phone_number": "18008098", "email": "support@viettel.vn", "tax_code": "0100109106", "address": "Ba Dinh Hanoi", "next_code_no": 4},
 ]
 
 

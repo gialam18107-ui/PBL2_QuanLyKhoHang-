@@ -374,12 +374,9 @@ void CustomerDialog::onSaveClicked()
 
         const Table* custTable = db->getTable("customer");
         if (custTable) {
-            const auto& rows = custTable->getRows();
-            for (int i = static_cast<int>(rows.size()) - 1; i >= 0; --i) {
-                if (custTable->isRowDeleted(i)) continue;
-                if (rows[i].has("customer_code") && holds_alternative<std::string>(rows[i].get("customer_code"))) {
-                    createdCustomerCode = QString::fromStdString(get<std::string>(rows[i].get("customer_code")));
-                    break;
+            for (const auto& r : custTable->view()) {
+                if (r.has("customer_code") && holds_alternative<std::string>(r.get("customer_code"))) {
+                    createdCustomerCode = QString::fromStdString(get<std::string>(r.get("customer_code")));
                 }
             }
         }

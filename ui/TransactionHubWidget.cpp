@@ -1,4 +1,4 @@
-﻿#include "TransactionHubWidget.h"
+#include "TransactionHubWidget.h"
 #include "schema/UserQuery.h"
 #include "schema/UserUpdate.h"
 #include "ui/TableClipboardHelper.h"
@@ -1928,30 +1928,23 @@ void TransactionHubWidget::onUpdateOrderStatusClicked()
         const Table* tbl = db->getTable(targetTable);
         if (tbl) {
             std::string codeStd = orderCode.toStdString();
-            const auto& rows = tbl->getRows();
-            for (size_t i = 0; i < rows.size(); ++i) {
-                if (tbl->isRowDeleted(i)) continue;
-                const auto& r = rows[i];
-                if (r.has(codeCol) && holds_alternative<string>(r.get(codeCol))) {
-                    if (get<string>(r.get(codeCol)) == codeStd) {
-                        if (hubType == HubType::INBOUND) {
-                            if (r.has("inbound_transaction_id") && holds_alternative<int>(r.get("inbound_transaction_id")))
-                                txnId = get<int>(r.get("inbound_transaction_id"));
-                        } else {
-                            if (r.has("outbound_trainsaction_id") && holds_alternative<int>(r.get("outbound_trainsaction_id")))
-                                txnId = get<int>(r.get("outbound_trainsaction_id"));
-                            else if (r.has("outbound_transaction_id") && holds_alternative<int>(r.get("outbound_transaction_id")))
-                                txnId = get<int>(r.get("outbound_transaction_id"));
-                        }
-                        if (status.isEmpty() && r.has("status") && holds_alternative<string>(r.get("status"))) {
-                            status = QString::fromStdString(get<string>(r.get("status")));
-                        }
-                        if (orderDate.isEmpty() && r.has("order_at") && holds_alternative<string>(r.get("order_at"))) {
-                            orderDate = QString::fromStdString(get<string>(r.get("order_at")));
-                        }
-                        break;
-                    }
+            for (const auto& r : tbl->view(codeCol, Value(codeStd))) {
+                if (hubType == HubType::INBOUND) {
+                    if (r.has("inbound_transaction_id") && holds_alternative<int>(r.get("inbound_transaction_id")))
+                        txnId = get<int>(r.get("inbound_transaction_id"));
+                } else {
+                    if (r.has("outbound_trainsaction_id") && holds_alternative<int>(r.get("outbound_trainsaction_id")))
+                        txnId = get<int>(r.get("outbound_trainsaction_id"));
+                    else if (r.has("outbound_transaction_id") && holds_alternative<int>(r.get("outbound_transaction_id")))
+                        txnId = get<int>(r.get("outbound_transaction_id"));
                 }
+                if (status.isEmpty() && r.has("status") && holds_alternative<string>(r.get("status"))) {
+                    status = QString::fromStdString(get<string>(r.get("status")));
+                }
+                if (orderDate.isEmpty() && r.has("order_at") && holds_alternative<string>(r.get("order_at"))) {
+                    orderDate = QString::fromStdString(get<string>(r.get("order_at")));
+                }
+                break;
             }
         }
     }
@@ -2037,27 +2030,20 @@ void TransactionHubWidget::onEditOrderNoteClicked()
         const Table* tbl = db->getTable(targetTable);
         if (tbl) {
             std::string codeStd = orderCode.toStdString();
-            const auto& rows = tbl->getRows();
-            for (size_t i = 0; i < rows.size(); ++i) {
-                if (tbl->isRowDeleted(i)) continue;
-                const auto& r = rows[i];
-                if (r.has(codeCol) && holds_alternative<string>(r.get(codeCol))) {
-                    if (get<string>(r.get(codeCol)) == codeStd) {
-                        if (hubType == HubType::INBOUND) {
-                            if (r.has("inbound_transaction_id") && holds_alternative<int>(r.get("inbound_transaction_id")))
-                                txnId = get<int>(r.get("inbound_transaction_id"));
-                        } else {
-                            if (r.has("outbound_trainsaction_id") && holds_alternative<int>(r.get("outbound_trainsaction_id")))
-                                txnId = get<int>(r.get("outbound_trainsaction_id"));
-                            else if (r.has("outbound_transaction_id") && holds_alternative<int>(r.get("outbound_transaction_id")))
-                                txnId = get<int>(r.get("outbound_transaction_id"));
-                        }
-                        if (currentNote.isEmpty() && r.has("note") && holds_alternative<string>(r.get("note"))) {
-                            currentNote = QString::fromStdString(get<string>(r.get("note")));
-                        }
-                        break;
-                    }
+            for (const auto& r : tbl->view(codeCol, Value(codeStd))) {
+                if (hubType == HubType::INBOUND) {
+                    if (r.has("inbound_transaction_id") && holds_alternative<int>(r.get("inbound_transaction_id")))
+                        txnId = get<int>(r.get("inbound_transaction_id"));
+                } else {
+                    if (r.has("outbound_trainsaction_id") && holds_alternative<int>(r.get("outbound_trainsaction_id")))
+                        txnId = get<int>(r.get("outbound_trainsaction_id"));
+                    else if (r.has("outbound_transaction_id") && holds_alternative<int>(r.get("outbound_transaction_id")))
+                        txnId = get<int>(r.get("outbound_transaction_id"));
                 }
+                if (currentNote.isEmpty() && r.has("note") && holds_alternative<string>(r.get("note"))) {
+                    currentNote = QString::fromStdString(get<string>(r.get("note")));
+                }
+                break;
             }
         }
     }
@@ -2214,18 +2200,11 @@ void TransactionHubWidget::onUpdateLogisticsClicked()
         const Table* tbl = db->getTable(targetTable);
         if (tbl) {
             std::string codeStd = batchCode.toStdString();
-            const auto& rows = tbl->getRows();
-            for (size_t i = 0; i < rows.size(); ++i) {
-                if (tbl->isRowDeleted(i)) continue;
-                const auto& r = rows[i];
-                if (r.has(codeCol) && holds_alternative<string>(r.get(codeCol))) {
-                    if (get<string>(r.get(codeCol)) == codeStd) {
-                        if (r.has(idCol) && holds_alternative<int>(r.get(idCol))) {
-                            logId = get<int>(r.get(idCol));
-                        }
-                        break;
-                    }
+            for (const auto& r : tbl->view(codeCol, Value(codeStd))) {
+                if (r.has(idCol) && holds_alternative<int>(r.get(idCol))) {
+                    logId = get<int>(r.get(idCol));
                 }
+                break;
             }
         }
     }

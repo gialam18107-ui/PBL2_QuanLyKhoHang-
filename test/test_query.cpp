@@ -1,4 +1,4 @@
-﻿#include <iostream>
+#include <iostream>
 #include <iomanip>
 #include <cassert>
 #include <string>
@@ -24,7 +24,8 @@ void test_query_sum_real_data(Database& db)
     const Table* table = db.getTable("inbound_detail");
     assert(table != nullptr);
 
-    Vector<Record> rows = table->getRows();
+    Vector<Record> rows;
+    for (const auto& r : table->view()) rows.push_back(r);
     cout << "  - Total inbound_detail records: " << rows.size() << endl;
     assert(rows.size() > 0);
 
@@ -90,7 +91,8 @@ void test_query_count_real_data(Database& db)
     // 2.1. Đếm số sản phẩm trong mỗi category_id từ bảng 'product'
     const Table* productTable = db.getTable("product");
     assert(productTable != nullptr);
-    Vector<Record> productRows = productTable->getRows();
+    Vector<Record> productRows;
+    for (const auto& r : productTable->view()) productRows.push_back(r);
 
     Vector<Record> countByCategory = Query::count(productRows, "category", "product_name");
     assert(countByCategory.size() > 0);
@@ -112,7 +114,8 @@ void test_query_count_real_data(Database& db)
     // 2.2. Đếm số unit theo Pair(product_id, status) từ bảng 'unit_inventory' (3200+ dòng)
     const Table* unitTable = db.getTable("unit_inventory");
     assert(unitTable != nullptr);
-    Vector<Record> unitRows = unitTable->getRows();
+    Vector<Record> unitRows;
+    for (const auto& r : unitTable->view()) unitRows.push_back(r);
     cout << "  - Total unit_inventory records: " << unitRows.size() << endl;
     assert(unitRows.size() > 0);
 
@@ -140,7 +143,8 @@ void test_query_sort_real_data(Database& db)
 
     const Table* productTable = db.getTable("product");
     assert(productTable != nullptr);
-    Vector<Record> products = productTable->getRows();
+    Vector<Record> products;
+    for (const auto& r : productTable->view()) products.push_back(r);
 
     // 3.1. Sắp xếp giảm dần theo cost_price (descending: ascending = false)
     Query::querySort(products, "product_id", false);
@@ -210,7 +214,7 @@ void test_query_filter_records_real_data(Database& db)
 
         // Đối chiếu với linear scan
         size_t manualCount = 0;
-        for (const auto& r : productTable->getRows())
+        for (const auto& r : productTable->view())
         {
             if (r.has("is_sold") && holds_alternative<bool>(r.get("is_sold")) &&
                 get<bool>(r.get("is_sold")) == soldStatus)
@@ -265,7 +269,7 @@ void test_query_filter_records_real_data(Database& db)
 
     // Đối chiếu với linear scan
     size_t manualDateCount = 0;
-    for (const auto& r : inboundTable->getRows())
+    for (const auto& r : inboundTable->view())
     {
         if (r.has("order_at"))
         {

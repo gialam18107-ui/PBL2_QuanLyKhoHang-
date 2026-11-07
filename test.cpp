@@ -11,22 +11,18 @@
 // ----------------------------------------------------------------------------
 void specialized_unit_inventory_query_no_break(Database* db, Vector<Record>& results)
 {
-    Table* unitTable = db->getTable("unit_inventory");
-    Table* prodTable = db->getTable("product");
+    const Table* unitTable = db->getTable("unit_inventory");
+    const Table* prodTable = db->getTable("product");
     if (!unitTable || !prodTable) return;
 
-    const auto& unitRows = unitTable->getRows();
-    const auto& prodRows = prodTable->getRows();
     results.clear();
 
-    for (size_t i = 0; i < unitRows.size(); ++i)
+    for (const auto& unit : unitTable->view())
     {
-        const Record& unit = unitRows[i];
         Value uid = unit.get("product_id");
 
-        for (size_t j = 0; j < prodRows.size(); ++j)
+        for (const auto& prod : prodTable->view())
         {
-            const Record& prod = prodRows[j];
             if (uid == prod.get("product_id"))
             {
                 Record jr;
@@ -44,22 +40,18 @@ void specialized_unit_inventory_query_no_break(Database* db, Vector<Record>& res
 // ----------------------------------------------------------------------------
 void specialized_unit_inventory_query_with_break(Database* db, Vector<Record>& results)
 {
-    Table* unitTable = db->getTable("unit_inventory");
-    Table* prodTable = db->getTable("product");
+    const Table* unitTable = db->getTable("unit_inventory");
+    const Table* prodTable = db->getTable("product");
     if (!unitTable || !prodTable) return;
 
-    const auto& unitRows = unitTable->getRows();
-    const auto& prodRows = prodTable->getRows();
     results.clear();
 
-    for (size_t i = 0; i < unitRows.size(); ++i)
+    for (const auto& unit : unitTable->view())
     {
-        const Record& unit = unitRows[i];
         Value uid = unit.get("product_id");
 
-        for (size_t j = 0; j < prodRows.size(); ++j)
+        for (const auto& prod : prodTable->view())
         {
-            const Record& prod = prodRows[j];
             if (uid == prod.get("product_id"))
             {
                 Record jr;
@@ -78,34 +70,32 @@ void specialized_unit_inventory_query_with_break(Database* db, Vector<Record>& r
 // ----------------------------------------------------------------------------
 void specialized_unit_inventory_query_hash_join(Database* db, Vector<Record>& results)
 {
-    Table* unitTable = db->getTable("unit_inventory");
-    Table* prodTable = db->getTable("product");
+    const Table* unitTable = db->getTable("unit_inventory");
+    const Table* prodTable = db->getTable("product");
     if (!unitTable || !prodTable) return;
 
-    const auto& unitRows = unitTable->getRows();
-    const auto& prodRows = prodTable->getRows();
     results.clear();
 
     // Bước 1: Tạo bảng băm tạm thời cho bảng nhỏ (product) theo product_id (int)
     HashMap<int, string> prodMap;
-    for (size_t j = 0; j < prodRows.size(); ++j)
+    for (const auto& prod : prodTable->view())
     {
-        int pid = get<int>(prodRows[j].get("product_id"));
-        string pname = get<string>(prodRows[j].get("product_name"));
+        int pid = get<int>(prod.get("product_id"));
+        string pname = get<string>(prod.get("product_name"));
         prodMap[pid] = pname;
     }
 
     // Bước 2: Quét bảng unit_inventory O(1) tra cứu vào bảng băm
-    for (size_t i = 0; i < unitRows.size(); ++i)
+    for (const auto& unit : unitTable->view())
     {
-        int uid = get<int>(unitRows[i].get("product_id"));
+        int uid = get<int>(unit.get("product_id"));
         auto it = prodMap.find(uid);
         if (it != prodMap.end())
         {
             Record jr;
             jr.set("product.product_name", it->second);
-            jr.set("unit_inventory.serial", unitRows[i].get("serial"));
-            jr.set("unit_inventory.status", unitRows[i].get("status"));
+            jr.set("unit_inventory.serial", unit.get("serial"));
+            jr.set("unit_inventory.status", unit.get("status"));
             results.push_back(std::move(jr));
         }
     }

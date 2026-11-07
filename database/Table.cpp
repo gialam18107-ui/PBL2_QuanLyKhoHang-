@@ -280,6 +280,18 @@ bool Table::createIndex(const string& indexName, const string& columnName, Index
         return false;
     }
 
+    // A column can have at most one index at a time.
+    // If an index already exists on this column, drop/replace it.
+    for (size_t i = 0; i < indexes.size(); ++i)
+    {
+        if (indexes[i]->getColumnName() == columnName)
+        {
+            delete indexes[i];
+            indexes.erase(i);
+            break;
+        }
+    }
+
     if (hasIndex(indexName))
     {
         cout << "Index " << indexName << " already exists." << endl;
@@ -300,12 +312,14 @@ bool Table::createIndex(const string& indexName, const string& columnName, Index
         newIdx = new HashTreeIndex(indexName, columnName);
     }
 
-    Vector<Record> indexRows;
+    newIdx->clear();
     for (size_t rowIndex = 0; rowIndex < rows.size(); ++rowIndex)
     {
-        indexRows.push_back(isRowDeleted(rowIndex) ? Record() : rows[rowIndex]);
+        if (!isRowDeleted(rowIndex) && rows[rowIndex].has(columnName))
+        {
+            newIdx->insert(rows[rowIndex].get(columnName), rowIndex);
+        }
     }
-    newIdx->build(indexRows);
     indexes.push_back(newIdx);
     return true;
 }
@@ -731,21 +745,9 @@ bool Table::isRowDeleted(size_t rowIndex) const
     return rowIndex < deletedRows.size() && deletedRows[rowIndex] != 0;
 }
 
-const Vector<Record>& Table::getRows() const
-{
-    return rows;
-}
-
 bool Table::contains(const string& columnName, const Value& value) const
 {
-    TableView tv = view(columnName, value);
-    if (!tv.empty()) return true;
-
-    for (const Record& r : view())
-    {
-        if (r.has(columnName) && r.get(columnName) == value) return true;
-    }
-    return false;
+    return !view(columnName, value).empty();
 }
 
 size_t Table::rawRowCount() const
@@ -780,12 +782,21 @@ TableView Table::view(const string& columnName, const Value& value) const
         }
     }
 
-    if (index == nullptr)
+    if (index != nullptr)
     {
-        return TableView();
+        Vector<size_t> matched = index->find(value);
+        return TableView(this, std::move(matched));
     }
 
-    Vector<size_t> matched = index->find(value);
+    // Fallback: column has no index. Scan active rows.
+    Vector<size_t> matched;
+    for (size_t i = 0; i < rows.size(); ++i)
+    {
+        if (!isRowDeleted(i) && rows[i].has(columnName) && rows[i].get(columnName) == value)
+        {
+            matched.push_back(i);
+        }
+    }
     return TableView(this, std::move(matched));
 }
 
@@ -801,12 +812,25 @@ TableView Table::view(const string& columnName, const Value& minVal, const Value
         }
     }
 
-    if (index == nullptr)
+    if (index != nullptr)
     {
-        return TableView();
+        Vector<size_t> matched = index->findRange(minVal, maxVal);
+        return TableView(this, std::move(matched));
     }
 
-    Vector<size_t> matched = index->findRange(minVal, maxVal);
+    // Fallback: column has no index. Scan active rows within range.
+    Vector<size_t> matched;
+    for (size_t i = 0; i < rows.size(); ++i)
+    {
+        if (!isRowDeleted(i) && rows[i].has(columnName))
+        {
+            const Value& val = rows[i].get(columnName);
+            if (!(val < minVal) && !(maxVal < val))
+            {
+                matched.push_back(i);
+            }
+        }
+    }
     return TableView(this, std::move(matched));
 }
 
@@ -936,7 +960,15 @@ void Table::rebuildIndexes()
 {
     for (size_t index = 0; index < indexes.size(); ++index)
     {
-        indexes[index]->build(rows);
+        indexes[index]->clear();
+        const string& colName = indexes[index]->getColumnName();
+        for (size_t rowIndex = 0; rowIndex < rows.size(); ++rowIndex)
+        {
+            if (!isRowDeleted(rowIndex) && rows[rowIndex].has(colName))
+            {
+                indexes[index]->insert(rows[rowIndex].get(colName), rowIndex);
+            }
+        }
     }
 }
 

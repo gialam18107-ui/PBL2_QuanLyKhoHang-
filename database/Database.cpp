@@ -141,7 +141,7 @@ bool Database::insert(const string& tableName, const Record& record)
         }
     }
 
-    size_t newRowIndex = table->getRows().size();
+    size_t newRowIndex = table->rawRowCount();
     HashMap<string, int> oldAutoInc;
     if (inTransaction)
     {
@@ -195,24 +195,19 @@ bool Database::validateForeignKeyUpdates(
     return true;
 }
 
-bool Database::isReferenced(Database& database, const string& tableName, const Vector<Record>& removedRows)
+bool Database::isReferenced(Database& database, const string& tableName, const Record& parent)
 {
-    Vector<string> names = database.getTableNames();
-    for (size_t tableIndex = 0; tableIndex < names.size(); ++tableIndex)
+    for (const auto& item : database.tables)
     {
-        const Table* childTable = database.getTable(names[tableIndex]);
+        const Table* childTable = item.second;
         if (childTable == nullptr || childTable->getName() == tableName) continue;
         for (size_t constraintIndex = 0; constraintIndex < childTable->getConstraints().size(); ++constraintIndex)
         {
             auto* foreignKey = dynamic_cast<ForeignKeyConstraint*>(childTable->getConstraints()[constraintIndex]);
             if (foreignKey == nullptr || foreignKey->getReferenceTable() != tableName) continue;
-            for (size_t removedIndex = 0; removedIndex < removedRows.size(); ++removedIndex)
-            {
-                const Record& parent = removedRows[removedIndex];
-                if (!parent.has(foreignKey->getReferenceColumn())) continue;
-                Value parentValue = parent.get(foreignKey->getReferenceColumn());
-                if (containsColumnValue(*childTable, foreignKey->getColumnName(), parentValue)) return true;
-            }
+            if (!parent.has(foreignKey->getReferenceColumn())) continue;
+            Value parentValue = parent.get(foreignKey->getReferenceColumn());
+            if (containsColumnValue(*childTable, foreignKey->getColumnName(), parentValue)) return true;
         }
     }
     return false;
@@ -244,7 +239,7 @@ OperationResult Database::update(const string& tableName, int recordId, const Re
     {
         return OperationResult(false, "Không tìm thấy bản ghi với ID " + to_string(recordId) + " trong bảng '" + tableName + "'.", 0);
     }
-    const Record& current = table->getRows()[static_cast<size_t>(rowIndex)];
+    const Record& current = table->getRawRow(static_cast<size_t>(rowIndex));
     if (!validateForeignKeyUpdates(*this, *table, current, newValues))
     {
         return OperationResult(false, "Vi phạm ràng buộc khóa ngoại khi cập nhật bảng '" + tableName + "'.", 0);
@@ -287,10 +282,8 @@ OperationResult Database::remove(const string& tableName, int recordId)
     {
         return OperationResult(false, "Không tìm thấy bản ghi với ID " + to_string(recordId) + " trong bảng '" + tableName + "'.", 0);
     }
-    const Record& record = table->getRows()[static_cast<size_t>(rowIndex)];
-    Vector<Record> removedRows;
-    removedRows.push_back(record);
-    if (isReferenced(*this, tableName, removedRows))
+    const Record& record = table->getRawRow(static_cast<size_t>(rowIndex));
+    if (isReferenced(*this, tableName, record))
     {
         return OperationResult(false, "Không thể xóa bản ghi: Đang có dữ liệu ở các bảng khác tham chiếu đến bản ghi này (vi phạm toàn vẹn tham chiếu).", 0);
     }

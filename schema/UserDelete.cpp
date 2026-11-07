@@ -1,4 +1,4 @@
-﻿#include "UserDelete.h"
+#include "UserDelete.h"
 #include "query/Query.h"
 #include <iostream>
 #include <cctype>
@@ -81,9 +81,7 @@ namespace user_delete
             if (sTab) {
                 std::string pkCol = sTab->getPrimaryKeyColumn();
                 Vector<int> specIds;
-                Vector<Record> specRecs = Query::filterRecords(*sTab, "product_id", Value(productId));
-                for (size_t i = 0; i < specRecs.size(); ++i) {
-                    const Record& r = specRecs[i];
+                for (const auto& r : sTab->view("product_id", Value(productId))) {
                     if (!pkCol.empty() && r.has(pkCol) && std::holds_alternative<int>(r.get(pkCol))) {
                         specIds.push_back(std::get<int>(r.get(pkCol)));
                     }
@@ -182,8 +180,7 @@ namespace user_delete
         // Check if referenced by product
         const Table* prodTable = db->getTable("product");
         if (prodTable && !brandName.empty()) {
-            Vector<Record> matchedProds = Query::filterRecords(*prodTable, "brand", Value(brandName));
-            if (!matchedProds.empty()) {
+            if (prodTable->contains("brand", Value(brandName))) {
                 return OperationResult{false, "Không thể xóa thương hiệu '" + brandName + "': Đang có sản phẩm trong danh mục thuộc thương hiệu này.", 0};
             }
         }

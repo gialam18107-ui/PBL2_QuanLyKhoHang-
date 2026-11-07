@@ -1,4 +1,4 @@
-﻿#include <iostream>
+#include <iostream>
 #include <iomanip>
 #include <chrono>
 #include <cassert>
@@ -64,7 +64,7 @@ int main() {
     assert(prodTbl && cqTbl && cuTbl);
 
     Vector<int> productIds;
-    for (const auto& p : prodTbl->getRows()) {
+    for (const auto& p : prodTbl->view()) {
         int pid = safeGetInt(p, "product_id");
         if (pid > 0) productIds.push_back(pid);
     }

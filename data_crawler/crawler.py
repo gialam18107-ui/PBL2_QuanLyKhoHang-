@@ -28,7 +28,6 @@ class DataCrawler:
     def __init__(self, seed: int = 42):
         self.rng = random.Random(seed)
         self.products: List[Dict[str, Any]] = []
-        self.product_quantities: List[Dict[str, Any]] = []
         self.specs_by_category: Dict[str, List[Dict[str, Any]]] = {
             "CPU": [],
             "GPU": [],
@@ -219,14 +218,6 @@ class DataCrawler:
                 "is_sold": "TRUE",
             }
             self.products.append(product_record)
-
-            # Build PRODUCT_QUANTITY record matching QuanLyKhoHang_schema.json
-            self.product_quantities.append({
-                "product_id": product_id,
-                "available_quan": initial_qty,
-                "warranty_quan": 0,
-                "scrapped_quan": 0,
-            })
 
             # Build category-specific specification record
             spec_id = spec_ids[cat_name]

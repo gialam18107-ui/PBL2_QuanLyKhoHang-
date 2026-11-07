@@ -52,9 +52,7 @@ namespace user_create
     static int findCustomerIdByCode(const Table* custTable, const std::string& customerCode)
     {
         if (!custTable || customerCode.empty()) return -1;
-        Vector<Record> recs = Query::filterRecords(*custTable, "customer_code", Value(customerCode));
-        if (!recs.empty()) {
-            const Record& r = recs[0];
+        for (const auto& r : custTable->view("customer_code", Value(customerCode))) {
             if (r.has("customer_id") && std::holds_alternative<int>(r.get("customer_id"))) {
                 return std::get<int>(r.get("customer_id"));
             }
@@ -95,11 +93,10 @@ namespace user_create
         std::string brandCode = brandName;
         const Table* brandTable = db->getTable("brand");
         if (brandTable) {
-            Vector<Record> bRecs = Query::filterRecords(*brandTable, "brand", Value(brandName));
-            if (!bRecs.empty()) {
-                const Record& r = bRecs[0];
+            for (const auto& r : brandTable->view("brand", Value(brandName))) {
                 if (r.has("code") && std::holds_alternative<std::string>(r.get("code"))) {
                     brandCode = std::get<std::string>(r.get("code"));
+                    break;
                 }
             }
         }
@@ -107,11 +104,10 @@ namespace user_create
         std::string catCode = categoryName;
         const Table* catTable = db->getTable("category");
         if (catTable) {
-            Vector<Record> cRecs = Query::filterRecords(*catTable, "category_name", Value(categoryName));
-            if (!cRecs.empty()) {
-                const Record& r = cRecs[0];
+            for (const auto& r : catTable->view("category_name", Value(categoryName))) {
                 if (r.has("code") && std::holds_alternative<std::string>(r.get("code"))) {
                     catCode = std::get<std::string>(r.get("code"));
+                    break;
                 }
             }
         }
@@ -120,8 +116,8 @@ namespace user_create
         int catSeq = 0;
         const Table* prodTable = db->getTable("product");
         if (prodTable) {
-            brandSeq = static_cast<int>(Query::filterRecords(*prodTable, "brand", Value(brandName)).size());
-            catSeq = static_cast<int>(Query::filterRecords(*prodTable, "category", Value(categoryName)).size());
+            brandSeq = static_cast<int>(prodTable->view("brand", Value(brandName)).size());
+            catSeq = static_cast<int>(prodTable->view("category", Value(categoryName)).size());
         }
         brandSeq += 1;
         catSeq += 1;
@@ -210,8 +206,7 @@ namespace user_create
         const Table* brandTable = db->getTable("brand");
         bool brandFound = false;
         if (brandTable) {
-            Vector<Record> bRecs = Query::filterRecords(*brandTable, "brand", Value(brandName));
-            brandFound = !bRecs.empty();
+            brandFound = brandTable->contains("brand", Value(brandName));
         }
         if (!brandFound) {
             return OperationResult{false, "Hãng sản xuất '" + brandName + "' không tồn tại trong CSDL.", 0};
@@ -224,8 +219,7 @@ namespace user_create
         const Table* catTable = db->getTable("category");
         bool catFound = false;
         if (catTable) {
-            Vector<Record> cRecs = Query::filterRecords(*catTable, "category_name", Value(catUpper));
-            catFound = !cRecs.empty();
+            catFound = catTable->contains("category_name", Value(catUpper));
         }
         if (!catFound) {
             return OperationResult{false, "Danh mục '" + catUpper + "' không tồn tại trong CSDL.", 0};
@@ -387,8 +381,7 @@ namespace user_create
         }
 
         // Unique tax code check
-        Vector<Record> taxMatches = Query::filterRecords(*infoTable, "tax_code", Value(taxCode));
-        if (!taxMatches.empty()) {
+        if (infoTable->contains("tax_code", Value(taxCode))) {
             return OperationResult{false, "Mã số thuế '" + taxCode + "' đã tồn tại trong hệ thống.", 0};
         }
 
@@ -455,10 +448,10 @@ namespace user_create
         const Table* brandTable = db->getTable("brand");
         if (!brandTable) return OperationResult{false, "Bảng 'brand' không tồn tại trong CSDL.", 0};
 
-        if (!Query::filterRecords(*brandTable, "brand", Value(brandName)).empty()) {
+        if (brandTable->contains("brand", Value(brandName))) {
             return OperationResult{false, "Thương hiệu '" + brandName + "' đã tồn tại trong CSDL.", 0};
         }
-        if (!Query::filterRecords(*brandTable, "code", Value(brandCode)).empty()) {
+        if (brandTable->contains("code", Value(brandCode))) {
             return OperationResult{false, "Mã thương hiệu '" + brandCode + "' đã tồn tại trong CSDL.", 0};
         }
 
@@ -507,18 +500,17 @@ namespace user_create
             }
             const Table* chkTbl = db->getTable("inventory_check");
             if (!chkTbl) return OperationResult{false, "Bảng 'inventory_check' không tồn tại.", 0};
-            Vector<Record> chkRecs = Query::filterRecords(*chkTbl, "check_code", Value(sourceCode));
+            TableView chkRecs = chkTbl->view("check_code", Value(sourceCode));
             if (chkRecs.empty()) {
                 return OperationResult{false, "Mã đợt kiểm kho source_code '" + sourceCode + "' không tồn tại trong hệ thống.", 0};
             }
             const Table* cqTbl = db->getTable("inventory_check_quantity");
             if (cqTbl) {
-                int chkId = std::get<int>(chkRecs[0].get("check_id"));
-                Vector<Record> cqRecs = Query::filterRecords(*cqTbl, "check_id", Value(chkId));
+                int chkId = std::get<int>((*chkRecs.begin()).get("check_id"));
                 HashMap<int, bool> allowedPids;
-                for (size_t k = 0; k < cqRecs.size(); ++k) {
-                    if (cqRecs[k].has("product_id") && std::holds_alternative<int>(cqRecs[k].get("product_id"))) {
-                        allowedPids[std::get<int>(cqRecs[k].get("product_id"))] = true;
+                for (const auto& cq : cqTbl->view("check_id", Value(chkId))) {
+                    if (cq.has("product_id") && std::holds_alternative<int>(cq.get("product_id"))) {
+                        allowedPids[std::get<int>(cq.get("product_id"))] = true;
                     }
                 }
                 for (size_t k = 0; k < items.size(); ++k) {
@@ -670,18 +662,17 @@ namespace user_create
             }
             const Table* chkTbl = db->getTable("inventory_check");
             if (!chkTbl) return OperationResult{false, "Bảng 'inventory_check' không tồn tại.", 0};
-            Vector<Record> chkRecs = Query::filterRecords(*chkTbl, "check_code", Value(sourceCode));
+            TableView chkRecs = chkTbl->view("check_code", Value(sourceCode));
             if (chkRecs.empty()) {
                 return OperationResult{false, "Mã đợt kiểm kho source_code '" + sourceCode + "' không tồn tại trong hệ thống.", 0};
             }
             const Table* cqTbl = db->getTable("inventory_check_quantity");
             if (cqTbl) {
-                int chkId = std::get<int>(chkRecs[0].get("check_id"));
-                Vector<Record> cqRecs = Query::filterRecords(*cqTbl, "check_id", Value(chkId));
+                int chkId = std::get<int>((*chkRecs.begin()).get("check_id"));
                 HashMap<int, bool> allowedPids;
-                for (size_t k = 0; k < cqRecs.size(); ++k) {
-                    if (cqRecs[k].has("product_id") && std::holds_alternative<int>(cqRecs[k].get("product_id"))) {
-                        allowedPids[std::get<int>(cqRecs[k].get("product_id"))] = true;
+                for (const auto& cq : cqTbl->view("check_id", Value(chkId))) {
+                    if (cq.has("product_id") && std::holds_alternative<int>(cq.get("product_id"))) {
+                        allowedPids[std::get<int>(cq.get("product_id"))] = true;
                     }
                 }
                 for (size_t k = 0; k < items.size(); ++k) {
@@ -851,8 +842,7 @@ namespace user_create
         if (!db) return true;
         const Table* unitTab = db->getTable("unit_inventory");
         if (!unitTab) return true;
-        Vector<Record> recs = Query::filterRecords(*unitTab, "serial", Value(serial));
-        return recs.empty();
+        return !unitTab->contains("serial", Value(serial));
     }
 
     std::string generateUniqueSerial(Database* db)
@@ -933,18 +923,17 @@ namespace user_create
             }
             const Table* chkTbl = db->getTable("inventory_check");
             if (!chkTbl) return OperationResult{false, "Bảng 'inventory_check' không tồn tại.", 0};
-            Vector<Record> chkRecs = Query::filterRecords(*chkTbl, "check_code", Value(sourceCode));
+            TableView chkRecs = chkTbl->view("check_code", Value(sourceCode));
             if (chkRecs.empty()) {
                 return OperationResult{false, "Mã đợt kiểm kho source_code '" + sourceCode + "' không tồn tại trong hệ thống.", 0};
             }
             const Table* cqTbl = db->getTable("inventory_check_quantity");
             if (cqTbl) {
-                int chkId = std::get<int>(chkRecs[0].get("check_id"));
-                Vector<Record> cqRecs = Query::filterRecords(*cqTbl, "check_id", Value(chkId));
+                int chkId = std::get<int>((*chkRecs.begin()).get("check_id"));
                 HashMap<int, bool> allowedPids;
-                for (size_t k = 0; k < cqRecs.size(); ++k) {
-                    if (cqRecs[k].has("product_id") && std::holds_alternative<int>(cqRecs[k].get("product_id"))) {
-                        allowedPids[std::get<int>(cqRecs[k].get("product_id"))] = true;
+                for (const auto& cq : cqTbl->view("check_id", Value(chkId))) {
+                    if (cq.has("product_id") && std::holds_alternative<int>(cq.get("product_id"))) {
+                        allowedPids[std::get<int>(cq.get("product_id"))] = true;
                     }
                 }
                 for (size_t k = 0; k < totalOrderedItems.size(); ++k) {
@@ -1128,18 +1117,17 @@ namespace user_create
             }
             const Table* chkTbl = db->getTable("inventory_check");
             if (!chkTbl) return OperationResult{false, "Bảng 'inventory_check' không tồn tại.", 0};
-            Vector<Record> chkRecs = Query::filterRecords(*chkTbl, "check_code", Value(sourceCode));
+            TableView chkRecs = chkTbl->view("check_code", Value(sourceCode));
             if (chkRecs.empty()) {
                 return OperationResult{false, "Mã đợt kiểm kho source_code '" + sourceCode + "' không tồn tại trong hệ thống.", 0};
             }
             const Table* cqTbl = db->getTable("inventory_check_quantity");
             if (cqTbl) {
-                int chkId = std::get<int>(chkRecs[0].get("check_id"));
-                Vector<Record> cqRecs = Query::filterRecords(*cqTbl, "check_id", Value(chkId));
+                int chkId = std::get<int>((*chkRecs.begin()).get("check_id"));
                 HashMap<int, bool> allowedPids;
-                for (size_t k = 0; k < cqRecs.size(); ++k) {
-                    if (cqRecs[k].has("product_id") && std::holds_alternative<int>(cqRecs[k].get("product_id"))) {
-                        allowedPids[std::get<int>(cqRecs[k].get("product_id"))] = true;
+                for (const auto& cq : cqTbl->view("check_id", Value(chkId))) {
+                    if (cq.has("product_id") && std::holds_alternative<int>(cq.get("product_id"))) {
+                        allowedPids[std::get<int>(cq.get("product_id"))] = true;
                     }
                 }
                 for (size_t k = 0; k < totalOrderedItems.size(); ++k) {
@@ -1362,8 +1350,7 @@ namespace user_create
         int delDetId = -1;
         int delRecQty = 0;
         int delActQty = 0;
-        Vector<Record> ddRecords = Query::filterRecords(*delDetTable, "delivery_id", Value(deliveryId));
-        for (const auto& row : ddRecords) {
+        for (const auto& row : delDetTable->view("delivery_id", Value(deliveryId))) {
             if (row.has("product_id") && std::holds_alternative<int>(row.get("product_id")) &&
                 std::get<int>(row.get("product_id")) == productId) {
                 delDetId = std::get<int>(row.get("delivery_detail_id"));
@@ -1385,8 +1372,7 @@ namespace user_create
         int inDetId = -1;
         int inOrdQty = 0;
         int inActQty = 0;
-        Vector<Record> idRecords = Query::filterRecords(*inDetTable, "inbound_transaction_id", Value(inTxnId));
-        for (const auto& row : idRecords) {
+        for (const auto& row : inDetTable->view("inbound_transaction_id", Value(inTxnId))) {
             if (row.has("product_id") && std::holds_alternative<int>(row.get("product_id")) &&
                 std::get<int>(row.get("product_id")) == productId) {
                 inDetId = std::get<int>(row.get("inbound_detail_id"));
@@ -1476,13 +1462,12 @@ namespace user_create
                 std::string currentUnitStatus = "";
 
                 if (!sn.empty()) {
-                    Vector<Record> uRecs = Query::filterRecords(*unitTable, "serial", Value(sn));
-                    if (!uRecs.empty()) {
-                        const auto& uRow = uRecs[0];
+                    for (const auto& uRow : unitTable->view("serial", Value(sn))) {
                         if (uRow.has("product_id") && std::holds_alternative<int>(uRow.get("product_id")) &&
                             std::get<int>(uRow.get("product_id")) == productId) {
                             targetUnitId = std::get<int>(uRow.get("unit_id"));
                             currentUnitStatus = std::get<std::string>(uRow.get("status"));
+                            break;
                         }
                     }
                 }
@@ -1613,15 +1598,14 @@ namespace user_create
                 int targetUnitId = -1;
                 std::string currentUnitStatus = "";
 
-                Vector<Record> uRecs = Query::filterRecords(*unitTable, "serial", Value(sn));
-                if (!uRecs.empty()) {
-                    const auto& uRow = uRecs[0];
-                    if (uRow.has("product_id") && std::holds_alternative<int>(uRow.get("product_id")) &&
-                        std::get<int>(uRow.get("product_id")) == productId) {
-                        targetUnitId = std::get<int>(uRow.get("unit_id"));
-                        currentUnitStatus = std::get<std::string>(uRow.get("status"));
+                for (const auto& uRow : unitTable->view("serial", Value(sn))) {
+                        if (uRow.has("product_id") && std::holds_alternative<int>(uRow.get("product_id")) &&
+                            std::get<int>(uRow.get("product_id")) == productId) {
+                            targetUnitId = std::get<int>(uRow.get("unit_id"));
+                            currentUnitStatus = std::get<std::string>(uRow.get("status"));
+                            break;
+                        }
                     }
-                }
 
                 if (targetUnitId == -1) {
                     db->rollback();
@@ -1949,8 +1933,7 @@ namespace user_create
 
         const Table* rTable = db->getTable("reason");
         if (rTable) {
-            Vector<Record> rRecs = Query::filterRecords(*rTable, "reason", Value(reason));
-            if (rRecs.empty()) {
+            if (!rTable->contains("reason", Value(reason))) {
                 return OperationResult{false, "Lý do điều chuyển '" + reason + "' không tồn tại trong danh mục reason.", 0};
             }
         }
@@ -1959,17 +1942,16 @@ namespace user_create
             const Table* chkTbl = db->getTable("inventory_check");
             const Table* cqTbl = db->getTable("inventory_check_quantity");
             if (chkTbl) {
-                Vector<Record> cRecs = Query::filterRecords(*chkTbl, "check_code", Value(sourceCheckCode));
+                TableView cRecs = chkTbl->view("check_code", Value(sourceCheckCode));
                 if (cRecs.empty()) {
                     return OperationResult{false, "Mã đợt kiểm kho source_code '" + sourceCheckCode + "' không tồn tại.", 0};
                 }
                 if (cqTbl) {
-                    int chkId = std::get<int>(cRecs[0].get("check_id"));
-                    Vector<Record> cqRecs = Query::filterRecords(*cqTbl, "check_id", Value(chkId));
+                    int chkId = std::get<int>((*cRecs.begin()).get("check_id"));
                     HashMap<int, bool> allowedPids;
-                    for (size_t k = 0; k < cqRecs.size(); ++k) {
-                        if (cqRecs[k].has("product_id") && std::holds_alternative<int>(cqRecs[k].get("product_id"))) {
-                            allowedPids[std::get<int>(cqRecs[k].get("product_id"))] = true;
+                    for (const auto& cq : cqTbl->view("check_id", Value(chkId))) {
+                        if (cq.has("product_id") && std::holds_alternative<int>(cq.get("product_id"))) {
+                            allowedPids[std::get<int>(cq.get("product_id"))] = true;
                         }
                     }
                     for (size_t i = 0; i < effectiveItems.size(); ++i) {
@@ -2075,7 +2057,7 @@ namespace user_create
         std::string checkCode = std::get<std::string>(chkRec->get("check_code"));
         std::string checkType = std::get<std::string>(chkRec->get("check_type"));
 
-        Vector<Record> cqRows = Query::filterRecords(*cqTbl, "check_id", Value(checkId));
+        TableView cqRows = cqTbl->view("check_id", Value(checkId));
         Vector<Pair<int, int>> inboundItems;
         Vector<Pair<int, int>> outboundItems;
         Vector<AdjustMovementItem> movements;
@@ -2101,9 +2083,8 @@ namespace user_create
             Vector<int> shiftCounts;
 
             if (cuTbl) {
-                Vector<Record> cuRows = Query::filterRecords(*cuTbl, "check_id", Value(checkId));
-                for (size_t i = 0; i < cuRows.size(); ++i) {
-                    const auto& cu = cuRows[i];
+                TableView cuRows = cuTbl->view("check_id", Value(checkId));
+                for (const auto& cu : cuRows) {
                     std::string sysSt = (cu.has("system_status") && std::holds_alternative<std::string>(cu.get("system_status")))
                                       ? std::get<std::string>(cu.get("system_status")) : "";
                     std::string scanSt = (cu.has("scanned_status") && std::holds_alternative<std::string>(cu.get("scanned_status")))
@@ -2154,8 +2135,7 @@ namespace user_create
             }
         } else {
             // QUAN Check: net calculation per product
-            for (size_t i = 0; i < cqRows.size(); ++i) {
-                const auto& r = cqRows[i];
+            for (const auto& r : cqRows) {
                 int pid = std::get<int>(r.get("product_id"));
                 int sysTotal = std::get<int>(r.get("system_available_quan")) + std::get<int>(r.get("system_warranty_quan")) + std::get<int>(r.get("system_scrapped_quan"));
                 int actTotal = std::get<int>(r.get("actual_available_quan")) + std::get<int>(r.get("actual_warranty_quan")) + std::get<int>(r.get("actual_scrapped_quan"));

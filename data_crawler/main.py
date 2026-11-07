@@ -31,13 +31,13 @@ def validate_exported_data(data_dir: str) -> bool:
     print(f"\n[+] Validating CSV data integrity in: {data_dir}")
 
     # 1. Verify Domain Folders exist (Section 10)
-    expected_domains = ["transactions", "unit", "products", "customers", "status_type"]
+    expected_domains = ["transactions", "unit", "products", "customers", "status_type", "inventory_check"]
     for dom in expected_domains:
         dom_dir = os.path.join(data_dir, dom)
         if not os.path.isdir(dom_dir):
             print(f"[-] Missing domain folder: {dom_dir}")
             return False
-    print(f"  [OK] Verified 5 domain directories: {', '.join(expected_domains)}")
+    print(f"  [OK] Verified {len(expected_domains)} domain directories: {', '.join(expected_domains)}")
 
     # 2. Check products
     prod_path = resolve_file(data_dir, "product.csv")
@@ -81,14 +81,6 @@ def validate_exported_data(data_dir: str) -> bool:
                 count += 1
             total_specs += count
             print(f"  [OK] {tbl}.csv: {count} records linked.")
-
-    # 4. Check product_quantity
-    pq_path = resolve_file(data_dir, "product_quantity.csv")
-    if os.path.exists(pq_path):
-        with open(pq_path, encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            pq_count = sum(1 for _ in reader)
-            print(f"  [OK] product_quantity.csv: {pq_count} records.")
 
     # 5. Check customers
     cust_path = resolve_file(data_dir, "customer.csv")
