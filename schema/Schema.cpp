@@ -315,6 +315,7 @@ namespace Schema
         table->addColumn(Column("series", DataType::VARCHAR, 100, false, false, true));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_cpu", "cpu_id"));
+        table->addConstraint(new ForeignKeyConstraint("fk_cpu_product", "product_id", "product", "product_id"));
         table->createIndex("hash_tree_socket", "socket", IndexType::HASH_TREE);
         table->createIndex("hash_tree_tier", "tier", IndexType::HASH_TREE);
         table->createIndex("hash_tree_series", "series", IndexType::HASH_TREE);
@@ -334,6 +335,7 @@ namespace Schema
         table->addColumn(Column("vram", DataType::INTEGER, 0, false, false, true));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_gpu", "gpu_id"));
+        table->addConstraint(new ForeignKeyConstraint("fk_gpu_product", "product_id", "product", "product_id"));
         table->createIndex("hash_tree_series", "series", IndexType::HASH_TREE);
         table->createIndex("hash_tree_producer", "producer", IndexType::HASH_TREE);
         table->createIndex("hash_tree_vram", "vram", IndexType::HASH_TREE);
@@ -355,6 +357,7 @@ namespace Schema
         table->addColumn(Column("ram_support", DataType::VARCHAR, 50, false, false, true));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_mainboard", "mainboard_id"));
+        table->addConstraint(new ForeignKeyConstraint("fk_mainboard_product", "product_id", "product", "product_id"));
         table->createIndex("hash_tree_cpu_support", "cpu_support", IndexType::HASH_TREE);
         table->createIndex("hash_tree_socket", "socket", IndexType::HASH_TREE);
         table->createIndex("hash_tree_size", "size", IndexType::HASH_TREE);
@@ -377,6 +380,7 @@ namespace Schema
         table->addColumn(Column("bus", DataType::VARCHAR, 50, false, false, true));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_ram", "ram_id"));
+        table->addConstraint(new ForeignKeyConstraint("fk_ram_product", "product_id", "product", "product_id"));
         table->createIndex("hash_tree_generation", "generation", IndexType::HASH_TREE);
         table->createIndex("hash_tree_capacity", "capacity", IndexType::HASH_TREE);
         table->createIndex("hash_tree_bus", "bus", IndexType::HASH_TREE);
@@ -396,6 +400,7 @@ namespace Schema
         table->addColumn(Column("capacity", DataType::VARCHAR, 50, false, false, true));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_ssd", "ssd_id"));
+        table->addConstraint(new ForeignKeyConstraint("fk_ssd_product", "product_id", "product", "product_id"));
         table->createIndex("hash_tree_type", "type", IndexType::HASH_TREE);
         table->createIndex("hash_tree_gen", "gen", IndexType::HASH_TREE);
         table->createIndex("hash_tree_capacity", "capacity", IndexType::HASH_TREE);
@@ -415,6 +420,7 @@ namespace Schema
         table->addColumn(Column("size", DataType::VARCHAR, 50, false, false, false));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_psu", "psu_id"));
+        table->addConstraint(new ForeignKeyConstraint("fk_psu_product", "product_id", "product", "product_id"));
         table->createIndex("hash_tree_quality", "quality", IndexType::HASH_TREE);
         table->createIndex("hash_tree_capacity", "capacity", IndexType::HASH_TREE);
         table->createIndex("hash_tree_size", "size", IndexType::HASH_TREE);
@@ -432,6 +438,7 @@ namespace Schema
         table->addColumn(Column("type", DataType::VARCHAR, 100, false, false, true));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_cooling", "cooling_id"));
+        table->addConstraint(new ForeignKeyConstraint("fk_cooling_product", "product_id", "product", "product_id"));
         table->createIndex("hash_tree_type", "type", IndexType::HASH_TREE);
         return table;
     }
@@ -448,6 +455,7 @@ namespace Schema
         table->addColumn(Column("size", DataType::VARCHAR, 50, false, false, true));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_case", "case_id"));
+        table->addConstraint(new ForeignKeyConstraint("fk_case_product", "product_id", "product", "product_id"));
         table->createIndex("hash_tree_size", "size", IndexType::HASH_TREE);
         return table;
     }
@@ -634,14 +642,14 @@ namespace Schema
         auto table = new Table("shipment");
         table->addColumn(Column("shipment_id", DataType::INTEGER, 0, true, true, true, true));
         table->addColumn(Column("shipment_code", DataType::VARCHAR, 20, false, true, true));
-        table->addColumn(Column("sell_id", DataType::INTEGER, 0, false, false, true));
+        table->addColumn(Column("outbound_transaction_id", DataType::INTEGER, 0, false, false, true));
         table->addColumn(Column("expected_at", DataType::DATE, 0, false, false, true));
         table->addColumn(Column("ship_at", DataType::DATE, 0, false, false, false));
         table->addColumn(Column("status", DataType::VARCHAR, 255, false, false, true));
 
         table->addConstraint(new PrimaryKeyConstraint("pk_shipment", "shipment_id"));
         table->addConstraint(new UniqueConstraint("uq_shipment_code", "shipment_code"));
-        table->addConstraint(new ForeignKeyConstraint("fk_shipment_outbound_txn", "sell_id", "outbound_transaction", "outbound_trainsaction_id"));
+        table->addConstraint(new ForeignKeyConstraint("fk_shipment_outbound_txn", "outbound_transaction_id", "outbound_transaction", "outbound_trainsaction_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_shipment_status", "status", "shipment_status", "status"));
         table->createIndex("avl_tree_ship_at", "ship_at", IndexType::AVL);
         table->createIndex("avl_tree_expected_at", "expected_at", IndexType::AVL);
@@ -683,6 +691,7 @@ namespace Schema
         table->addConstraint(new PrimaryKeyConstraint("pk_status_history", "history_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_status_history_unit", "unit_id", "unit_inventory", "unit_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_status_history_curr_status", "curr_status", "unit_status", "status"));
+        table->createIndex("hash_tree_transaction", "transaction", IndexType::HASH_TREE);
         table->createIndex("hash_tree_type", "type", IndexType::HASH_TREE);
         return table;
     }
@@ -785,6 +794,7 @@ namespace Schema
         table->addColumn(Column("id", DataType::INTEGER, 0, true, true, true, true));
         table->addColumn(Column("spec", DataType::VARCHAR, 255, false, false, true));
         table->addConstraint(new PrimaryKeyConstraint("pk_" + specName, "id"));
+        table->createIndex("hash_tree_spec", "spec", IndexType::HASH_TREE);
         return table;
     }
 

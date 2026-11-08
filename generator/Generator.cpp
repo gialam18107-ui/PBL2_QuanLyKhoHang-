@@ -1090,7 +1090,7 @@ namespace Generator
             Record shipRecord;
             shipRecord.set("shipment_id", shipId);
             shipRecord.set("shipment_code", shipCode);
-            shipRecord.set("sell_id", txnId);
+            shipRecord.set("outbound_transaction_id", txnId);
             shipRecord.set("ship_at", shipDate);
             shipRecord.set("expected_at", shipDate);
             shipRecord.set("status", string("COMPLETED"));
@@ -1599,10 +1599,10 @@ namespace Generator
         // Shipments link to valid Outbound Transactions
         for (const auto& s : shipTbl->view())
         {
-            int txnId = get<int>(s.get("sell_id"));
+            int txnId = s.has("outbound_transaction_id") ? get<int>(s.get("outbound_transaction_id")) : 0;
             if (!validOutboundTxns.contains(txnId))
             {
-                cerr << "[-] Shipment references invalid sell_id (outbound_trainsaction_id): " << txnId << "\n";
+                cerr << "[-] Shipment references invalid outbound_transaction_id: " << txnId << "\n";
                 return false;
             }
         }

@@ -277,12 +277,10 @@ namespace user_update
         else if (tableName == "shipment") {
             // Rule 5.6: Logistics Lock if parent transaction is COMPLETED or CANCELLED
             int outId = -1;
-            if (oldRecord.has("sell_id") && std::holds_alternative<int>(oldRecord.get("sell_id"))) {
-                outId = std::get<int>(oldRecord.get("sell_id"));
+            if (oldRecord.has("outbound_transaction_id") && std::holds_alternative<int>(oldRecord.get("outbound_transaction_id"))) {
+                outId = std::get<int>(oldRecord.get("outbound_transaction_id"));
             } else if (oldRecord.has("outbound_trainsaction_id") && std::holds_alternative<int>(oldRecord.get("outbound_trainsaction_id"))) {
                 outId = std::get<int>(oldRecord.get("outbound_trainsaction_id"));
-            } else if (oldRecord.has("outbound_transaction_id") && std::holds_alternative<int>(oldRecord.get("outbound_transaction_id"))) {
-                outId = std::get<int>(oldRecord.get("outbound_transaction_id"));
             } else if (oldRecord.has("outbound_id") && std::holds_alternative<int>(oldRecord.get("outbound_id"))) {
                 outId = std::get<int>(oldRecord.get("outbound_id"));
             }
@@ -333,8 +331,8 @@ namespace user_update
                 if (colName == "ship_at" && std::holds_alternative<std::string>(modifyingValues[i])) {
                     std::string newShipAt = std::get<std::string>(modifyingValues[i]);
                     int outId = -1;
-                    if (oldRecord.has("sell_id") && std::holds_alternative<int>(oldRecord.get("sell_id"))) {
-                        outId = std::get<int>(oldRecord.get("sell_id"));
+                    if (oldRecord.has("outbound_transaction_id") && std::holds_alternative<int>(oldRecord.get("outbound_transaction_id"))) {
+                        outId = std::get<int>(oldRecord.get("outbound_transaction_id"));
                     } else if (oldRecord.has("outbound_trainsaction_id") && std::holds_alternative<int>(oldRecord.get("outbound_trainsaction_id"))) {
                         outId = std::get<int>(oldRecord.get("outbound_trainsaction_id"));
                     } else if (oldRecord.has("outbound_id") && std::holds_alternative<int>(oldRecord.get("outbound_id"))) {
@@ -833,8 +831,10 @@ namespace user_update
         }
 
         int outTxnId = -1;
-        if (shipRec->has("sell_id") && std::holds_alternative<int>(shipRec->get("sell_id"))) {
-            outTxnId = std::get<int>(shipRec->get("sell_id"));
+        if (shipRec->has("outbound_transaction_id") && std::holds_alternative<int>(shipRec->get("outbound_transaction_id"))) {
+            outTxnId = std::get<int>(shipRec->get("outbound_transaction_id"));
+        } else if (shipRec->has("outbound_trainsaction_id") && std::holds_alternative<int>(shipRec->get("outbound_trainsaction_id"))) {
+            outTxnId = std::get<int>(shipRec->get("outbound_trainsaction_id"));
         }
         const Record* outTxnRec = outTxnTable->getRecordById(outTxnId);
         if (!outTxnRec) {
@@ -1120,12 +1120,10 @@ namespace user_update
             }
         } else {
             int outTxnId = -1;
-            if (logRec.has("sell_id") && std::holds_alternative<int>(logRec.get("sell_id"))) {
-                outTxnId = std::get<int>(logRec.get("sell_id"));
+            if (logRec.has("outbound_transaction_id") && std::holds_alternative<int>(logRec.get("outbound_transaction_id"))) {
+                outTxnId = std::get<int>(logRec.get("outbound_transaction_id"));
             } else if (logRec.has("outbound_trainsaction_id") && std::holds_alternative<int>(logRec.get("outbound_trainsaction_id"))) {
                 outTxnId = std::get<int>(logRec.get("outbound_trainsaction_id"));
-            } else if (logRec.has("outbound_transaction_id") && std::holds_alternative<int>(logRec.get("outbound_transaction_id"))) {
-                outTxnId = std::get<int>(logRec.get("outbound_transaction_id"));
             } else if (logRec.has("outbound_id") && std::holds_alternative<int>(logRec.get("outbound_id"))) {
                 outTxnId = std::get<int>(logRec.get("outbound_id"));
             }

@@ -221,6 +221,115 @@ namespace user_query {
 
 	// 17.6 Lịch sử thay đổi trạng thái bán is_sold (is_sold_changing)
 	void is_sold_changing_query(Database *db, Vector<Record> &results, int productId = 0);
+
+	// ========================================================
+	// 18. CÁC HÀM TIỆN ÍCH TRUY VẤN CHO GIAO DIỆN & NGHIỆP VỤ (UI & BUSINESS HELPERS)
+	// ========================================================
+
+	// 18.1 Tra cứu ID đơn hàng, trạng thái, ngày đặt và ghi chú từ mã đơn
+	bool resolve_order_info_by_code(
+		Database* db,
+		const string& orderCode,
+		bool isInbound,
+		int& txnId,
+		string& status,
+		string& orderDate,
+		string& note
+	);
+
+	// 18.2 Lấy trạng thái đơn hàng từ mã đơn
+	string get_order_status_by_code(Database* db, const string& orderCode, bool isInbound);
+
+	// 18.3 Lấy mã nguồn (source_code) của đơn hàng từ mã đơn
+	string get_order_source_code_by_code(Database* db, const string& orderCode, bool isInbound);
+
+	// 18.4 Tra cứu ID đợt vận chuyển từ mã giao nhận (delivery_code / shipment_code)
+	int resolve_logistics_id_by_code(Database* db, const string& logisticsCode, bool isInbound);
+
+	// 18.5 Tìm kiếm nhanh 1 sản phẩm theo mã (product_code / barcode / sku) hoặc từ khóa tên
+	int search_single_product(Database* db, const string& keyword, bool& isSoldOut);
+
+	// 18.6 Tra cứu thông tin chi tiết một linh kiện từ serial
+	bool get_unit_details_by_serial(
+		Database* db,
+		const string& serial,
+		int& unitId,
+		int& productId,
+		string& status,
+		bool& isSold
+	);
+
+	// 18.7 Tra cứu thông tin cơ bản của sản phẩm phục vụ hiển thị
+	bool get_product_display_info(
+		Database* db,
+		int productId,
+		string& productCode,
+		string& productName,
+		bool& isSold
+	);
+
+	// 18.8 Tra cứu ID sản phẩm từ mã sản phẩm
+	int resolve_product_id_by_code(Database* db, const string& productCode);
+
+	// 18.9 Tra cứu ID khách hàng từ mã khách hàng
+	int resolve_customer_id_by_code(Database* db, const string& customerCode);
+
+	// 18.10 Kiểm tra thương hiệu có đang được sản phẩm nào tham chiếu không
+	bool is_brand_referenced_by_product(Database* db, const string& brandName);
+
+	// 18.11 Kiểm tra tiến độ đợt giao nhận (đã có linh kiện nhận/xuất thực tế > 0 hay chưa)
+	bool has_logistics_batch_progress(Database* db, int logId, bool isInbound);
+
+	// 18.12 Tổng hợp tiến độ của đơn hàng (tổng số lượng kế hoạch, thực tế, đã phát sinh tiến độ hay chưa)
+	void get_order_progress_summary(
+		Database* db,
+		int txnId,
+		bool isInbound,
+		int& totalPlanQty,
+		int& totalActQty,
+		bool& hasProgress
+	);
+
+	// 18.13 Lấy ID đợt xuất đầu tiên của một đơn xuất kho
+	int get_first_shipment_id_for_order(Database* db, const string& outboundCode);
+
+	// 18.14 Lấy danh sách ID sản phẩm được kiểm kê trong một đợt kiểm kho
+	void get_check_product_ids(Database* db, const string& checkCode, Vector<int>& productIds);
+
+	// 18.15 Lấy danh sách serial ứng viên để điều chuyển trạng thái
+	void get_candidate_units_for_adjustment(
+		Database* db,
+		int productId,
+		const string& fromStatus,
+		const string& toStatus,
+		const string& sourceCheckCode,
+		const Vector<string>& excludeList,
+		Vector<Record>& results
+	);
+
+	// 18.16 Lấy lịch sử các linh kiện đã được điều chuyển trong một phiếu điều chuyển
+	void adjustment_units_history_query(Database* db, int adjustId, Vector<Record>& results);
+
+	// 18.17 Tra cứu thông tin đơn giao nhận đầu tiên phát sinh từ đợt kiểm kho
+	int get_first_logistics_id_for_check_source(Database* db, const string& checkCode, bool isInbound);
+
+	// 18.18 Lấy danh sách serial ứng viên để xuất kho / phân bổ cho đơn hàng
+	void get_candidate_units_for_order_dispatch(
+		Database* db,
+		int productId,
+		const string& sourceCheckCode,
+		const Vector<string>& excludeList,
+		Vector<Record>& results
+	);
+
+	// 18.19 Kiểm tra xem đợt kiểm kho đã phát sinh đơn nhập/xuất/điều chuyển chênh lệch chưa
+	bool get_check_consequential_codes(
+		Database* db,
+		const string& checkCode,
+		string& inboundCode,
+		string& outboundCode,
+		string& adjustCode
+	);
 }
 
 #endif // USERQUERY_H

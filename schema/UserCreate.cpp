@@ -786,7 +786,7 @@ namespace user_create
         Record ship;
         ship.set("shipment_id", shipId);
         ship.set("shipment_code", shipCode);
-        ship.set("sell_id", outTxnId);
+        ship.set("outbound_transaction_id", outTxnId);
         ship.set("expected_at", expectedShipDate);
         ship.set("ship_at", Value{});
         ship.set("status", std::string("PENDING"));
@@ -1267,7 +1267,7 @@ namespace user_create
             Record ship;
             ship.set("shipment_id", shipId);
             ship.set("shipment_code", shipCode);
-            ship.set("sell_id", outTxnId);
+            ship.set("outbound_transaction_id", outTxnId);
             ship.set("expected_at", batch.expectedDate);
             ship.set("ship_at", Value{});
             ship.set("status", std::string("PENDING"));

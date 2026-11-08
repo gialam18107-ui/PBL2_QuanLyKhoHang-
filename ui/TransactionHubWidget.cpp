@@ -1855,8 +1855,6 @@ void TransactionHubWidget::onUpdateOrderStatusClicked()
             txnId = get<int>(rec->get("outbound_transaction.outbound_transaction_id"));
         else if (rec->has("outbound_id") && holds_alternative<int>(rec->get("outbound_id")))
             txnId = get<int>(rec->get("outbound_id"));
-        else if (rec->has("sell_id") && holds_alternative<int>(rec->get("sell_id")))
-            txnId = get<int>(rec->get("sell_id"));
 
         if (rec->has("outbound_transaction.outbound_code") && holds_alternative<string>(rec->get("outbound_transaction.outbound_code")))
             orderCode = QString::fromStdString(get<string>(rec->get("outbound_transaction.outbound_code")));
@@ -1923,29 +1921,12 @@ void TransactionHubWidget::onUpdateOrderStatusClicked()
 
     // Direct DB lookup fallback if txnId not resolved from record
     if (txnId <= 0 && !orderCode.isEmpty() && db) {
-        std::string targetTable = (hubType == HubType::INBOUND) ? "inbound_transaction" : "outbound_transaction";
-        std::string codeCol = (hubType == HubType::INBOUND) ? "inbound_code" : "outbound_code";
-        const Table* tbl = db->getTable(targetTable);
-        if (tbl) {
-            std::string codeStd = orderCode.toStdString();
-            for (const auto& r : tbl->view(codeCol, Value(codeStd))) {
-                if (hubType == HubType::INBOUND) {
-                    if (r.has("inbound_transaction_id") && holds_alternative<int>(r.get("inbound_transaction_id")))
-                        txnId = get<int>(r.get("inbound_transaction_id"));
-                } else {
-                    if (r.has("outbound_trainsaction_id") && holds_alternative<int>(r.get("outbound_trainsaction_id")))
-                        txnId = get<int>(r.get("outbound_trainsaction_id"));
-                    else if (r.has("outbound_transaction_id") && holds_alternative<int>(r.get("outbound_transaction_id")))
-                        txnId = get<int>(r.get("outbound_transaction_id"));
-                }
-                if (status.isEmpty() && r.has("status") && holds_alternative<string>(r.get("status"))) {
-                    status = QString::fromStdString(get<string>(r.get("status")));
-                }
-                if (orderDate.isEmpty() && r.has("order_at") && holds_alternative<string>(r.get("order_at"))) {
-                    orderDate = QString::fromStdString(get<string>(r.get("order_at")));
-                }
-                break;
-            }
+        int resolvedId = 0;
+        string resolvedSt, resolvedDate, resolvedNote;
+        if (user_query::resolve_order_info_by_code(db, orderCode.toStdString(), hubType == HubType::INBOUND, resolvedId, resolvedSt, resolvedDate, resolvedNote)) {
+            txnId = resolvedId;
+            if (status.isEmpty()) status = QString::fromStdString(resolvedSt);
+            if (orderDate.isEmpty()) orderDate = QString::fromStdString(resolvedDate);
         }
     }
 
@@ -2025,26 +2006,11 @@ void TransactionHubWidget::onEditOrderNoteClicked()
 
     // Direct DB lookup fallback if txnId not resolved from record
     if (txnId <= 0 && !orderCode.isEmpty() && db) {
-        std::string targetTable = (hubType == HubType::INBOUND) ? "inbound_transaction" : "outbound_transaction";
-        std::string codeCol = (hubType == HubType::INBOUND) ? "inbound_code" : "outbound_code";
-        const Table* tbl = db->getTable(targetTable);
-        if (tbl) {
-            std::string codeStd = orderCode.toStdString();
-            for (const auto& r : tbl->view(codeCol, Value(codeStd))) {
-                if (hubType == HubType::INBOUND) {
-                    if (r.has("inbound_transaction_id") && holds_alternative<int>(r.get("inbound_transaction_id")))
-                        txnId = get<int>(r.get("inbound_transaction_id"));
-                } else {
-                    if (r.has("outbound_trainsaction_id") && holds_alternative<int>(r.get("outbound_trainsaction_id")))
-                        txnId = get<int>(r.get("outbound_trainsaction_id"));
-                    else if (r.has("outbound_transaction_id") && holds_alternative<int>(r.get("outbound_transaction_id")))
-                        txnId = get<int>(r.get("outbound_transaction_id"));
-                }
-                if (currentNote.isEmpty() && r.has("note") && holds_alternative<string>(r.get("note"))) {
-                    currentNote = QString::fromStdString(get<string>(r.get("note")));
-                }
-                break;
-            }
+        int resolvedId = 0;
+        string resolvedSt, resolvedDate, resolvedNote;
+        if (user_query::resolve_order_info_by_code(db, orderCode.toStdString(), hubType == HubType::INBOUND, resolvedId, resolvedSt, resolvedDate, resolvedNote)) {
+            txnId = resolvedId;
+            if (currentNote.isEmpty()) currentNote = QString::fromStdString(resolvedNote);
         }
     }
 
@@ -2192,38 +2158,16 @@ void TransactionHubWidget::onUpdateLogisticsClicked()
 
     if (parentCode.isEmpty()) parentCode = QString::fromStdString(currentOrderCode);
 
-    // Fallback direct DB lookup if logId not found but batchCode exists
+    // Fallback lookup if logId not found but batchCode exists
     if (logId <= 0 && !batchCode.isEmpty() && db) {
-        std::string targetTable = (hubType == HubType::INBOUND) ? "delivery" : "shipment";
-        std::string codeCol = (hubType == HubType::INBOUND) ? "delivery_code" : "shipment_code";
-        std::string idCol = (hubType == HubType::INBOUND) ? "delivery_id" : "shipment_id";
-        const Table* tbl = db->getTable(targetTable);
-        if (tbl) {
-            std::string codeStd = batchCode.toStdString();
-            for (const auto& r : tbl->view(codeCol, Value(codeStd))) {
-                if (r.has(idCol) && holds_alternative<int>(r.get(idCol))) {
-                    logId = get<int>(r.get(idCol));
-                }
-                break;
-            }
-        }
+        logId = user_query::resolve_logistics_id_by_code(db, batchCode.toStdString(), hubType == HubType::INBOUND);
     }
     if (logId <= 0) {
         QMessageBox::critical(this, "Lỗi dữ liệu", "Không xác định được khóa chính nội bộ của đợt vận chuyển.");
         return;
     }
 
-    std::string parentOrderStatus = "";
-    if (db) {
-        const Table* ordTbl = db->getTable(hubType == HubType::INBOUND ? "inbound_transaction" : "outbound_transaction");
-        std::string codeCol = (hubType == HubType::INBOUND ? "inbound_code" : "outbound_code");
-        if (ordTbl) {
-            Vector<Record> ordRecs = Query::filterRecords(*ordTbl, codeCol, Value(parentCode.toStdString()));
-            if (!ordRecs.empty() && ordRecs[0].has("status") && holds_alternative<string>(ordRecs[0].get("status"))) {
-                parentOrderStatus = get<string>(ordRecs[0].get("status"));
-            }
-        }
-    }
+    std::string parentOrderStatus = db ? user_query::get_order_status_by_code(db, parentCode.toStdString(), hubType == HubType::INBOUND) : "";
     if (parentOrderStatus == "COMPLETED" || parentOrderStatus == "CANCELLED") {
         QMessageBox::warning(this, "Đợt giao nhận đã bị khóa",
             QString("Đơn hàng %1 đang ở trạng thái [%2]. Toàn bộ các đợt vận chuyển liên quan đã bị khóa.")

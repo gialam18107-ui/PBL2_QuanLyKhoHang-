@@ -1464,7 +1464,7 @@
         },
         {
           "id": "5Kyw1rlPL_fnCR5X2MAfY",
-          "name": "sell_id",
+          "name": "outbound_transaction_id",
           "type": "INTEGER",
           "default": "",
           "check": "",
@@ -4372,7 +4372,7 @@
       ],
       "updateConstraint": "No action",
       "deleteConstraint": "No action",
-      "name": "fk_SELL_ORDER_sell_id_SHIPMENT",
+      "name": "fk_outbound_transaction_shipment",
       "id": "7D3K7kKBBBwSkkI_hXnlt"
     },
     {

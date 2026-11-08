@@ -299,7 +299,7 @@ void test_transaction_coupling_and_quantities(Database& db)
     HashMap<int, int> shipmentsPerOutbound;
     for (const auto& ship : shipTbl->view())
     {
-        int outTxnId = get<int>(ship.get("sell_id"));
+        int outTxnId = ship.has("outbound_transaction_id") ? get<int>(ship.get("outbound_transaction_id")) : get<int>(ship.get("outbound_trainsaction_id"));
         shipmentsPerOutbound[outTxnId] = (shipmentsPerOutbound.contains(outTxnId) ? shipmentsPerOutbound[outTxnId] : 0) + 1;
     }
     for (const auto& outTxn : outTxnTbl->view())
@@ -328,7 +328,7 @@ void test_transaction_coupling_and_quantities(Database& db)
         {
             if (get<int>(ship.get("shipment_id")) == shipId)
             {
-                parentOutboundId = get<int>(ship.get("sell_id"));
+                parentOutboundId = ship.has("outbound_transaction_id") ? get<int>(ship.get("outbound_transaction_id")) : get<int>(ship.get("outbound_trainsaction_id"));
                 break;
             }
         }

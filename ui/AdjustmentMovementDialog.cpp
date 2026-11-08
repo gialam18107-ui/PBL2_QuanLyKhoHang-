@@ -264,21 +264,12 @@ void AdjustmentMovementCreateDialog::populateProducts(const QString& filterCheck
     std::unordered_set<int> allowedPids;
     bool filterActive = false;
 
-    if (!filterCheckCode.isEmpty()) {
-        const Table* chkTable = db->getTable("inventory_check");
-        const Table* cqTable = db->getTable("inventory_check_quantity");
-        if (chkTable && cqTable) {
-            Vector<Record> cRecs = Query::filterRecords(*chkTable, "check_code", Value(filterCheckCode.toStdString()));
-            if (!cRecs.empty()) {
-                filterActive = true;
-                int chkId = std::get<int>(cRecs[0].get("check_id"));
-                Vector<Record> cqRecs = Query::filterRecords(*cqTable, "check_id", Value(chkId));
-                for (size_t i = 0; i < cqRecs.size(); ++i) {
-                    if (cqRecs[i].has("product_id") && std::holds_alternative<int>(cqRecs[i].get("product_id"))) {
-                        allowedPids.insert(std::get<int>(cqRecs[i].get("product_id")));
-                    }
-                }
-            }
+    if (!filterCheckCode.isEmpty() && db) {
+        Vector<int> pids;
+        user_query::get_check_product_ids(db, filterCheckCode.toStdString(), pids);
+        if (!pids.empty()) {
+            filterActive = true;
+            for (size_t i = 0; i < pids.size(); ++i) allowedPids.insert(pids[i]);
         }
     }
 
@@ -667,65 +658,17 @@ void AdjustmentProductUnitPickerDialog::loadCandidates()
 {
     candidateList.clear();
     if (!db || prodId <= 0) return;
-    const Table* unitTable = db->getTable("unit_inventory");
-    if (!unitTable) return;
-
-    bool hasChkFilter = (!srcCode.empty() && srcCode.rfind("CHK-", 0) == 0);
-    std::unordered_set<std::string> chkDiscrepancySerials;
-    if (hasChkFilter) {
-        const Table* chkTbl = db->getTable("inventory_check");
-        const Table* chkUnitTbl = db->getTable("inventory_check_unit");
-        const Table* chkQuanTbl = db->getTable("inventory_check_quantity");
-        if (chkTbl && chkUnitTbl) {
-            Vector<Record> cRecs = Query::filterRecords(*chkTbl, "check_code", Value(srcCode));
-            if (!cRecs.empty()) {
-                int chkId = cRecs[0].has("check_id") && std::holds_alternative<int>(cRecs[0].get("check_id")) ? std::get<int>(cRecs[0].get("check_id")) : 0;
-                std::unordered_map<int, int> qIdToPid;
-                if (chkQuanTbl) {
-                    Vector<Record> qRecs = Query::filterRecords(*chkQuanTbl, "check_id", Value(chkId));
-                    for (size_t i = 0; i < qRecs.size(); ++i) {
-                        int qid = qRecs[i].has("check_quantity_id") && std::holds_alternative<int>(qRecs[i].get("check_quantity_id")) ? std::get<int>(qRecs[i].get("check_quantity_id")) : 0;
-                        int pid = qRecs[i].has("product_id") && std::holds_alternative<int>(qRecs[i].get("product_id")) ? std::get<int>(qRecs[i].get("product_id")) : 0;
-                        if (qid > 0 && pid > 0) qIdToPid[qid] = pid;
-                    }
-                }
-                Vector<Record> chkUnits = Query::filterRecords(*chkUnitTbl, "check_id", Value(chkId));
-                for (size_t i = 0; i < chkUnits.size(); ++i) {
-                    const auto& cu = chkUnits[i];
-                    int qid = cu.has("check_quantity_id") && std::holds_alternative<int>(cu.get("check_quantity_id")) ? std::get<int>(cu.get("check_quantity_id")) : 0;
-                    int pid = cu.has("product_id") && std::holds_alternative<int>(cu.get("product_id")) ? std::get<int>(cu.get("product_id")) : 0;
-                    if (pid == 0 && qIdToPid.count(qid)) pid = qIdToPid[qid];
-
-                    std::string sysSt = cu.has("system_status") && !isNull(cu.get("system_status")) && std::holds_alternative<std::string>(cu.get("system_status")) ? std::get<std::string>(cu.get("system_status")) : "";
-                    std::string scanSt = cu.has("scanned_status") && !isNull(cu.get("scanned_status")) && std::holds_alternative<std::string>(cu.get("scanned_status")) ? std::get<std::string>(cu.get("scanned_status")) : "";
-                    std::string sn = cu.has("serial") && std::holds_alternative<std::string>(cu.get("serial")) ? std::get<std::string>(cu.get("serial")) : "";
-
-                    if (pid == prodId && sysSt == fromSt.toStdString() && scanSt == toSt.toStdString() && !sn.empty()) {
-                        chkDiscrepancySerials.insert(sn);
-                    }
-                }
-            }
-        }
-    }
-
-    std::unordered_set<std::string> exSet(excludeList.begin(), excludeList.end());
-    Vector<Record> recs = Query::filterRecords(*unitTable, "product_id", Value(prodId));
-
-    for (size_t i = 0; i < recs.size(); ++i) {
-        const auto& r = recs[i];
-        int uid = r.has("unit_id") && std::holds_alternative<int>(r.get("unit_id")) ? std::get<int>(r.get("unit_id")) : 0;
-        std::string sn = r.has("serial") && std::holds_alternative<std::string>(r.get("serial")) ? std::get<std::string>(r.get("serial")) : "";
-        std::string st = r.has("status") && std::holds_alternative<std::string>(r.get("status")) ? std::get<std::string>(r.get("status")) : "";
-        bool isSold = r.has("is_sold") && std::holds_alternative<bool>(r.get("is_sold")) && std::get<bool>(r.get("is_sold"));
-
-        if (isSold || st != fromSt.toStdString()) continue;
-        if (exSet.count(sn)) continue;
-
+    Vector<string> exVec;
+    for (const auto& s : excludeList) exVec.push_back(s);
+    Vector<Record> candRecs;
+    user_query::get_candidate_units_for_adjustment(db, prodId, fromSt.toStdString(), toSt.toStdString(), srcCode, exVec, candRecs);
+    for (size_t i = 0; i < candRecs.size(); ++i) {
+        const auto& r = candRecs[i];
         CandidateRow cr;
-        cr.unitId = uid;
-        cr.serial = sn;
-        cr.status = st;
-        cr.isFromCheck = chkDiscrepancySerials.count(sn) > 0;
+        cr.unitId = r.has("unit_id") && holds_alternative<int>(r.get("unit_id")) ? get<int>(r.get("unit_id")) : 0;
+        cr.serial = r.has("serial") && holds_alternative<string>(r.get("serial")) ? get<string>(r.get("serial")) : "";
+        cr.status = r.has("status") && holds_alternative<string>(r.get("status")) ? get<string>(r.get("status")) : "";
+        cr.isFromCheck = r.has("is_discrepancy") && holds_alternative<bool>(r.get("is_discrepancy")) ? get<bool>(r.get("is_discrepancy")) : false;
         candidateList.push_back(cr);
     }
 
@@ -984,14 +927,13 @@ void AdjustmentSimulationDialog::refreshData()
         totalRemainingNeeded += rem;
 
         int availInStock = 0;
-        if (uTbl) {
-            for (const auto& r : uTbl->view()) {
-                int pid = r.has("product_id") && std::holds_alternative<int>(r.get("product_id")) ? std::get<int>(r.get("product_id")) : 0;
+        if (uTbl && dl.productId > 0) {
+            for (const auto& r : uTbl->view("product_id", Value(dl.productId))) {
                 std::string st = r.has("status") && std::holds_alternative<std::string>(r.get("status")) ? std::get<std::string>(r.get("status")) : "";
                 std::string sn = r.has("serial") && std::holds_alternative<std::string>(r.get("serial")) ? std::get<std::string>(r.get("serial")) : "";
                 bool isSold = r.has("is_sold") && std::holds_alternative<bool>(r.get("is_sold")) && std::get<bool>(r.get("is_sold"));
 
-                if (!isSold && pid == dl.productId && st == dl.fromStatus.toStdString()) {
+                if (!isSold && st == dl.fromStatus.toStdString()) {
                     if (!mainDlg->isSerialStaged(sn) && !mainDlg->isSerialExecuted(sn)) {
                         availInStock++;
                     }
@@ -1067,59 +1009,19 @@ void AdjustmentSimulationDialog::loadCandidatesForSelectedLine()
         return;
     }
 
-    bool hasChkFilter = (!srcCode.empty() && srcCode.rfind("CHK-", 0) == 0);
-    std::unordered_set<std::string> chkDiscrepancies;
-    if (hasChkFilter) {
-        const Table* chkTbl = db->getTable("inventory_check");
-        const Table* chkUnitTbl = db->getTable("inventory_check_unit");
-        const Table* chkQuanTbl = db->getTable("inventory_check_quantity");
-        if (chkTbl && chkUnitTbl) {
-            Vector<Record> cRecs = Query::filterRecords(*chkTbl, "check_code", Value(srcCode));
-            if (!cRecs.empty()) {
-                int chkId = cRecs[0].has("check_id") && std::holds_alternative<int>(cRecs[0].get("check_id")) ? std::get<int>(cRecs[0].get("check_id")) : 0;
-                std::unordered_map<int, int> qIdToPid;
-                if (chkQuanTbl) {
-                    Vector<Record> qRecs = Query::filterRecords(*chkQuanTbl, "check_id", Value(chkId));
-                    for (size_t i = 0; i < qRecs.size(); ++i) {
-                        int qid = qRecs[i].has("check_quantity_id") && std::holds_alternative<int>(qRecs[i].get("check_quantity_id")) ? std::get<int>(qRecs[i].get("check_quantity_id")) : 0;
-                        int pid = qRecs[i].has("product_id") && std::holds_alternative<int>(qRecs[i].get("product_id")) ? std::get<int>(qRecs[i].get("product_id")) : 0;
-                        if (qid > 0 && pid > 0) qIdToPid[qid] = pid;
-                    }
-                }
-                Vector<Record> chkUnits = Query::filterRecords(*chkUnitTbl, "check_id", Value(chkId));
-                for (size_t i = 0; i < chkUnits.size(); ++i) {
-                    const auto& cu = chkUnits[i];
-                    int qid = cu.has("check_quantity_id") && std::holds_alternative<int>(cu.get("check_quantity_id")) ? std::get<int>(cu.get("check_quantity_id")) : 0;
-                    int pid = cu.has("product_id") && std::holds_alternative<int>(cu.get("product_id")) ? std::get<int>(cu.get("product_id")) : 0;
-                    if (pid == 0 && qIdToPid.count(qid)) pid = qIdToPid[qid];
-
-                    std::string sysSt = cu.has("system_status") && !isNull(cu.get("system_status")) && std::holds_alternative<std::string>(cu.get("system_status")) ? std::get<std::string>(cu.get("system_status")) : "";
-                    std::string scanSt = cu.has("scanned_status") && !isNull(cu.get("scanned_status")) && std::holds_alternative<std::string>(cu.get("scanned_status")) ? std::get<std::string>(cu.get("scanned_status")) : "";
-                    std::string sn = cu.has("serial") && std::holds_alternative<std::string>(cu.get("serial")) ? std::get<std::string>(cu.get("serial")) : "";
-
-                    if (pid == targetLine->productId && sysSt == targetLine->fromStatus.toStdString() && scanSt == targetLine->toStatus.toStdString() && !sn.empty()) {
-                        chkDiscrepancies.insert(sn);
-                    }
-                }
-            }
-        }
-    }
-
-    for (const auto& r : uTbl->view()) {
-        int uid = r.has("unit_id") && std::holds_alternative<int>(r.get("unit_id")) ? std::get<int>(r.get("unit_id")) : 0;
-        int pid = r.has("product_id") && std::holds_alternative<int>(r.get("product_id")) ? std::get<int>(r.get("product_id")) : 0;
-        std::string st = r.has("status") && std::holds_alternative<std::string>(r.get("status")) ? std::get<std::string>(r.get("status")) : "";
-        std::string sn = r.has("serial") && std::holds_alternative<std::string>(r.get("serial")) ? std::get<std::string>(r.get("serial")) : "";
-        bool isSold = r.has("is_sold") && std::holds_alternative<bool>(r.get("is_sold")) && std::get<bool>(r.get("is_sold"));
-
-        if (isSold || pid != targetLine->productId || st != targetLine->fromStatus.toStdString()) continue;
+    Vector<string> exVec;
+    Vector<Record> candRecs;
+    user_query::get_candidate_units_for_adjustment(db, targetLine->productId, targetLine->fromStatus.toStdString(), targetLine->toStatus.toStdString(), srcCode, exVec, candRecs);
+    for (size_t i = 0; i < candRecs.size(); ++i) {
+        const auto& r = candRecs[i];
+        string sn = r.has("serial") && holds_alternative<string>(r.get("serial")) ? get<string>(r.get("serial")) : "";
         if (mainDlg->isSerialStaged(sn) || mainDlg->isSerialExecuted(sn)) continue;
 
         LineCandidate lc;
-        lc.unitId = uid;
+        lc.unitId = r.has("unit_id") && holds_alternative<int>(r.get("unit_id")) ? get<int>(r.get("unit_id")) : 0;
         lc.serial = sn;
-        lc.status = st;
-        lc.isFromCheck = (chkDiscrepancies.count(sn) > 0);
+        lc.status = r.has("status") && holds_alternative<string>(r.get("status")) ? get<string>(r.get("status")) : "";
+        lc.isFromCheck = r.has("is_discrepancy") && holds_alternative<bool>(r.get("is_discrepancy")) ? get<bool>(r.get("is_discrepancy")) : false;
         currentCandidates.push_back(lc);
     }
 
@@ -1507,39 +1409,18 @@ void AdjustmentMovementDetailDialog::loadExecutedUnits()
     executedUnits.clear();
     if (!db || adjustId <= 0) return;
 
-    const Table* histTbl = db->getTable("status_history");
-    const Table* unitTbl = db->getTable("unit_inventory");
-    const Table* prodTbl = db->getTable("product");
-    if (!histTbl || !unitTbl || !prodTbl) return;
-
-    for (const auto& r : histTbl->view()) {
-        std::string typ = r.has("type") && std::holds_alternative<std::string>(r.get("type")) ? std::get<std::string>(r.get("type")) : "";
-        int txn = r.has("transaction") && std::holds_alternative<int>(r.get("transaction")) ? std::get<int>(r.get("transaction")) : 0;
-        if (typ != "ADJUSTMENT" || txn != adjustId) continue;
-
-        int uid = r.has("unit_id") && std::holds_alternative<int>(r.get("unit_id")) ? std::get<int>(r.get("unit_id")) : 0;
-        std::string oldSt = r.has("old_status") && std::holds_alternative<std::string>(r.get("old_status")) ? std::get<std::string>(r.get("old_status")) : "";
-        std::string currSt = r.has("curr_status") && std::holds_alternative<std::string>(r.get("curr_status")) ? std::get<std::string>(r.get("curr_status")) : "";
-
-        const Record* uRec = unitTbl->getRecordById(uid);
-        if (!uRec) continue;
-        int pid = uRec->has("product_id") && std::holds_alternative<int>(uRec->get("product_id")) ? std::get<int>(uRec->get("product_id")) : 0;
-        std::string sn = uRec->has("serial") && std::holds_alternative<std::string>(uRec->get("serial")) ? std::get<std::string>(uRec->get("serial")) : "";
-
-        const Record* pRec = prodTbl->getRecordById(pid);
-        QString pCode = pRec && pRec->has("product_code") && std::holds_alternative<std::string>(pRec->get("product_code"))
-            ? QString::fromStdString(std::get<std::string>(pRec->get("product_code"))) : "";
-        QString pName = pRec && pRec->has("product_name") && std::holds_alternative<std::string>(pRec->get("product_name"))
-            ? QString::fromStdString(std::get<std::string>(pRec->get("product_name"))) : "";
-
+    Vector<Record> histRecs;
+    user_query::adjustment_units_history_query(db, adjustId, histRecs);
+    for (size_t i = 0; i < histRecs.size(); ++i) {
+        const auto& r = histRecs[i];
         ExecutedUnit eu;
-        eu.unitId = uid;
-        eu.productId = pid;
-        eu.productCode = pCode;
-        eu.productName = pName;
-        eu.serial = QString::fromStdString(sn);
-        eu.fromStatus = QString::fromStdString(oldSt);
-        eu.toStatus = QString::fromStdString(currSt);
+        eu.unitId = r.has("unit_id") && holds_alternative<int>(r.get("unit_id")) ? get<int>(r.get("unit_id")) : 0;
+        eu.productId = r.has("product_id") && holds_alternative<int>(r.get("product_id")) ? get<int>(r.get("product_id")) : 0;
+        eu.productCode = r.has("product_code") && holds_alternative<string>(r.get("product_code")) ? QString::fromStdString(get<string>(r.get("product_code"))) : "";
+        eu.productName = r.has("product_name") && holds_alternative<string>(r.get("product_name")) ? QString::fromStdString(get<string>(r.get("product_name"))) : "";
+        eu.serial = r.has("serial") && holds_alternative<string>(r.get("serial")) ? QString::fromStdString(get<string>(r.get("serial"))) : "";
+        eu.fromStatus = r.has("from_status") && holds_alternative<string>(r.get("from_status")) ? QString::fromStdString(get<string>(r.get("from_status"))) : "";
+        eu.toStatus = r.has("to_status") && holds_alternative<string>(r.get("to_status")) ? QString::fromStdString(get<string>(r.get("to_status"))) : "";
         executedUnits.push_back(eu);
     }
 }
@@ -1925,18 +1806,11 @@ void AdjustmentMovementDetailDialog::onDirectSerialEntered()
         return;
     }
 
-    const Table* uTbl = db->getTable("unit_inventory");
-    if (!uTbl) return;
-    Vector<Record> matches = Query::filterRecords(*uTbl, "serial", Value(snStd));
-    if (matches.empty()) {
+    int uUnitId = 0, uPid = 0; string uSt; bool isSold = false;
+    if (!user_query::get_unit_details_by_serial(db, snStd, uUnitId, uPid, uSt, isSold)) {
         QMessageBox::warning(this, "Không tồn tại", QString("Linh kiện [%1] không tồn tại trong kho.").arg(sn));
         return;
     }
-
-    const auto& uRec = matches[0];
-    int uPid = uRec.has("product_id") && std::holds_alternative<int>(uRec.get("product_id")) ? std::get<int>(uRec.get("product_id")) : 0;
-    std::string uSt = uRec.has("status") && std::holds_alternative<std::string>(uRec.get("status")) ? std::get<std::string>(uRec.get("status")) : "";
-    bool isSold = uRec.has("is_sold") && std::holds_alternative<bool>(uRec.get("is_sold")) && std::get<bool>(uRec.get("is_sold"));
 
     if (isSold) {
         QMessageBox::warning(this, "Đã bán", QString("Linh kiện [%1] đã được đánh dấu là đã bán (is_sold = true).").arg(sn));
@@ -2194,67 +2068,39 @@ void AdjustmentMovementDetailDialog::preloadUnitsFromCheck()
 {
     if (adjustStatus == "COMPLETED" || adjustStatus == "CANCELLED") return;
     if (!db || sourceCode.isEmpty() || !sourceCode.startsWith("CHK-")) return;
-    const Table* chkTbl = db->getTable("inventory_check");
-    const Table* chkUnitTbl = db->getTable("inventory_check_unit");
-    const Table* chkQuanTbl = db->getTable("inventory_check_quantity");
-    const Table* uTbl = db->getTable("unit_inventory");
-    if (!chkTbl || !chkUnitTbl || !uTbl) return;
 
-    Vector<Record> cRecs = Query::filterRecords(*chkTbl, "check_code", Value(sourceCode.toStdString()));
-    if (cRecs.empty()) return;
-    int chkId = cRecs[0].has("check_id") && std::holds_alternative<int>(cRecs[0].get("check_id")) ? std::get<int>(cRecs[0].get("check_id")) : 0;
-    if (chkId <= 0) return;
-
-    std::unordered_map<int, int> qIdToPid;
-    if (chkQuanTbl) {
-        Vector<Record> qRecs = Query::filterRecords(*chkQuanTbl, "check_id", Value(chkId));
-        for (size_t i = 0; i < qRecs.size(); ++i) {
-            int qid = qRecs[i].has("check_quantity_id") && std::holds_alternative<int>(qRecs[i].get("check_quantity_id")) ? std::get<int>(qRecs[i].get("check_quantity_id")) : 0;
-            int pid = qRecs[i].has("product_id") && std::holds_alternative<int>(qRecs[i].get("product_id")) ? std::get<int>(qRecs[i].get("product_id")) : 0;
-            if (qid > 0 && pid > 0) qIdToPid[qid] = pid;
-        }
-    }
-
-    Vector<Record> chkUnits = Query::filterRecords(*chkUnitTbl, "check_id", Value(chkId));
-    std::unordered_set<std::string> stagedSerials;
-    for (const auto& s : stagedUnits) stagedSerials.insert(s.serial.toStdString());
-    for (const auto& e : executedUnits) stagedSerials.insert(e.serial.toStdString());
+    Vector<string> stagedList;
+    for (const auto& s : stagedUnits) stagedList.push_back(s.serial.toStdString());
+    for (const auto& e : executedUnits) stagedList.push_back(e.serial.toStdString());
 
     for (const auto& dl : detailLines) {
         int stagedCount = getStagedCountForDetail(dl.adjustDetailId);
         int remaining = std::max(0, dl.adjustQuantity - dl.actualQuantity - stagedCount);
         if (remaining <= 0) continue;
 
-        for (size_t i = 0; i < chkUnits.size(); ++i) {
-            const auto& cu = chkUnits[i];
-            int qid = cu.has("check_quantity_id") && std::holds_alternative<int>(cu.get("check_quantity_id")) ? std::get<int>(cu.get("check_quantity_id")) : 0;
-            int pid = cu.has("product_id") && std::holds_alternative<int>(cu.get("product_id")) ? std::get<int>(cu.get("product_id")) : 0;
-            if (pid == 0 && qIdToPid.count(qid)) pid = qIdToPid[qid];
+        Vector<Record> candRecs;
+        user_query::get_candidate_units_for_adjustment(
+            db, dl.productId, dl.fromStatus.toStdString(), dl.toStatus.toStdString(),
+            sourceCode.toStdString(), stagedList, candRecs
+        );
 
-            std::string sysSt = cu.has("system_status") && !isNull(cu.get("system_status")) && std::holds_alternative<std::string>(cu.get("system_status")) ? std::get<std::string>(cu.get("system_status")) : "";
-            std::string scanSt = cu.has("scanned_status") && !isNull(cu.get("scanned_status")) && std::holds_alternative<std::string>(cu.get("scanned_status")) ? std::get<std::string>(cu.get("scanned_status")) : "";
-            std::string sn = cu.has("serial") && std::holds_alternative<std::string>(cu.get("serial")) ? std::get<std::string>(cu.get("serial")) : "";
+        for (size_t i = 0; i < candRecs.size() && remaining > 0; ++i) {
+            const auto& r = candRecs[i];
+            bool isDiscrepancy = r.has("is_discrepancy") && holds_alternative<bool>(r.get("is_discrepancy")) ? get<bool>(r.get("is_discrepancy")) : false;
+            if (!isDiscrepancy) continue;
 
-            if (pid == dl.productId && sysSt == dl.fromStatus.toStdString() && scanSt == dl.toStatus.toStdString() && !stagedSerials.count(sn)) {
-                Vector<Record> uRecs = Query::filterRecords(*uTbl, "serial", Value(sn));
-                if (!uRecs.empty()) {
-                    std::string curSt = uRecs[0].has("status") && std::holds_alternative<std::string>(uRecs[0].get("status")) ? std::get<std::string>(uRecs[0].get("status")) : "";
-                    if (curSt == dl.fromStatus.toStdString()) {
-                        StagedUnit su;
-                        su.adjustDetailId = dl.adjustDetailId;
-                        su.productId = dl.productId;
-                        su.productCode = dl.productCode;
-                        su.productName = dl.productName;
-                        su.serial = QString::fromStdString(sn);
-                        su.fromStatus = dl.fromStatus;
-                        su.toStatus = dl.toStatus;
-                        stagedUnits.push_back(su);
-                        stagedSerials.insert(sn);
-                        remaining--;
-                        if (remaining <= 0) break;
-                    }
-                }
-            }
+            string sn = r.has("serial") && holds_alternative<string>(r.get("serial")) ? get<string>(r.get("serial")) : "";
+            StagedUnit su;
+            su.adjustDetailId = dl.adjustDetailId;
+            su.productId = dl.productId;
+            su.productCode = dl.productCode;
+            su.productName = dl.productName;
+            su.serial = QString::fromStdString(sn);
+            su.fromStatus = dl.fromStatus;
+            su.toStatus = dl.toStatus;
+            stagedUnits.push_back(su);
+            stagedList.push_back(sn);
+            remaining--;
         }
     }
 }
@@ -2262,103 +2108,70 @@ void AdjustmentMovementDetailDialog::preloadUnitsFromCheck()
 void AdjustmentMovementDetailDialog::autoPickAllAccordingToPlan()
 {
     if (!db) return;
-    const Table* uTbl = db->getTable("unit_inventory");
-    if (!uTbl) return;
 
-    std::unordered_set<std::string> stagedSerials;
-    for (const auto& s : stagedUnits) stagedSerials.insert(s.serial.toStdString());
-    for (const auto& e : executedUnits) stagedSerials.insert(e.serial.toStdString());
+    Vector<string> stagedList;
+    for (const auto& s : stagedUnits) stagedList.push_back(s.serial.toStdString());
+    for (const auto& e : executedUnits) stagedList.push_back(e.serial.toStdString());
 
     int addedTotal = 0;
 
-    // 1. Prioritize discrepancies from source check CHK-UNIT
-    if (sourceCode.startsWith("CHK-")) {
-        const Table* chkTbl = db->getTable("inventory_check");
-        const Table* chkUnitTbl = db->getTable("inventory_check_unit");
-        const Table* chkQuanTbl = db->getTable("inventory_check_quantity");
-        if (chkTbl && chkUnitTbl) {
-            Vector<Record> cRecs = Query::filterRecords(*chkTbl, "check_code", Value(sourceCode.toStdString()));
-            if (!cRecs.empty()) {
-                int chkId = cRecs[0].has("check_id") && std::holds_alternative<int>(cRecs[0].get("check_id")) ? std::get<int>(cRecs[0].get("check_id")) : 0;
-                std::unordered_map<int, int> qIdToPid;
-                if (chkQuanTbl) {
-                    Vector<Record> qRecs = Query::filterRecords(*chkQuanTbl, "check_id", Value(chkId));
-                    for (size_t i = 0; i < qRecs.size(); ++i) {
-                        int qid = qRecs[i].has("check_quantity_id") && std::holds_alternative<int>(qRecs[i].get("check_quantity_id")) ? std::get<int>(qRecs[i].get("check_quantity_id")) : 0;
-                        int pid = qRecs[i].has("product_id") && std::holds_alternative<int>(qRecs[i].get("product_id")) ? std::get<int>(qRecs[i].get("product_id")) : 0;
-                        if (qid > 0 && pid > 0) qIdToPid[qid] = pid;
-                    }
-                }
-                Vector<Record> chkUnits = Query::filterRecords(*chkUnitTbl, "check_id", Value(chkId));
-                for (const auto& dl : detailLines) {
-                    int stagedCount = getStagedCountForDetail(dl.adjustDetailId);
-                    int remaining = std::max(0, dl.adjustQuantity - dl.actualQuantity - stagedCount);
-                    if (remaining <= 0) continue;
-
-                    for (size_t i = 0; i < chkUnits.size(); ++i) {
-                        const auto& cu = chkUnits[i];
-                        int qid = cu.has("check_quantity_id") && std::holds_alternative<int>(cu.get("check_quantity_id")) ? std::get<int>(cu.get("check_quantity_id")) : 0;
-                        int pid = cu.has("product_id") && std::holds_alternative<int>(cu.get("product_id")) ? std::get<int>(cu.get("product_id")) : 0;
-                        if (pid == 0 && qIdToPid.count(qid)) pid = qIdToPid[qid];
-
-                        std::string sysSt = cu.has("system_status") && !isNull(cu.get("system_status")) && std::holds_alternative<std::string>(cu.get("system_status")) ? std::get<std::string>(cu.get("system_status")) : "";
-                        std::string scanSt = cu.has("scanned_status") && !isNull(cu.get("scanned_status")) && std::holds_alternative<std::string>(cu.get("scanned_status")) ? std::get<std::string>(cu.get("scanned_status")) : "";
-                        std::string sn = cu.has("serial") && std::holds_alternative<std::string>(cu.get("serial")) ? std::get<std::string>(cu.get("serial")) : "";
-
-                        if (pid == dl.productId && sysSt == dl.fromStatus.toStdString() && scanSt == dl.toStatus.toStdString() && !stagedSerials.count(sn)) {
-                            Vector<Record> uRecs = Query::filterRecords(*uTbl, "serial", Value(sn));
-                            if (!uRecs.empty()) {
-                                std::string curSt = uRecs[0].has("status") && std::holds_alternative<std::string>(uRecs[0].get("status")) ? std::get<std::string>(uRecs[0].get("status")) : "";
-                                if (curSt == dl.fromStatus.toStdString()) {
-                                    StagedUnit su;
-                                    su.adjustDetailId = dl.adjustDetailId;
-                                    su.productId = dl.productId;
-                                    su.productCode = dl.productCode;
-                                    su.productName = dl.productName;
-                                    su.serial = QString::fromStdString(sn);
-                                    su.fromStatus = dl.fromStatus;
-                                    su.toStatus = dl.toStatus;
-                                    stagedUnits.push_back(su);
-                                    stagedSerials.insert(sn);
-                                    addedTotal++;
-                                    remaining--;
-                                    if (remaining <= 0) break;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // 2. Then fill remaining from warehouse
     for (const auto& dl : detailLines) {
         int stagedCount = getStagedCountForDetail(dl.adjustDetailId);
         int remaining = std::max(0, dl.adjustQuantity - dl.actualQuantity - stagedCount);
         if (remaining <= 0) continue;
 
-        for (const auto& r : uTbl->view()) {
-            int pid = r.has("product_id") && std::holds_alternative<int>(r.get("product_id")) ? std::get<int>(r.get("product_id")) : 0;
-            std::string st = r.has("status") && std::holds_alternative<std::string>(r.get("status")) ? std::get<std::string>(r.get("status")) : "";
-            std::string sn = r.has("serial") && std::holds_alternative<std::string>(r.get("serial")) ? std::get<std::string>(r.get("serial")) : "";
-            bool isSold = r.has("is_sold") && std::holds_alternative<bool>(r.get("is_sold")) && std::get<bool>(r.get("is_sold"));
+        Vector<Record> candRecs;
+        user_query::get_candidate_units_for_adjustment(
+            db, dl.productId, dl.fromStatus.toStdString(), dl.toStatus.toStdString(),
+            sourceCode.toStdString(), stagedList, candRecs
+        );
 
-            if (!isSold && pid == dl.productId && st == dl.fromStatus.toStdString() && !stagedSerials.count(sn)) {
-                StagedUnit su;
-                su.adjustDetailId = dl.adjustDetailId;
-                su.productId = dl.productId;
-                su.productCode = dl.productCode;
-                su.productName = dl.productName;
-                su.serial = QString::fromStdString(sn);
-                su.fromStatus = dl.fromStatus;
-                su.toStatus = dl.toStatus;
-                stagedUnits.push_back(su);
-                stagedSerials.insert(sn);
-                addedTotal++;
-                remaining--;
-                if (remaining <= 0) break;
+        // 1. Prioritize check discrepancies
+        for (size_t i = 0; i < candRecs.size() && remaining > 0; ++i) {
+            const auto& r = candRecs[i];
+            bool isDiscrepancy = r.has("is_discrepancy") && holds_alternative<bool>(r.get("is_discrepancy")) ? get<bool>(r.get("is_discrepancy")) : false;
+            if (!isDiscrepancy) continue;
+
+            string sn = r.has("serial") && holds_alternative<string>(r.get("serial")) ? get<string>(r.get("serial")) : "";
+            StagedUnit su;
+            su.adjustDetailId = dl.adjustDetailId;
+            su.productId = dl.productId;
+            su.productCode = dl.productCode;
+            su.productName = dl.productName;
+            su.serial = QString::fromStdString(sn);
+            su.fromStatus = dl.fromStatus;
+            su.toStatus = dl.toStatus;
+            stagedUnits.push_back(su);
+            stagedList.push_back(sn);
+            addedTotal++;
+            remaining--;
+        }
+
+        // 2. Fill remaining from warehouse
+        for (size_t i = 0; i < candRecs.size() && remaining > 0; ++i) {
+            const auto& r = candRecs[i];
+            bool isDiscrepancy = r.has("is_discrepancy") && holds_alternative<bool>(r.get("is_discrepancy")) ? get<bool>(r.get("is_discrepancy")) : false;
+            if (isDiscrepancy) continue;
+
+            string sn = r.has("serial") && holds_alternative<string>(r.get("serial")) ? get<string>(r.get("serial")) : "";
+            bool alreadyInList = false;
+            for (const auto& sl : stagedList) {
+                if (sl == sn) { alreadyInList = true; break; }
             }
+            if (alreadyInList) continue;
+
+            StagedUnit su;
+            su.adjustDetailId = dl.adjustDetailId;
+            su.productId = dl.productId;
+            su.productCode = dl.productCode;
+            su.productName = dl.productName;
+            su.serial = QString::fromStdString(sn);
+            su.fromStatus = dl.fromStatus;
+            su.toStatus = dl.toStatus;
+            stagedUnits.push_back(su);
+            stagedList.push_back(sn);
+            addedTotal++;
+            remaining--;
         }
     }
 

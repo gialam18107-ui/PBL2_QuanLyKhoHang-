@@ -373,11 +373,10 @@ void CustomerDialog::onSaveClicked()
         }
 
         const Table* custTable = db->getTable("customer");
-        if (custTable) {
-            for (const auto& r : custTable->view()) {
-                if (r.has("customer_code") && holds_alternative<std::string>(r.get("customer_code"))) {
-                    createdCustomerCode = QString::fromStdString(get<std::string>(r.get("customer_code")));
-                }
+        if (custTable && res.affectedCount > 0) {
+            const Record* r = custTable->getRecordById(res.affectedCount);
+            if (r && r->has("customer_code") && holds_alternative<std::string>(r->get("customer_code"))) {
+                createdCustomerCode = QString::fromStdString(get<std::string>(r->get("customer_code")));
             }
         }
 

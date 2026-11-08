@@ -1,4 +1,4 @@
-﻿#include "ui/InventoryCheckDialog.h"
+#include "ui/InventoryCheckDialog.h"
 #include <QHeaderView>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
@@ -1169,77 +1169,16 @@ void InventoryCheckReconciliationDialog::updateLockingState()
     if (!db) return;
     bool isCompleted = (checkStatus == "COMPLETED");
 
-    // 1. Inbound Adjustment (source_code == checkCode)
-    const Table* inTbl = db->getTable("inbound_transaction");
-    bool hasInOrder = false;
-    QString inCode = "";
-    if (inTbl) {
-        Vector<Record> recs = Query::filterRecords(*inTbl, "source_code", Value(checkCode.toStdString()));
-        if (!recs.empty()) {
-            hasInOrder = true;
-            inCode = safeGetQString(recs[0], "inbound_code");
-        }
+    string inCodeStd, outCodeStd, movCodeStd;
+    if (db) {
+        user_query::get_check_consequential_codes(db, checkCode.toStdString(), inCodeStd, outCodeStd, movCodeStd);
     }
-
-    if (hasInOrder) {
-        createInboundBtn->setEnabled(false);
-        createInboundBtn->setText(QString("🔒 Đã lập phiếu nhập điều chỉnh: %1").arg(inCode));
-        createInboundBtn->setStyleSheet("background-color: #e2e8f0; color: #475569; font-weight: 600; padding: 8px 16px; border-radius: 6px;");
-        inboundStatusLabel->setText(QString("✅ Phiếu nhập điều chỉnh: <b style='color:#15803d;'>%1</b>").arg(inCode));
-    } else if (surplusUnitList.empty()) {
-        createInboundBtn->setEnabled(false);
-        createInboundBtn->setText("Không có hàng cần nhập điều chỉnh");
-        createInboundBtn->setStyleSheet("background-color: #f1f5f9; color: #94a3b8; font-weight: 500; padding: 8px 16px; border-radius: 6px;");
-        inboundStatusLabel->setText("");
-    } else {
-        createInboundBtn->setEnabled(isCompleted);
-        createInboundBtn->setText("📥 Tạo đơn nhập điều chỉnh");
-        createInboundBtn->setStyleSheet(isCompleted ? "background-color: #2563eb; color: #ffffff; font-weight: 600; padding: 8px 16px; border-radius: 6px;"
-                                                    : "background-color: #94a3b8; color: #ffffff; font-weight: 600; padding: 8px 16px; border-radius: 6px;");
-        inboundStatusLabel->setText(isCompleted ? "" : "⚠️ Cần chuyển trạng thái kiểm kê sang COMPLETED để tạo đơn.");
-    }
-
-    // 2. Outbound Adjustment (source_code == checkCode)
-    const Table* outTbl = db->getTable("outbound_transaction");
-    bool hasOutOrder = false;
-    QString outCode = "";
-    if (outTbl) {
-        Vector<Record> recs = Query::filterRecords(*outTbl, "source_code", Value(checkCode.toStdString()));
-        if (!recs.empty()) {
-            hasOutOrder = true;
-            outCode = safeGetQString(recs[0], "outbound_code");
-        }
-    }
-
-    if (hasOutOrder) {
-        createOutboundBtn->setEnabled(false);
-        createOutboundBtn->setText(QString("🔒 Đã lập phiếu xuất điều chỉnh: %1").arg(outCode));
-        createOutboundBtn->setStyleSheet("background-color: #e2e8f0; color: #475569; font-weight: 600; padding: 8px 16px; border-radius: 6px;");
-        outboundStatusLabel->setText(QString("✅ Phiếu xuất điều chỉnh: <b style='color:#15803d;'>%1</b>").arg(outCode));
-    } else if (missingUnitList.empty()) {
-        createOutboundBtn->setEnabled(false);
-        createOutboundBtn->setText("Không có hàng cần xuất điều chỉnh");
-        createOutboundBtn->setStyleSheet("background-color: #f1f5f9; color: #94a3b8; font-weight: 500; padding: 8px 16px; border-radius: 6px;");
-        outboundStatusLabel->setText("");
-    } else {
-        createOutboundBtn->setEnabled(isCompleted);
-        createOutboundBtn->setText("📤 Tạo đơn xuất điều chỉnh");
-        createOutboundBtn->setStyleSheet(isCompleted ? "background-color: #dc2626; color: #ffffff; font-weight: 600; padding: 8px 16px; border-radius: 6px;"
-                                                     : "background-color: #94a3b8; color: #ffffff; font-weight: 600; padding: 8px 16px; border-radius: 6px;");
-        outboundStatusLabel->setText(isCompleted ? "" : "⚠️ Cần chuyển trạng thái kiểm kê sang COMPLETED để tạo đơn.");
-    }
-
-    // 3. Movement Adjustment (source_code == checkCode)
-    const Table* movTbl = db->getTable("adjustment_movement");
-    bool hasMovOrder = false;
-    QString movCode = "";
-    if (movTbl) {
-        Vector<Record> recs = Query::filterRecords(*movTbl, "source_code", Value(checkCode.toStdString()));
-        if (!recs.empty()) {
-            hasMovOrder = true;
-            movCode = safeGetQString(recs[0], "adjust_code");
-        }
-    }
+    bool hasInOrder = !inCodeStd.empty();
+    QString inCode = QString::fromStdString(inCodeStd);
+    bool hasOutOrder = !outCodeStd.empty();
+    QString outCode = QString::fromStdString(outCodeStd);
+    bool hasMovOrder = !movCodeStd.empty();
+    QString movCode = QString::fromStdString(movCodeStd);
 
     if (hasMovOrder) {
         createMovementBtn->setEnabled(false);
@@ -1307,29 +1246,18 @@ void InventoryCheckReconciliationDialog::onCreateInboundAdj()
         return;
     }
 
-    const Table* inTbl = db->getTable("inbound_transaction");
-    const Table* delTbl = db->getTable("delivery");
-    if (inTbl && delTbl) {
-        Vector<Record> inRecs = Query::filterRecords(*inTbl, "source_code", Value(checkCode.toStdString()));
-        if (!inRecs.empty()) {
-            int inboundId = safeGetInt(inRecs.back(), "inbound_transaction_id");
-            if (inboundId <= 0) inboundId = safeGetInt(inRecs.back(), "inbound_id");
-            Vector<Record> delRecs = Query::filterRecords(*delTbl, "inbound_transaction_id", Value(inboundId));
-            if (delRecs.empty()) delRecs = Query::filterRecords(*delTbl, "inbound_id", Value(inboundId));
-            if (!delRecs.empty()) {
-                int deliveryId = safeGetInt(delRecs.back(), "delivery_id");
-                for (const auto& entry : checkedByProduct) {
-                    int pid = entry.first;
-                    std::map<std::string, std::vector<std::string>> condMap;
-                    for (const auto& p : entry.second) {
-                        condMap[p.second.toStdString()].push_back(p.first.toStdString());
-                    }
-                    for (const auto& cEntry : condMap) {
-                        Vector<std::string> serials;
-                        for (const auto& sn : cEntry.second) serials.push_back(sn);
-                        user_create::receiveUnitsForDelivery(db, deliveryId, pid, cEntry.first, static_cast<int>(serials.size()), serials);
-                    }
-                }
+    int deliveryId = user_query::get_first_logistics_id_for_check_source(db, checkCode.toStdString(), true);
+    if (deliveryId > 0) {
+        for (const auto& entry : checkedByProduct) {
+            int pid = entry.first;
+            std::map<std::string, std::vector<std::string>> condMap;
+            for (const auto& p : entry.second) {
+                condMap[p.second.toStdString()].push_back(p.first.toStdString());
+            }
+            for (const auto& cEntry : condMap) {
+                Vector<std::string> serials;
+                for (const auto& sn : cEntry.second) serials.push_back(sn);
+                user_create::receiveUnitsForDelivery(db, deliveryId, pid, cEntry.first, static_cast<int>(serials.size()), serials);
             }
         }
     }
@@ -1386,24 +1314,13 @@ void InventoryCheckReconciliationDialog::onCreateOutboundAdj()
         return;
     }
 
-    const Table* outTbl = db->getTable("outbound_transaction");
-    const Table* shipTbl = db->getTable("shipment");
-    if (outTbl && shipTbl) {
-        Vector<Record> outRecs = Query::filterRecords(*outTbl, "source_code", Value(checkCode.toStdString()));
-        if (!outRecs.empty()) {
-            int outboundId = safeGetInt(outRecs.back(), "outbound_transaction_id");
-            if (outboundId <= 0) outboundId = safeGetInt(outRecs.back(), "outbound_id");
-            Vector<Record> shipRecs = Query::filterRecords(*shipTbl, "outbound_transaction_id", Value(outboundId));
-            if (shipRecs.empty()) shipRecs = Query::filterRecords(*shipTbl, "outbound_id", Value(outboundId));
-            if (!shipRecs.empty()) {
-                int shipmentId = safeGetInt(shipRecs.back(), "shipment_id");
-                for (const auto& entry : checkedByProduct) {
-                    int pid = entry.first;
-                    Vector<std::string> serials;
-                    for (const auto& sn : entry.second) serials.push_back(sn.toStdString());
-                    user_update::dispatchUnitsForShipment(db, shipmentId, pid, serials);
-                }
-            }
+    int shipmentId = user_query::get_first_logistics_id_for_check_source(db, checkCode.toStdString(), false);
+    if (shipmentId > 0) {
+        for (const auto& entry : checkedByProduct) {
+            int pid = entry.first;
+            Vector<std::string> serials;
+            for (const auto& sn : entry.second) serials.push_back(sn.toStdString());
+            user_update::dispatchUnitsForShipment(db, shipmentId, pid, serials);
         }
     }
 
@@ -1464,10 +1381,10 @@ void InventoryCheckReconciliationDialog::onCreateMovementAdj()
     }
 
     int adjustId = res.affectedCount;
-    const Table* adjDetTbl = db->getTable("adjust_movement_detail");
     Vector<user_update::AdjustUnitEntry> movementUnits;
-    if (adjDetTbl && adjustId > 0) {
-        Vector<Record> detRecs = Query::filterRecords(*adjDetTbl, "adjust_id", Value(adjustId));
+    if (adjustId > 0) {
+        Vector<Record> detRecs;
+        user_query::adjust_movement_detail_query(db, adjustId, detRecs);
         for (const auto& d : detRecs) {
             int detId = safeGetInt(d, "adjust_detail_id");
             int dPid = safeGetInt(d, "product_id");
@@ -2389,8 +2306,9 @@ bool InventoryCheckDetailDialog::processUnitScan(const QString& sn, const QStrin
 
     if (!unitTbl || !cqTbl || !prodTbl) return false;
 
-    Vector<Record> uRows = Query::filterRecords(*unitTbl, "serial", Value(cleanSn.toStdString()));
-    if (uRows.empty()) {
+    int uUnitId = 0, uPid = 0; string uStatusStd; bool uSold = false;
+    bool foundUnit = user_query::get_unit_details_by_serial(db, cleanSn.toStdString(), uUnitId, uPid, uStatusStd, uSold);
+    if (!foundUnit) {
         // Brand-new unrecorded strange unit! (Rule 5.3.1 Type 2)
         QDialog promptDlg(this);
         promptDlg.setWindowTitle("⭐ Phát Hiện Hàng Lạ Chưa Từng Có Trong Kho (Rule 5.3.1 Type 2)");
@@ -2486,9 +2404,7 @@ bool InventoryCheckDetailDialog::processUnitScan(const QString& sn, const QStrin
         return true;
     }
 
-    const auto& uRec = uRows[0];
-    int uPid = safeGetInt(uRec, "product_id");
-    QString uStatus = safeGetQString(uRec, "status");
+    QString uStatus = QString::fromStdString(uStatusStd);
 
     // Check Out-of-Scope Scan Rejection (Rule 5.3.1)
     int targetCqId = 0;
@@ -4060,68 +3976,49 @@ void InventoryCheckInspectDialog::loadCheckData()
     }
 
     // Load quantity matrix
-    const Table* qTbl = db->getTable("inventory_check_quantity");
-    const Table* pTbl = db->getTable("product");
-    if (qTbl && pTbl) {
-        Vector<Record> qRecs = Query::filterRecords(*qTbl, "check_id", Value(checkId));
-        for (size_t i = 0; i < qRecs.size(); ++i) {
-            const auto& qr = qRecs[i];
-            int pid = qr.has("product_id") && std::holds_alternative<int>(qr.get("product_id")) ? std::get<int>(qr.get("product_id")) : 0;
-            const Record* pr = pTbl->getRecordById(pid);
+    Vector<Record> qRecs;
+    user_query::inventory_check_quantity_query(db, checkId, qRecs);
+    for (size_t i = 0; i < qRecs.size(); ++i) {
+        const auto& qr = qRecs[i];
+        int pid = qr.has("product_id") && std::holds_alternative<int>(qr.get("product_id")) ? std::get<int>(qr.get("product_id")) : 0;
 
-            MatrixItem mi;
-            mi.productId = pid;
-            mi.code = (pr && pr->has("product_code") && std::holds_alternative<std::string>(pr->get("product_code"))) ? QString::fromStdString(std::get<std::string>(pr->get("product_code"))) : QString("SP-%1").arg(pid);
-            mi.name = (pr && pr->has("product_name") && std::holds_alternative<std::string>(pr->get("product_name"))) ? QString::fromStdString(std::get<std::string>(pr->get("product_name"))) : "";
-            mi.sysAvail = qr.has("system_available_quan") && std::holds_alternative<int>(qr.get("system_available_quan")) ? std::get<int>(qr.get("system_available_quan")) : 0;
-            mi.actAvail = qr.has("actual_available_quan") && std::holds_alternative<int>(qr.get("actual_available_quan")) ? std::get<int>(qr.get("actual_available_quan")) : 0;
-            mi.diffAvail = mi.actAvail - mi.sysAvail;
+        MatrixItem mi;
+        mi.productId = pid;
+        mi.code = qr.has("product_code") && std::holds_alternative<std::string>(qr.get("product_code")) ? QString::fromStdString(std::get<std::string>(qr.get("product_code"))) : QString("SP-%1").arg(pid);
+        mi.name = qr.has("product_name") && std::holds_alternative<std::string>(qr.get("product_name")) ? QString::fromStdString(std::get<std::string>(qr.get("product_name"))) : "";
+        mi.sysAvail = qr.has("system_available_quan") && std::holds_alternative<int>(qr.get("system_available_quan")) ? std::get<int>(qr.get("system_available_quan")) : 0;
+        mi.actAvail = qr.has("actual_available_quan") && std::holds_alternative<int>(qr.get("actual_available_quan")) ? std::get<int>(qr.get("actual_available_quan")) : 0;
+        mi.diffAvail = mi.actAvail - mi.sysAvail;
 
-            mi.sysWarr = qr.has("system_warranty_quan") && std::holds_alternative<int>(qr.get("system_warranty_quan")) ? std::get<int>(qr.get("system_warranty_quan")) : 0;
-            mi.actWarr = qr.has("actual_warranty_quan") && std::holds_alternative<int>(qr.get("actual_warranty_quan")) ? std::get<int>(qr.get("actual_warranty_quan")) : 0;
-            mi.diffWarr = mi.actWarr - mi.sysWarr;
+        mi.sysWarr = qr.has("system_warranty_quan") && std::holds_alternative<int>(qr.get("system_warranty_quan")) ? std::get<int>(qr.get("system_warranty_quan")) : 0;
+        mi.actWarr = qr.has("actual_warranty_quan") && std::holds_alternative<int>(qr.get("actual_warranty_quan")) ? std::get<int>(qr.get("actual_warranty_quan")) : 0;
+        mi.diffWarr = mi.actWarr - mi.sysWarr;
 
-            mi.sysScrap = qr.has("system_scrapped_quan") && std::holds_alternative<int>(qr.get("system_scrapped_quan")) ? std::get<int>(qr.get("system_scrapped_quan")) : 0;
-            mi.actScrap = qr.has("actual_scrapped_quan") && std::holds_alternative<int>(qr.get("actual_scrapped_quan")) ? std::get<int>(qr.get("actual_scrapped_quan")) : 0;
-            mi.diffScrap = mi.actScrap - mi.sysScrap;
-            mi.note = qr.has("note") && !isNull(qr.get("note")) && std::holds_alternative<std::string>(qr.get("note")) ? QString::fromStdString(std::get<std::string>(qr.get("note"))) : "";
+        mi.sysScrap = qr.has("system_scrapped_quan") && std::holds_alternative<int>(qr.get("system_scrapped_quan")) ? std::get<int>(qr.get("system_scrapped_quan")) : 0;
+        mi.actScrap = qr.has("actual_scrapped_quan") && std::holds_alternative<int>(qr.get("actual_scrapped_quan")) ? std::get<int>(qr.get("actual_scrapped_quan")) : 0;
+        mi.diffScrap = mi.actScrap - mi.sysScrap;
+        mi.note = qr.has("note") && !isNull(qr.get("note")) && std::holds_alternative<std::string>(qr.get("note")) ? QString::fromStdString(std::get<std::string>(qr.get("note"))) : "";
 
-            matrixList.push_back(mi);
-        }
+        matrixList.push_back(mi);
     }
 
     // Load unit details
     if (checkType == "UNIT") {
-        const Table* uChk = db->getTable("inventory_check_unit");
-        const Table* qChk = db->getTable("inventory_check_quantity");
-        std::unordered_map<int, int> qIdToPid;
-        if (qChk) {
-            Vector<Record> qRecs = Query::filterRecords(*qChk, "check_id", Value(checkId));
-            for (size_t i = 0; i < qRecs.size(); ++i) {
-                int qid = qRecs[i].has("check_quantity_id") && std::holds_alternative<int>(qRecs[i].get("check_quantity_id")) ? std::get<int>(qRecs[i].get("check_quantity_id")) : 0;
-                int pid = qRecs[i].has("product_id") && std::holds_alternative<int>(qRecs[i].get("product_id")) ? std::get<int>(qRecs[i].get("product_id")) : 0;
-                if (qid > 0 && pid > 0) qIdToPid[qid] = pid;
-            }
-        }
+        Vector<Record> uRecs;
+        user_query::inventory_check_unit_query(db, checkId, uRecs);
+        for (size_t i = 0; i < uRecs.size(); ++i) {
+            const auto& ur = uRecs[i];
+            int pid = ur.has("product_id") && std::holds_alternative<int>(ur.get("product_id")) ? std::get<int>(ur.get("product_id")) : 0;
 
-        if (uChk && pTbl) {
-            Vector<Record> uRecs = Query::filterRecords(*uChk, "check_id", Value(checkId));
-            for (size_t i = 0; i < uRecs.size(); ++i) {
-                const auto& ur = uRecs[i];
-                int qid = ur.has("check_quantity_id") && std::holds_alternative<int>(ur.get("check_quantity_id")) ? std::get<int>(ur.get("check_quantity_id")) : 0;
-                int pid = ur.has("product_id") && std::holds_alternative<int>(ur.get("product_id")) ? std::get<int>(ur.get("product_id")) : 0;
-                if (pid == 0 && qIdToPid.count(qid)) pid = qIdToPid[qid];
-
-                const Record* pr = pTbl->getRecordById(pid);
-
-                UnitItem ui;
-                ui.serial = ur.has("serial") && std::holds_alternative<std::string>(ur.get("serial")) ? QString::fromStdString(std::get<std::string>(ur.get("serial"))) : "";
-                ui.productId = pid;
-                ui.pCode = (pr && pr->has("product_code") && std::holds_alternative<std::string>(pr->get("product_code"))) ? QString::fromStdString(std::get<std::string>(pr->get("product_code"))) : QString("SP-%1").arg(pid);
-                ui.pName = (pr && pr->has("product_name") && std::holds_alternative<std::string>(pr->get("product_name"))) ? QString::fromStdString(std::get<std::string>(pr->get("product_name"))) : "";
-                ui.sysStatus = ur.has("system_status") && !isNull(ur.get("system_status")) && std::holds_alternative<std::string>(ur.get("system_status")) ? QString::fromStdString(std::get<std::string>(ur.get("system_status"))) : "(Không có)";
-                ui.actStatus = ur.has("scanned_status") && !isNull(ur.get("scanned_status")) && std::holds_alternative<std::string>(ur.get("scanned_status")) ? QString::fromStdString(std::get<std::string>(ur.get("scanned_status"))) : "(Chưa quét / Mất)";
-
+            UnitItem ui;
+            ui.serial = ur.has("serial") && std::holds_alternative<std::string>(ur.get("serial")) ? QString::fromStdString(std::get<std::string>(ur.get("serial"))) : "";
+            ui.productId = pid;
+            ui.pCode = ur.has("product_code") && std::holds_alternative<std::string>(ur.get("product_code")) ? QString::fromStdString(std::get<std::string>(ur.get("product_code"))) : QString("SP-%1").arg(pid);
+            ui.pName = ur.has("product_name") && std::holds_alternative<std::string>(ur.get("product_name")) ? QString::fromStdString(std::get<std::string>(ur.get("product_name"))) : "";
+            ui.sysStatus = ur.has("system_status") && !isNull(ur.get("system_status")) && std::holds_alternative<std::string>(ur.get("system_status")) ? QString::fromStdString(std::get<std::string>(ur.get("system_status"))) : "(Không có)";
+            ui.actStatus = ur.has("scanned_status") && !isNull(ur.get("scanned_status")) && std::holds_alternative<std::string>(ur.get("scanned_status")) ? QString::fromStdString(std::get<std::string>(ur.get("scanned_status"))) : "(Chưa quét / Mất)";
+            ui.eval = ur.has("match_result") && std::holds_alternative<std::string>(ur.get("match_result")) ? QString::fromStdString(std::get<std::string>(ur.get("match_result"))) : "";
+            if (ui.eval.isEmpty()) {
                 if (ui.sysStatus == "(Không có)" || ui.sysStatus == "OUT") {
                     ui.eval = "Hàng thừa / Lạ";
                 } else if (ui.actStatus.startsWith("(Chưa") || ui.actStatus == "MISSING" || ui.actStatus == "OUT" || ui.actStatus == "UNCHECKED") {
@@ -4131,9 +4028,9 @@ void InventoryCheckInspectDialog::loadCheckData()
                 } else {
                     ui.eval = "Khớp";
                 }
-
-                unitList.push_back(ui);
             }
+
+            unitList.push_back(ui);
         }
     }
 

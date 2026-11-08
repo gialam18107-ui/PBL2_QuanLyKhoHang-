@@ -446,7 +446,7 @@ class SchemaExporter:
             {
                 "shipment_id": 1,
                 "shipment_code": "OUT-SEL-000001-S01",
-                "sell_id": 1,
+                "outbound_transaction_id": 1,
                 "ship_at": "2026-09-06",
                 "expected_at": "2026-09-06",
                 "status": "COMPLETED",
@@ -455,7 +455,7 @@ class SchemaExporter:
         shipment_headers = [
             "shipment_id",
             "shipment_code",
-            "sell_id",
+            "outbound_transaction_id",
             "ship_at",
             "expected_at",
             "status",

@@ -2639,17 +2639,7 @@ int MainWindow::resolveProductId(const Record& rec, const std::string& catTable)
     }
 
     if (!code.empty()) {
-        const Table* prodTable = db->getTable("product");
-        if (prodTable) {
-            for (const auto& r : prodTable->view()) {
-                if (r.has("product_code") && holds_alternative<std::string>(r.get("product_code")) &&
-                    get<std::string>(r.get("product_code")) == code) {
-                    if (r.has("product_id") && holds_alternative<int>(r.get("product_id"))) {
-                        return get<int>(r.get("product_id"));
-                    }
-                }
-            }
-        }
+        return user_query::resolve_product_id_by_code(db, code);
     }
 
     return -1;
@@ -2674,17 +2664,7 @@ int MainWindow::resolveCustomerId(const Record& rec) const
     }
 
     if (!code.empty()) {
-        const Table* custTable = db->getTable("customer");
-        if (custTable) {
-            for (const auto& r : custTable->view()) {
-                if (r.has("customer_code") && holds_alternative<std::string>(r.get("customer_code")) &&
-                    get<std::string>(r.get("customer_code")) == code) {
-                    if (r.has("customer_id") && holds_alternative<int>(r.get("customer_id"))) {
-                        return get<int>(r.get("customer_id"));
-                    }
-                }
-            }
-        }
+        return user_query::resolve_customer_id_by_code(db, code);
     }
 
     return -1;
@@ -2741,12 +2721,10 @@ void MainWindow::setupCrudWiring()
                     QMessageBox::critical(this, "Lỗi dữ liệu", "Không xác định được khóa chính sản phẩm cần xóa.");
                     return;
                 }
-                const Table* prodTable = db ? db->getTable("product") : nullptr;
-                const Record* pRec = prodTable ? prodTable->getRecordById(pid) : nullptr;
-                QString pCode = (pRec && pRec->has("product_code") && holds_alternative<std::string>(pRec->get("product_code")))
-                    ? QString::fromStdString(get<std::string>(pRec->get("product_code"))) : QString::number(pid);
-                QString pName = (pRec && pRec->has("product_name") && holds_alternative<std::string>(pRec->get("product_name")))
-                    ? QString::fromStdString(get<std::string>(pRec->get("product_name"))) : "";
+                string pCodeStr, pNameStr; bool isSoldDummy;
+                user_query::get_product_display_info(db, pid, pCodeStr, pNameStr, isSoldDummy);
+                QString pCode = !pCodeStr.empty() ? QString::fromStdString(pCodeStr) : QString::number(pid);
+                QString pName = QString::fromStdString(pNameStr);
 
                 auto reply = QMessageBox::question(
                     this,
@@ -2891,16 +2869,9 @@ void MainWindow::setupCrudWiring()
         widget->setExtraAction("🔄 Đổi TT Bán", [this, catTable, widget](const Record& rec) {
             int pid = resolveProductId(rec, catTable);
             if (pid <= 0 || !db) return;
-            const Table* prodTable = db->getTable("product");
-            const Record* pRec = prodTable ? prodTable->getRecordById(pid) : nullptr;
-            if (!pRec) return;
-
-            bool curSold = true;
-            if (pRec->has("is_sold") && holds_alternative<bool>(pRec->get("is_sold"))) {
-                curSold = get<bool>(pRec->get("is_sold"));
-            }
-            QString pCode = (pRec->has("product_code") && holds_alternative<std::string>(pRec->get("product_code")))
-                ? QString::fromStdString(get<std::string>(pRec->get("product_code"))) : "";
+            string pCodeStr, pNameStr; bool curSold = true;
+            if (!user_query::get_product_display_info(db, pid, pCodeStr, pNameStr, curSold)) return;
+            QString pCode = QString::fromStdString(pCodeStr);
 
             bool nextSold = !curSold;
             auto reply = QMessageBox::question(
@@ -3364,17 +3335,7 @@ void MainWindow::onEditAuxSpecOrBrand(const Record& rec)
         if (brandId <= 0) return;
 
         // Check if any product references this brand
-        bool referencedByProduct = false;
-        const Table* prodTable = db->getTable("product");
-        if (prodTable) {
-            for (const auto& pr : prodTable->view()) {
-                if (pr.has("brand") && holds_alternative<std::string>(pr.get("brand")) &&
-                    QString::fromStdString(get<std::string>(pr.get("brand"))) == oldBrand) {
-                    referencedByProduct = true;
-                    break;
-                }
-            }
-        }
+        bool referencedByProduct = user_query::is_brand_referenced_by_product(db, oldBrand.toStdString());
 
         QDialog dlg(this);
         dlg.setWindowTitle("Chỉnh Sửa Thương Hiệu — " + oldBrand);
@@ -3440,17 +3401,15 @@ void MainWindow::onEditAuxSpecOrBrand(const Record& rec)
                     return;
                 }
                 // Cascade brand name update to product rows so FK remains valid
+                const Table* prodTable = db->getTable("product");
                 if (prodTable) {
-                    for (const auto& pr : prodTable->view()) {
-                        if (pr.has("brand") && holds_alternative<std::string>(pr.get("brand")) &&
-                            QString::fromStdString(get<std::string>(pr.get("brand"))) == oldBrand) {
-                            int pid = (pr.has("product_id") && holds_alternative<int>(pr.get("product_id")))
-                                ? get<int>(pr.get("product_id")) : -1;
-                            if (pid > 0) {
-                                Record pUp;
-                                pUp.set("brand", newBrand.toStdString());
-                                db->update("product", pid, pUp);
-                            }
+                    for (const auto& pr : prodTable->view("brand", Value(oldBrand.toStdString()))) {
+                        int pid = (pr.has("product_id") && holds_alternative<int>(pr.get("product_id")))
+                            ? get<int>(pr.get("product_id")) : -1;
+                        if (pid > 0) {
+                            Record pUp;
+                            pUp.set("brand", newBrand.toStdString());
+                            db->update("product", pid, pUp);
                         }
                     }
                 }
@@ -3547,19 +3506,12 @@ void MainWindow::onEditAuxSpecOrBrand(const Record& rec)
             const Table* catTbl = db->getTable(catTblName);
             if (catTbl) {
                 std::string pkCol = catTbl->getPrimaryKeyColumn();
-                for (const auto& cr : catTbl->view()) {
-                    if (!cr.has(colName) || !cr.has(pkCol) || !holds_alternative<int>(cr.get(pkCol))) continue;
-                    bool matches = false;
-                    if (isIntCol && holds_alternative<int>(cr.get(colName))) {
-                        matches = (QString::number(get<int>(cr.get(colName))) == oldSpec);
-                    } else if (holds_alternative<std::string>(cr.get(colName))) {
-                        matches = (QString::fromStdString(get<std::string>(cr.get(colName))) == oldSpec);
-                    }
-                    if (matches) {
-                        Record cUp;
-                        cUp.set(colName, isIntCol ? Value(newIntVal) : Value(newSpec.toStdString()));
-                        db->update(catTblName, get<int>(cr.get(pkCol)), cUp);
-                    }
+                Value oldVal = isIntCol ? Value(oldSpec.toInt()) : Value(oldSpec.toStdString());
+                for (const auto& cr : catTbl->view(colName, oldVal)) {
+                    if (!cr.has(pkCol) || !holds_alternative<int>(cr.get(pkCol))) continue;
+                    Record cUp;
+                    cUp.set(colName, isIntCol ? Value(newIntVal) : Value(newSpec.toStdString()));
+                    db->update(catTblName, get<int>(cr.get(pkCol)), cUp);
                 }
             }
         }

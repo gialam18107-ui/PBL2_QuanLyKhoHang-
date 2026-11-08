@@ -31,8 +31,6 @@ inline Value extractOtId(const Record &r) {
 		return r.get("outbound_trainsaction_id");
 	if (r.has("outbound_transaction_id"))
 		return r.get("outbound_transaction_id");
-	if (r.has("sell_id"))
-		return r.get("sell_id");
 	return Value();
 }
 
@@ -51,6 +49,10 @@ inline string safeGetString(const Record &r, const string &col, const string &de
 	if (!r.has(col))
 		return defaultVal;
 	return valueToString(r.get(col));
+}
+
+inline string safeGetStr(const Record &r, const string &col, const string &defaultVal = "") {
+	return safeGetString(r, col, defaultVal);
 }
 
 } // anonymous namespace
@@ -209,42 +211,6 @@ void status_history_query(Database *db, Vector<Record> &results,
 	const Value &val = minVal;
 	bool hasRange = (minVal.index() != 0 && maxVal.index() != 0);
 
-	// 1. Map unit_id -> const Record* (Zero deep copies)
-	HashMap<Value, const Record*> unitMap;
-	for (const auto &r : uTable->view()) {
-		if (r.has("unit_id")) {
-			unitMap[r.get("unit_id")] = &r;
-		}
-	}
-
-	// 2. Maps cho delivery, shipment và adjustment_movement (lưu con trỏ const Record*)
-	HashMap<Value, const Record*> delivMap;
-	if (dTable) {
-		for (const auto &r : dTable->view()) {
-		if (r.has("delivery_id")) {
-			delivMap[r.get("delivery_id")] = &r;
-		}
-	}
-	}
-
-	HashMap<Value, const Record*> shipMap;
-	if (sTable) {
-		for (const auto &r : sTable->view()) {
-		if (r.has("shipment_id")) {
-			shipMap[r.get("shipment_id")] = &r;
-		}
-	}
-	}
-
-	HashMap<Value, const Record*> adjMap;
-	if (aTable) {
-		for (const auto &r : aTable->view()) {
-		if (r.has("adjust_id")) {
-			adjMap[r.get("adjust_id")] = &r;
-		}
-	}
-	}
-
 	string col = stripPrefix(indexedColumn, "status_history.");
 	col = stripPrefix(col, "unit_inventory.");
 
@@ -252,77 +218,21 @@ void status_history_query(Database *db, Vector<Record> &results,
 	bool filterByDate = (col == "date");
 	bool filterBySerial = (col == "serial");
 
-	HashMap<Value, bool> matchedDelivIds;
-	HashMap<Value, bool> matchedShipIds;
-	HashMap<Value, bool> matchedAdjIds;
-
-	if (filterByTxCode) {
-		if (dTable) {
-			Vector<Record> matchedD = Query::filterRecords(*dTable, "delivery_code", val);
-			for (size_t i = 0; i < matchedD.size(); ++i) {
-				if (matchedD[i].has("delivery_id"))
-					matchedDelivIds[matchedD[i].get("delivery_id")] = true;
-			}
-		}
-		if (sTable) {
-			Vector<Record> matchedS = Query::filterRecords(*sTable, "shipment_code", val);
-			for (size_t i = 0; i < matchedS.size(); ++i) {
-				if (matchedS[i].has("shipment_id"))
-					matchedShipIds[matchedS[i].get("shipment_id")] = true;
-			}
-		}
-		if (aTable) {
-			Vector<Record> matchedA = Query::filterRecords(*aTable, "adjust_code", val);
-			for (size_t i = 0; i < matchedA.size(); ++i) {
-				if (matchedA[i].has("adjust_id"))
-					matchedAdjIds[matchedA[i].get("adjust_id")] = true;
-			}
-		}
-	} else if (filterByDate) {
-		if (dTable) {
-			Vector<Record> matchedD = hasRange
-					? Query::filterRecords(*dTable, "delivery_at", minVal, maxVal)
-					: Query::filterRecords(*dTable, "delivery_at", val);
-			for (size_t i = 0; i < matchedD.size(); ++i) {
-				if (matchedD[i].has("delivery_id"))
-					matchedDelivIds[matchedD[i].get("delivery_id")] = true;
-			}
-		}
-		if (sTable) {
-			Vector<Record> matchedS = hasRange
-					? Query::filterRecords(*sTable, "ship_at", minVal, maxVal)
-					: Query::filterRecords(*sTable, "ship_at", val);
-			for (size_t i = 0; i < matchedS.size(); ++i) {
-				if (matchedS[i].has("shipment_id"))
-					matchedShipIds[matchedS[i].get("shipment_id")] = true;
-			}
-		}
-		if (aTable) {
-			Vector<Record> matchedA = hasRange
-					? Query::filterRecords(*aTable, "adjusted_at", minVal, maxVal)
-					: Query::filterRecords(*aTable, "adjusted_at", val);
-			for (size_t i = 0; i < matchedA.size(); ++i) {
-				if (matchedA[i].has("adjust_id"))
-					matchedAdjIds[matchedA[i].get("adjust_id")] = true;
-			}
-		}
-	}
-
 	auto processSh = [&](const Record &sh) {
 		if (!sh.has("unit_id"))
 			return;
-		auto uit = unitMap.find(sh.get("unit_id"));
-		if (uit == unitMap.end())
+		int uid = safeGetInt(sh, "unit_id");
+		const Record* u = uTable->getRecordById(uid);
+		if (!u)
 			return;
-		const Record &u = *(uit->second);
 
 		Record out;
 		if (sh.has("history_id")) {
 			out.set("status_history.history_id", sh.get("history_id"));
 			out.set("history_id", sh.get("history_id"));
 		}
-		if (u.has("serial"))
-			out.set("unit_inventory.serial", u.get("serial"));
+		if (u->has("serial"))
+			out.set("unit_inventory.serial", u->get("serial"));
 		if (sh.has("old_status"))
 			out.set("status_history.old_status", sh.get("old_status"));
 		if (sh.has("curr_status"))
@@ -334,32 +244,30 @@ void status_history_query(Database *db, Vector<Record> &results,
 		if (sh.has("type") && holds_alternative<string>(sh.get("type"))) {
 			t = get<string>(sh.get("type"));
 		}
-		if (t == "INBOUND" && sh.has("transaction")) {
-			auto dit = delivMap.find(sh.get("transaction"));
-			if (dit != delivMap.end()) {
-				const Record &d = *(dit->second);
-				if (d.has("delivery_code"))
-					txCodeVal = d.get("delivery_code");
-				if (d.has("delivery_at"))
-					dateVal = d.get("delivery_at");
+		int txId = safeGetInt(sh, "transaction");
+		if (t == "INBOUND" && dTable && txId > 0) {
+			const Record* d = dTable->getRecordById(txId);
+			if (d) {
+				if (d->has("delivery_code"))
+					txCodeVal = d->get("delivery_code");
+				if (d->has("delivery_at"))
+					dateVal = d->get("delivery_at");
 			}
-		} else if (t == "OUTBOUND" && sh.has("transaction")) {
-			auto sit = shipMap.find(sh.get("transaction"));
-			if (sit != shipMap.end()) {
-				const Record &s = *(sit->second);
-				if (s.has("shipment_code"))
-					txCodeVal = s.get("shipment_code");
-				if (s.has("ship_at"))
-					dateVal = s.get("ship_at");
+		} else if (t == "OUTBOUND" && sTable && txId > 0) {
+			const Record* s = sTable->getRecordById(txId);
+			if (s) {
+				if (s->has("shipment_code"))
+					txCodeVal = s->get("shipment_code");
+				if (s->has("ship_at"))
+					dateVal = s->get("ship_at");
 			}
-		} else if (t == "ADJUSTMENT" && sh.has("transaction")) {
-			auto ait = adjMap.find(sh.get("transaction"));
-			if (ait != adjMap.end()) {
-				const Record &a = *(ait->second);
-				if (a.has("adjust_code"))
-					txCodeVal = a.get("adjust_code");
-				if (a.has("adjusted_at"))
-					dateVal = a.get("adjusted_at");
+		} else if (t == "ADJUSTMENT" && aTable && txId > 0) {
+			const Record* a = aTable->getRecordById(txId);
+			if (a) {
+				if (a->has("adjust_code"))
+					txCodeVal = a->get("adjust_code");
+				if (a->has("adjusted_at"))
+					dateVal = a->get("adjusted_at");
 			}
 		}
 
@@ -371,46 +279,73 @@ void status_history_query(Database *db, Vector<Record> &results,
 		results.push_back(std::move(out));
 	};
 
-	if (filterByTxCode || filterByDate) {
-		for (const auto &sh : shTable->view()) {
-			string t = (sh.has("type") && holds_alternative<string>(sh.get("type")))
-				? get<string>(sh.get("type"))
-				: "";
-			if (t == "INBOUND") {
-				if (sh.has("transaction") && matchedDelivIds.find(sh.get("transaction")) != matchedDelivIds.end()) {
-					processSh(sh);
-				}
-			} else if (t == "OUTBOUND") {
-				if (sh.has("transaction") && matchedShipIds.find(sh.get("transaction")) != matchedShipIds.end()) {
-					processSh(sh);
-				}
-			} else if (t == "ADJUSTMENT") {
-				if (sh.has("transaction") && matchedAdjIds.find(sh.get("transaction")) != matchedAdjIds.end()) {
-					processSh(sh);
-				}
+	auto processByTxAndType = [&](const Value& txIdVal, const string& expectedType) {
+		for (const auto& sh : shTable->view("transaction", txIdVal)) {
+			if (sh.has("type") && holds_alternative<string>(sh.get("type")) &&
+			    get<string>(sh.get("type")) == expectedType) {
+				processSh(sh);
+			}
+		}
+	};
+
+	if (filterByTxCode) {
+		if (dTable) {
+			for (const auto& d : dTable->view("delivery_code", val)) {
+				if (d.has("delivery_id"))
+					processByTxAndType(d.get("delivery_id"), "INBOUND");
+			}
+		}
+		if (sTable) {
+			for (const auto& s : sTable->view("shipment_code", val)) {
+				if (s.has("shipment_id"))
+					processByTxAndType(s.get("shipment_id"), "OUTBOUND");
+			}
+		}
+		if (aTable) {
+			for (const auto& a : aTable->view("adjust_code", val)) {
+				if (a.has("adjust_id"))
+					processByTxAndType(a.get("adjust_id"), "ADJUSTMENT");
+			}
+		}
+	} else if (filterByDate) {
+		if (dTable) {
+			TableView matchedD = hasRange ? dTable->view("delivery_at", minVal, maxVal) : dTable->view("delivery_at", val);
+			for (const auto& d : matchedD) {
+				if (d.has("delivery_id"))
+					processByTxAndType(d.get("delivery_id"), "INBOUND");
+			}
+		}
+		if (sTable) {
+			TableView matchedS = hasRange ? sTable->view("ship_at", minVal, maxVal) : sTable->view("ship_at", val);
+			for (const auto& s : matchedS) {
+				if (s.has("shipment_id"))
+					processByTxAndType(s.get("shipment_id"), "OUTBOUND");
+			}
+		}
+		if (aTable) {
+			TableView matchedA = hasRange ? aTable->view("adjusted_at", minVal, maxVal) : aTable->view("adjusted_at", val);
+			for (const auto& a : matchedA) {
+				if (a.has("adjust_id"))
+					processByTxAndType(a.get("adjust_id"), "ADJUSTMENT");
 			}
 		}
 	} else if (filterBySerial) {
-		Vector<Record> matchedU = Query::filterRecords(*uTable, "serial", val);
-		if (!matchedU.empty() && matchedU[0].has("unit_id")) {
-			Vector<Record> shFiltered = Query::filterRecords(*shTable, "unit_id", matchedU[0].get("unit_id"));
-			results.reserve(shFiltered.size());
-			for (size_t i = 0; i < shFiltered.size(); ++i) {
-				processSh(shFiltered[i]);
+		for (const auto& u : uTable->view("serial", val)) {
+			if (u.has("unit_id")) {
+				for (const auto& sh : shTable->view("unit_id", u.get("unit_id"))) {
+					processSh(sh);
+				}
 			}
 		}
 	} else if (!col.empty()) {
-		Vector<Record> shFiltered = hasRange
-				? Query::filterRecords(*shTable, col, minVal, maxVal)
-				: Query::filterRecords(*shTable, col, val);
-		results.reserve(shFiltered.size());
-		for (size_t i = 0; i < shFiltered.size(); ++i) {
-			processSh(shFiltered[i]);
+		TableView shFiltered = hasRange ? shTable->view(col, minVal, maxVal) : shTable->view(col, val);
+		for (const auto& sh : shFiltered) {
+			processSh(sh);
 		}
 	} else {
 		for (const auto &r : shTable->view()) {
-		processSh(r);
-	}
+			processSh(r);
+		}
 	}
 }
 
@@ -578,28 +513,31 @@ void inbound_detail_query(Database *db, Vector<Record> &results,
 	};
 
 	if (!col.empty()) {
-		Vector<Record> idSource;
 		if (col == "inbound_code") {
-			Vector<Record> txns = Query::filterRecords(*itTable, "inbound_code", val);
-			if (!txns.empty() && txns[0].has("inbound_transaction_id")) {
-				idSource = Query::filterRecords(*idTable, "inbound_transaction_id", txns[0].get("inbound_transaction_id"));
+			for (const auto& txn : itTable->view("inbound_code", val)) {
+				if (txn.has("inbound_transaction_id")) {
+					for (const auto& id : idTable->view("inbound_transaction_id", txn.get("inbound_transaction_id"))) {
+						processId(id);
+					}
+				}
 			}
 		} else if (col == "product_code") {
-			Vector<Record> prods = Query::filterRecords(*pTable, "product_code", val);
-			if (!prods.empty() && prods[0].has("product_id")) {
-				idSource = Query::filterRecords(*idTable, "product_id", prods[0].get("product_id"));
+			for (const auto& prod : pTable->view("product_code", val)) {
+				if (prod.has("product_id")) {
+					for (const auto& id : idTable->view("product_id", prod.get("product_id"))) {
+						processId(id);
+					}
+				}
 			}
 		} else {
-			idSource = Query::filterRecords(*idTable, col, val);
-		}
-		results.reserve(idSource.size());
-		for (size_t i = 0; i < idSource.size(); ++i) {
-			processId(idSource[i]);
+			for (const auto& id : idTable->view(col, val)) {
+				processId(id);
+			}
 		}
 	} else {
 		for (const auto &r : idTable->view()) {
-		processId(r);
-	}
+			processId(r);
+		}
 	}
 }
 
@@ -753,40 +691,41 @@ void delivery_detail_query_impl(Database *db, Vector<Record> &results,
 	};
 
 	if (!col.empty()) {
-		Vector<Record> ddSource;
 		if (col == "delivery_code") {
-			Vector<Record> delivs = Query::filterRecords(*dTable, "delivery_code", val1);
-			if (!delivs.empty() && delivs[0].has("delivery_id")) {
-				ddSource = Query::filterRecords(*ddTable, "delivery_id", delivs[0].get("delivery_id"));
+			for (const auto& deliv : dTable->view("delivery_code", val1)) {
+				if (deliv.has("delivery_id")) {
+					for (const auto& dd : ddTable->view("delivery_id", deliv.get("delivery_id"))) {
+						processDd(dd);
+					}
+				}
 			}
 		} else if (col == "product_code") {
-			Vector<Record> prods = Query::filterRecords(*pTable, "product_code", val1);
-			if (!prods.empty() && prods[0].has("product_id")) {
-				ddSource = Query::filterRecords(*ddTable, "product_id", prods[0].get("product_id"));
+			for (const auto& prod : pTable->view("product_code", val1)) {
+				if (prod.has("product_id")) {
+					for (const auto& dd : ddTable->view("product_id", prod.get("product_id"))) {
+						processDd(dd);
+					}
+				}
 			}
 		} else if (col == "delivery_at" || col == "expected_at") {
-			Vector<Record> delivs = isRange ? Query::filterRecords(*dTable, col, val1, val2)
-				: Query::filterRecords(*dTable, col, val1);
-			for (size_t i = 0; i < delivs.size(); ++i) {
-				if (delivs[i].has("delivery_id")) {
-					Vector<Record> matched = Query::filterRecords(*ddTable, "delivery_id", delivs[i].get("delivery_id"));
-					for (size_t j = 0; j < matched.size(); ++j) {
-						ddSource.push_back(std::move(matched[j]));
+			TableView delivs = isRange ? dTable->view(col, val1, val2) : dTable->view(col, val1);
+			for (const auto& deliv : delivs) {
+				if (deliv.has("delivery_id")) {
+					for (const auto& dd : ddTable->view("delivery_id", deliv.get("delivery_id"))) {
+						processDd(dd);
 					}
 				}
 			}
 		} else {
-			ddSource = isRange ? Query::filterRecords(*ddTable, col, val1, val2)
-				: Query::filterRecords(*ddTable, col, val1);
-		}
-		results.reserve(ddSource.size());
-		for (size_t i = 0; i < ddSource.size(); ++i) {
-			processDd(ddSource[i]);
+			TableView ddSource = isRange ? ddTable->view(col, val1, val2) : ddTable->view(col, val1);
+			for (const auto& dd : ddSource) {
+				processDd(dd);
+			}
 		}
 	} else {
 		for (const auto &r : ddTable->view()) {
-		processDd(r);
-	}
+			processDd(r);
+		}
 	}
 }
 
@@ -828,13 +767,6 @@ void outbound_transaction_query_impl(Database *db, Vector<Record> &results,
 	col = stripPrefix(col, "customer.");
 	col = stripPrefix(col, "outbound_type.");
 
-	HashMap<Value, const Record*> custMap;
-	for (const auto &r : cTable->view()) {
-		if (r.has("customer_id")) {
-			custMap[r.get("customer_id")] = &r;
-		}
-	}
-
 	auto processOt = [&](const Record &ot) {
 		Record out;
 		Value otId = extractOtId(ot);
@@ -855,9 +787,10 @@ void outbound_transaction_query_impl(Database *db, Vector<Record> &results,
 
 		std::string custCode = "";
 		if (ot.has("customer_id") && !isNull(ot.get("customer_id"))) {
-			auto cit = custMap.find(ot.get("customer_id"));
-			if (cit != custMap.end() && cit->second && cit->second->has("customer_code")) {
-				custCode = std::get<std::string>(cit->second->get("customer_code"));
+			int cid = safeGetInt(ot, "customer_id");
+			const Record* cRec = cTable->getRecordById(cid);
+			if (cRec && cRec->has("customer_code")) {
+				custCode = std::get<std::string>(cRec->get("customer_code"));
 			}
 		}
 		out.set("customer.customer_code", custCode);
@@ -875,24 +808,24 @@ void outbound_transaction_query_impl(Database *db, Vector<Record> &results,
 	};
 
 	if (!col.empty()) {
-		Vector<Record> otSource;
 		if (col == "customer_code") {
-			Vector<Record> custs = Query::filterRecords(*cTable, "customer_code", val1);
-			if (!custs.empty() && custs[0].has("customer_id")) {
-				otSource = Query::filterRecords(*otTable, "customer_id", custs[0].get("customer_id"));
+			for (const auto& c : cTable->view("customer_code", val1)) {
+				if (c.has("customer_id")) {
+					for (const auto& ot : otTable->view("customer_id", c.get("customer_id"))) {
+						processOt(ot);
+					}
+				}
 			}
 		} else {
-			otSource = isRange ? Query::filterRecords(*otTable, col, val1, val2)
-				: Query::filterRecords(*otTable, col, val1);
-		}
-		results.reserve(otSource.size());
-		for (size_t i = 0; i < otSource.size(); ++i) {
-			processOt(otSource[i]);
+			TableView otSource = isRange ? otTable->view(col, val1, val2) : otTable->view(col, val1);
+			for (const auto& ot : otSource) {
+				processOt(ot);
+			}
 		}
 	} else {
 		for (const auto &r : otTable->view()) {
-		processOt(r);
-	}
+			processOt(r);
+		}
 	}
 }
 
@@ -936,54 +869,38 @@ void outbound_detail_query(Database *db, Vector<Record> &results,
 	col = stripPrefix(col, "outbound_transaction.");
 	col = stripPrefix(col, "product.");
 
-	HashMap<Value, const Record*> otMap;
-	for (const auto &ot : otTable->view()) {
-		Value otId = extractOtId(ot);
-		if (!holds_alternative<monostate>(otId)) {
-			otMap[otId] = &ot;
-		}
-	}
-
-	HashMap<Value, const Record*> prodMap;
-	for (const auto &r : pTable->view()) {
-		if (r.has("product_id")) {
-			prodMap[r.get("product_id")] = &r;
-		}
-	}
-
 	auto processOd = [&](const Record &od) {
 		if (!od.has("outbound_transaction_id") || !od.has("product_id"))
 			return;
-		auto otit = otMap.find(od.get("outbound_transaction_id"));
-		auto pit = prodMap.find(od.get("product_id"));
-		if (otit != otMap.end() && pit != prodMap.end()) {
-			const Record &ot = *(otit->second);
-			const Record &p = *(pit->second);
+		int outTxnId = safeGetInt(od, "outbound_transaction_id");
+		int pid = safeGetInt(od, "product_id");
+		const Record* ot = otTable->getRecordById(outTxnId);
+		const Record* p = pTable->getRecordById(pid);
+		if (ot && p) {
 			Record out;
 			if (od.has("outbound_detail_id")) {
 				out.set("outbound_detail.outbound_detail_id", od.get("outbound_detail_id"));
 				out.set("outbound_detail_id", od.get("outbound_detail_id"));
 			}
-			if (ot.has("outbound_code"))
-				out.set("outbound_transaction.outbound_code", ot.get("outbound_code"));
+			if (ot->has("outbound_code"))
+				out.set("outbound_transaction.outbound_code", ot->get("outbound_code"));
 			if (od.has("product_id")) {
 				out.set("outbound_detail.product_id", od.get("product_id"));
 				out.set("product.product_id", od.get("product_id"));
 				out.set("product_id", od.get("product_id"));
 			}
-			if (p.has("product_code")) {
-				out.set("product.product_code", p.get("product_code"));
-				out.set("product_code", p.get("product_code"));
+			if (p->has("product_code")) {
+				out.set("product.product_code", p->get("product_code"));
+				out.set("product_code", p->get("product_code"));
 			}
-			if (p.has("product_name")) {
-				out.set("product.product_name", p.get("product_name"));
-				out.set("product_name", p.get("product_name"));
+			if (p->has("product_name")) {
+				out.set("product.product_name", p->get("product_name"));
+				out.set("product_name", p->get("product_name"));
 			}
 			if (od.has("ordered_quantity")) {
 				out.set("outbound_detail.ordered_quantity", od.get("ordered_quantity"));
 				out.set("ordered_quantity", od.get("ordered_quantity"));
 			}
-				out.set("outbound_detail.ordered_quantity", od.get("ordered_quantity"));
 			if (od.has("actual_quantity")) {
 				out.set("outbound_detail.actual_quantity", od.get("actual_quantity"));
 				out.set("actual_quantity", od.get("actual_quantity"));
@@ -993,31 +910,32 @@ void outbound_detail_query(Database *db, Vector<Record> &results,
 	};
 
 	if (!col.empty()) {
-		Vector<Record> odSource;
 		if (col == "outbound_code") {
-			Vector<Record> txns = Query::filterRecords(*otTable, "outbound_code", val);
-			if (!txns.empty()) {
-				Value otId = extractOtId(txns[0]);
+			for (const auto& txn : otTable->view("outbound_code", val)) {
+				Value otId = extractOtId(txn);
 				if (!holds_alternative<monostate>(otId)) {
-					odSource = Query::filterRecords(*odTable, "outbound_transaction_id", otId);
+					for (const auto& od : odTable->view("outbound_transaction_id", otId)) {
+						processOd(od);
+					}
 				}
 			}
 		} else if (col == "product_code") {
-			Vector<Record> prods = Query::filterRecords(*pTable, "product_code", val);
-			if (!prods.empty() && prods[0].has("product_id")) {
-				odSource = Query::filterRecords(*odTable, "product_id", prods[0].get("product_id"));
+			for (const auto& prod : pTable->view("product_code", val)) {
+				if (prod.has("product_id")) {
+					for (const auto& od : odTable->view("product_id", prod.get("product_id"))) {
+						processOd(od);
+					}
+				}
 			}
 		} else {
-			odSource = Query::filterRecords(*odTable, col, val);
-		}
-		results.reserve(odSource.size());
-		for (size_t i = 0; i < odSource.size(); ++i) {
-			processOd(odSource[i]);
+			for (const auto& od : odTable->view(col, val)) {
+				processOd(od);
+			}
 		}
 	} else {
 		for (const auto &r : odTable->view()) {
-		processOd(r);
-	}
+			processOd(r);
+		}
 	}
 }
 
@@ -1041,14 +959,6 @@ void shipment_query_impl(Database *db, Vector<Record> &results,
 	string col = stripPrefix(indexedColumn, "shipment.");
 	col = stripPrefix(col, "outbound_transaction.");
 
-	HashMap<Value, const Record*> outTxnMap;
-	for (const auto &ot : otTable->view()) {
-		Value otId = extractOtId(ot);
-		if (!holds_alternative<monostate>(otId)) {
-			outTxnMap[otId] = &ot;
-		}
-	}
-
 	auto processShip = [&](const Record &s) {
 		Record out;
 		if (s.has("shipment_id")) {
@@ -1059,10 +969,10 @@ void shipment_query_impl(Database *db, Vector<Record> &results,
 			out.set("shipment.shipment_code", s.get("shipment_code"));
 
 		Value otId = extractOtId(s);
-		if (!holds_alternative<monostate>(otId)) {
-			auto it = outTxnMap.find(otId);
-			if (it != outTxnMap.end() && it->second->has("outbound_code")) {
-				out.set("outbound_transaction.outbound_code", it->second->get("outbound_code"));
+		if (holds_alternative<int>(otId)) {
+			const Record* outTxn = otTable->getRecordById(get<int>(otId));
+			if (outTxn && outTxn->has("outbound_code")) {
+				out.set("outbound_transaction.outbound_code", outTxn->get("outbound_code"));
 			}
 		}
 
@@ -1077,27 +987,25 @@ void shipment_query_impl(Database *db, Vector<Record> &results,
 	};
 
 	if (!col.empty()) {
-		Vector<Record> sSource;
 		if (col == "outbound_code") {
-			Vector<Record> txns = Query::filterRecords(*otTable, "outbound_code", val1);
-			if (!txns.empty()) {
-				Value otId = extractOtId(txns[0]);
+			for (const auto& txn : otTable->view("outbound_code", val1)) {
+				Value otId = extractOtId(txn);
 				if (!holds_alternative<monostate>(otId)) {
-					sSource = Query::filterRecords(*sTable, "sell_id", otId);
+					for (const auto& s : sTable->view("outbound_transaction_id", otId)) {
+						processShip(s);
+					}
 				}
 			}
 		} else {
-			sSource = isRange ? Query::filterRecords(*sTable, col, val1, val2)
-				: Query::filterRecords(*sTable, col, val1);
-		}
-		results.reserve(sSource.size());
-		for (size_t i = 0; i < sSource.size(); ++i) {
-			processShip(sSource[i]);
+			TableView sSource = isRange ? sTable->view(col, val1, val2) : sTable->view(col, val1);
+			for (const auto& s : sSource) {
+				processShip(s);
+			}
 		}
 	} else {
 		for (const auto &r : sTable->view()) {
-		processShip(r);
-	}
+			processShip(r);
+		}
 	}
 }
 
@@ -1140,47 +1048,33 @@ void shipment_detail_query_impl(Database *db, Vector<Record> &results,
 	col = stripPrefix(col, "shipment.");
 	col = stripPrefix(col, "product.");
 
-	HashMap<Value, const Record*> sMap;
-	for (const auto &r : sTable->view()) {
-		if (r.has("shipment_id")) {
-			sMap[r.get("shipment_id")] = &r;
-		}
-	}
-
-	HashMap<Value, const Record*> prodMap;
-	for (const auto &r : pTable->view()) {
-		if (r.has("product_id")) {
-			prodMap[r.get("product_id")] = &r;
-		}
-	}
-
 	auto processSd = [&](const Record &sd) {
 		if (!sd.has("shipment_id") || !sd.has("product_id"))
 			return;
-		auto sit = sMap.find(sd.get("shipment_id"));
-		auto pit = prodMap.find(sd.get("product_id"));
-		if (sit != sMap.end() && pit != prodMap.end()) {
-			const Record &s = *(sit->second);
-			const Record &p = *(pit->second);
+		int shipId = safeGetInt(sd, "shipment_id");
+		int pid = safeGetInt(sd, "product_id");
+		const Record* s = sTable->getRecordById(shipId);
+		const Record* p = pTable->getRecordById(pid);
+		if (s && p) {
 			Record out;
 			if (sd.has("shipment_detail_id")) {
 				out.set("shipment_detail.shipment_detail_id", sd.get("shipment_detail_id"));
 				out.set("shipment_detail_id", sd.get("shipment_detail_id"));
 			}
-			if (s.has("shipment_code"))
-				out.set("shipment.shipment_code", s.get("shipment_code"));
+			if (s->has("shipment_code"))
+				out.set("shipment.shipment_code", s->get("shipment_code"));
 			if (sd.has("product_id")) {
 				out.set("shipment_detail.product_id", sd.get("product_id"));
 				out.set("product.product_id", sd.get("product_id"));
 				out.set("product_id", sd.get("product_id"));
 			}
-			if (p.has("product_code")) {
-				out.set("product.product_code", p.get("product_code"));
-				out.set("product_code", p.get("product_code"));
+			if (p->has("product_code")) {
+				out.set("product.product_code", p->get("product_code"));
+				out.set("product_code", p->get("product_code"));
 			}
-			if (p.has("product_name")) {
-				out.set("product.product_name", p.get("product_name"));
-				out.set("product_name", p.get("product_name"));
+			if (p->has("product_name")) {
+				out.set("product.product_name", p->get("product_name"));
+				out.set("product_name", p->get("product_name"));
 			}
 			if (sd.has("received_quantity")) {
 				out.set("shipment_detail.received_quantity", sd.get("received_quantity"));
@@ -1195,40 +1089,41 @@ void shipment_detail_query_impl(Database *db, Vector<Record> &results,
 	};
 
 	if (!col.empty()) {
-		Vector<Record> sdSource;
 		if (col == "shipment_code") {
-			Vector<Record> ships = Query::filterRecords(*sTable, "shipment_code", val1);
-			if (!ships.empty() && ships[0].has("shipment_id")) {
-				sdSource = Query::filterRecords(*sdTable, "shipment_id", ships[0].get("shipment_id"));
+			for (const auto& ship : sTable->view("shipment_code", val1)) {
+				if (ship.has("shipment_id")) {
+					for (const auto& sd : sdTable->view("shipment_id", ship.get("shipment_id"))) {
+						processSd(sd);
+					}
+				}
 			}
 		} else if (col == "product_code") {
-			Vector<Record> prods = Query::filterRecords(*pTable, "product_code", val1);
-			if (!prods.empty() && prods[0].has("product_id")) {
-				sdSource = Query::filterRecords(*sdTable, "product_id", prods[0].get("product_id"));
+			for (const auto& prod : pTable->view("product_code", val1)) {
+				if (prod.has("product_id")) {
+					for (const auto& sd : sdTable->view("product_id", prod.get("product_id"))) {
+						processSd(sd);
+					}
+				}
 			}
 		} else if (col == "ship_at" || col == "expected_at") {
-			Vector<Record> ships = isRange ? Query::filterRecords(*sTable, col, val1, val2)
-				: Query::filterRecords(*sTable, col, val1);
-			for (size_t i = 0; i < ships.size(); ++i) {
-				if (ships[i].has("shipment_id")) {
-					Vector<Record> matched = Query::filterRecords(*sdTable, "shipment_id", ships[i].get("shipment_id"));
-					for (size_t j = 0; j < matched.size(); ++j) {
-						sdSource.push_back(std::move(matched[j]));
+			TableView ships = isRange ? sTable->view(col, val1, val2) : sTable->view(col, val1);
+			for (const auto& ship : ships) {
+				if (ship.has("shipment_id")) {
+					for (const auto& sd : sdTable->view("shipment_id", ship.get("shipment_id"))) {
+						processSd(sd);
 					}
 				}
 			}
 		} else {
-			sdSource = isRange ? Query::filterRecords(*sdTable, col, val1, val2)
-				: Query::filterRecords(*sdTable, col, val1);
-		}
-		results.reserve(sdSource.size());
-		for (size_t i = 0; i < sdSource.size(); ++i) {
-			processSd(sdSource[i]);
+			TableView sdSource = isRange ? sdTable->view(col, val1, val2) : sdTable->view(col, val1);
+			for (const auto& sd : sdSource) {
+				processSd(sd);
+			}
 		}
 	} else {
 		for (const auto &r : sdTable->view()) {
-		processSd(r);
-	}
+			processSd(r);
+		}
 	}
 }
 
@@ -1274,50 +1169,37 @@ void category_hardware_query(Database *db, const string &categoryName,
 	col = stripPrefix(col, "product.");
 	bool filterOnSold = (col == "is_sold");
 
-	HashMap<Value, const Record*> prodMap;
-	Vector<Record> pFiltered;
-
-	if (filterOnSold) {
-		Value soldVal = val;
-		if (holds_alternative<string>(val)) {
-			string s = toLowerStr(get<string>(val));
-			if (s == "true" || s == "1" || s == "đang bán")
-				soldVal = true;
-			else if (s == "false" || s == "0" || s == "ngừng bán")
-				soldVal = false;
-		}
-		pFiltered = Query::filterRecords(*prodTable, "is_sold", soldVal);
-		for (size_t i = 0; i < pFiltered.size(); ++i) {
-			if (pFiltered[i].has("product_id")) {
-				prodMap[pFiltered[i].get("product_id")] = &pFiltered[i];
-			}
-		}
-	} else {
-		for (const auto &r : prodTable->view()) {
-		if (r.has("product_id")) {
-			prodMap[r.get("product_id")] = &r;
-		}
-	}
+	Value soldVal = val;
+	if (filterOnSold && holds_alternative<string>(val)) {
+		string s = toLowerStr(get<string>(val));
+		if (s == "true" || s == "1" || s == "đang bán")
+			soldVal = true;
+		else if (s == "false" || s == "0" || s == "ngừng bán")
+			soldVal = false;
 	}
 
 	const auto &catCols = catTable->getColumns();
 	auto processCatRow = [&](const Record &crow) {
 		if (!crow.has("product_id"))
 			return;
-		auto pit = prodMap.find(crow.get("product_id"));
-		if (pit == prodMap.end())
+		int pid = safeGetInt(crow, "product_id");
+		const Record* prow = prodTable->getRecordById(pid);
+		if (!prow)
 			return;
-		const Record &prow = *(pit->second);
+		if (filterOnSold) {
+			if (!prow->has("is_sold") || !(prow->get("is_sold") == soldVal))
+				return;
+		}
 
 		Record out;
 		if (crow.has(cat + "_id")) {
 			out.set(cat + "." + cat + "_id", crow.get(cat + "_id"));
 			out.set(cat + "_id", crow.get(cat + "_id"));
 		}
-		if (prow.has("product_code"))
-			out.set("product.product_code", prow.get("product_code"));
-		if (prow.has("product_name"))
-			out.set("product.product_name", prow.get("product_name"));
+		if (prow->has("product_code"))
+			out.set("product.product_code", prow->get("product_code"));
+		if (prow->has("product_name"))
+			out.set("product.product_name", prow->get("product_name"));
 
 		for (size_t c = 0; c < catCols.size(); ++c) {
 			const string &colName = catCols[c].getName();
@@ -1330,22 +1212,21 @@ void category_hardware_query(Database *db, const string &categoryName,
 			}
 		}
 
-		if (prow.has("is_sold"))
-			out.set("product.is_sold", prow.get("is_sold"));
+		if (prow->has("is_sold"))
+			out.set("product.is_sold", prow->get("is_sold"));
 
 		results.push_back(std::move(out));
 	};
 
 	if (!col.empty() && !filterOnSold) {
-		Vector<Record> catSource = Query::filterRecords(*catTable, col, val);
-		results.reserve(catSource.size());
-		for (size_t i = 0; i < catSource.size(); ++i) {
-			processCatRow(catSource[i]);
+		TableView catSource = catTable->view(col, val);
+		for (const auto& r : catSource) {
+			processCatRow(r);
 		}
 	} else {
 		for (const auto &r : catTable->view()) {
-		processCatRow(r);
-	}
+			processCatRow(r);
+		}
 	}
 }
 
@@ -1439,57 +1320,16 @@ void individual_customer_query(Database *db, Vector<Record> &results,
 
 	bool hasFilter = !col.empty() && !holds_alternative<monostate>(val);
 
-	HashMap<Value, const Record*> infoMap;
-	for (const auto &r : iTable->view()) {
-		if (r.has("customer_id")) {
-			infoMap[r.get("customer_id")] = &r;
-		}
-	}
-
-	Vector<Record> cSource;
-	if (hasFilter && col == "customer_code") {
-		cSource = Query::filterRecords(*cTable, "customer_code", val);
-	} else if (hasFilter && col == "customer_id") {
-		cSource = Query::filterRecords(*cTable, "customer_id", val);
-	} else {
-		cSource = Query::filterRecords(*cTable, "type", Value(string("individual")));
-		if (cSource.empty()) {
-			cSource = Query::filterRecords(*cTable, "type", Value(string("INDIVIDUAL")));
-		}
-	}
-
-	results.reserve(cSource.size());
-	for (size_t i = 0; i < cSource.size(); ++i) {
-		const auto &c = cSource[i];
-		if (!c.has("customer_id"))
-			continue;
-
+	auto processPair = [&](const Record& c, const Record& info) {
 		if (c.has("type")) {
 			string t = toLowerStr(valueToString(c.get("type")));
 			if (t != "individual")
-				continue;
+				return;
 		}
 
-		auto it = infoMap.find(c.get("customer_id"));
-		if (it == infoMap.end())
-			continue;
-		const Record &info = *(it->second);
-
-		if (hasFilter && col != "customer_code" && col != "customer_id") {
-			Value checkVal;
-			if (col == "name" && c.has("name"))
-				checkVal = c.get("name");
-			else if (col == "phone_number" && info.has("phone_number"))
-				checkVal = info.get("phone_number");
-			else if (col == "email" && info.has("email"))
-				checkVal = info.get("email");
-			else if (c.has(col))
-				checkVal = c.get(col);
-			else if (info.has(col))
-				checkVal = info.get(col);
-
-			if (checkVal != val && valueToString(checkVal) != valueToString(val))
-				continue;
+		if (hasFilter && col == "name") {
+			if (!c.has("name") || !(c.get("name") == val || valueToString(c.get("name")) == valueToString(val)))
+				return;
 		}
 
 		Record out;
@@ -1514,6 +1354,31 @@ void individual_customer_query(Database *db, Vector<Record> &results,
 		}
 
 		results.push_back(std::move(out));
+	};
+
+	if (hasFilter && col == "customer_code") {
+		for (const auto& c : cTable->view("customer_code", val)) {
+			int cid = safeGetInt(c, "customer_id");
+			const Record* info = iTable->getRecordById(cid);
+			if (info) processPair(c, *info);
+		}
+	} else if (hasFilter && col == "customer_id") {
+		int cid = holds_alternative<int>(val) ? get<int>(val) : 0;
+		const Record* c = cTable->getRecordById(cid);
+		const Record* info = iTable->getRecordById(cid);
+		if (c && info) processPair(*c, *info);
+	} else if (hasFilter && (col == "phone_number" || col == "email")) {
+		for (const auto& info : iTable->view(col, val)) {
+			int cid = safeGetInt(info, "customer_id");
+			const Record* c = cTable->getRecordById(cid);
+			if (c) processPair(*c, info);
+		}
+	} else {
+		for (const auto& info : iTable->view()) {
+			int cid = safeGetInt(info, "customer_id");
+			const Record* c = cTable->getRecordById(cid);
+			if (c) processPair(*c, info);
+		}
 	}
 }
 
@@ -1533,59 +1398,16 @@ void business_customer_query(Database *db, Vector<Record> &results,
 
 	bool hasFilter = !col.empty() && !holds_alternative<monostate>(val);
 
-	HashMap<Value, const Record*> bMap;
-	for (const auto &r : bTable->view()) {
-		if (r.has("customer_id")) {
-			bMap[r.get("customer_id")] = &r;
-		}
-	}
-
-	Vector<Record> cSource;
-	if (hasFilter && col == "customer_code") {
-		cSource = Query::filterRecords(*cTable, "customer_code", val);
-	} else if (hasFilter && col == "customer_id") {
-		cSource = Query::filterRecords(*cTable, "customer_id", val);
-	} else {
-		cSource = Query::filterRecords(*cTable, "type", Value(string("business")));
-		if (cSource.empty()) {
-			cSource = Query::filterRecords(*cTable, "type", Value(string("BUSINESS")));
-		}
-	}
-
-	results.reserve(cSource.size());
-	for (size_t i = 0; i < cSource.size(); ++i) {
-		const auto &c = cSource[i];
-		if (!c.has("customer_id"))
-			continue;
-
+	auto processPair = [&](const Record& c, const Record& bInfo) {
 		if (c.has("type")) {
 			string t = toLowerStr(valueToString(c.get("type")));
 			if (t != "business")
-				continue;
+				return;
 		}
 
-		auto it = bMap.find(c.get("customer_id"));
-		if (it == bMap.end())
-			continue;
-		const Record &bInfo = *(it->second);
-
-		if (hasFilter && col != "customer_code" && col != "customer_id") {
-			Value checkVal;
-			if (col == "name" && c.has("name"))
-				checkVal = c.get("name");
-			else if (col == "tax_code" && bInfo.has("tax_code"))
-				checkVal = bInfo.get("tax_code");
-			else if (col == "phone_number" && bInfo.has("phone_number"))
-				checkVal = bInfo.get("phone_number");
-			else if (col == "email" && bInfo.has("email"))
-				checkVal = bInfo.get("email");
-			else if (c.has(col))
-				checkVal = c.get(col);
-			else if (bInfo.has(col))
-				checkVal = bInfo.get(col);
-
-			if (checkVal != val && valueToString(checkVal) != valueToString(val))
-				continue;
+		if (hasFilter && col == "name") {
+			if (!c.has("name") || !(c.get("name") == val || valueToString(c.get("name")) == valueToString(val)))
+				return;
 		}
 
 		Record out;
@@ -1618,6 +1440,31 @@ void business_customer_query(Database *db, Vector<Record> &results,
 		}
 
 		results.push_back(std::move(out));
+	};
+
+	if (hasFilter && col == "customer_code") {
+		for (const auto& c : cTable->view("customer_code", val)) {
+			int cid = safeGetInt(c, "customer_id");
+			const Record* bInfo = bTable->getRecordById(cid);
+			if (bInfo) processPair(c, *bInfo);
+		}
+	} else if (hasFilter && col == "customer_id") {
+		int cid = holds_alternative<int>(val) ? get<int>(val) : 0;
+		const Record* c = cTable->getRecordById(cid);
+		const Record* bInfo = bTable->getRecordById(cid);
+		if (c && bInfo) processPair(*c, *bInfo);
+	} else if (hasFilter && (col == "tax_code" || col == "phone_number" || col == "email")) {
+		for (const auto& bInfo : bTable->view(col, val)) {
+			int cid = safeGetInt(bInfo, "customer_id");
+			const Record* c = cTable->getRecordById(cid);
+			if (c) processPair(*c, bInfo);
+		}
+	} else {
+		for (const auto& bInfo : bTable->view()) {
+			int cid = safeGetInt(bInfo, "customer_id");
+			const Record* c = cTable->getRecordById(cid);
+			if (c) processPair(*c, bInfo);
+		}
 	}
 }
 
@@ -1655,134 +1502,54 @@ void periodic_inventory_report(Database *db, int month, int year,
 	snprintf(endBuf, sizeof(endBuf), "%04d-%02d-%02d", year, month, daysInMonth);
 	string endDate(endBuf);
 
-	// 1. Phân loại delivery trước tháng, trong tháng và sau tháng
-	HashMap<Value, bool> validDelBefore;
-	HashMap<Value, bool> validDelMonth;
-	HashMap<Value, bool> validDelAfter;
-	for (const auto &r : delTable->view()) {
-		if (!r.has("delivery_id") || !r.has("delivery_at") || isNull(r.get("delivery_at")))
+	// 1. Thu thập biến động nhập kho trước tháng, trong tháng và sau tháng
+	HashMap<Value, int> inBeforeMap;
+	HashMap<Value, int> inMonthMap;
+	HashMap<Value, int> inAfterMap;
+
+	for (const auto &d : delTable->view()) {
+		if (!d.has("delivery_id") || !d.has("delivery_at") || isNull(d.get("delivery_at")))
 			continue;
-		string dAt = holds_alternative<string>(r.get("delivery_at")) ? get<string>(r.get("delivery_at")) : "";
+		string dAt = holds_alternative<string>(d.get("delivery_at")) ? get<string>(d.get("delivery_at")) : "";
 		if (dAt.empty())
 			continue;
-		Value dId = r.get("delivery_id");
-		if (dAt < startDate) {
-			validDelBefore[dId] = true;
-		} else if (dAt <= endDate) {
-			validDelMonth[dId] = true;
-		} else {
-			validDelAfter[dId] = true;
+		int dId = safeGetInt(d, "delivery_id");
+		int bucket = (dAt < startDate) ? 0 : (dAt <= endDate ? 1 : 2);
+		for (const auto &dd : delDetailTable->view("delivery_id", Value(dId))) {
+			if (!dd.has("product_id") || !dd.has("actual_quantity"))
+				continue;
+			int qty = safeGetInt(dd, "actual_quantity");
+			if (qty <= 0) continue;
+			Value pid = dd.get("product_id");
+			if (bucket == 0) inBeforeMap[pid] += qty;
+			else if (bucket == 1) inMonthMap[pid] += qty;
+			else inAfterMap[pid] += qty;
 		}
 	}
 
-	// 2. Thu thập bản ghi chi tiết nhập hàng để gọi Query::sum gom theo product_id
-	Vector<Record> delRecsBefore;
-	Vector<Record> delRecsMonth;
-	Vector<Record> delRecsAfter;
-	for (const auto &r : delDetailTable->view()) {
-		if (!r.has("delivery_id") || !r.has("product_id") || !r.has("actual_quantity"))
+	// 2. Thu thập biến động xuất kho trước tháng, trong tháng và sau tháng
+	HashMap<Value, int> outBeforeMap;
+	HashMap<Value, int> outMonthMap;
+	HashMap<Value, int> outAfterMap;
+
+	for (const auto &s : shipTable->view()) {
+		if (!s.has("shipment_id") || !s.has("ship_at") || isNull(s.get("ship_at")))
 			continue;
-		Value dId = r.get("delivery_id");
-		bool inBefore = (validDelBefore.find(dId) != validDelBefore.end());
-		bool inMonth = (validDelMonth.find(dId) != validDelMonth.end());
-		bool inAfter = (validDelAfter.find(dId) != validDelAfter.end());
-		if (!inBefore && !inMonth && !inAfter)
-			continue;
-
-		Record rec;
-		rec.set("product_id", r.get("product_id"));
-		rec.set("actual_quantity", r.get("actual_quantity"));
-
-		if (inBefore)
-			delRecsBefore.push_back(rec);
-		if (inMonth)
-			delRecsMonth.push_back(rec);
-		if (inAfter)
-			delRecsAfter.push_back(std::move(rec));
-	}
-
-	Vector<Record> summedInBefore = Query::sum(delRecsBefore, "product_id", "actual_quantity");
-	Vector<Record> summedInMonth = Query::sum(delRecsMonth, "product_id", "actual_quantity");
-	Vector<Record> summedInAfter = Query::sum(delRecsAfter, "product_id", "actual_quantity");
-
-	HashMap<Value, int> inBeforeMap;
-	for (size_t i = 0; i < summedInBefore.size(); ++i) {
-		inBeforeMap[summedInBefore[i].get("product_id")] = safeGetInt(summedInBefore[i], "sum_actual_quantity");
-	}
-
-	HashMap<Value, int> inMonthMap;
-	for (size_t i = 0; i < summedInMonth.size(); ++i) {
-		inMonthMap[summedInMonth[i].get("product_id")] = safeGetInt(summedInMonth[i], "sum_actual_quantity");
-	}
-
-	HashMap<Value, int> inAfterMap;
-	for (size_t i = 0; i < summedInAfter.size(); ++i) {
-		inAfterMap[summedInAfter[i].get("product_id")] = safeGetInt(summedInAfter[i], "sum_actual_quantity");
-	}
-
-	// 3. Phân loại shipment trước tháng, trong tháng và sau tháng
-	HashMap<Value, bool> validShipBefore;
-	HashMap<Value, bool> validShipMonth;
-	HashMap<Value, bool> validShipAfter;
-	for (const auto &r : shipTable->view()) {
-		if (!r.has("shipment_id") || !r.has("ship_at") || isNull(r.get("ship_at")))
-			continue;
-		string sAt = holds_alternative<string>(r.get("ship_at")) ? get<string>(r.get("ship_at")) : "";
+		string sAt = holds_alternative<string>(s.get("ship_at")) ? get<string>(s.get("ship_at")) : "";
 		if (sAt.empty())
 			continue;
-		Value sId = r.get("shipment_id");
-		if (sAt < startDate) {
-			validShipBefore[sId] = true;
-		} else if (sAt <= endDate) {
-			validShipMonth[sId] = true;
-		} else {
-			validShipAfter[sId] = true;
+		int sId = safeGetInt(s, "shipment_id");
+		int bucket = (sAt < startDate) ? 0 : (sAt <= endDate ? 1 : 2);
+		for (const auto &sd : shipDetailTable->view("shipment_id", Value(sId))) {
+			if (!sd.has("product_id") || !sd.has("actual_quantity"))
+				continue;
+			int qty = safeGetInt(sd, "actual_quantity");
+			if (qty <= 0) continue;
+			Value pid = sd.get("product_id");
+			if (bucket == 0) outBeforeMap[pid] += qty;
+			else if (bucket == 1) outMonthMap[pid] += qty;
+			else outAfterMap[pid] += qty;
 		}
-	}
-
-	// 4. Thu thập chi tiết xuất hàng để gọi Query::sum gom theo product_id
-	Vector<Record> shipRecsBefore;
-	Vector<Record> shipRecsMonth;
-	Vector<Record> shipRecsAfter;
-	for (const auto &r : shipDetailTable->view()) {
-		if (!r.has("shipment_id") || !r.has("product_id") || !r.has("actual_quantity"))
-			continue;
-		Value sId = r.get("shipment_id");
-		bool inBefore = (validShipBefore.find(sId) != validShipBefore.end());
-		bool inMonth = (validShipMonth.find(sId) != validShipMonth.end());
-		bool inAfter = (validShipAfter.find(sId) != validShipAfter.end());
-		if (!inBefore && !inMonth && !inAfter)
-			continue;
-
-		Record rec;
-		rec.set("product_id", r.get("product_id"));
-		rec.set("actual_quantity", r.get("actual_quantity"));
-
-		if (inBefore)
-			shipRecsBefore.push_back(rec);
-		if (inMonth)
-			shipRecsMonth.push_back(rec);
-		if (inAfter)
-			shipRecsAfter.push_back(std::move(rec));
-	}
-
-	Vector<Record> summedOutBefore = Query::sum(shipRecsBefore, "product_id", "actual_quantity");
-	Vector<Record> summedOutMonth = Query::sum(shipRecsMonth, "product_id", "actual_quantity");
-	Vector<Record> summedOutAfter = Query::sum(shipRecsAfter, "product_id", "actual_quantity");
-
-	HashMap<Value, int> outBeforeMap;
-	for (size_t i = 0; i < summedOutBefore.size(); ++i) {
-		outBeforeMap[summedOutBefore[i].get("product_id")] = safeGetInt(summedOutBefore[i], "sum_actual_quantity");
-	}
-
-	HashMap<Value, int> outMonthMap;
-	for (size_t i = 0; i < summedOutMonth.size(); ++i) {
-		outMonthMap[summedOutMonth[i].get("product_id")] = safeGetInt(summedOutMonth[i], "sum_actual_quantity");
-	}
-
-	HashMap<Value, int> outAfterMap;
-	for (size_t i = 0; i < summedOutAfter.size(); ++i) {
-		outAfterMap[summedOutAfter[i].get("product_id")] = safeGetInt(summedOutAfter[i], "sum_actual_quantity");
 	}
 
 	// 5. Tính toán cho từng sản phẩm (Rule 10.1)
@@ -1912,34 +1679,26 @@ void logistics_units_history_query(Database *db, const string& logisticsCode, Ve
 	string expectedType = "";
 
 	if (dTable) {
-		Vector<Record> matchedD = Query::filterRecords(*dTable, "delivery_code", Value(logisticsCode));
-		if (!matchedD.empty() && matchedD[0].has("delivery_id")) {
-			targetLogisticsId = safeGetInt(matchedD[0], "delivery_id", -1);
-			expectedType = "INBOUND";
+		for (const auto& d : dTable->view("delivery_code", Value(logisticsCode))) {
+			if (d.has("delivery_id")) {
+				targetLogisticsId = safeGetInt(d, "delivery_id", -1);
+				expectedType = "INBOUND";
+				break;
+			}
 		}
 	}
 	if (targetLogisticsId <= 0 && sTable) {
-		Vector<Record> matchedS = Query::filterRecords(*sTable, "shipment_code", Value(logisticsCode));
-		if (!matchedS.empty() && matchedS[0].has("shipment_id")) {
-			targetLogisticsId = safeGetInt(matchedS[0], "shipment_id", -1);
-			expectedType = "OUTBOUND";
+		for (const auto& s : sTable->view("shipment_code", Value(logisticsCode))) {
+			if (s.has("shipment_id")) {
+				targetLogisticsId = safeGetInt(s, "shipment_id", -1);
+				expectedType = "OUTBOUND";
+				break;
+			}
 		}
 	}
 
-	// Maps for fast lookups
-	HashMap<Value, const Record*> unitMap;
-	for (const auto &r : uTable->view()) {
-		if (r.has("unit_id")) {
-			unitMap[r.get("unit_id")] = &r;
-		}
-	}
-
-	HashMap<Value, const Record*> prodMap;
-	for (const auto &r : pTable->view()) {
-		if (r.has("product_id")) {
-			prodMap[r.get("product_id")] = &r;
-		}
-	}
+	if (targetLogisticsId <= 0)
+		return;
 
 	struct UnitHistoryTrack {
 		int unitId = 0;
@@ -1956,19 +1715,8 @@ void logistics_units_history_query(Database *db, const string& logisticsCode, Ve
 	Vector<int> unitOrder;
 	HashMap<int, UnitHistoryTrack> unitTracker;
 
-	for (const auto &r : shTable->view()) {
-
-		if (!r.has("transaction") || !r.has("unit_id")) continue;
-
-		bool match = false;
-		const auto &txVal = r.get("transaction");
-		if (holds_alternative<int>(txVal) && targetLogisticsId > 0 && get<int>(txVal) == targetLogisticsId) {
-			match = true;
-		} else if (holds_alternative<string>(txVal) && get<string>(txVal) == logisticsCode) {
-			match = true;
-		}
-
-		if (!match) continue;
+	for (const auto &r : shTable->view("transaction", Value(targetLogisticsId))) {
+		if (!r.has("unit_id")) continue;
 
 		if (!expectedType.empty() && r.has("type")) {
 			string t = safeGetString(r, "type");
@@ -1991,12 +1739,12 @@ void logistics_units_history_query(Database *db, const string& logisticsCode, Ve
 			tr.type = tType;
 			tr.date = tDate;
 
-			if (unitMap.contains(Value(uid))) {
-				const Record *uRec = unitMap[Value(uid)];
+			const Record *uRec = uTable->getRecordById(uid);
+			if (uRec) {
 				tr.serial = safeGetString(*uRec, "serial");
 				tr.productId = safeGetInt(*uRec, "product_id", 0);
-				if (prodMap.contains(Value(tr.productId))) {
-					const Record *pRec = prodMap[Value(tr.productId)];
+				const Record *pRec = pTable->getRecordById(tr.productId);
+				if (pRec) {
 					tr.productName = safeGetString(*pRec, "product_name");
 					tr.productCode = safeGetString(*pRec, "product_code");
 				}
@@ -2062,9 +1810,10 @@ string get_transaction_type_by_order_code(Database *db, const string& orderCode,
 	const Table* t = db->getTable(tbl);
 	if (!t) return "";
 
-	Vector<Record> matched = Query::filterRecords(*t, codeCol, Value(orderCode));
-	if (!matched.empty() && matched[0].has("type")) {
-		return safeGetString(matched[0], "type");
+	for (const auto& r : t->view(codeCol, Value(orderCode))) {
+		if (r.has("type")) {
+			return safeGetString(r, "type");
+		}
 	}
 	return "";
 }
@@ -2076,9 +1825,10 @@ string get_logistics_status_by_code(Database *db, const string& logisticsCode, b
 	const Table* t = db->getTable(tbl);
 	if (!t) return "";
 
-	Vector<Record> matched = Query::filterRecords(*t, codeCol, Value(logisticsCode));
-	if (!matched.empty() && matched[0].has("status")) {
-		return safeGetString(matched[0], "status");
+	for (const auto& r : t->view(codeCol, Value(logisticsCode))) {
+		if (r.has("status")) {
+			return safeGetString(r, "status");
+		}
 	}
 	return "";
 }
@@ -2093,9 +1843,10 @@ int get_product_id_by_serial(Database *db, const string& serial) {
 	const Table* uTable = db->getTable("unit_inventory");
 	if (!uTable) return -1;
 
-	Vector<Record> matched = Query::filterRecords(*uTable, "serial", Value(serial));
-	if (!matched.empty() && matched[0].has("product_id")) {
-		return safeGetInt(matched[0], "product_id", -1);
+	for (const auto& r : uTable->view("serial", Value(serial))) {
+		if (r.has("product_id")) {
+			return safeGetInt(r, "product_id", -1);
+		}
 	}
 	return -1;
 }
@@ -2105,9 +1856,10 @@ string get_unit_status_by_serial(Database *db, const string& serial) {
 	const Table* uTable = db->getTable("unit_inventory");
 	if (!uTable) return "";
 
-	Vector<Record> matched = Query::filterRecords(*uTable, "serial", Value(serial));
-	if (!matched.empty() && matched[0].has("status")) {
-		return safeGetString(matched[0], "status");
+	for (const auto& r : uTable->view("serial", Value(serial))) {
+		if (r.has("status")) {
+			return safeGetString(r, "status");
+		}
 	}
 	return "";
 }
@@ -2171,16 +1923,21 @@ void get_logistics_batch_allocation_info(Database* db, int txnId, bool isInbound
 	if (!db || txnId <= 0) return;
 
 	const Table* prodTable = db->getTable("product");
-		if (!prodTable) return;
+	if (!prodTable) return;
 
-	HashMap<Value, const Record*> prodMap;
-	for (const auto &r : prodTable->view()) {
-		if (r.has("product_id")) {
-			prodMap[r.get("product_id")] = &r;
+	auto fillProductInfo = [&](int pid, LogisticsBatchItemInfo& info) {
+		const Record* p = prodTable->getRecordById(pid);
+		if (p) {
+			info.productCode = safeGetString(*p, "product_code");
+			info.productName = safeGetString(*p, "product_name");
+			info.currentStockAvail = safeGetInt(*p, "available_quantity", 0);
+			info.currentStockWrt = safeGetInt(*p, "warranty_quantity", 0);
+			info.currentStockScrap = safeGetInt(*p, "scrapped_quantity", 0);
+		} else {
+			info.productCode = to_string(pid);
+			info.productName = "Product " + to_string(pid);
 		}
-	}
-
-
+	};
 
 	if (isInbound) {
 		const Table* inDetTable = db->getTable("inbound_detail");
@@ -2199,35 +1956,20 @@ void get_logistics_batch_allocation_info(Database* db, int txnId, bool isInbound
 		}
 
 		for (const auto& idet : inDetTable->view("inbound_transaction_id", Value(txnId))) {
-				int pid = safeGetInt(idet, "product_id", 0);
-				int ordQty = safeGetInt(idet, "ordered_quantity", 0);
-				int allocated = allocatedMap.contains(pid) ? allocatedMap[pid] : 0;
-				int remaining = std::max(0, ordQty - allocated);
+			int pid = safeGetInt(idet, "product_id", 0);
+			int ordQty = safeGetInt(idet, "ordered_quantity", 0);
+			int allocated = allocatedMap.contains(pid) ? allocatedMap[pid] : 0;
+			int remaining = std::max(0, ordQty - allocated);
 
-				LogisticsBatchItemInfo info;
-				info.productId = pid;
-				info.orderedQty = ordQty;
-				info.alreadyAllocatedQty = allocated;
-				info.remainingToAllocate = remaining;
+			LogisticsBatchItemInfo info;
+			info.productId = pid;
+			info.orderedQty = ordQty;
+			info.alreadyAllocatedQty = allocated;
+			info.remainingToAllocate = remaining;
+			fillProductInfo(pid, info);
 
-				if (prodMap.contains(Value(pid))) {
-					const Record* p = prodMap[Value(pid)];
-					info.productCode = safeGetString(*p, "product_code");
-					info.productName = safeGetString(*p, "product_name");
-				} else {
-					info.productCode = to_string(pid);
-					info.productName = "Product " + to_string(pid);
-				}
-
-				if (prodMap.contains(Value(pid))) {
-					const Record* p = prodMap[Value(pid)];
-					info.currentStockAvail = safeGetInt(*p, "available_quantity", 0);
-					info.currentStockWrt = safeGetInt(*p, "warranty_quantity", 0);
-					info.currentStockScrap = safeGetInt(*p, "scrapped_quantity", 0);
-				}
-
-				items.push_back(std::move(info));
-			}
+			items.push_back(std::move(info));
+		}
 	} else {
 		const Table* outDetTable = db->getTable("outbound_detail");
 		const Table* shipTable = db->getTable("shipment");
@@ -2245,35 +1987,20 @@ void get_logistics_batch_allocation_info(Database* db, int txnId, bool isInbound
 		}
 
 		for (const auto& odet : outDetTable->view("outbound_transaction_id", Value(txnId))) {
-				int pid = safeGetInt(odet, "product_id", 0);
-				int ordQty = safeGetInt(odet, "ordered_quantity", 0);
-				int allocated = allocatedMap.contains(pid) ? allocatedMap[pid] : 0;
-				int remaining = std::max(0, ordQty - allocated);
+			int pid = safeGetInt(odet, "product_id", 0);
+			int ordQty = safeGetInt(odet, "ordered_quantity", 0);
+			int allocated = allocatedMap.contains(pid) ? allocatedMap[pid] : 0;
+			int remaining = std::max(0, ordQty - allocated);
 
-				LogisticsBatchItemInfo info;
-				info.productId = pid;
-				info.orderedQty = ordQty;
-				info.alreadyAllocatedQty = allocated;
-				info.remainingToAllocate = remaining;
+			LogisticsBatchItemInfo info;
+			info.productId = pid;
+			info.orderedQty = ordQty;
+			info.alreadyAllocatedQty = allocated;
+			info.remainingToAllocate = remaining;
+			fillProductInfo(pid, info);
 
-				if (prodMap.contains(Value(pid))) {
-					const Record* p = prodMap[Value(pid)];
-					info.productCode = safeGetString(*p, "product_code");
-					info.productName = safeGetString(*p, "product_name");
-				} else {
-					info.productCode = to_string(pid);
-					info.productName = "Product " + to_string(pid);
-				}
-
-				if (prodMap.contains(Value(pid))) {
-					const Record* p = prodMap[Value(pid)];
-					info.currentStockAvail = safeGetInt(*p, "available_quantity", 0);
-					info.currentStockWrt = safeGetInt(*p, "warranty_quantity", 0);
-					info.currentStockScrap = safeGetInt(*p, "scrapped_quantity", 0);
-				}
-
-				items.push_back(std::move(info));
-			}
+			items.push_back(std::move(info));
+		}
 	}
 }
 
@@ -2360,24 +2087,25 @@ void inventory_check_query(Database *db, Vector<Record> &results,
 	if (!chkTable) return;
 
 	string col = stripPrefix(indexedColumn, "inventory_check.");
-	Vector<Record> raw;
-	if (!col.empty()) {
-		raw = Query::filterRecords(*chkTable, col, val);
-	} else {
-		for (const auto &r : chkTable->view()) {
-			raw.push_back(r);
-		}
-	}
 
-	results.reserve(raw.size());
-	for (size_t i = 0; i < raw.size(); ++i) {
-		Record r = raw[i];
-		if (r.has("check_at") && !r.has("check_date")) {
-			r.set("check_date", r.get("check_at"));
-		} else if (r.has("check_date") && !r.has("check_at")) {
-			r.set("check_at", r.get("check_date"));
+	auto processChk = [&](const Record& r) {
+		Record out = r;
+		if (out.has("check_at") && !out.has("check_date")) {
+			out.set("check_date", out.get("check_at"));
+		} else if (out.has("check_date") && !out.has("check_at")) {
+			out.set("check_at", out.get("check_date"));
 		}
-		results.push_back(std::move(r));
+		results.push_back(std::move(out));
+	};
+
+	if (!col.empty()) {
+		for (const auto& r : chkTable->view(col, val)) {
+			processChk(r);
+		}
+	} else {
+		for (const auto& r : chkTable->view()) {
+			processChk(r);
+		}
 	}
 }
 
@@ -2389,7 +2117,15 @@ void inventory_check_query(Database *db, Vector<Record> &results,
 	if (!chkTable) return;
 
 	string col = stripPrefix(indexedColumn, "inventory_check.");
-	results = Query::filterRecords(*chkTable, col, minVal, maxVal);
+	for (const auto& r : chkTable->view(col, minVal, maxVal)) {
+		Record out = r;
+		if (out.has("check_at") && !out.has("check_date")) {
+			out.set("check_date", out.get("check_at"));
+		} else if (out.has("check_date") && !out.has("check_at")) {
+			out.set("check_at", out.get("check_date"));
+		}
+		results.push_back(std::move(out));
+	}
 }
 
 void inventory_check_quantity_query(Database *db, int checkId, Vector<Record> &results) {
@@ -2400,52 +2136,27 @@ void inventory_check_quantity_query(Database *db, int checkId, Vector<Record> &r
 	const Table* pTable = db->getTable("product");
 	if (!cqTable) return;
 
-	HashMap<Value, const Record*> pMap;
-	if (pTable) {
-		for (const auto &r : pTable->view()) {
-		if (r.has("product_id")) {
-			pMap[r.get("product_id")] = &r;
-		}
-	}
-	}
-
-	HashMap<Value, const Record*> chkMap;
-	if (chkTable) {
-		for (const auto &r : chkTable->view()) {
-		if (r.has("check_id")) {
-			chkMap[r.get("check_id")] = &r;
-		}
-	}
-	}
-
-	Vector<Record> cqRows;
-	if (checkId > 0) {
-		cqRows = Query::filterRecords(*cqTable, "check_id", Value(checkId));
-	} else {
-		for (const auto &r : cqTable->view()) cqRows.push_back(r);
-	}
-
-	results.reserve(cqRows.size());
-	for (size_t i = 0; i < cqRows.size(); ++i) {
-		const auto &cq = cqRows[i];
+	auto processCq = [&](const Record& cq) {
 		Record r = cq;
 		int cId = safeGetInt(cq, "check_id");
-		auto chkIt = chkMap.find(Value(cId));
-		if (chkIt != chkMap.end()) {
-			const Record &chk = *(chkIt->second);
-			if (chk.has("check_code")) r.set("check_code", chk.get("check_code"));
-			if (chk.has("check_type")) r.set("check_type", chk.get("check_type"));
-			if (chk.has("status")) r.set("check_status", chk.get("status"));
+		if (chkTable) {
+			const Record* chk = chkTable->getRecordById(cId);
+			if (chk) {
+				if (chk->has("check_code")) r.set("check_code", chk->get("check_code"));
+				if (chk->has("check_type")) r.set("check_type", chk->get("check_type"));
+				if (chk->has("status")) r.set("check_status", chk->get("status"));
+			}
 		}
 
 		int pid = safeGetInt(cq, "product_id");
-		auto it = pMap.find(Value(pid));
-		if (it != pMap.end()) {
-			const Record &p = *(it->second);
-			if (p.has("product_code")) r.set("product_code", p.get("product_code"));
-			if (p.has("product_name")) r.set("product_name", p.get("product_name"));
-			if (p.has("category")) r.set("category", p.get("category"));
-			if (p.has("brand")) r.set("brand", p.get("brand"));
+		if (pTable) {
+			const Record* p = pTable->getRecordById(pid);
+			if (p) {
+				if (p->has("product_code")) r.set("product_code", p->get("product_code"));
+				if (p->has("product_name")) r.set("product_name", p->get("product_name"));
+				if (p->has("category")) r.set("category", p->get("category"));
+				if (p->has("brand")) r.set("brand", p->get("brand"));
+			}
 		}
 
 		int sysAvail = safeGetInt(cq, "system_available_quan");
@@ -2468,6 +2179,16 @@ void inventory_check_quantity_query(Database *db, int checkId, Vector<Record> &r
 		r.set("total_diff_quan", totalDiff);
 
 		results.push_back(std::move(r));
+	};
+
+	if (checkId > 0) {
+		for (const auto& cq : cqTable->view("check_id", Value(checkId))) {
+			processCq(cq);
+		}
+	} else {
+		for (const auto& cq : cqTable->view()) {
+			processCq(cq);
+		}
 	}
 }
 
@@ -2480,64 +2201,29 @@ void inventory_check_unit_query(Database *db, int checkId, Vector<Record> &resul
 	const Table* pTable = db->getTable("product");
 	if (!cuTable) return;
 
-	HashMap<Value, const Record*> chkMap;
-	if (chkTable) {
-		for (const auto &r : chkTable->view()) {
-		if (r.has("check_id")) {
-			chkMap[r.get("check_id")] = &r;
-		}
-	}
-	}
-
-	HashMap<Value, const Record*> cqMap;
-	if (cqTable) {
-		for (const auto &r : cqTable->view()) {
-		if (r.has("check_quantity_id")) {
-			cqMap[r.get("check_quantity_id")] = &r;
-		}
-	}
-	}
-
-	HashMap<Value, const Record*> pMap;
-	if (pTable) {
-		for (const auto &r : pTable->view()) {
-		if (r.has("product_id")) {
-			pMap[r.get("product_id")] = &r;
-		}
-	}
-	}
-
-	Vector<Record> cuRows;
-	if (checkId > 0) {
-		cuRows = Query::filterRecords(*cuTable, "check_id", Value(checkId));
-	} else {
-		for (const auto &r : cuTable->view()) cuRows.push_back(r);
-	}
-
-	results.reserve(cuRows.size());
-	for (size_t i = 0; i < cuRows.size(); ++i) {
-		const auto &cu = cuRows[i];
+	auto processCu = [&](const Record& cu) {
 		Record r = cu;
 		int cId = safeGetInt(cu, "check_id");
-		auto chkIt = chkMap.find(Value(cId));
-		if (chkIt != chkMap.end()) {
-			const Record &chk = *(chkIt->second);
-			if (chk.has("check_code")) r.set("check_code", chk.get("check_code"));
-			if (chk.has("check_type")) r.set("check_type", chk.get("check_type"));
+		if (chkTable) {
+			const Record* chk = chkTable->getRecordById(cId);
+			if (chk) {
+				if (chk->has("check_code")) r.set("check_code", chk->get("check_code"));
+				if (chk->has("check_type")) r.set("check_type", chk->get("check_type"));
+			}
 		}
 
 		int cqId = safeGetInt(cu, "check_quantity_id");
-		auto cqIt = cqMap.find(Value(cqId));
-		if (cqIt != cqMap.end()) {
-			const Record &cq = *(cqIt->second);
-			if (cq.has("product_id")) {
-				int pid = safeGetInt(cq, "product_id");
+		if (cqTable) {
+			const Record* cq = cqTable->getRecordById(cqId);
+			if (cq && cq->has("product_id")) {
+				int pid = safeGetInt(*cq, "product_id");
 				r.set("product_id", pid);
-				auto pIt = pMap.find(Value(pid));
-				if (pIt != pMap.end()) {
-					const Record &p = *(pIt->second);
-					if (p.has("product_code")) r.set("product_code", p.get("product_code"));
-					if (p.has("product_name")) r.set("product_name", p.get("product_name"));
+				if (pTable) {
+					const Record* p = pTable->getRecordById(pid);
+					if (p) {
+						if (p->has("product_code")) r.set("product_code", p->get("product_code"));
+						if (p->has("product_name")) r.set("product_name", p->get("product_name"));
+					}
 				}
 			}
 		}
@@ -2562,6 +2248,16 @@ void inventory_check_unit_query(Database *db, int checkId, Vector<Record> &resul
 		}
 
 		results.push_back(std::move(r));
+	};
+
+	if (checkId > 0) {
+		for (const auto& cu : cuTable->view("check_id", Value(checkId))) {
+			processCu(cu);
+		}
+	} else {
+		for (const auto& cu : cuTable->view()) {
+			processCu(cu);
+		}
 	}
 }
 
@@ -2578,7 +2274,9 @@ void adjustment_movement_query(Database *db, Vector<Record> &results,
 
 	string col = stripPrefix(indexedColumn, "adjustment_movement.");
 	if (!col.empty()) {
-		results = Query::filterRecords(*adjTable, col, val);
+		for (const auto& r : adjTable->view(col, val)) {
+			results.push_back(r);
+		}
 	} else {
 		for (const auto &r : adjTable->view()) {
 			results.push_back(r);
@@ -2594,7 +2292,9 @@ void adjustment_movement_query(Database *db, Vector<Record> &results,
 	if (!adjTable) return;
 
 	string col = stripPrefix(indexedColumn, "adjustment_movement.");
-	results = Query::filterRecords(*adjTable, col, minVal, maxVal);
+	for (const auto& r : adjTable->view(col, minVal, maxVal)) {
+		results.push_back(r);
+	}
 }
 
 void adjust_movement_detail_query(Database *db, int adjustId, Vector<Record> &results) {
@@ -2605,52 +2305,37 @@ void adjust_movement_detail_query(Database *db, int adjustId, Vector<Record> &re
 	const Table* pTable = db->getTable("product");
 	if (!amdTable) return;
 
-	HashMap<Value, const Record*> adjMap;
-	if (adjTable) {
-		for (const auto &r : adjTable->view()) {
-		if (r.has("adjust_id")) {
-			adjMap[r.get("adjust_id")] = &r;
-		}
-	}
-	}
-
-	HashMap<Value, const Record*> pMap;
-	if (pTable) {
-		for (const auto &r : pTable->view()) {
-		if (r.has("product_id")) {
-			pMap[r.get("product_id")] = &r;
-		}
-	}
-	}
-
-	Vector<Record> amdRows;
-	if (adjustId > 0) {
-		amdRows = Query::filterRecords(*amdTable, "adjust_id", Value(adjustId));
-	} else {
-		for (const auto &r : amdTable->view()) amdRows.push_back(r);
-	}
-
-	results.reserve(amdRows.size());
-	for (size_t i = 0; i < amdRows.size(); ++i) {
-		const auto &amd = amdRows[i];
+	auto processAmd = [&](const Record& amd) {
 		Record r = amd;
 		int aId = safeGetInt(amd, "adjust_id");
-		auto adjIt = adjMap.find(Value(aId));
-		if (adjIt != adjMap.end()) {
-			const Record &adj = *(adjIt->second);
-			if (adj.has("adjust_code")) r.set("adjust_code", adj.get("adjust_code"));
-			if (adj.has("source_code")) r.set("source_code", adj.get("source_code"));
-			if (adj.has("status")) r.set("adjust_status", adj.get("status"));
+		if (adjTable) {
+			const Record* adj = adjTable->getRecordById(aId);
+			if (adj) {
+				if (adj->has("adjust_code")) r.set("adjust_code", adj->get("adjust_code"));
+				if (adj->has("source_code")) r.set("source_code", adj->get("source_code"));
+				if (adj->has("status")) r.set("adjust_status", adj->get("status"));
+			}
 		}
 
 		int pid = safeGetInt(amd, "product_id");
-		auto it = pMap.find(Value(pid));
-		if (it != pMap.end()) {
-			const Record &p = *(it->second);
-			if (p.has("product_code")) r.set("product_code", p.get("product_code"));
-			if (p.has("product_name")) r.set("product_name", p.get("product_name"));
+		if (pTable) {
+			const Record* p = pTable->getRecordById(pid);
+			if (p) {
+				if (p->has("product_code")) r.set("product_code", p->get("product_code"));
+				if (p->has("product_name")) r.set("product_name", p->get("product_name"));
+			}
 		}
 		results.push_back(std::move(r));
+	};
+
+	if (adjustId > 0) {
+		for (const auto& amd : amdTable->view("adjust_id", Value(adjustId))) {
+			processAmd(amd);
+		}
+	} else {
+		for (const auto& amd : amdTable->view()) {
+			processAmd(amd);
+		}
 	}
 }
 
@@ -2661,34 +2346,616 @@ void is_sold_changing_query(Database *db, Vector<Record> &results, int productId
 	const Table* pTable = db->getTable("product");
 	if (!iscTable) return;
 
-	HashMap<Value, const Record*> pMap;
-	if (pTable) {
-		for (const auto &r : pTable->view()) {
-		if (r.has("product_id")) {
-			pMap[r.get("product_id")] = &r;
-		}
-	}
-	}
-
-	Vector<Record> source;
-	if (productId > 0) {
-		source = Query::filterRecords(*iscTable, "product_id", Value(productId));
-	} else {
-		for (const auto &r : iscTable->view()) source.push_back(r);
-	}
-
-	results.reserve(source.size());
-	for (size_t i = 0; i < source.size(); ++i) {
-		Record r = source[i];
+	auto processIsc = [&](const Record& isc) {
+		Record r = isc;
 		int pid = safeGetInt(r, "product_id");
-		auto it = pMap.find(Value(pid));
-		if (it != pMap.end()) {
-			const Record &p = *(it->second);
-			if (p.has("product_code")) r.set("product_code", p.get("product_code"));
-			if (p.has("product_name")) r.set("product_name", p.get("product_name"));
+		if (pTable) {
+			const Record* p = pTable->getRecordById(pid);
+			if (p) {
+				if (p->has("product_code")) r.set("product_code", p->get("product_code"));
+				if (p->has("product_name")) r.set("product_name", p->get("product_name"));
+			}
 		}
 		results.push_back(std::move(r));
+	};
+
+	if (productId > 0) {
+		for (const auto& isc : iscTable->view("product_id", Value(productId))) {
+			processIsc(isc);
+		}
+	} else {
+		for (const auto& isc : iscTable->view()) {
+			processIsc(isc);
+		}
 	}
+}
+
+// ========================================================
+// 18. CÁC HÀM TIỆN ÍCH TRUY VẤN CHO GIAO DIỆN & NGHIỆP VỤ (UI & BUSINESS HELPERS)
+// ========================================================
+
+bool resolve_order_info_by_code(
+	Database* db,
+	const string& orderCode,
+	bool isInbound,
+	int& txnId,
+	string& status,
+	string& orderDate,
+	string& note
+) {
+	txnId = 0;
+	status.clear();
+	orderDate.clear();
+	note.clear();
+	if (!db || orderCode.empty()) return false;
+	const Table* tbl = db->getTable(isInbound ? "inbound_transaction" : "outbound_transaction");
+	if (!tbl) return false;
+	string codeCol = isInbound ? "inbound_code" : "outbound_code";
+	string pkCol = tbl->getPrimaryKeyColumn();
+	for (const auto& r : tbl->view(codeCol, Value(orderCode))) {
+		txnId = safeGetInt(r, pkCol);
+		if (txnId <= 0 && !isInbound) {
+			txnId = safeGetInt(r, "outbound_transaction_id");
+			if (txnId <= 0) txnId = safeGetInt(r, "outbound_trainsaction_id");
+		}
+		status = safeGetStr(r, "status");
+		orderDate = safeGetStr(r, "order_at");
+		note = safeGetStr(r, "note");
+		return true;
+	}
+	return false;
+}
+
+string get_order_status_by_code(Database* db, const string& orderCode, bool isInbound) {
+	if (!db || orderCode.empty()) return "";
+	const Table* tbl = db->getTable(isInbound ? "inbound_transaction" : "outbound_transaction");
+	if (!tbl) return "";
+	string codeCol = isInbound ? "inbound_code" : "outbound_code";
+	for (const auto& r : tbl->view(codeCol, Value(orderCode))) {
+		return safeGetStr(r, "status");
+	}
+	return "";
+}
+
+string get_order_source_code_by_code(Database* db, const string& orderCode, bool isInbound) {
+	if (!db || orderCode.empty()) return "";
+	const Table* tbl = db->getTable(isInbound ? "inbound_transaction" : "outbound_transaction");
+	if (!tbl) return "";
+	string codeCol = isInbound ? "inbound_code" : "outbound_code";
+	for (const auto& r : tbl->view(codeCol, Value(orderCode))) {
+		return safeGetStr(r, "source_code");
+	}
+	return "";
+}
+
+int resolve_logistics_id_by_code(Database* db, const string& logisticsCode, bool isInbound) {
+	if (!db || logisticsCode.empty()) return 0;
+	const Table* tbl = db->getTable(isInbound ? "delivery" : "shipment");
+	if (!tbl) return 0;
+	string codeCol = isInbound ? "delivery_code" : "shipment_code";
+	string pkCol = tbl->getPrimaryKeyColumn();
+	for (const auto& r : tbl->view(codeCol, Value(logisticsCode))) {
+		return safeGetInt(r, pkCol);
+	}
+	return 0;
+}
+
+
+
+int search_single_product(Database* db, const string& keyword, bool& isSoldOut) {
+	isSoldOut = false;
+	if (!db || keyword.empty()) return -1;
+	const Table* prodTable = db->getTable("product");
+	if (!prodTable) return -1;
+
+	// 1. O(1) Hash Index lookups: product_code, barcode, sku
+	for (const auto& r : prodTable->view("product_code", Value(keyword))) {
+		if (r.has("is_sold") && holds_alternative<bool>(r.get("is_sold")) && !get<bool>(r.get("is_sold"))) isSoldOut = true;
+		return safeGetInt(r, "product_id");
+	}
+	for (const auto& r : prodTable->view("barcode", Value(keyword))) {
+		if (r.has("is_sold") && holds_alternative<bool>(r.get("is_sold")) && !get<bool>(r.get("is_sold"))) isSoldOut = true;
+		return safeGetInt(r, "product_id");
+	}
+	for (const auto& r : prodTable->view("sku", Value(keyword))) {
+		if (r.has("is_sold") && holds_alternative<bool>(r.get("is_sold")) && !get<bool>(r.get("is_sold"))) isSoldOut = true;
+		return safeGetInt(r, "product_id");
+	}
+
+	// 2. Case-insensitive / Substring fallback in a single linear pass
+	string lowerKey = toLowerStr(keyword);
+	int substrPid = -1;
+	bool substrSoldOut = false;
+
+	for (const auto& r : prodTable->view()) {
+		string pCode = safeGetStr(r, "product_code");
+		string pName = safeGetStr(r, "product_name");
+		string barcode = safeGetStr(r, "barcode");
+		string sku = safeGetStr(r, "sku");
+		bool sold = r.has("is_sold") && holds_alternative<bool>(r.get("is_sold")) ? get<bool>(r.get("is_sold")) : true;
+
+		string lpCode = toLowerStr(pCode);
+		string lpName = toLowerStr(pName);
+		string lBarcode = toLowerStr(barcode);
+		string lSku = toLowerStr(sku);
+
+		// Exact match case-insensitive
+		if (lpCode == lowerKey || lBarcode == lowerKey || lSku == lowerKey || lpName == lowerKey) {
+			if (!sold) isSoldOut = true;
+			return safeGetInt(r, "product_id");
+		}
+
+		// First substring match
+		if (substrPid == -1 && (lpCode.find(lowerKey) != string::npos || lpName.find(lowerKey) != string::npos)) {
+			substrPid = safeGetInt(r, "product_id");
+			substrSoldOut = !sold;
+		}
+	}
+
+	if (substrPid != -1) {
+		isSoldOut = substrSoldOut;
+		return substrPid;
+	}
+
+	return -1;
+}
+
+bool get_unit_details_by_serial(
+	Database* db,
+	const string& serial,
+	int& unitId,
+	int& productId,
+	string& status,
+	bool& isSold
+) {
+	unitId = 0;
+	productId = 0;
+	status.clear();
+	isSold = false;
+	if (!db || serial.empty()) return false;
+	const Table* uTable = db->getTable("unit_inventory");
+	if (!uTable) return false;
+	for (const auto& r : uTable->view("serial", Value(serial))) {
+		unitId = safeGetInt(r, "unit_id");
+		productId = safeGetInt(r, "product_id");
+		status = safeGetStr(r, "status");
+		if (r.has("is_sold") && holds_alternative<bool>(r.get("is_sold"))) {
+			isSold = get<bool>(r.get("is_sold"));
+		}
+		return true;
+	}
+	return false;
+}
+
+bool get_product_display_info(
+	Database* db,
+	int productId,
+	string& productCode,
+	string& productName,
+	bool& isSold
+) {
+	productCode.clear();
+	productName.clear();
+	isSold = true;
+	if (!db || productId <= 0) return false;
+	const Table* pTable = db->getTable("product");
+	if (!pTable) return false;
+	const Record* r = pTable->getRecordById(productId);
+	if (!r) return false;
+	productCode = safeGetStr(*r, "product_code");
+	productName = safeGetStr(*r, "product_name");
+	if (r->has("is_sold") && holds_alternative<bool>(r->get("is_sold"))) {
+		isSold = get<bool>(r->get("is_sold"));
+	}
+	return true;
+}
+
+int resolve_product_id_by_code(Database* db, const string& productCode) {
+	if (!db || productCode.empty()) return -1;
+	const Table* pTable = db->getTable("product");
+	if (!pTable) return -1;
+	for (const auto& r : pTable->view("product_code", Value(productCode))) {
+		return safeGetInt(r, "product_id");
+	}
+	return -1;
+}
+
+int resolve_customer_id_by_code(Database* db, const string& customerCode) {
+	if (!db || customerCode.empty()) return -1;
+	const Table* cTable = db->getTable("customer");
+	if (!cTable) return -1;
+	for (const auto& r : cTable->view("customer_code", Value(customerCode))) {
+		return safeGetInt(r, "customer_id");
+	}
+	return -1;
+}
+
+bool is_brand_referenced_by_product(Database* db, const string& brandName) {
+	if (!db || brandName.empty()) return false;
+	const Table* pTable = db->getTable("product");
+	if (!pTable) return false;
+	for (const auto& r : pTable->view("brand", Value(brandName))) {
+		(void)r;
+		return true;
+	}
+	return false;
+}
+
+bool has_logistics_batch_progress(Database* db, int logId, bool isInbound) {
+	if (!db || logId <= 0) return false;
+	const Table* dTable = db->getTable(isInbound ? "delivery_detail" : "shipment_detail");
+	if (!dTable) return false;
+	string fkCol = isInbound ? "delivery_id" : "shipment_id";
+	for (const auto& r : dTable->view(fkCol, Value(logId))) {
+		int act = safeGetInt(r, "actual_quantity");
+		if (act > 0) return true;
+	}
+	return false;
+}
+
+void get_order_progress_summary(
+	Database* db,
+	int txnId,
+	bool isInbound,
+	int& totalPlanQty,
+	int& totalActQty,
+	bool& hasProgress
+) {
+	totalPlanQty = 0;
+	totalActQty = 0;
+	hasProgress = false;
+	if (!db || txnId <= 0) return;
+
+	if (isInbound) {
+		const Table* dTable = db->getTable("delivery");
+		const Table* ddTable = db->getTable("delivery_detail");
+		if (dTable) {
+			for (const auto& d : dTable->view("inbound_transaction_id", Value(txnId))) {
+				string dSt = safeGetStr(d, "status");
+				if (dSt == "COMPLETED" || dSt == "RECEIVING") hasProgress = true;
+				int dId = safeGetInt(d, "delivery_id");
+				if (ddTable && dId > 0) {
+					for (const auto& dd : ddTable->view("delivery_id", Value(dId))) {
+						int act = safeGetInt(dd, "actual_quantity");
+						totalActQty += act;
+						if (act > 0) hasProgress = true;
+					}
+				}
+			}
+		}
+		const Table* itmTbl = db->getTable("inbound_detail");
+		if (itmTbl) {
+			for (const auto& it : itmTbl->view("inbound_transaction_id", Value(txnId))) {
+				totalPlanQty += safeGetInt(it, "ordered_quantity");
+			}
+		}
+	} else {
+		const Table* sTable = db->getTable("shipment");
+		const Table* sdTable = db->getTable("shipment_detail");
+		if (sTable) {
+			for (const auto& s : sTable->view("outbound_transaction_id", Value(txnId))) {
+				string sSt = safeGetStr(s, "status");
+				if (sSt == "COMPLETED" || sSt == "PICKING") hasProgress = true;
+				int sId = safeGetInt(s, "shipment_id");
+				if (sdTable && sId > 0) {
+					for (const auto& sd : sdTable->view("shipment_id", Value(sId))) {
+						int act = safeGetInt(sd, "actual_quantity");
+						totalActQty += act;
+						if (act > 0) hasProgress = true;
+					}
+				}
+			}
+		}
+		const Table* itmTbl = db->getTable("outbound_detail");
+		if (itmTbl) {
+			for (const auto& it : itmTbl->view("outbound_transaction_id", Value(txnId))) {
+				totalPlanQty += safeGetInt(it, "ordered_quantity");
+			}
+		}
+	}
+}
+
+int get_first_shipment_id_for_order(Database* db, const string& outboundCode) {
+	if (!db || outboundCode.empty()) return 0;
+	const Table* outTable = db->getTable("outbound_transaction");
+	const Table* shipTable = db->getTable("shipment");
+	if (!outTable || !shipTable) return 0;
+
+	int outId = 0;
+	for (const auto& o : outTable->view("outbound_code", Value(outboundCode))) {
+		outId = safeGetInt(o, "outbound_transaction_id");
+		if (outId <= 0) outId = safeGetInt(o, "outbound_trainsaction_id");
+		break;
+	}
+	if (outId <= 0) return 0;
+
+	for (const auto& s : shipTable->view("outbound_transaction_id", Value(outId))) {
+		return safeGetInt(s, "shipment_id");
+	}
+	return 0;
+}
+
+void get_check_product_ids(Database* db, const string& checkCode, Vector<int>& productIds) {
+	productIds.clear();
+	if (!db || checkCode.empty()) return;
+	const Table* chkTable = db->getTable("inventory_check");
+	const Table* cqTable = db->getTable("inventory_check_quantity");
+	if (!chkTable || !cqTable) return;
+
+	int chkId = 0;
+	for (const auto& c : chkTable->view("check_code", Value(checkCode))) {
+		chkId = safeGetInt(c, "check_id");
+		break;
+	}
+	if (chkId <= 0) return;
+
+	for (const auto& cq : cqTable->view("check_id", Value(chkId))) {
+		int pid = safeGetInt(cq, "product_id");
+		if (pid > 0) productIds.push_back(pid);
+	}
+}
+
+void get_candidate_units_for_adjustment(
+	Database* db,
+	int productId,
+	const string& fromStatus,
+	const string& toStatus,
+	const string& sourceCheckCode,
+	const Vector<string>& excludeList,
+	Vector<Record>& results
+) {
+	results.clear();
+	if (!db || productId <= 0) return;
+	const Table* unitTable = db->getTable("unit_inventory");
+	if (!unitTable) return;
+
+	bool hasChkFilter = (!sourceCheckCode.empty() && sourceCheckCode.rfind("CHK-", 0) == 0);
+	HashMap<string, bool> chkDiscrepancySerials;
+
+	if (hasChkFilter) {
+		const Table* chkTbl = db->getTable("inventory_check");
+		const Table* chkUnitTbl = db->getTable("inventory_check_unit");
+		const Table* chkQuanTbl = db->getTable("inventory_check_quantity");
+		if (chkTbl && chkUnitTbl) {
+			int chkId = 0;
+			for (const auto& c : chkTbl->view("check_code", Value(sourceCheckCode))) {
+				chkId = safeGetInt(c, "check_id");
+				break;
+			}
+			if (chkId > 0) {
+				HashMap<int, int> qIdToPid;
+				if (chkQuanTbl) {
+					for (const auto& q : chkQuanTbl->view("check_id", Value(chkId))) {
+						int qid = safeGetInt(q, "check_quantity_id");
+						int pid = safeGetInt(q, "product_id");
+						if (qid > 0 && pid > 0) qIdToPid[qid] = pid;
+					}
+				}
+				for (const auto& cu : chkUnitTbl->view("check_id", Value(chkId))) {
+					int qid = safeGetInt(cu, "check_quantity_id");
+					int pid = safeGetInt(cu, "product_id");
+					if (pid == 0 && qIdToPid.has(qid)) pid = qIdToPid[qid];
+
+					string sysSt = safeGetStr(cu, "system_status");
+					string scanSt = safeGetStr(cu, "scanned_status");
+					string sn = safeGetStr(cu, "serial");
+
+					if (pid == productId && sysSt == fromStatus && scanSt == toStatus && !sn.empty()) {
+						chkDiscrepancySerials[sn] = true;
+					}
+				}
+			}
+		}
+	}
+
+	HashMap<string, bool> exMap;
+	for (size_t i = 0; i < excludeList.size(); ++i) {
+		exMap[excludeList[i]] = true;
+	}
+
+	for (const auto& r : unitTable->view("product_id", Value(productId))) {
+		int uid = safeGetInt(r, "unit_id");
+		string sn = safeGetStr(r, "serial");
+		string st = safeGetStr(r, "status");
+		bool isSold = r.has("is_sold") && holds_alternative<bool>(r.get("is_sold")) ? get<bool>(r.get("is_sold")) : false;
+
+		if (isSold || st == "OUT") continue;
+		if (exMap.has(sn)) continue;
+		if (st != fromStatus) continue;
+
+		bool isDiscrepancyCandidate = hasChkFilter && chkDiscrepancySerials.has(sn);
+		if (hasChkFilter && !chkDiscrepancySerials.empty() && !isDiscrepancyCandidate) {
+			continue;
+		}
+
+		Record outRec;
+		outRec.set("unit_id", uid);
+		outRec.set("serial", sn);
+		outRec.set("status", st);
+		outRec.set("is_sold", isSold);
+		outRec.set("is_discrepancy", isDiscrepancyCandidate);
+		results.push_back(std::move(outRec));
+	}
+}
+
+void adjustment_units_history_query(Database* db, int adjustId, Vector<Record>& results) {
+	results.clear();
+	if (!db || adjustId <= 0) return;
+	const Table* histTbl = db->getTable("status_history");
+	const Table* unitTbl = db->getTable("unit_inventory");
+	const Table* prodTbl = db->getTable("product");
+	if (!histTbl || !unitTbl || !prodTbl) return;
+
+	for (const auto& r : histTbl->view("transaction", Value(adjustId))) {
+		string typ = safeGetStr(r, "type");
+		if (typ != "ADJUSTMENT") continue;
+
+		int uid = safeGetInt(r, "unit_id");
+		string oldSt = safeGetStr(r, "old_status");
+		string currSt = safeGetStr(r, "curr_status");
+
+		const Record* uRec = unitTbl->getRecordById(uid);
+		if (!uRec) continue;
+		int pid = safeGetInt(*uRec, "product_id");
+		string sn = safeGetStr(*uRec, "serial");
+
+		const Record* pRec = prodTbl->getRecordById(pid);
+		string pCode = pRec ? safeGetStr(*pRec, "product_code") : "";
+		string pName = pRec ? safeGetStr(*pRec, "product_name") : "";
+
+		Record eu;
+		eu.set("unit_id", uid);
+		eu.set("product_id", pid);
+		eu.set("product_code", pCode);
+		eu.set("product_name", pName);
+		eu.set("serial", sn);
+		eu.set("from_status", oldSt);
+		eu.set("to_status", currSt);
+		results.push_back(std::move(eu));
+	}
+}
+
+int get_first_logistics_id_for_check_source(Database* db, const string& checkCode, bool isInbound) {
+	if (!db || checkCode.empty()) return 0;
+	const Table* ordTbl = db->getTable(isInbound ? "inbound_transaction" : "outbound_transaction");
+	const Table* logTbl = db->getTable(isInbound ? "delivery" : "shipment");
+	if (!ordTbl || !logTbl) return 0;
+
+	string fkCol = isInbound ? "inbound_transaction_id" : "outbound_transaction_id";
+	string logPk = logTbl->getPrimaryKeyColumn();
+	string ordPk = ordTbl->getPrimaryKeyColumn();
+
+	for (const auto& ord : ordTbl->view("source_code", Value(checkCode))) {
+		int ordId = safeGetInt(ord, ordPk);
+		if (ordId <= 0 && !isInbound) ordId = safeGetInt(ord, "outbound_transaction_id");
+		if (ordId > 0) {
+			for (const auto& log : logTbl->view(fkCol, Value(ordId))) {
+				return safeGetInt(log, logPk);
+			}
+		}
+	}
+	return 0;
+}
+
+void get_candidate_units_for_order_dispatch(
+	Database* db,
+	int productId,
+	const string& sourceCheckCode,
+	const Vector<string>& excludeList,
+	Vector<Record>& results
+) {
+	results.clear();
+	if (!db || productId <= 0) return;
+	const Table* unitTable = db->getTable("unit_inventory");
+	if (!unitTable) return;
+
+	bool hasChkFilter = (!sourceCheckCode.empty() && sourceCheckCode.rfind("CHK-", 0) == 0);
+	HashMap<string, bool> chkMissingSerials;
+
+	if (hasChkFilter) {
+		const Table* chkTbl = db->getTable("inventory_check");
+		const Table* chkUnitTbl = db->getTable("inventory_check_unit");
+		const Table* chkQuanTbl = db->getTable("inventory_check_quantity");
+		if (chkTbl && chkUnitTbl) {
+			int chkId = 0;
+			for (const auto& c : chkTbl->view("check_code", Value(sourceCheckCode))) {
+				chkId = safeGetInt(c, "check_id");
+				break;
+			}
+			if (chkId > 0) {
+				HashMap<int, int> qIdToPid;
+				if (chkQuanTbl) {
+					for (const auto& q : chkQuanTbl->view("check_id", Value(chkId))) {
+						int qid = safeGetInt(q, "check_quantity_id");
+						int pid = safeGetInt(q, "product_id");
+						if (qid > 0 && pid > 0) qIdToPid[qid] = pid;
+					}
+				}
+				for (const auto& cu : chkUnitTbl->view("check_id", Value(chkId))) {
+					int qid = safeGetInt(cu, "check_quantity_id");
+					int pid = safeGetInt(cu, "product_id");
+					if (pid == 0 && qIdToPid.has(qid)) pid = qIdToPid[qid];
+
+					string sysSt = safeGetStr(cu, "system_status");
+					string scanSt = safeGetStr(cu, "scanned_status");
+					string sn = safeGetStr(cu, "serial");
+
+					bool isMissing = (!sysSt.empty() && sysSt != "OUT") &&
+					                 (scanSt.empty() || scanSt == "OUT" || scanSt == "MISSING" || scanSt == "UNCHECKED");
+					if (isMissing && pid == productId && !sn.empty()) {
+						chkMissingSerials[sn] = true;
+					}
+				}
+			}
+		}
+	}
+
+	HashMap<string, bool> exMap;
+	for (size_t i = 0; i < excludeList.size(); ++i) {
+		exMap[excludeList[i]] = true;
+	}
+
+	for (const auto& r : unitTable->view("product_id", Value(productId))) {
+		int uid = safeGetInt(r, "unit_id");
+		string sn = safeGetStr(r, "serial");
+		string st = safeGetStr(r, "status");
+		bool isSold = r.has("is_sold") && holds_alternative<bool>(r.get("is_sold")) ? get<bool>(r.get("is_sold")) : false;
+
+		if (isSold || st == "OUT") continue;
+		if (exMap.has(sn)) continue;
+
+		bool isMissingCandidate = hasChkFilter && chkMissingSerials.has(sn);
+		if (hasChkFilter && !chkMissingSerials.empty() && !isMissingCandidate) {
+			continue;
+		}
+
+		Record outRec;
+		outRec.set("unit_id", uid);
+		outRec.set("serial", sn);
+		outRec.set("status", st);
+		outRec.set("is_sold", isSold);
+		outRec.set("is_missing_from_check", isMissingCandidate);
+		results.push_back(std::move(outRec));
+	}
+}
+
+bool get_check_consequential_codes(
+	Database* db,
+	const string& checkCode,
+	string& inboundCode,
+	string& outboundCode,
+	string& adjustCode
+) {
+	inboundCode.clear();
+	outboundCode.clear();
+	adjustCode.clear();
+	if (!db || checkCode.empty()) return false;
+
+	const Table* inTbl = db->getTable("inbound_transaction");
+	if (inTbl) {
+		for (const auto& r : inTbl->view("source_code", Value(checkCode))) {
+			inboundCode = safeGetStr(r, "inbound_code");
+			break;
+		}
+	}
+
+	const Table* outTbl = db->getTable("outbound_transaction");
+	if (outTbl) {
+		for (const auto& r : outTbl->view("source_code", Value(checkCode))) {
+			outboundCode = safeGetStr(r, "outbound_code");
+			break;
+		}
+	}
+
+	const Table* movTbl = db->getTable("adjustment_movement");
+	if (movTbl) {
+		for (const auto& r : movTbl->view("source_code", Value(checkCode))) {
+			adjustCode = safeGetStr(r, "adjust_code");
+			break;
+		}
+	}
+
+	return (!inboundCode.empty() || !outboundCode.empty() || !adjustCode.empty());
 }
 
 } // namespace user_query
