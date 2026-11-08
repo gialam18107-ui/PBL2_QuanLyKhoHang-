@@ -52,5 +52,6 @@ python -m data_crawler.main
 python -m data_crawler.main --output-dir data --seed 42 --validate
 ```
 - `--output-dir <path>`: Thư mục đích lưu các file CSV (mặc định: `data`).
-- `--seed <int>`: Seed ngẫu nhiên để tái lập kết quả sinh mã.
-- `--validate`: Tự động kiểm tra tính toàn vẹn khóa ngoại (Foreign Keys) và ràng buộc duy nhất (Unique constraints).
+- `--seed <int>`: Seed ngẫu nhiên để tái lập kết quả sinh mã (mặc định: `42`).
+- `--online`: Thu thập thêm dữ liệu trực tuyến từ nhà bán lẻ AnPhat PC (mặc định: dùng bộ catalog chuẩn hóa 92 sản phẩm).
+- `--validate`: Tự động kiểm tra tính toàn vẹn khóa ngoại (Foreign Keys), ràng buộc duy nhất (Unique constraints) và tính đồng bộ số lượng tồn kho theo Rule 4.2 & Rule 4.4.

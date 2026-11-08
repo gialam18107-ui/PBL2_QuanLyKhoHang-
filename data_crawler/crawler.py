@@ -159,16 +159,22 @@ class DataCrawler:
 
         return crawled_items
 
-    def build_dataset(self, min_products_per_cat: int = 6) -> None:
+    def build_dataset(self, min_products_per_cat: int = 6, allow_online: bool = False) -> None:
         """
         Build the complete database dataset from catalog and online sources,
         assigning IDs, product codes, barcodes, SKUs, and specifications conforming to QuanLyKhoHang_schema.json.
         """
         raw_items = list(CATALOG_PRODUCTS)
 
-        # Attempt online crawl from AnPhat PC
-        online_items = self.crawl_online_samples()
-        raw_items.extend(online_items)
+        # Attempt online crawl from AnPhat PC only if explicitly allowed, with deduplication
+        if allow_online:
+            online_items = self.crawl_online_samples()
+            existing_names = {item["product_name"].strip().lower() for item in raw_items}
+            for oi in online_items:
+                name_key = oi.get("product_name", "").strip().lower()
+                if name_key and name_key not in existing_names:
+                    raw_items.append(oi)
+                    existing_names.add(name_key)
 
         # Counters for code generation
         # Schema rule: producer_code + category_code + next_code_no(producer) + next_code_no(category)
@@ -233,12 +239,17 @@ class DataCrawler:
                     "series": raw_specs.get("series", "intel 14th"),
                 })
             elif cat_name == "GPU":
+                raw_vram = raw_specs.get("vram", 12)
+                try:
+                    vram_val = min(48, max(1, int(raw_vram)))
+                except (ValueError, TypeError):
+                    vram_val = 12
                 self.specs_by_category["GPU"].append({
                     "gpu_id": spec_id,
                     "product_id": product_id,
                     "series": raw_specs.get("series", "RTX 4070"),
                     "producer": raw_specs.get("producer", "NVIDIA"),
-                    "vram": int(raw_specs.get("vram", 12)),
+                    "vram": vram_val,
                 })
             elif cat_name == "MAINBOARD":
                 # cpu_support in schema comment is INTEL/AMD
@@ -257,11 +268,13 @@ class DataCrawler:
                     "ram_support": raw_specs.get("ram_support", "DDR5"),
                 })
             elif cat_name == "RAM":
-                # capacity and bus are VARCHAR in QuanLyKhoHang_schema.json
+                # generation strictly DDR4 or DDR5 per Rule 4.6
+                gen_raw = str(raw_specs.get("generation", "DDR5")).upper()
+                gen_val = "DDR4" if "DDR4" in gen_raw else "DDR5"
                 self.specs_by_category["RAM"].append({
                     "ram_id": spec_id,
                     "product_id": product_id,
-                    "generation": raw_specs.get("generation", "DDR5"),
+                    "generation": gen_val,
                     "quantity": int(raw_specs.get("quantity", 2)),
                     "capacity": str(raw_specs.get("capacity", "32GB")),
                     "bus": str(raw_specs.get("bus", "6000MHz")),

@@ -92,18 +92,60 @@ def validate_exported_data(data_dir: str) -> bool:
                 customer_ids.add(int(row["customer_id"]))
         print(f"  [OK] customer.csv: {len(customer_ids)} customers verified.")
 
-    # 6. Check units
+    # 6. Check units and bucket synchronization (Rule 4.2 & 4.4)
     units_path = resolve_file(data_dir, "unit_inventory.csv")
     unit_serials = set()
+    unit_counts = {}  # pid -> {status: count}
+    unit_status_map = {}  # uid -> status
     with open(units_path, encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
+            uid = int(row["unit_id"])
+            pid = int(row["product_id"])
             serial = row["serial"]
+            status = row["status"]
             if serial in unit_serials:
                 print(f"[-] Duplicate serial in unit_inventory: {serial}")
                 return False
             unit_serials.add(serial)
+            unit_status_map[uid] = status
+            if pid not in unit_counts:
+                unit_counts[pid] = {"AVAILABLE": 0, "WARRANTY": 0, "SCRAPPED": 0, "OUT": 0}
+            unit_counts[pid][status] = unit_counts[pid].get(status, 0) + 1
     print(f"  [OK] unit_inventory.csv: {len(unit_serials)} unique physical units.")
+
+    # Verify atomic bucket sync with product.csv (Rule 4.2)
+    with open(prod_path, encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            pid = int(row["product_id"])
+            act_avail = int(row["available_quantity"])
+            act_warr = int(row["warranty_quantity"])
+            act_scrap = int(row["scrapped_quantity"])
+            counts = unit_counts.get(pid, {"AVAILABLE": 0, "WARRANTY": 0, "SCRAPPED": 0})
+            if counts.get("AVAILABLE", 0) != act_avail or counts.get("WARRANTY", 0) != act_warr or counts.get("SCRAPPED", 0) != act_scrap:
+                print(f"[-] Inventory bucket mismatch for product {pid}: CSV says ({act_avail}, {act_warr}, {act_scrap}) but unit_inventory has ({counts.get('AVAILABLE', 0)}, {counts.get('WARRANTY', 0)}, {counts.get('SCRAPPED', 0)})")
+                return False
+    print(f"  [OK] Rule 4.2 Verified: All product inventory buckets match physical units exactly.")
+
+    # Verify status_history consistency (Rule 4.4)
+    hist_path = resolve_file(data_dir, "status_history.csv")
+    if os.path.exists(hist_path):
+        latest_status_per_unit = {}
+        with open(hist_path, encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                uid = int(row["unit_id"])
+                curr_st = row["curr_status"]
+                latest_status_per_unit[uid] = curr_st
+        for uid, cur_st in unit_status_map.items():
+            if uid not in latest_status_per_unit:
+                print(f"[-] Unit {uid} has no status_history entry.")
+                return False
+            if latest_status_per_unit[uid] != cur_st:
+                print(f"[-] Status mismatch for unit {uid}: unit_inventory={cur_st}, latest status_history={latest_status_per_unit[uid]}")
+                return False
+        print(f"  [OK] Rule 4.4 Verified: Unit status consistency with status_history integrity confirmed.")
 
     # 7. Check Category Specifications (Section 10.4)
     print(f"[+] Validating Category Specification sub-tables (<category>_specs/)...")
@@ -150,6 +192,11 @@ def main():
         help="Random seed for deterministic generation",
     )
     parser.add_argument(
+        "--online",
+        action="store_true",
+        help="Scrape additional online hardware items from retailers (default: False, use curated catalog)",
+    )
+    parser.add_argument(
         "--validate",
         action="store_true",
         help="Run integrity validation after export",
@@ -164,7 +211,7 @@ def main():
 
     crawler = DataCrawler(seed=args.seed)
     print("[+] Fetching hardware specifications & building catalog...")
-    crawler.build_dataset()
+    crawler.build_dataset(allow_online=args.online)
 
     print(f"[+] Crawled & structured {len(crawler.products)} products across 8 categories.")
     print(f"[+] Generated {len(crawler.units)} inventory units.")

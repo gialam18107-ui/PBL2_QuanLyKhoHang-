@@ -244,6 +244,32 @@ class SchemaExporter:
         self._write_csv("business_info.csv", biz_headers, BUSINESS_INFO)
         summary["business_info"] = len(BUSINESS_INFO)
 
+        # Baseline transactions for initial inventory intake and outbound flow
+        # 1. Snapshot initial intake quantities for all products before any dispatch
+        initial_intake_quantities = {p["product_id"]: p["available_quantity"] for p in crawler.products}
+
+        # 2. Outbound transaction & shipment (dispatches 1 unit of product_id = 1)
+        dispatched_unit_id = None
+        for u in reversed(crawler.units):
+            if u["product_id"] == 1 and u["status"] == "AVAILABLE":
+                u["status"] = "OUT"
+                dispatched_unit_id = u["unit_id"]
+                break
+
+        if dispatched_unit_id is not None:
+            crawler.status_history.append({
+                "history_id": len(crawler.status_history) + 1,
+                "unit_id": dispatched_unit_id,
+                "old_status": "AVAILABLE",
+                "curr_status": "OUT",
+                "transaction": 1,  # shipment_id = 1
+                "type": "OUTBOUND",
+            })
+            for p in crawler.products:
+                if p["product_id"] == 1:
+                    p["available_quantity"] -= 1
+                    break
+
         # 13. PRODUCT (products/)
         prod_headers = [
             "product_id",
@@ -306,7 +332,6 @@ class SchemaExporter:
         self._write_csv("unit_inventory.csv", unit_headers, crawler.units)
         summary["unit_inventory"] = len(crawler.units)
 
-        # Baseline transactions for initial inventory intake and outbound flow
         # 24. INBOUND_TRANSACTION (transactions/)
         inbound_txns = [
             {
@@ -341,8 +366,8 @@ class SchemaExporter:
                 "inbound_detail_id": i + 1,
                 "inbound_transaction_id": 1,
                 "product_id": p["product_id"],
-                "ordered_quantity": p["available_quantity"],
-                "actual_quantity": p["available_quantity"],
+                "ordered_quantity": initial_intake_quantities[p["product_id"]],
+                "actual_quantity": initial_intake_quantities[p["product_id"]],
             }
             for i, p in enumerate(crawler.products)
         ]
@@ -362,8 +387,8 @@ class SchemaExporter:
                 "delivery_id": 1,
                 "delivery_code": "IN-PUR-000001-D01",
                 "inbound_transaction_id": 1,
-                "delivery_at": "2026-09-02",
                 "expected_at": "2026-09-02",
+                "delivery_at": "2026-09-02",
                 "status": "COMPLETED",
             }
         ]
@@ -371,8 +396,8 @@ class SchemaExporter:
             "delivery_id",
             "delivery_code",
             "inbound_transaction_id",
-            "delivery_at",
             "expected_at",
+            "delivery_at",
             "status",
         ]
         self._write_csv("delivery.csv", delivery_headers, deliveries)
@@ -384,8 +409,8 @@ class SchemaExporter:
                 "delivery_detail_id": i + 1,
                 "delivery_id": 1,
                 "product_id": p["product_id"],
-                "received_quantity": p["available_quantity"],
-                "actual_quantity": p["available_quantity"],
+                "received_quantity": initial_intake_quantities[p["product_id"]],
+                "actual_quantity": initial_intake_quantities[p["product_id"]],
             }
             for i, p in enumerate(crawler.products)
         ]
@@ -447,8 +472,8 @@ class SchemaExporter:
                 "shipment_id": 1,
                 "shipment_code": "OUT-SEL-000001-S01",
                 "outbound_transaction_id": 1,
-                "ship_at": "2026-09-06",
                 "expected_at": "2026-09-06",
+                "ship_at": "2026-09-06",
                 "status": "COMPLETED",
             }
         ]
@@ -456,8 +481,8 @@ class SchemaExporter:
             "shipment_id",
             "shipment_code",
             "outbound_transaction_id",
-            "ship_at",
             "expected_at",
+            "ship_at",
             "status",
         ]
         self._write_csv("shipment.csv", shipment_headers, shipments)
