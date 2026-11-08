@@ -488,9 +488,7 @@ namespace user_update
                             tm* t = localtime(&now);
                             char buf[32];
                             strftime(buf, sizeof(buf), "%Y-%m-%d", t);
-                            int hId = user_create::getNextTableId(db, "is_sold_changing");
                             Record hRec;
-                            hRec.set("history_id", hId);
                             hRec.set("product_id", recordId);
                             hRec.set("date", std::string(buf));
                             hRec.set("old_status", oldSold);
@@ -669,10 +667,7 @@ namespace user_update
                 actualDate = buf;
             }
 
-            int hId = user_create::getNextTableId(db, "is_sold_changing");
-
             Record hRec;
-            hRec.set("history_id", hId);
             hRec.set("product_id", productId);
             hRec.set("date", actualDate);
             hRec.set("old_status", oldIsSold);
@@ -895,9 +890,6 @@ namespace user_update
         int decrementedWarr = 0;
         int decrementedScrap = 0;
 
-        // Pre-calculate next histId once before loop to prevent O(N^2) full table scans
-        int nextHistId = user_create::getNextTableId(db, "status_history");
-
         for (size_t i = 0; i < serials.size(); ++i) {
             const std::string& sn = serials[i];
             int unitId = -1;
@@ -958,10 +950,7 @@ namespace user_update
             if (!rU) { db->rollback(); return rU; }
             totalAffected++;
 
-            // Insert into status_history using pre-incremented id
-            int histId = nextHistId++;
             Record hRec;
-            hRec.set("history_id", histId);
             hRec.set("unit_id", unitId);
             hRec.set("old_status", curStatus);
             hRec.set("curr_status", std::string("OUT"));
@@ -1221,7 +1210,6 @@ namespace user_update
             OperationResult rH = db->update("status_history", existingHistId, hUp);
             if (!rH) { db->rollback(); return rH; }
         } else {
-            int histId = user_create::getNextTableId(db, "status_history");
             std::time_t tNow = std::time(nullptr);
             std::tm tmNow;
 #if defined(_WIN32) || defined(_WIN64)
@@ -1236,7 +1224,6 @@ namespace user_update
                   << std::setw(2) << tmNow.tm_mday;
 
             Record hRec;
-            hRec.set("history_id", histId);
             hRec.set("unit_id", unitId);
             hRec.set("old_status", oldStatus);
             hRec.set("curr_status", newStatus);
@@ -1381,10 +1368,7 @@ namespace user_update
 
         if (!db->beginTransaction()) return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
 
-        int cuId = user_create::getNextTableId(db, "inventory_check_unit");
-
         Record cuRec;
-        cuRec.set("check_unit_id", cuId);
         cuRec.set("check_id", checkId);
         cuRec.set("check_quantity_id", checkQuantityId);
         cuRec.set("serial", serial);
@@ -1473,9 +1457,6 @@ namespace user_update
             return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
         }
 
-        // Find max check_unit_id once
-        int nextCuId = user_create::getNextTableId(db, "inventory_check_unit");
-
         // Track affected check_quantity_ids using custom HashMap
         HashMap<int, bool> affectedCqIds;
         int totalAffected = 0;
@@ -1502,9 +1483,7 @@ namespace user_update
             const auto& s = surplusUnits[i];
             affectedCqIds[s.checkQuantityId] = true;
 
-            int cuId = nextCuId++;
             Record cuRec;
-            cuRec.set("check_unit_id", cuId);
             cuRec.set("check_id", checkId);
             cuRec.set("check_quantity_id", s.checkQuantityId);
             cuRec.set("serial", s.serial);
@@ -1706,7 +1685,6 @@ namespace user_update
             }
 
             int moved = 0;
-            int nextHId = user_create::getNextTableId(db, "status_history");
             for (size_t k = 0; k < candidates.size(); ++k) {
                 int uId = std::get<int>(candidates[k].get("unit_id"));
                 Record uUp;
@@ -1716,7 +1694,6 @@ namespace user_update
 
                 // Log into status_history
                 Record hRec;
-                hRec.set("history_id", nextHId++);
                 hRec.set("unit_id", uId);
                 hRec.set("old_status", fromSt);
                 hRec.set("curr_status", toSt);
@@ -1825,7 +1802,6 @@ namespace user_update
             }
 
             int movedForLine = 0;
-            int nextHId = user_create::getNextTableId(db, "status_history");
             for (size_t k = 0; k < serials.size(); ++k) {
                 const std::string& sn = serials[k];
                 int uId = -1;
@@ -1857,7 +1833,6 @@ namespace user_update
                 if (!rU) { db->rollback(); return rU; }
 
                 Record hRec;
-                hRec.set("history_id", nextHId++);
                 hRec.set("unit_id", uId);
                 hRec.set("old_status", fromSt);
                 hRec.set("curr_status", toSt);

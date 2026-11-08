@@ -24,11 +24,12 @@ public:
         const Table* table;
         const Vector<size_t>* matches; // nullptr for full table scan
         size_t pos;
+        size_t endBound;
 
         void skipDeleted();
 
     public:
-        Iterator(const Table* tbl, const Vector<size_t>* m, size_t p);
+        Iterator(const Table* tbl, const Vector<size_t>* m, size_t p, size_t bound = 0);
 
         const Record& operator*() const;
         const Record* operator->() const;
@@ -44,6 +45,7 @@ private:
     const Table* table;
     Vector<size_t> indexMatches;
     bool useIndex;
+    size_t snapshotRowCount;
 
     // Full scan view (only callable by Table::view)
     explicit TableView(const Table* tbl);
@@ -54,6 +56,11 @@ private:
 public:
     // Default constructor: empty view
     TableView();
+    ~TableView();
+    TableView(const TableView& other);
+    TableView(TableView&& other) noexcept;
+    TableView& operator=(const TableView& other);
+    TableView& operator=(TableView&& other) noexcept;
 
     Iterator begin() const;
     Iterator end() const;

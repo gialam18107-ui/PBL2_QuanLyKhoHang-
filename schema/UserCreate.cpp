@@ -60,21 +60,6 @@ namespace user_create
         return -1;
     }
 
-    int getNextTableId(Database* db, const std::string& tableName)
-    {
-        if (!db) return 1;
-        const Table* table = db->getTable(tableName);
-        if (!table) return 1;
-        std::string pkCol = table->getPrimaryKeyColumn();
-        if (pkCol.empty()) return 1;
-        return table->getNextAutoIncrement(pkCol);
-    }
-
-    int getNextProductId(Database* db)
-    {
-        return getNextTableId(db, "product");
-    }
-
     std::string generateNextProductCode(
         Database* db,
         const std::string& brandName,
@@ -250,15 +235,7 @@ namespace user_create
             return OperationResult{false, "Mã SKU '" + sku + "' đã tồn tại trong CSDL.", 0};
         }
 
-        // Assign product_id
-        int productId = getNextProductId(db);
-        if (productRecord.has("product_id") && std::holds_alternative<int>(productRecord.get("product_id"))) {
-            int reqId = std::get<int>(productRecord.get("product_id"));
-            if (reqId > 0) productId = reqId;
-        }
-
         Record finalProductRecord = productRecord;
-        finalProductRecord.set("product_id", productId);
         finalProductRecord.set("category", catUpper);
         if (!finalProductRecord.has("is_sold")) {
             finalProductRecord.set("is_sold", true);
@@ -268,12 +245,6 @@ namespace user_create
         finalProductRecord.set("warranty_quantity", 0);
         finalProductRecord.set("scrapped_quantity", 0);
 
-        Record finalSpecRecord = specRecord;
-        finalSpecRecord.set("product_id", productId);
-        if (specTable == "case" && !finalSpecRecord.has("product_name")) {
-            finalSpecRecord.set("product_name", prodName);
-        }
-
         // Atomic Transaction Execution
         if (!db->beginTransaction()) {
             return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
@@ -282,6 +253,24 @@ namespace user_create
         if (!db->insert("product", finalProductRecord)) {
             db->rollback();
             return OperationResult{false, "Lỗi khi lưu dữ liệu vào bảng 'product'.", 0};
+        }
+
+        // Lookup newly created product_id via unique product_code (Rule: using unique code lookup)
+        int productId = 0;
+        const Table* prodTbl = db->getTable("product");
+        if (prodTbl) {
+            for (const auto& r : prodTbl->view("product_code", Value(prodCode))) {
+                if (r.has("product_id") && std::holds_alternative<int>(r.get("product_id"))) {
+                    productId = std::get<int>(r.get("product_id"));
+                    break;
+                }
+            }
+        }
+
+        Record finalSpecRecord = specRecord;
+        finalSpecRecord.set("product_id", productId);
+        if (specTable == "case" && !finalSpecRecord.has("product_name")) {
+            finalSpecRecord.set("product_name", prodName);
         }
 
         if (!db->insert(specTable, finalSpecRecord)) {
@@ -315,14 +304,11 @@ namespace user_create
         oss << "IN-" << std::setfill('0') << std::setw(7) << newSeq;
         std::string custCode = oss.str();
 
-        int custId = getNextTableId(db, "customer");
-
         if (!db->beginTransaction()) {
             return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
         }
 
         Record rCust;
-        rCust.set("customer_id", custId);
         rCust.set("customer_code", custCode);
         rCust.set("name", name);
         rCust.set("type", std::string("individual"));
@@ -331,6 +317,14 @@ namespace user_create
         if (!resCust) {
             db->rollback();
             return OperationResult{false, "Lỗi khi lưu bảng customer: " + resCust.message, 0};
+        }
+
+        int custId = 0;
+        for (const auto& r : custTable->view("customer_code", Value(custCode))) {
+            if (r.has("customer_id") && std::holds_alternative<int>(r.get("customer_id"))) {
+                custId = std::get<int>(r.get("customer_id"));
+                break;
+            }
         }
 
         Record rInfo;
@@ -383,14 +377,11 @@ namespace user_create
         oss << "BS-" << std::setfill('0') << std::setw(7) << newSeq;
         std::string custCode = oss.str();
 
-        int custId = getNextTableId(db, "customer");
-
         if (!db->beginTransaction()) {
             return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
         }
 
         Record rCust;
-        rCust.set("customer_id", custId);
         rCust.set("customer_code", custCode);
         rCust.set("name", companyName);
         rCust.set("type", std::string("business"));
@@ -399,6 +390,14 @@ namespace user_create
         if (!resCust) {
             db->rollback();
             return OperationResult{false, "Lỗi khi lưu bảng customer: " + resCust.message, 0};
+        }
+
+        int custId = 0;
+        for (const auto& r : custTable->view("customer_code", Value(custCode))) {
+            if (r.has("customer_id") && std::holds_alternative<int>(r.get("customer_id"))) {
+                custId = std::get<int>(r.get("customer_id"));
+                break;
+            }
         }
 
         Record rInfo;
@@ -447,9 +446,7 @@ namespace user_create
             return OperationResult{false, "Mã thương hiệu '" + brandCode + "' đã tồn tại trong CSDL.", 0};
         }
 
-        int bId = getNextTableId(db, "brand");
         Record rBrand;
-        rBrand.set("brand_id", bId);
         rBrand.set("brand", brandName);
         rBrand.set("code", brandCode);
 
@@ -577,9 +574,7 @@ namespace user_create
             return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
         }
 
-        int inTxnId = getNextTableId(db, "inbound_transaction");
         Record inTxn;
-        inTxn.set("inbound_transaction_id", inTxnId);
         inTxn.set("inbound_code", inCode);
         inTxn.set("customer_id", customerIdVal);
         if (isAdj || !sourceCode.empty()) inTxn.set("source_code", sourceCode);
@@ -592,10 +587,16 @@ namespace user_create
         OperationResult r1 = db->insertRecord("inbound_transaction", inTxn);
         if (!r1) { db->rollback(); return r1; }
 
+        int inTxnId = 0;
+        for (const auto& r : inTxnTable->view("inbound_code", Value(inCode))) {
+            if (r.has("inbound_transaction_id") && std::holds_alternative<int>(r.get("inbound_transaction_id"))) {
+                inTxnId = std::get<int>(r.get("inbound_transaction_id"));
+                break;
+            }
+        }
+
         for (size_t i = 0; i < items.size(); ++i) {
-            int inDetId = getNextTableId(db, "inbound_detail");
             Record inDet;
-            inDet.set("inbound_detail_id", inDetId);
             inDet.set("inbound_transaction_id", inTxnId);
             inDet.set("product_id", items[i].first);
             inDet.set("ordered_quantity", items[i].second);
@@ -604,9 +605,7 @@ namespace user_create
             if (!rd) { db->rollback(); return rd; }
         }
 
-        int delId = getNextTableId(db, "delivery");
         Record del;
-        del.set("delivery_id", delId);
         del.set("delivery_code", delCode);
         del.set("inbound_transaction_id", inTxnId);
         del.set("expected_at", expectedDeliveryDate);
@@ -616,10 +615,19 @@ namespace user_create
         OperationResult r2 = db->insertRecord("delivery", del);
         if (!r2) { db->rollback(); return r2; }
 
+        int delId = 0;
+        const Table* delTable = db->getTable("delivery");
+        if (delTable) {
+            for (const auto& r : delTable->view("delivery_code", Value(delCode))) {
+                if (r.has("delivery_id") && std::holds_alternative<int>(r.get("delivery_id"))) {
+                    delId = std::get<int>(r.get("delivery_id"));
+                    break;
+                }
+            }
+        }
+
         for (size_t i = 0; i < items.size(); ++i) {
-            int delDetId = getNextTableId(db, "delivery_detail");
             Record delDet;
-            delDet.set("delivery_detail_id", delDetId);
             delDet.set("delivery_id", delId);
             delDet.set("product_id", items[i].first);
             delDet.set("received_quantity", items[i].second);
@@ -734,7 +742,8 @@ namespace user_create
         else if (outboundType == "WARRANTY_REPLACEMENT_TO_CUSTOMER" || outboundType == "WRC") typeCode = "WRC";
 
         const Table* outTxnTable = db->getTable("outbound_transaction");
-        if (!outTxnTable) return OperationResult{false, "Bảng 'outbound_transaction' không tồn tại.", 0};
+        const Table* shipTable = db->getTable("shipment");
+        if (!outTxnTable || !shipTable) return OperationResult{false, "Bảng 'outbound_transaction' hoặc 'shipment' không tồn tại.", 0};
 
         int maxSeq = extractMaxSequence(outTxnTable, "outbound_code", "OUT-" + typeCode + "-", 8);
         int newSeq = maxSeq + 1;
@@ -747,9 +756,7 @@ namespace user_create
             return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
         }
 
-        int outTxnId = getNextTableId(db, "outbound_transaction");
         Record outTxn;
-        outTxn.set("outbound_trainsaction_id", outTxnId);
         outTxn.set("outbound_code", outCode);
         outTxn.set("customer_id", customerIdVal);
         if (isAdj || !sourceCode.empty()) outTxn.set("source_code", sourceCode);
@@ -762,10 +769,19 @@ namespace user_create
         OperationResult r1 = db->insertRecord("outbound_transaction", outTxn);
         if (!r1) { db->rollback(); return r1; }
 
+        int outTxnId = 0;
+        for (const auto& r : outTxnTable->view("outbound_code", Value(outCode))) {
+            if (r.has("outbound_trainsaction_id") && std::holds_alternative<int>(r.get("outbound_trainsaction_id"))) {
+                outTxnId = std::get<int>(r.get("outbound_trainsaction_id"));
+                break;
+            } else if (r.has("outbound_transaction_id") && std::holds_alternative<int>(r.get("outbound_transaction_id"))) {
+                outTxnId = std::get<int>(r.get("outbound_transaction_id"));
+                break;
+            }
+        }
+
         for (size_t i = 0; i < items.size(); ++i) {
-            int outDetId = getNextTableId(db, "outbound_detail");
             Record outDet;
-            outDet.set("outbound_detail_id", outDetId);
             outDet.set("outbound_transaction_id", outTxnId);
             outDet.set("product_id", items[i].first);
             outDet.set("ordered_quantity", items[i].second);
@@ -774,9 +790,7 @@ namespace user_create
             if (!rd) { db->rollback(); return rd; }
         }
 
-        int shipId = getNextTableId(db, "shipment");
         Record ship;
-        ship.set("shipment_id", shipId);
         ship.set("shipment_code", shipCode);
         ship.set("outbound_transaction_id", outTxnId);
         ship.set("expected_at", expectedShipDate);
@@ -786,10 +800,18 @@ namespace user_create
         OperationResult r2 = db->insertRecord("shipment", ship);
         if (!r2) { db->rollback(); return r2; }
 
+        int shipId = 0;
+        if (shipTable) {
+            for (const auto& r : shipTable->view("shipment_code", Value(shipCode))) {
+                if (r.has("shipment_id") && std::holds_alternative<int>(r.get("shipment_id"))) {
+                    shipId = std::get<int>(r.get("shipment_id"));
+                    break;
+                }
+            }
+        }
+
         for (size_t i = 0; i < items.size(); ++i) {
-            int shipDetId = getNextTableId(db, "shipment_detail");
             Record shipDet;
-            shipDet.set("shipment_detail_id", shipDetId);
             shipDet.set("shipment_id", shipId);
             shipDet.set("product_id", items[i].first);
             shipDet.set("received_quantity", items[i].second);
@@ -1022,9 +1044,7 @@ namespace user_create
             return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
         }
 
-        int inTxnId = getNextTableId(db, "inbound_transaction");
         Record inTxn;
-        inTxn.set("inbound_transaction_id", inTxnId);
         inTxn.set("inbound_code", inCode);
         inTxn.set("customer_id", customerIdVal);
         if (isAdj || !sourceCode.empty()) inTxn.set("source_code", sourceCode);
@@ -1037,10 +1057,16 @@ namespace user_create
         OperationResult r1 = db->insertRecord("inbound_transaction", inTxn);
         if (!r1) { db->rollback(); return r1; }
 
+        int inTxnId = 0;
+        for (const auto& r : inTxnTable->view("inbound_code", Value(inCode))) {
+            if (r.has("inbound_transaction_id") && std::holds_alternative<int>(r.get("inbound_transaction_id"))) {
+                inTxnId = std::get<int>(r.get("inbound_transaction_id"));
+                break;
+            }
+        }
+
         for (size_t i = 0; i < totalOrderedItems.size(); ++i) {
-            int inDetId = getNextTableId(db, "inbound_detail");
             Record inDet;
-            inDet.set("inbound_detail_id", inDetId);
             inDet.set("inbound_transaction_id", inTxnId);
             inDet.set("product_id", totalOrderedItems[i].first);
             inDet.set("ordered_quantity", totalOrderedItems[i].second);
@@ -1049,6 +1075,7 @@ namespace user_create
             if (!rd) { db->rollback(); return rd; }
         }
 
+        const Table* delTable = db->getTable("delivery");
         int totalAffected = 1 + static_cast<int>(totalOrderedItems.size());
         for (size_t b = 0; b < deliveryBatches.size(); ++b) {
             const auto& batch = deliveryBatches[b];
@@ -1056,9 +1083,7 @@ namespace user_create
             delOss << inCode << "-D" << std::setfill('0') << std::setw(2) << (b + 1);
             std::string delCode = delOss.str();
 
-            int delId = getNextTableId(db, "delivery");
             Record del;
-            del.set("delivery_id", delId);
             del.set("delivery_code", delCode);
             del.set("inbound_transaction_id", inTxnId);
             del.set("expected_at", batch.expectedDate);
@@ -1069,10 +1094,18 @@ namespace user_create
             if (!rDel) { db->rollback(); return rDel; }
             totalAffected++;
 
+            int delId = 0;
+            if (delTable) {
+                for (const auto& r : delTable->view("delivery_code", Value(delCode))) {
+                    if (r.has("delivery_id") && std::holds_alternative<int>(r.get("delivery_id"))) {
+                        delId = std::get<int>(r.get("delivery_id"));
+                        break;
+                    }
+                }
+            }
+
             for (size_t i = 0; i < batch.items.size(); ++i) {
-                int delDetId = getNextTableId(db, "delivery_detail");
                 Record delDet;
-                delDet.set("delivery_detail_id", delDetId);
                 delDet.set("delivery_id", delId);
                 delDet.set("product_id", batch.items[i].first);
                 delDet.set("received_quantity", batch.items[i].second);
@@ -1209,7 +1242,8 @@ namespace user_create
         else if (outboundType == "WARRANTY_REPLACEMENT_TO_CUSTOMER" || outboundType == "WRC") typeCode = "WRC";
 
         const Table* outTxnTable = db->getTable("outbound_transaction");
-        if (!outTxnTable) return OperationResult{false, "Bảng 'outbound_transaction' không tồn tại.", 0};
+        const Table* shipTable = db->getTable("shipment");
+        if (!outTxnTable || !shipTable) return OperationResult{false, "Bảng 'outbound_transaction' hoặc 'shipment' không tồn tại.", 0};
 
         int maxSeq = extractMaxSequence(outTxnTable, "outbound_code", "OUT-" + typeCode + "-", 8);
         int newSeq = maxSeq + 1;
@@ -1221,9 +1255,7 @@ namespace user_create
             return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
         }
 
-        int outTxnId = getNextTableId(db, "outbound_transaction");
         Record outTxn;
-        outTxn.set("outbound_trainsaction_id", outTxnId);
         outTxn.set("outbound_code", outCode);
         outTxn.set("customer_id", customerIdVal);
         if (isAdj || !sourceCode.empty()) outTxn.set("source_code", sourceCode);
@@ -1236,10 +1268,12 @@ namespace user_create
         OperationResult r1 = db->insertRecord("outbound_transaction", outTxn);
         if (!r1) { db->rollback(); return r1; }
 
+        auto outView = outTxnTable->view("outbound_code", Value(outCode));
+        if (outView.empty()) { db->rollback(); return OperationResult{false, "Không thể tìm lại đơn xuất sau khi thêm.", 0}; }
+        int outTxnId = std::get<int>((*outView.begin()).get("outbound_trainsaction_id"));
+
         for (size_t i = 0; i < totalOrderedItems.size(); ++i) {
-            int outDetId = getNextTableId(db, "outbound_detail");
             Record outDet;
-            outDet.set("outbound_detail_id", outDetId);
             outDet.set("outbound_transaction_id", outTxnId);
             outDet.set("product_id", totalOrderedItems[i].first);
             outDet.set("ordered_quantity", totalOrderedItems[i].second);
@@ -1255,9 +1289,7 @@ namespace user_create
             shipOss << outCode << "-S" << std::setfill('0') << std::setw(2) << (b + 1);
             std::string shipCode = shipOss.str();
 
-            int shipId = getNextTableId(db, "shipment");
             Record ship;
-            ship.set("shipment_id", shipId);
             ship.set("shipment_code", shipCode);
             ship.set("outbound_transaction_id", outTxnId);
             ship.set("expected_at", batch.expectedDate);
@@ -1268,10 +1300,12 @@ namespace user_create
             if (!rShip) { db->rollback(); return rShip; }
             totalAffected++;
 
+            auto shipView = shipTable->view("shipment_code", Value(shipCode));
+            if (shipView.empty()) { db->rollback(); return OperationResult{false, "Không thể tìm lại đợt xuất sau khi thêm.", 0}; }
+            int shipId = std::get<int>((*shipView.begin()).get("shipment_id"));
+
             for (size_t i = 0; i < batch.items.size(); ++i) {
-                int shipDetId = getNextTableId(db, "shipment_detail");
                 Record shipDet;
-                shipDet.set("shipment_detail_id", shipDetId);
                 shipDet.set("shipment_id", shipId);
                 shipDet.set("product_id", batch.items[i].first);
                 shipDet.set("received_quantity", batch.items[i].second);
@@ -1442,8 +1476,6 @@ namespace user_create
         }
 
         int totalAffected = 0;
-        int nextUnitId = getNextTableId(db, "unit_inventory");
-        int nextHistId = getNextTableId(db, "status_history");
 
         // Process units
         if (isAdjustmentIn) {
@@ -1476,9 +1508,7 @@ namespace user_create
                     if (!rU) { db->rollback(); return rU; }
                     totalAffected++;
 
-                    int histId = nextHistId++;
                     Record hRec;
-                    hRec.set("history_id", histId);
                     hRec.set("unit_id", targetUnitId);
                     hRec.set("old_status", currentUnitStatus);
                     hRec.set("curr_status", effTarget);
@@ -1508,9 +1538,7 @@ namespace user_create
                         sn = generateUniqueSerial(db);
                     }
 
-                    int unitId = nextUnitId++;
                     Record uRec;
-                    uRec.set("unit_id", unitId);
                     uRec.set("product_id", productId);
                     uRec.set("serial", sn);
                     uRec.set("status", effTarget);
@@ -1519,9 +1547,11 @@ namespace user_create
                     if (!rU) { db->rollback(); return rU; }
                     totalAffected++;
 
-                    int histId = nextHistId++;
+                    auto uView = unitTable->view("serial", Value(sn));
+                    if (uView.empty()) { db->rollback(); return OperationResult{false, "Không thể tìm lại linh kiện vừa thêm.", 0}; }
+                    int unitId = std::get<int>((*uView.begin()).get("unit_id"));
+
                     Record hRec;
-                    hRec.set("history_id", histId);
                     hRec.set("unit_id", unitId);
                     hRec.set("old_status", Value{}); // NULL on new registration
                     hRec.set("curr_status", effTarget);
@@ -1555,9 +1585,7 @@ namespace user_create
                     sn = generateUniqueSerial(db);
                 }
 
-                int unitId = nextUnitId++;
                 Record uRec;
-                uRec.set("unit_id", unitId);
                 uRec.set("product_id", productId);
                 uRec.set("serial", sn);
                 uRec.set("status", effTarget);
@@ -1566,9 +1594,11 @@ namespace user_create
                 if (!rU) { db->rollback(); return rU; }
                 totalAffected++;
 
-                int histId = nextHistId++;
+                auto uView = unitTable->view("serial", Value(sn));
+                if (uView.empty()) { db->rollback(); return OperationResult{false, "Không thể tìm lại linh kiện vừa thêm.", 0}; }
+                int unitId = std::get<int>((*uView.begin()).get("unit_id"));
+
                 Record hRec;
-                hRec.set("history_id", histId);
                 hRec.set("unit_id", unitId);
                 hRec.set("old_status", Value{}); // NULL on first acquisition
                 hRec.set("curr_status", effTarget);
@@ -1614,9 +1644,7 @@ namespace user_create
                 if (!rU) { db->rollback(); return rU; }
                 totalAffected++;
 
-                int histId = nextHistId++;
                 Record hRec;
-                hRec.set("history_id", histId);
                 hRec.set("unit_id", targetUnitId);
                 hRec.set("old_status", std::string("OUT"));
                 hRec.set("curr_status", effTarget);
@@ -1798,11 +1826,9 @@ namespace user_create
             return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
         }
 
-        int checkId = getNextTableId(db, "inventory_check");
         std::string checkCode = generateUniqueCheckCode(db, checkType);
 
         Record chkRec;
-        chkRec.set("check_id", checkId);
         chkRec.set("check_code", checkCode);
         chkRec.set("check_type", checkType);
         chkRec.set("check_at", checkDate);
@@ -1812,10 +1838,14 @@ namespace user_create
         OperationResult rChk = db->insertRecord("inventory_check", chkRec);
         if (!rChk) { db->rollback(); return rChk; }
 
+        auto chkView = chkTbl->view("check_code", Value(checkCode));
+        if (chkView.empty()) { db->rollback(); return OperationResult{false, "Không thể tìm lại đợt kiểm kho vừa tạo.", 0}; }
+        int checkId = std::get<int>((*chkView.begin()).get("check_id"));
+
         HashMap<int, int> pidToCqId;
         int totalAffected = 1;
 
-        int nextCqId = getNextTableId(db, "inventory_check_quantity");
+
         for (size_t i = 0; i < productIds.size(); ++i) {
             int pid = productIds[i];
             const Record* pRec = prodTbl->getRecordById(pid);
@@ -1826,11 +1856,7 @@ namespace user_create
             int sysScrap = (pRec && pRec->has("scrapped_quantity") && std::holds_alternative<int>(pRec->get("scrapped_quantity")))
                          ? std::get<int>(pRec->get("scrapped_quantity")) : 0;
 
-            int cqId = nextCqId++;
-            pidToCqId[pid] = cqId;
-
             Record cqRec;
-            cqRec.set("check_quantity_id", cqId);
             cqRec.set("check_id", checkId);
             cqRec.set("product_id", pid);
             cqRec.set("system_available_quan", sysAvail);
@@ -1847,12 +1873,17 @@ namespace user_create
             totalAffected++;
         }
 
+        for (const auto& cqR : cqTbl->view("check_id", Value(checkId))) {
+            int p = std::get<int>(cqR.get("product_id"));
+            int id = std::get<int>(cqR.get("check_quantity_id"));
+            pidToCqId[p] = id;
+        }
+
         // If UNIT check: pre-populate inventory_check_unit with all physical units currently in warehouse (status != OUT)
         if (checkType == "UNIT" && unitTbl) {
             const Table* cuTbl = db->getTable("inventory_check_unit");
             if (!cuTbl) { db->rollback(); return OperationResult{false, "Bảng inventory_check_unit không tồn tại.", 0}; }
 
-            int nextCuId = getNextTableId(db, "inventory_check_unit");
             for (size_t pi = 0; pi < productIds.size(); ++pi) {
                 int pid = productIds[pi];
                 int cqId = pidToCqId.contains(pid) ? pidToCqId[pid] : 0;
@@ -1862,9 +1893,7 @@ namespace user_create
 
                     std::string sn = (u.has("serial") && std::holds_alternative<std::string>(u.get("serial"))) ? std::get<std::string>(u.get("serial")) : "";
 
-                    int cuId = nextCuId++;
                     Record cuRec;
-                    cuRec.set("check_unit_id", cuId);
                     cuRec.set("check_id", checkId);
                     cuRec.set("check_quantity_id", cqId);
                     cuRec.set("serial", sn);
@@ -1984,11 +2013,9 @@ namespace user_create
             return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
         }
 
-        int adjId = getNextTableId(db, "adjustment_movement");
         std::string adjCode = generateUniqueAdjustCode(db, reason);
 
         Record adjRec;
-        adjRec.set("adjust_id", adjId);
         adjRec.set("adjust_code", adjCode);
         if (!sourceCheckCode.empty()) adjRec.set("source_code", sourceCheckCode);
         else adjRec.set("source_code", Value{});
@@ -2000,13 +2027,15 @@ namespace user_create
         OperationResult rAdj = db->insertRecord("adjustment_movement", adjRec);
         if (!rAdj) { db->rollback(); return rAdj; }
 
+        auto adjView = adjTbl->view("adjust_code", Value(adjCode));
+        if (adjView.empty()) { db->rollback(); return OperationResult{false, "Không thể tìm lại phiếu điều chuyển vừa tạo.", 0}; }
+        int adjId = std::get<int>((*adjView.begin()).get("adjust_id"));
+
         int totalAffected = 1;
         for (size_t i = 0; i < effectiveItems.size(); ++i) {
             const auto& item = effectiveItems[i];
 
-            int detId = getNextTableId(db, "adjust_movement_detail");
             Record dRec;
-            dRec.set("adjust_detail_id", detId);
             dRec.set("adjust_id", adjId);
             dRec.set("product_id", item.productId);
             dRec.set("from_status", item.fromStatus);

@@ -218,12 +218,6 @@ namespace user_create
     // AUTO-GENERATION AND VALIDATION HELPERS
     // ========================================================
 
-    /// Calculate next available record ID by scanning max primary key + 1
-    int getNextTableId(Database* db, const std::string& tableName);
-
-    /// Calculate next available product_id by scanning max product_id + 1
-    int getNextProductId(Database* db);
-
     /// Generate product code in format: <producer_code>-<cat_code>-XXXX-YYYY (Rule 4.2)
     std::string generateNextProductCode(
         Database* db,

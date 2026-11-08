@@ -117,7 +117,6 @@ void ProductDialog::ensureSpecOptionExists(const std::string& specTableName, con
     }
 
     Record rec;
-    rec.set("id", user_create::getNextTableId(db, specTableName));
     rec.set("spec", specValue);
     user_create::insertRecord(db, specTableName, rec);
 }

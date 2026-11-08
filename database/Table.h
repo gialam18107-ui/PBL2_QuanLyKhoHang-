@@ -31,9 +31,14 @@ private:
     Vector<Record> rows;
     Vector<unsigned char> deletedRows;
     size_t deletedRowCount = 0;
+    mutable size_t activeViewCount = 0;
     Vector<Constraint*> constraints;
     Vector<Index*> indexes;
     HashMap<string, int> autoIncrementCounters;
+
+    void pinView() const { ++activeViewCount; }
+    void unpinView() const { if (activeViewCount > 0) --activeViewCount; }
+    size_t getActiveViewCount() const { return activeViewCount; }
 
     bool checkDataType(const Column& column, const Value& value) const;
     bool checkConstraints(const Record& record, int ignoreRowIndex = -1) const;
@@ -125,9 +130,6 @@ public:
     /// Get the primary key column name of this table.
     string getPrimaryKeyColumn() const;
 
-    /// Get the next auto-increment ID value for a column (or primary key if empty).
-    int getNextAutoIncrement(const string& columnName = "") const;
-
     /// Get pointer to record by record ID in the primary key column (nullptr if not found or deleted).
     const Record* getRecordById(int id) const;
 
@@ -182,22 +184,90 @@ public:
 // ============================================================
 
 inline TableView::TableView()
-    : table(nullptr), useIndex(false)
+    : table(nullptr), useIndex(false), snapshotRowCount(0)
 {
 }
 
 inline TableView::TableView(const Table* tbl)
-    : table(tbl), useIndex(false)
+    : table(tbl), useIndex(false), snapshotRowCount(tbl ? tbl->rawRowCount() : 0)
 {
+    if (table) table->pinView();
 }
 
 inline TableView::TableView(const Table* tbl, Vector<size_t>&& matches)
-    : table(tbl), indexMatches(std::move(matches)), useIndex(true)
+    : table(tbl), indexMatches(std::move(matches)), useIndex(true), snapshotRowCount(tbl ? tbl->rawRowCount() : 0)
 {
+    if (table) table->pinView();
 }
 
-inline TableView::Iterator::Iterator(const Table* tbl, const Vector<size_t>* m, size_t p)
-    : table(tbl), matches(m), pos(p)
+inline TableView::~TableView()
+{
+    if (table)
+    {
+        table->unpinView();
+        if (table->getActiveViewCount() == 0)
+        {
+            const_cast<Table*>(table)->compactIfNeeded();
+        }
+    }
+}
+
+inline TableView::TableView(const TableView& other)
+    : table(other.table), indexMatches(other.indexMatches), useIndex(other.useIndex), snapshotRowCount(other.snapshotRowCount)
+{
+    if (table) table->pinView();
+}
+
+inline TableView::TableView(TableView&& other) noexcept
+    : table(other.table), indexMatches(std::move(other.indexMatches)), useIndex(other.useIndex), snapshotRowCount(other.snapshotRowCount)
+{
+    other.table = nullptr;
+}
+
+inline TableView& TableView::operator=(const TableView& other)
+{
+    if (this != &other)
+    {
+        if (table)
+        {
+            table->unpinView();
+            if (table->getActiveViewCount() == 0)
+            {
+                const_cast<Table*>(table)->compactIfNeeded();
+            }
+        }
+        table = other.table;
+        indexMatches = other.indexMatches;
+        useIndex = other.useIndex;
+        snapshotRowCount = other.snapshotRowCount;
+        if (table) table->pinView();
+    }
+    return *this;
+}
+
+inline TableView& TableView::operator=(TableView&& other) noexcept
+{
+    if (this != &other)
+    {
+        if (table)
+        {
+            table->unpinView();
+            if (table->getActiveViewCount() == 0)
+            {
+                const_cast<Table*>(table)->compactIfNeeded();
+            }
+        }
+        table = other.table;
+        indexMatches = std::move(other.indexMatches);
+        useIndex = other.useIndex;
+        snapshotRowCount = other.snapshotRowCount;
+        other.table = nullptr;
+    }
+    return *this;
+}
+
+inline TableView::Iterator::Iterator(const Table* tbl, const Vector<size_t>* m, size_t p, size_t bound)
+    : table(tbl), matches(m), pos(p), endBound(bound)
 {
     skipDeleted();
 }
@@ -207,7 +277,7 @@ inline void TableView::Iterator::skipDeleted()
     if (!table) return;
     if (!matches)
     {
-        while (pos < table->rawRowCount() && table->isRowDeleted(pos))
+        while (pos < endBound && table->isRowDeleted(pos))
         {
             ++pos;
         }
@@ -269,18 +339,18 @@ inline size_t TableView::Iterator::rowIndex() const
 
 inline TableView::Iterator TableView::begin() const
 {
-    if (!table) return Iterator(nullptr, nullptr, 0);
+    if (!table) return Iterator(nullptr, nullptr, 0, 0);
     return useIndex
-        ? Iterator(table, &indexMatches, 0)
-        : Iterator(table, nullptr, 0);
+        ? Iterator(table, &indexMatches, 0, indexMatches.size())
+        : Iterator(table, nullptr, 0, snapshotRowCount);
 }
 
 inline TableView::Iterator TableView::end() const
 {
-    if (!table) return Iterator(nullptr, nullptr, 0);
+    if (!table) return Iterator(nullptr, nullptr, 0, 0);
     return useIndex
-        ? Iterator(table, &indexMatches, indexMatches.size())
-        : Iterator(table, nullptr, table->rawRowCount());
+        ? Iterator(table, &indexMatches, indexMatches.size(), indexMatches.size())
+        : Iterator(table, nullptr, snapshotRowCount, snapshotRowCount);
 }
 
 inline bool TableView::empty() const

@@ -686,7 +686,7 @@ bool Table::removeById(int id, bool allowCompact)
     deletedRows[idx] = 1;
     ++deletedRowCount;
 
-    if (allowCompact && deletedRowCount >= rows.size() / 2)
+    if (allowCompact && activeViewCount == 0 && deletedRowCount >= rows.size() / 2)
     {
         compactRows();
     }
@@ -869,7 +869,7 @@ void Table::compactRows()
 
 void Table::compactIfNeeded()
 {
-    if (!rows.empty() && deletedRowCount >= rows.size() / 2)
+    if (activeViewCount == 0 && !rows.empty() && deletedRowCount >= rows.size() / 2)
     {
         compactRows();
     }
@@ -878,30 +878,6 @@ void Table::compactIfNeeded()
 const HashMap<string, int>& Table::getAutoIncrementCounters() const
 {
     return autoIncrementCounters;
-}
-
-int Table::getNextAutoIncrement(const string& columnName) const
-{
-    string target = columnName.empty() ? getPrimaryKeyColumn() : columnName;
-    if (!target.empty())
-    {
-        auto it = autoIncrementCounters.find(target);
-        if (it != autoIncrementCounters.end())
-        {
-            return it->second + 1;
-        }
-        int maxId = 0;
-        for (const Record& r : view())
-        {
-            if (r.has(target) && holds_alternative<int>(r.get(target)))
-            {
-                int id = get<int>(r.get(target));
-                if (id > maxId) maxId = id;
-            }
-        }
-        return maxId + 1;
-    }
-    return 1;
 }
 
 void Table::undoInsert(size_t rowIndex, const HashMap<string, int>& oldAutoIncrement)

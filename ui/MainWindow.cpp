@@ -3304,7 +3304,6 @@ void MainWindow::onAddAuxSpecOrBrand()
         }
 
         Record newRec;
-        newRec.set("id", user_create::getNextTableId(db, tblStd));
         newRec.set("spec", val.toStdString());
         OperationResult res = user_create::insertRecord(db, tblStd, newRec);
         if (!res.success) {
