@@ -1359,9 +1359,10 @@ namespace user_update
         }
 
         // Composite uniqueness check: cannot have duplicate (check_id, serial)
-        for (const auto& cu : cuTbl->view("check_id", Value(checkId))) {
-            if (cu.has("serial") && std::holds_alternative<std::string>(cu.get("serial")) &&
-                std::get<std::string>(cu.get("serial")) == serial) {
+        // O(1) lookup via hash tree index on serial
+        for (const auto& cu : cuTbl->view("serial", Value(serial))) {
+            if (cu.has("check_id") && std::holds_alternative<int>(cu.get("check_id")) &&
+                std::get<int>(cu.get("check_id")) == checkId) {
                 return OperationResult{false, "Mã serial '" + serial + "' đã tồn tại trong đợt kiểm kê này rồi.", 0};
             }
         }
@@ -1511,17 +1512,16 @@ namespace user_update
             counts[affectedList[i]] = QuanCount{0, 0, 0};
         }
 
-        for (const auto& u : cuTbl->view("check_id", Value(checkId))) {
-            if (!u.has("check_quantity_id") || !std::holds_alternative<int>(u.get("check_quantity_id"))) continue;
-
-            int cqId = std::get<int>(u.get("check_quantity_id"));
-            if (!affectedCqIds.contains(cqId)) continue;
-
-            std::string st = (u.has("scanned_status") && std::holds_alternative<std::string>(u.get("scanned_status")))
-                                ? std::get<std::string>(u.get("scanned_status")) : "";
-            if (st == "AVAILABLE") counts[cqId].avail++;
-            else if (st == "WARRANTY") counts[cqId].warr++;
-            else if (st == "SCRAPPED") counts[cqId].scrap++;
+        // Optimize: scan only the units belonging to affected check_quantity_id (FK index lookup)
+        for (size_t i = 0; i < affectedList.size(); ++i) {
+            int cqId = affectedList[i];
+            for (const auto& u : cuTbl->view("check_quantity_id", Value(cqId))) {
+                std::string st = (u.has("scanned_status") && std::holds_alternative<std::string>(u.get("scanned_status")))
+                                    ? std::get<std::string>(u.get("scanned_status")) : "";
+                if (st == "AVAILABLE") counts[cqId].avail++;
+                else if (st == "WARRANTY") counts[cqId].warr++;
+                else if (st == "SCRAPPED") counts[cqId].scrap++;
+            }
         }
 
         for (size_t i = 0; i < affectedList.size(); ++i) {

@@ -1479,10 +1479,13 @@ void periodic_inventory_report(Database *db, int month, int year,
 		return;
 
 	const Table* pTable = db->getTable("product");
-		const Table* delTable = db->getTable("delivery");
+	const Table* delTable = db->getTable("delivery");
 	const Table* delDetailTable = db->getTable("delivery_detail");
 	const Table* shipTable = db->getTable("shipment");
 	const Table* shipDetailTable = db->getTable("shipment_detail");
+	const Table* unitTable = db->getTable("unit_inventory");
+	const Table* histTable = db->getTable("status_history");
+	const Table* adjTable = db->getTable("adjustment_movement");
 
 	if (!pTable || !delTable || !delDetailTable || !shipTable || !shipDetailTable)
 		return;
@@ -1502,10 +1505,9 @@ void periodic_inventory_report(Database *db, int month, int year,
 	snprintf(endBuf, sizeof(endBuf), "%04d-%02d-%02d", year, month, daysInMonth);
 	string endDate(endBuf);
 
-	// 1. Thu thập biến động nhập kho trước tháng, trong tháng và sau tháng
+	// 1. Thu thập biến động nhập kho trước tháng và trong tháng
 	HashMap<Value, int> inBeforeMap;
 	HashMap<Value, int> inMonthMap;
-	HashMap<Value, int> inAfterMap;
 
 	for (const auto &d : delTable->view()) {
 		if (!d.has("delivery_id") || !d.has("delivery_at") || isNull(d.get("delivery_at")))
@@ -1514,23 +1516,24 @@ void periodic_inventory_report(Database *db, int month, int year,
 		if (dAt.empty())
 			continue;
 		int dId = safeGetInt(d, "delivery_id");
-		int bucket = (dAt < startDate) ? 0 : (dAt <= endDate ? 1 : 2);
+		bool isBefore = (dAt < startDate);
+		bool isMonth = (dAt >= startDate && dAt <= endDate);
+		if (!isBefore && !isMonth) continue;
+
 		for (const auto &dd : delDetailTable->view("delivery_id", Value(dId))) {
 			if (!dd.has("product_id") || !dd.has("actual_quantity"))
 				continue;
 			int qty = safeGetInt(dd, "actual_quantity");
 			if (qty <= 0) continue;
 			Value pid = dd.get("product_id");
-			if (bucket == 0) inBeforeMap[pid] += qty;
-			else if (bucket == 1) inMonthMap[pid] += qty;
-			else inAfterMap[pid] += qty;
+			if (isBefore) inBeforeMap[pid] += qty;
+			else if (isMonth) inMonthMap[pid] += qty;
 		}
 	}
 
-	// 2. Thu thập biến động xuất kho trước tháng, trong tháng và sau tháng
+	// 2. Thu thập biến động xuất kho trước tháng và trong tháng
 	HashMap<Value, int> outBeforeMap;
 	HashMap<Value, int> outMonthMap;
-	HashMap<Value, int> outAfterMap;
 
 	for (const auto &s : shipTable->view()) {
 		if (!s.has("shipment_id") || !s.has("ship_at") || isNull(s.get("ship_at")))
@@ -1539,20 +1542,110 @@ void periodic_inventory_report(Database *db, int month, int year,
 		if (sAt.empty())
 			continue;
 		int sId = safeGetInt(s, "shipment_id");
-		int bucket = (sAt < startDate) ? 0 : (sAt <= endDate ? 1 : 2);
+		bool isBefore = (sAt < startDate);
+		bool isMonth = (sAt >= startDate && sAt <= endDate);
+		if (!isBefore && !isMonth) continue;
+
 		for (const auto &sd : shipDetailTable->view("shipment_id", Value(sId))) {
 			if (!sd.has("product_id") || !sd.has("actual_quantity"))
 				continue;
 			int qty = safeGetInt(sd, "actual_quantity");
 			if (qty <= 0) continue;
 			Value pid = sd.get("product_id");
-			if (bucket == 0) outBeforeMap[pid] += qty;
-			else if (bucket == 1) outMonthMap[pid] += qty;
-			else outAfterMap[pid] += qty;
+			if (isBefore) outBeforeMap[pid] += qty;
+			else if (isMonth) outMonthMap[pid] += qty;
 		}
 	}
 
-	// 5. Tính toán cho từng sản phẩm (Rule 10.1)
+	// 3. Ánh xạ unit_id -> product_id
+	HashMap<int, int> unitToProduct;
+	if (unitTable) {
+		for (const auto &u : unitTable->view()) {
+			if (u.has("unit_id") && u.has("product_id")) {
+				int uid = safeGetInt(u, "unit_id");
+				int pid = safeGetInt(u, "product_id");
+				unitToProduct[uid] = pid;
+			}
+		}
+	}
+
+	// 4. Xác định trạng thái chính xác của từng linh kiện tại thời điểm cuối kỳ (endDate)
+	HashMap<int, int> monthEndAvail;
+	HashMap<int, int> monthEndWarr;
+	HashMap<int, int> monthEndScrap;
+
+	if (histTable && unitTable) {
+		HashMap<int, string> delDates;
+		for (const auto &d : delTable->view()) {
+			if (d.has("delivery_id") && d.has("delivery_at") && !isNull(d.get("delivery_at"))) {
+				delDates[safeGetInt(d, "delivery_id")] = holds_alternative<string>(d.get("delivery_at")) ? get<string>(d.get("delivery_at")) : "";
+			}
+		}
+		HashMap<int, string> shipDates;
+		for (const auto &s : shipTable->view()) {
+			if (s.has("shipment_id") && s.has("ship_at") && !isNull(s.get("ship_at"))) {
+				shipDates[safeGetInt(s, "shipment_id")] = holds_alternative<string>(s.get("ship_at")) ? get<string>(s.get("ship_at")) : "";
+			}
+		}
+		HashMap<int, string> adjDates;
+		if (adjTable) {
+			for (const auto &a : adjTable->view()) {
+				if (a.has("adjust_id") && a.has("adjusted_at") && !isNull(a.get("adjusted_at"))) {
+					adjDates[safeGetInt(a, "adjust_id")] = holds_alternative<string>(a.get("adjusted_at")) ? get<string>(a.get("adjusted_at")) : "";
+				}
+			}
+		}
+
+		struct UnitStateAtEnd {
+			int maxHistoryId = -1;
+			string status = "";
+		};
+		HashMap<int, UnitStateAtEnd> latestUnitState;
+
+		for (const auto &h : histTable->view()) {
+			if (!h.has("unit_id") || !h.has("history_id") || !h.has("type") || !h.has("transaction") || !h.has("curr_status"))
+				continue;
+			string type = holds_alternative<string>(h.get("type")) ? get<string>(h.get("type")) : "";
+			int txnId = safeGetInt(h, "transaction");
+			string txnDate = "";
+			if (type == "INBOUND") {
+				if (delDates.contains(txnId)) txnDate = delDates[txnId];
+			} else if (type == "OUTBOUND") {
+				if (shipDates.contains(txnId)) txnDate = shipDates[txnId];
+			} else if (type == "ADJUSTMENT") {
+				if (adjDates.contains(txnId)) txnDate = adjDates[txnId];
+			}
+
+			if (txnDate.empty() || txnDate > endDate)
+				continue;
+
+			int uid = safeGetInt(h, "unit_id");
+			int hid = safeGetInt(h, "history_id");
+			string currSt = holds_alternative<string>(h.get("curr_status")) ? get<string>(h.get("curr_status")) : "";
+
+			auto &st = latestUnitState[uid];
+			if (hid > st.maxHistoryId) {
+				st.maxHistoryId = hid;
+				st.status = currSt;
+			}
+		}
+
+		Vector<int> activeUnits = latestUnitState.getKeys();
+		for (size_t i = 0; i < activeUnits.size(); ++i) {
+			int uid = activeUnits[i];
+			const auto &st = latestUnitState[uid];
+			if (st.status == "OUT" || st.status.empty())
+				continue;
+			if (!unitToProduct.contains(uid))
+				continue;
+			int pid = unitToProduct[uid];
+			if (st.status == "AVAILABLE") monthEndAvail[pid]++;
+			else if (st.status == "WARRANTY") monthEndWarr[pid]++;
+			else if (st.status == "SCRAPPED") monthEndScrap[pid]++;
+		}
+	}
+
+	// 5. Tính toán cho từng sản phẩm (Rule 10.1 & 10.2)
 	int sumOpening = 0;
 	int sumInbound = 0;
 	int sumOutbound = 0;
@@ -1563,32 +1656,22 @@ void periodic_inventory_report(Database *db, int month, int year,
 
 	auto processProduct = [&](const Record &p) {
 		Value pId = p.get("product_id");
+		int pidInt = safeGetInt(p, "product_id");
+
 		int inBefore = inBeforeMap.find(pId) != inBeforeMap.end() ? inBeforeMap[pId] : 0;
 		int outBefore = outBeforeMap.find(pId) != outBeforeMap.end() ? outBeforeMap[pId] : 0;
 		int inMonth = inMonthMap.find(pId) != inMonthMap.end() ? inMonthMap[pId] : 0;
 		int outMonth = outMonthMap.find(pId) != outMonthMap.end() ? outMonthMap[pId] : 0;
-		int inAfter = inAfterMap.find(pId) != inAfterMap.end() ? inAfterMap[pId] : 0;
-		int outAfter = outAfterMap.find(pId) != outAfterMap.end() ? outAfterMap[pId] : 0;
 
-		int curAvail = safeGetInt(p, "available_quantity");
-		int curWarr = safeGetInt(p, "warranty_quantity");
-		int curScrap = safeGetInt(p, "scrapped_quantity");
-		int totalCurrent = curAvail + curWarr + curScrap;
-
-		// Tính ngược tồn cuối kỳ từ tồn hiện tại trừ các biến động phát sinh sau kỳ
-		int closingStock = totalCurrent - inAfter + outAfter;
-		if (closingStock < 0)
-			closingStock = 0;
-
-		// Tồn đầu kỳ = Tồn cuối kỳ - Nhập trong kỳ + Xuất trong kỳ
-		int openingStock = closingStock - inMonth + outMonth;
+		// Tồn đầu kỳ = Nhập trước kỳ - Xuất trước kỳ
+		int openingStock = inBefore - outBefore;
 		if (openingStock < 0)
 			openingStock = 0;
 
-		// Nếu không có phát sinh nào trước và trong kỳ
-		if (inBefore == 0 && inMonth == 0 && outBefore == 0 && outMonth == 0 && closingStock == 0) {
-			openingStock = 0;
-		}
+		// Tồn cuối kỳ = Tồn đầu kỳ + Nhập trong kỳ - Xuất trong kỳ
+		int closingStock = openingStock + inMonth - outMonth;
+		if (closingStock < 0)
+			closingStock = 0;
 
 		// Quy tắc loại trừ (Rule 10.1):
 		// Ẩn các sản phẩm mà cả đầu kỳ, trong kỳ và cuối kỳ đều bằng 0
@@ -1596,18 +1679,21 @@ void periodic_inventory_report(Database *db, int month, int year,
 			return;
 		}
 
-		int avail = curAvail;
-		int warr = curWarr;
-		int scrap = curScrap;
+		int avail = monthEndAvail.contains(pidInt) ? monthEndAvail[pidInt] : 0;
+		int warr = monthEndWarr.contains(pidInt) ? monthEndWarr[pidInt] : 0;
+		int scrap = monthEndScrap.contains(pidInt) ? monthEndScrap[pidInt] : 0;
+		int unitTotal = avail + warr + scrap;
+
 		if (closingStock == 0) {
 			avail = 0;
 			warr = 0;
 			scrap = 0;
-		} else if (totalCurrent > 0 && closingStock != totalCurrent) {
-			double factor = static_cast<double>(closingStock) / totalCurrent;
-			warr = static_cast<int>(curWarr * factor);
-			scrap = static_cast<int>(curScrap * factor);
-			avail = closingStock - warr - scrap;
+		} else if (unitTotal == 0) {
+			avail = closingStock;
+			warr = 0;
+			scrap = 0;
+		} else if (unitTotal != closingStock) {
+			avail += (closingStock - unitTotal);
 			if (avail < 0) {
 				avail = closingStock;
 				warr = 0;
