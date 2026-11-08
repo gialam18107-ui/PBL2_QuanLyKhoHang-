@@ -488,13 +488,7 @@ namespace user_update
                             tm* t = localtime(&now);
                             char buf[32];
                             strftime(buf, sizeof(buf), "%Y-%m-%d", t);
-                            int hId = 1;
-                            for (const auto& hr : histTable->view()) {
-                                if (hr.has("history_id") && std::holds_alternative<int>(hr.get("history_id"))) {
-                                    int hidVal = std::get<int>(hr.get("history_id"));
-                                    if (hidVal >= hId) hId = hidVal + 1;
-                                }
-                            }
+                            int hId = user_create::getNextTableId(db, "is_sold_changing");
                             Record hRec;
                             hRec.set("history_id", hId);
                             hRec.set("product_id", recordId);
@@ -675,13 +669,7 @@ namespace user_update
                 actualDate = buf;
             }
 
-            int hId = 1;
-            for (const auto& r : histTable->view()) {
-                if (r.has("history_id") && std::holds_alternative<int>(r.get("history_id"))) {
-                    int id = std::get<int>(r.get("history_id"));
-                    if (id >= hId) hId = id + 1;
-                }
-            }
+            int hId = user_create::getNextTableId(db, "is_sold_changing");
 
             Record hRec;
             hRec.set("history_id", hId);
@@ -908,14 +896,7 @@ namespace user_update
         int decrementedScrap = 0;
 
         // Pre-calculate next histId once before loop to prevent O(N^2) full table scans
-        int nextHistId = 1;
-        std::string pkHist = histTable->getPrimaryKeyColumn();
-        for (const auto& hRow : histTable->view()) {
-            if (hRow.has(pkHist) && std::holds_alternative<int>(hRow.get(pkHist))) {
-                int hid = std::get<int>(hRow.get(pkHist));
-                if (hid >= nextHistId) nextHistId = hid + 1;
-            }
-        }
+        int nextHistId = user_create::getNextTableId(db, "status_history");
 
         for (size_t i = 0; i < serials.size(); ++i) {
             const std::string& sn = serials[i];
@@ -1222,21 +1203,14 @@ namespace user_update
 
         // Update existing record in status_history if present, else insert new
         int existingHistId = -1;
-        std::string pkHist = histTable->getPrimaryKeyColumn();
-        int maxHistId = 0;
         int logPk = isInbound ? std::get<int>(logRec.get("delivery_id")) : std::get<int>(logRec.get("shipment_id"));
 
-        for (const auto& hRow : histTable->view()) {
-            if (hRow.has(pkHist) && std::holds_alternative<int>(hRow.get(pkHist))) {
-                int hid = std::get<int>(hRow.get(pkHist));
-                if (hid > maxHistId) maxHistId = hid;
-            }
-            if (hRow.has("transaction") && hRow.has("unit_id")) {
-                int tx = std::holds_alternative<int>(hRow.get("transaction")) ? std::get<int>(hRow.get("transaction")) : -1;
-                int uId = std::holds_alternative<int>(hRow.get("unit_id")) ? std::get<int>(hRow.get("unit_id")) : -1;
-                if (tx == logPk && uId == unitId) {
+        for (const auto& hRow : histTable->view("transaction", Value(logPk))) {
+            if (hRow.has("unit_id") && std::holds_alternative<int>(hRow.get("unit_id"))) {
+                if (std::get<int>(hRow.get("unit_id")) == unitId) {
                     existingHistId = (hRow.has("history_id") && std::holds_alternative<int>(hRow.get("history_id")))
                                    ? std::get<int>(hRow.get("history_id")) : -1;
+                    break;
                 }
             }
         }
@@ -1247,7 +1221,7 @@ namespace user_update
             OperationResult rH = db->update("status_history", existingHistId, hUp);
             if (!rH) { db->rollback(); return rH; }
         } else {
-            int histId = maxHistId + 1;
+            int histId = user_create::getNextTableId(db, "status_history");
             std::time_t tNow = std::time(nullptr);
             std::tm tmNow;
 #if defined(_WIN32) || defined(_WIN64)
@@ -1407,13 +1381,7 @@ namespace user_update
 
         if (!db->beginTransaction()) return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
 
-        int cuId = 1;
-        for (const auto& r : cuTbl->view()) {
-            if (r.has("check_unit_id") && std::holds_alternative<int>(r.get("check_unit_id"))) {
-                int id = std::get<int>(r.get("check_unit_id"));
-                if (id >= cuId) cuId = id + 1;
-            }
-        }
+        int cuId = user_create::getNextTableId(db, "inventory_check_unit");
 
         Record cuRec;
         cuRec.set("check_unit_id", cuId);
@@ -1506,13 +1474,7 @@ namespace user_update
         }
 
         // Find max check_unit_id once
-        int nextCuId = 1;
-        for (const auto& r : cuTbl->view()) {
-            if (r.has("check_unit_id") && std::holds_alternative<int>(r.get("check_unit_id"))) {
-                int id = std::get<int>(r.get("check_unit_id"));
-                if (id >= nextCuId) nextCuId = id + 1;
-            }
-        }
+        int nextCuId = user_create::getNextTableId(db, "inventory_check_unit");
 
         // Track affected check_quantity_ids using custom HashMap
         HashMap<int, bool> affectedCqIds;

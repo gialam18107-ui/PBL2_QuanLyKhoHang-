@@ -880,6 +880,30 @@ const HashMap<string, int>& Table::getAutoIncrementCounters() const
     return autoIncrementCounters;
 }
 
+int Table::getNextAutoIncrement(const string& columnName) const
+{
+    string target = columnName.empty() ? getPrimaryKeyColumn() : columnName;
+    if (!target.empty())
+    {
+        auto it = autoIncrementCounters.find(target);
+        if (it != autoIncrementCounters.end())
+        {
+            return it->second + 1;
+        }
+        int maxId = 0;
+        for (const Record& r : view())
+        {
+            if (r.has(target) && holds_alternative<int>(r.get(target)))
+            {
+                int id = get<int>(r.get(target));
+                if (id > maxId) maxId = id;
+            }
+        }
+        return maxId + 1;
+    }
+    return 1;
+}
+
 void Table::undoInsert(size_t rowIndex, const HashMap<string, int>& oldAutoIncrement)
 {
     if (rowIndex >= rows.size()) return;

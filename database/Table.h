@@ -125,6 +125,9 @@ public:
     /// Get the primary key column name of this table.
     string getPrimaryKeyColumn() const;
 
+    /// Get the next auto-increment ID value for a column (or primary key if empty).
+    int getNextAutoIncrement(const string& columnName = "") const;
+
     /// Get pointer to record by record ID in the primary key column (nullptr if not found or deleted).
     const Record* getRecordById(int id) const;
 

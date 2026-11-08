@@ -67,15 +67,7 @@ namespace user_create
         if (!table) return 1;
         std::string pkCol = table->getPrimaryKeyColumn();
         if (pkCol.empty()) return 1;
-
-        int maxId = 0;
-        for (const Record& r : table->view()) {
-            if (r.has(pkCol) && std::holds_alternative<int>(r.get(pkCol))) {
-                int id = std::get<int>(r.get(pkCol));
-                if (id > maxId) maxId = id;
-            }
-        }
-        return maxId + 1;
+        return table->getNextAutoIncrement(pkCol);
     }
 
     int getNextProductId(Database* db)
