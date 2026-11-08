@@ -1698,7 +1698,7 @@ void TransactionHubWidget::updateMasterRowInPlace(int row, const std::string& fi
                 if (valStr == "COMPLETED") {
                     it->setForeground(QColor(16, 185, 129));
                     it->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
-                } else if (valStr == "PROCESSING" || valStr == "IN_PROGRESS" || valStr == "CONFIRMED") {
+                } else if (valStr == "PROCESSING") {
                     it->setForeground(QColor(37, 99, 235));
                 } else if (valStr == "CANCELLED") {
                     it->setForeground(QColor(220, 38, 38));
@@ -2224,7 +2224,7 @@ void TransactionHubWidget::onUpdateLogisticsClicked()
             }
         }
     }
-    if (parentOrderStatus == "CONFIRMED" || parentOrderStatus == "COMPLETED" || parentOrderStatus == "CANCELLED") {
+    if (parentOrderStatus == "COMPLETED" || parentOrderStatus == "CANCELLED") {
         QMessageBox::warning(this, "Đợt giao nhận đã bị khóa",
             QString("Đơn hàng %1 đang ở trạng thái [%2]. Toàn bộ các đợt vận chuyển liên quan đã bị khóa.")
                 .arg(parentCode, QString::fromStdString(parentOrderStatus)));
@@ -2374,7 +2374,7 @@ void TransactionHubWidget::onAddLogisticsBatchClicked()
     else if (rec->has("outbound_transaction.status") && holds_alternative<string>(rec->get("outbound_transaction.status")))
         ordStatus = get<string>(rec->get("outbound_transaction.status"));
 
-    if (ordStatus == "CONFIRMED" || ordStatus == "COMPLETED" || ordStatus == "CANCELLED") {
+    if (ordStatus == "COMPLETED" || ordStatus == "CANCELLED") {
         QMessageBox::warning(this, "Đơn hàng đã khóa",
             QString("Đơn hàng %1 đang ở trạng thái [%2]. Không thể tạo thêm đợt giao nhận mới.")
                 .arg(orderCode, QString::fromStdString(ordStatus)));

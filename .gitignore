@@ -97,3 +97,17 @@ data/
 # ====================================
 
 report/
+
+# ====================================
+# 11. Python Cache & Environments
+# ====================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+.pytest_cache/

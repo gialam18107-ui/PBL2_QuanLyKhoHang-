@@ -1087,13 +1087,13 @@
           "id": "6UOG-LsuGrGnRSPPtm8GH",
           "name": "status",
           "type": "VARCHAR",
-          "default": "EXPECTED",
+          "default": "PENDING",
           "check": "",
           "primary": false,
           "unique": false,
           "notNull": true,
           "increment": false,
-          "comment": "EXPECTED\nRECEIVING\nINSPECTING\nCOMPLETED",
+          "comment": "PENDING\nRECEIVING\nCOMPLETED\nCANCELLED",
           "size": 10
         }
       ],
@@ -3477,7 +3477,7 @@
           "unique": false,
           "notNull": true,
           "increment": false,
-          "comment": "PENDING\nIN_PROCESS\nCOMPLETED\nCANCELLED",
+          "comment": "PENDING\nPROCESSING\nCOMPLETED\nCANCELLED",
           "size": 50
         }
       ],
@@ -3557,7 +3557,7 @@
           "unique": true,
           "notNull": true,
           "increment": false,
-          "comment": "CHK-<type>-<xxxxxx>\nCHK-QUAN-000001\nCHK-UNIT-000001",
+          "comment": "CHK-<type>-<xxxxxx>\nCHK-UNIT-000001",
           "size": 16
         },
         {
@@ -4166,7 +4166,7 @@
           "unique": true,
           "notNull": true,
           "increment": false,
-          "comment": "STOCKTAKE_DIFF ->STD\nDAMAGED -> DMG\nDATA_ERROR -> DTE\nOTHER ->OTH",
+          "comment": "STOCKTAKE_DIFF ->STD\nDAMAGED -> DMG\nOTHER ->OTH",
           "size": 50
         },
         {

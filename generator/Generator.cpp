@@ -672,7 +672,7 @@ namespace Generator
         inTxn.set("customer_id", customerVal);
         inTxn.set("order_at", date);
         inTxn.set("type", inboundType);
-        inTxn.set("status", string("CONFIRMED"));
+        inTxn.set("status", string("COMPLETED"));
         inTxn.set("next_delivery_no", numDeliveries + 1);
         inTxn.set("note", note.empty() ? ("Inbound " + inboundType + " received successfully") : note);
 
@@ -1058,7 +1058,7 @@ namespace Generator
         outTxn.set("customer_id", customerVal);
         outTxn.set("order_at", date);
         outTxn.set("type", outboundType);
-        outTxn.set("status", string("CONFIRMED"));
+        outTxn.set("status", string("COMPLETED"));
         outTxn.set("next_ship_no", numShipments + 1);
         outTxn.set("note", note.empty() ? ("Outbound " + outboundType + " fulfilled successfully") : note);
 
@@ -1230,7 +1230,6 @@ namespace Generator
         string fullReason = "STOCKTAKE_DIFF";
         string reasonCode = "STD";
         if (reason == "DAMAGED" || reason == "DMG") { fullReason = "DAMAGED"; reasonCode = "DMG"; }
-        else if (reason == "DATA_ERROR" || reason == "DTE") { fullReason = "DATA_ERROR"; reasonCode = "DTE"; }
         else if (reason == "OTHER" || reason == "OTH") { fullReason = "OTHER"; reasonCode = "OTH"; }
         else { fullReason = "STOCKTAKE_DIFF"; reasonCode = "STD"; }
 
@@ -2085,15 +2084,9 @@ namespace Generator
             }
             else if (choice == 3)
             {
-                // Perform Inventory Check
-                cout << "\n--- SELECT CHECK TYPE ---\n";
-                cout << "  1. QUAN (Quantity snapshot check)\n";
-                cout << "  2. UNIT (Detailed serial-level check)\n";
-                cout << "Select check type (1-2): ";
-                int ct = 1;
-                cin >> ct;
-                string checkType = (ct == 2) ? "UNIT" : "QUAN";
-
+                // Perform Inventory Check (Rule 4.3: UNIT only)
+                cout << "\n--- INVENTORY CHECK (UNIT AUDIT) ---\n";
+                string checkType = "UNIT";
                 string code = generateInventoryCheck(checkType);
                 cout << "[SUCCESS] Created Inventory Check: " << code << "\n";
             }
@@ -2104,15 +2097,13 @@ namespace Generator
                 cout << "Select Reason:\n";
                 cout << "  1. STOCKTAKE_DIFF (Discrepancy from stock count)\n";
                 cout << "  2. DAMAGED (Damaged goods reclassified)\n";
-                cout << "  3. DATA_ERROR (Correction of data input error)\n";
-                cout << "  4. OTHER (Other warehouse reclassification)\n";
-                cout << "Enter choice (1-4): ";
+                cout << "  3. OTHER (Other warehouse reclassification)\n";
+                cout << "Enter choice (1-3): ";
                 int rChoice = 1;
                 cin >> rChoice;
                 string rsn = "STOCKTAKE_DIFF";
                 if (rChoice == 2) rsn = "DAMAGED";
-                else if (rChoice == 3) rsn = "DATA_ERROR";
-                else if (rChoice == 4) rsn = "OTHER";
+                else if (rChoice == 3) rsn = "OTHER";
 
                 printProductList();
                 cout << "Enter Product ID: ";

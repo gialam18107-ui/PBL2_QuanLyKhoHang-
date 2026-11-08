@@ -316,7 +316,7 @@ class SchemaExporter:
                 "customer_id": 4,  # Business partner: FPT Information System
                 "order_at": "2026-09-01",
                 "type": "PURCHASING",
-                "status": "CONFIRMED",
+                "status": "COMPLETED",
                 "next_delivery_no": 2,
                 "note": "Initial warehouse inventory intake",
             }
@@ -402,7 +402,7 @@ class SchemaExporter:
                 "customer_id": 1,  # Individual customer: Nguyen Van An
                 "order_at": "2026-09-05",
                 "type": "SELLING",
-                "status": "CONFIRMED",
+                "status": "COMPLETED",
                 "next_ship_no": 2,
                 "note": "Initial baseline outbound retail order",
             }

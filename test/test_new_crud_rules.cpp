@@ -1,4 +1,4 @@
-#include <iostream>
+ï»¿#include <iostream>
 #include <cassert>
 #include <string>
 #include "database/Database.h"
@@ -46,7 +46,7 @@ int main() {
 
     // --------------------------------------------------------
     // TEST 1: Selling Status & is_sold_changing Rule
-    // "is_sold ch? có th? d?i sang false n?u t?ng s? lu?ng = 0"
+    // "is_sold ch? cÃ³ th? d?i sang false n?u t?ng s? lu?ng = 0"
     // --------------------------------------------------------
     printHeader("TEST 1: Selling status (is_sold) & is_sold_changing history");
     const Table* prodTable = db.getTable("product");
@@ -121,7 +121,7 @@ int main() {
     pidsToCheck.push_back(1);
     pidsToCheck.push_back(2);
 
-    OperationResult rQuanCheck = user_create::createInventoryCheck(&db, "UNIT", "2026-11-01", pidsToCheck, "Ki?m kê d?nh k?");
+    OperationResult rQuanCheck = user_create::createInventoryCheck(&db, "UNIT", "2026-11-01", pidsToCheck, "Ki?m kÃª d?nh k?");
     assert(rQuanCheck.success);
     cout << "[+] Created QUAN check successfully: " << rQuanCheck.message << endl;
 
@@ -146,7 +146,7 @@ int main() {
     int sysWarr1 = safeGetInt(checkQtys[0], "system_warranty_quan");
     int sysScrap1 = safeGetInt(checkQtys[0], "system_scrapped_quan");
     // Simulate finding 3 more available items
-    OperationResult rUpQty = user_update::updateInventoryCheckQuantity(&db, cqId1, sysAvail1 + 3, sysWarr1, sysScrap1, "Du 3 cái");
+    OperationResult rUpQty = user_update::updateInventoryCheckQuantity(&db, cqId1, sysAvail1 + 3, sysWarr1, sysScrap1, "Du 3 cÃ¡i");
     assert(rUpQty.success);
 
     // Verify difference
@@ -157,7 +157,7 @@ int main() {
 
     // --------------------------------------------------------
     // TEST 3: Create Adjustments from Check
-    // "Ð?i v?i type adj, c? nh?p và xu?t d?u ko có khách hàng và source_code tham chi?u check_code"
+    // "Ã?i v?i type adj, c? nh?p vÃ  xu?t d?u ko cÃ³ khÃ¡ch hÃ ng vÃ  source_code tham chi?u check_code"
     // --------------------------------------------------------
     printHeader("TEST 3: Generate Adjustments from Check Discrepancy");
     // Transition check to COMPLETED to satisfy Rule 5.2 Mandatory Completed Status Gate
@@ -186,12 +186,12 @@ int main() {
     int adjOutId = latestAdjOut.has("outbound_trainsaction_id")
                  ? safeGetInt(latestAdjOut, "outbound_trainsaction_id")
                  : safeGetInt(latestAdjOut, "outbound_transaction_id");
-    OperationResult rNote = user_update::updateTransactionNote(&db, "outbound_transaction", adjOutId, "Ghi chú di?u ch?nh ki?m kê c?p nh?t m?i");
+    OperationResult rNote = user_update::updateTransactionNote(&db, "outbound_transaction", adjOutId, "Ghi chÃº di?u ch?nh ki?m kÃª c?p nh?t m?i");
     if (!rNote.success) cout << "[-] rNote failed: " << rNote.message << ", adjOutId=" << adjOutId << endl;
     assert(rNote.success);
     const Record* updatedAdjOut = outTxnTbl->getRecordById(adjOutId);
     assert(updatedAdjOut != nullptr);
-    assert(safeGetString(*updatedAdjOut, "note") == "Ghi chú di?u ch?nh ki?m kê c?p nh?t m?i");
+    assert(safeGetString(*updatedAdjOut, "note") == "Ghi chÃº di?u ch?nh ki?m kÃª c?p nh?t m?i");
     cout << "[+] Verified: Successfully updated transaction note via updateTransactionNote.\n";
 
     // --------------------------------------------------------
@@ -201,7 +201,7 @@ int main() {
     Vector<int> pidsUnitCheck;
     pidsUnitCheck.push_back(1);
 
-    OperationResult rUnitCheck = user_create::createInventoryCheck(&db, "UNIT", "2026-11-01", pidsUnitCheck, "Ki?m kê chi ti?t linh ki?n");
+    OperationResult rUnitCheck = user_create::createInventoryCheck(&db, "UNIT", "2026-11-01", pidsUnitCheck, "Ki?m kÃª chi ti?t linh ki?n");
     assert(rUnitCheck.success);
     cout << "[+] Created UNIT check successfully: " << rUnitCheck.message << endl;
 
@@ -235,7 +235,7 @@ int main() {
 
     // Attempting to modify completed check: MUST BE REJECTED
     Vector<string> modCols = {"status"};
-    Vector<Value> modVals = {Value(string("IN_PROCESS"))};
+    Vector<Value> modVals = {Value(string("PROCESSING"))};
     OperationResult rModComp = user_update::updateRecord(&db, "inventory_check", unitChkId, modCols, modVals);
     cout << "  - Modifying completed check result: " << (rModComp.success ? "FAILED" : "REJECTED (EXPECTED)")
          << " | Msg: " << rModComp.message << endl;
@@ -288,7 +288,7 @@ int main() {
          << " | Msg: " << rExecCompleted.message << endl;
     assert(!rExecCompleted.success);
 
-    // 6.6 Create Inbound Adjustment transaction with source_code, then transition transaction to CONFIRMED under-fulfilled: MUST SUCCEED
+    // 6.6 Create Inbound Adjustment transaction with source_code, then transition transaction to COMPLETED under-fulfilled: MUST SUCCEED
     assert(inTxnTbl != nullptr);
     Vector<Pair<int, int>> inItems;
     inItems.push_back(Pair<int, int>(1, 5));
@@ -296,8 +296,8 @@ int main() {
     OperationResult rInAdj = user_create::createInboundOrder(&db, "ADJUSTMENT_IN", "", inItems, "2026-11-02", "2026-11-03", "Test Inbound Adj", unitChkCode);
     cout << "  - Create Inbound Adj: " << (rInAdj.success ? "SUCCESS" : "FAILED") << " | Msg: [" << rInAdj.message << "]\n";
     assert(rInAdj.success);
-    size_t pos = rInAdj.message.find("Mã: ");
-    string inAdjCode = (pos != string::npos) ? rInAdj.message.substr(pos + 6) : ""; // Mã is 2 UTF-8 bytes (M, ã), so "Mã: " is 2 + 1 + 1? No! "Mã: " in UTF-8: 'M' (1) + 'ã' (2) + ':' (1) + ' ' (1) = 5 bytes!
+    size_t pos = rInAdj.message.find("MÃ£: ");
+    string inAdjCode = (pos != string::npos) ? rInAdj.message.substr(pos + 6) : ""; // MÃ£ is 2 UTF-8 bytes (M, Ã£), so "MÃ£: " is 2 + 1 + 1? No! "MÃ£: " in UTF-8: 'M' (1) + 'Ã£' (2) + ':' (1) + ' ' (1) = 5 bytes!
     // Or just look for "IN-"!
     size_t inPos = rInAdj.message.find("IN-");
     if (inPos != string::npos) inAdjCode = rInAdj.message.substr(inPos);
@@ -314,25 +314,25 @@ int main() {
     int delId = std::get<int>(delRecs[0].get("delivery_id"));
     std::string delCode = std::get<std::string>(delRecs[0].get("delivery_code"));
 
-    // Transition transaction to CONFIRMED even though actual == 0 < plan == 5: MUST SUCCEED
-    OperationResult rConfirmTxn = user_update::updateTransactionStatus(&db, "inbound_transaction", inTxnId, "CONFIRMED");
-    cout << "  - Transitioning under-fulfilled inbound transaction to CONFIRMED: " << (rConfirmTxn.success ? "SUCCESS" : "FAILED")
+    // Transition transaction to COMPLETED even though actual == 0 < plan == 5: MUST SUCCEED
+    OperationResult rConfirmTxn = user_update::updateTransactionStatus(&db, "inbound_transaction", inTxnId, "COMPLETED");
+    cout << "  - Transitioning under-fulfilled inbound transaction to COMPLETED: " << (rConfirmTxn.success ? "SUCCESS" : "FAILED")
          << " | Msg: " << rConfirmTxn.message << endl;
     assert(rConfirmTxn.success);
 
-    // 6.7 Attempting to modify delivery after parent transaction is CONFIRMED: MUST BE REJECTED (Logistics Lock)
+    // 6.7 Attempting to modify delivery after parent transaction is COMPLETED: MUST BE REJECTED (Logistics Lock)
     OperationResult rModDel = user_update::updateRecord(&db, "delivery", delId, {"status"}, {Value(std::string("COMPLETED"))});
-    cout << "  - Modifying delivery when parent transaction is CONFIRMED: " << (rModDel.success ? "FAILED" : "REJECTED (EXPECTED)")
+    cout << "  - Modifying delivery when parent transaction is COMPLETED: " << (rModDel.success ? "FAILED" : "REJECTED (EXPECTED)")
          << " | Msg: " << rModDel.message << endl;
     assert(!rModDel.success);
 
     // 6.8 Attempting to scan/change unit status on locked delivery: MUST BE REJECTED
     OperationResult rUnitLocked = user_update::changeUnitStatusInLogistics(&db, delCode, true, "SN-TEST-999", "AVAILABLE");
-    cout << "  - Scanning unit into delivery when parent transaction is CONFIRMED: " << (rUnitLocked.success ? "FAILED" : "REJECTED (EXPECTED)")
+    cout << "  - Scanning unit into delivery when parent transaction is COMPLETED: " << (rUnitLocked.success ? "FAILED" : "REJECTED (EXPECTED)")
          << " | Msg: " << rUnitLocked.message << endl;
     assert(!rUnitLocked.success);
 
-    // 6.9 Partial execution of Adjustment Movement -> status must become PARTLY_COMPLETED (No FK Violation!)
+    // 6.9 Partial execution of Adjustment Movement -> status must become PROCESSING (No FK Violation!)
     const Table* unitTable = db.getTable("unit_inventory");
     assert(unitTable != nullptr);
     Vector<Record> availUnits = Query::filterRecords(*unitTable, "product_id", Value(1));
@@ -372,8 +372,8 @@ int main() {
     const Record* adjRecAfter = adjMovTbl->getRecordById(testAdjId3);
     assert(adjRecAfter != nullptr);
     string adjStAfter = safeGetString(*adjRecAfter, "status");
-    cout << "  - Status of partially executed movement: " << adjStAfter << " (Expected: PARTLY_COMPLETED)\n";
-    assert(adjStAfter == "PARTLY_COMPLETED");
+    cout << "  - Status of partially executed movement: " << adjStAfter << " (Expected: PROCESSING)\n";
+    assert(adjStAfter == "PROCESSING");
 
     // 6.10 Standard Inbound Order cancellation & delivery cascade
     Vector<Pair<int, int>> purItems;
@@ -444,3 +444,4 @@ int main() {
     printHeader("ALL NEW CRUD RULES PASSED 100%!");
     return 0;
 }
+

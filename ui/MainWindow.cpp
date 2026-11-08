@@ -1,4 +1,4 @@
-﻿#include "MainWindow.h"
+#include "MainWindow.h"
 
 #include <QHBoxLayout>
 #include <QVBoxLayout>
@@ -531,7 +531,7 @@ void MainWindow::updateCategoryFilterOptions()
         QStringList inTypes = loadColumnOptions("inbound_type", "type");
         if (inTypes.isEmpty()) inTypes = {"PURCHASING", "ADJUSTMENT_IN", "WARRANTY_CHECKING", "WARRANTY_REPLACEMENT", "CUSTOMER_RETURN"};
         QStringList inStatuses = loadColumnOptions("inbound_status", "status");
-        if (inStatuses.isEmpty()) inStatuses = {"PENDING", "PROCESSING", "CONFIRMED", "CANCELLED"};
+        if (inStatuses.isEmpty()) inStatuses = {"PENDING", "PROCESSING", "COMPLETED", "CANCELLED"};
         inboundTxnWidget->setFilterColumns({
             {"Mã đơn nhập", "inbound_code", FilterType::EXACT_TEXT, {}},
             {"Mã đối tác", "customer_code", FilterType::EXACT_TEXT, {}},
@@ -542,7 +542,7 @@ void MainWindow::updateCategoryFilterOptions()
     }
     if (deliveryWidget) {
         QStringList delivStatuses = loadColumnOptions("delivery_status", "status");
-        if (delivStatuses.isEmpty()) delivStatuses = {"EXPECTED", "RECEIVING", "INSPECTING", "COMPLETED"};
+        if (delivStatuses.isEmpty()) delivStatuses = {"PENDING", "RECEIVING", "COMPLETED", "CANCELLED"};
         deliveryWidget->setFilterColumns({
             {"Mã giao nhận", "delivery_code", FilterType::EXACT_TEXT, {}},
             {"Mã đơn nhập", "inbound_code", FilterType::EXACT_TEXT, {}},
@@ -555,7 +555,7 @@ void MainWindow::updateCategoryFilterOptions()
         QStringList outTypes = loadColumnOptions("outbound_type", "type");
         if (outTypes.isEmpty()) outTypes = {"SELLING", "ADJUSTMENT_OUT", "WARRANTY_RETURN", "WARRANTY_REPLACEMENT_TO_CUSTOMER"};
         QStringList outStatuses = loadColumnOptions("outbound_status", "status");
-        if (outStatuses.isEmpty()) outStatuses = {"PENDING", "PROCESSING", "CONFIRMED", "CANCELLED"};
+        if (outStatuses.isEmpty()) outStatuses = {"PENDING", "PROCESSING", "COMPLETED", "CANCELLED"};
         outboundTxnWidget->setFilterColumns({
             {"Mã đơn xuất", "outbound_code", FilterType::EXACT_TEXT, {}},
             {"Mã khách hàng", "customer_code", FilterType::EXACT_TEXT, {}},
@@ -772,7 +772,7 @@ void MainWindow::setupPages()
         {"Mã đối tác", "customer_code", FilterType::EXACT_TEXT, {}},
         {"Ngày đặt hàng", "order_at", FilterType::DATE_RANGE, {}},
         {"Loại đơn nhập", "type", FilterType::SELECT_OR_TYPE, {"PURCHASING", "ADJUSTMENT_IN", "WARRANTY_CHECKING", "WARRANTY_REPLACEMENT", "CUSTOMER_RETURN"}},
-        {"Trạng thái", "status", FilterType::SELECT_OR_TYPE, {"PENDING", "PROCESSING", "CONFIRMED", "CANCELLED"}}
+        {"Trạng thái", "status", FilterType::SELECT_OR_TYPE, {"PENDING", "PROCESSING", "COMPLETED", "CANCELLED"}}
     });
     inboundTxnWidget->setRefreshCallback([this]() { refreshQuery(3); });
     inboundTxnWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& v2, bool isRange) {
@@ -840,7 +840,7 @@ void MainWindow::setupPages()
         {"Mã đơn nhập (inbound_code)", "inbound_code", FilterType::EXACT_TEXT, {}},
         {"Ngày nhận hàng (delivery_at)", "delivery_at", FilterType::DATE_RANGE, {}},
         {"Ngày dự kiến (expected_at)", "expected_at", FilterType::DATE_RANGE, {}},
-        {"Trạng thái nhận (status)", "status", FilterType::SELECT_OR_TYPE, {"EXPECTED", "RECEIVING", "INSPECTING", "COMPLETED"}}
+        {"Trạng thái nhận (status)", "status", FilterType::SELECT_OR_TYPE, {"PENDING", "RECEIVING", "COMPLETED", "CANCELLED"}}
     });
     deliveryWidget->setRefreshCallback([this]() { refreshQuery(5); });
     deliveryWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& v2, bool isRange) {
@@ -917,7 +917,7 @@ void MainWindow::setupPages()
         {"Mã khách hàng", "customer_code", FilterType::EXACT_TEXT, {}},
         {"Ngày đặt hàng", "order_at", FilterType::DATE_RANGE, {}},
         {"Loại đơn xuất", "type", FilterType::SELECT_OR_TYPE, {"SELLING", "ADJUSTMENT_OUT", "WARRANTY_RETURN", "WARRANTY_REPLACEMENT_TO_CUSTOMER"}},
-        {"Trạng thái", "status", FilterType::SELECT_OR_TYPE, {"PENDING", "PROCESSING", "CONFIRMED", "CANCELLED"}}
+        {"Trạng thái", "status", FilterType::SELECT_OR_TYPE, {"PENDING", "PROCESSING", "COMPLETED", "CANCELLED"}}
     });
     outboundTxnWidget->setRefreshCallback([this]() { refreshQuery(7); });
     outboundTxnWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& v2, bool isRange) {
@@ -1058,7 +1058,7 @@ void MainWindow::setupPages()
     inventoryCheckWidget->setFilterColumns({
         {"Mã đợt kiểm", "check_code", FilterType::EXACT_TEXT, {}},
         {"Hình thức", "check_type", FilterType::SELECT_OR_TYPE, {"UNIT"}},
-        {"Trạng thái", "status", FilterType::SELECT_OR_TYPE, {"PENDING", "IN_PROCESS", "COMPLETED", "CANCELLED"}}
+        {"Trạng thái", "status", FilterType::SELECT_OR_TYPE, {"PENDING", "PROCESSING", "COMPLETED", "CANCELLED"}}
     });
     inventoryCheckWidget->setRefreshCallback([this]() { refreshQuery(11); });
     inventoryCheckWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
@@ -1258,7 +1258,7 @@ void MainWindow::setupPages()
     );
     adjustmentMovementWidget->setFilterColumns({
         {"Mã phiếu", "adjust_code", FilterType::EXACT_TEXT, {}},
-        {"Lý do điều chỉnh", "reason", FilterType::SELECT_OR_TYPE, {"STOCKTAKE_DIFF", "DAMAGED", "DATA_ERROR", "OTHER"}},
+        {"Lý do điều chỉnh", "reason", FilterType::SELECT_OR_TYPE, {"STOCKTAKE_DIFF", "DAMAGED", "OTHER"}},
         {"Đợt kiểm gốc", "source_code", FilterType::EXACT_TEXT, {}},
         {"Trạng thái", "status", FilterType::SELECT_OR_TYPE, {"PENDING", "PROCESSING", "COMPLETED", "CANCELLED"}}
     });

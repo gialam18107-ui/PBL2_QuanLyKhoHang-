@@ -93,7 +93,7 @@ namespace user_update
                 if (colName == "status") {
                     std::string newTxnSt = std::holds_alternative<std::string>(modifyingValues[i])
                                          ? std::get<std::string>(modifyingValues[i]) : "";
-                    if ((oldTxnSt == "COMPLETED" || oldTxnSt == "CONFIRMED" || oldTxnSt == "completed") && newTxnSt != oldTxnSt) {
+                    if ((oldTxnSt == "COMPLETED" || oldTxnSt == "completed") && newTxnSt != oldTxnSt) {
                         return OperationResult{false, "Đơn giao dịch đã ở trạng thái HOÀN TẤT (" + oldTxnSt + "), không thể chuyển ngược trạng thái (Rule 4.5).", 0};
                     }
                     if (oldTxnSt == "CANCELLED" && newTxnSt != "CANCELLED") {
@@ -143,7 +143,7 @@ namespace user_update
                                 }
                             }
                         }
-                    } else if (newTxnSt == "CONFIRMED" || newTxnSt == "COMPLETED") {
+                    } else if (newTxnSt == "COMPLETED") {
                         const Table* itmTbl = db->getTable(tableName == "inbound_transaction" ? "inbound_detail" : "outbound_detail");
                         std::string fkCol = (tableName == "inbound_transaction") ? "inbound_transaction_id" : "outbound_transaction_id";
                         Vector<Record> itmRecs;
@@ -191,7 +191,7 @@ namespace user_update
                                 }
                             }
                         }
-                        // Note: Under-fulfilled confirmation to CONFIRMED is permitted with UI dialog confirmation & logistics lock (Rule 5.6).
+                        // Note: Under-fulfilled confirmation to COMPLETED is permitted with UI dialog confirmation & logistics lock (Rule 5.6).
                     } else if (newTxnSt == "PENDING" && oldTxnSt != "PENDING") {
                         return OperationResult{false, "Không thể chuyển ngược trạng thái đơn giao dịch về PENDING (Rule 5.6).", 0};
                     }
@@ -199,7 +199,7 @@ namespace user_update
             }
         }
         else if (tableName == "delivery") {
-            // Rule 5.6: Logistics Lock if parent transaction is CONFIRMED, COMPLETED, or CANCELLED
+            // Rule 5.6: Logistics Lock if parent transaction is COMPLETED or CANCELLED
             int inId = -1;
             if (oldRecord.has("inbound_transaction_id") && std::holds_alternative<int>(oldRecord.get("inbound_transaction_id"))) {
                 inId = std::get<int>(oldRecord.get("inbound_transaction_id"));
@@ -212,7 +212,7 @@ namespace user_update
                     const Record* inRec = inTab->getRecordById(inId);
                     if (inRec && inRec->has("status") && std::holds_alternative<std::string>(inRec->get("status"))) {
                         std::string pSt = std::get<std::string>(inRec->get("status"));
-                        if (pSt == "CONFIRMED" || pSt == "COMPLETED" || pSt == "CANCELLED") {
+                        if (pSt == "COMPLETED" || pSt == "CANCELLED") {
                             return OperationResult{false, "Đơn hàng (" + pSt + ") đã hoàn tất hoặc bị hủy. Toàn bộ các đợt nhận hàng đã bị khóa vĩnh viễn (Rule 5.6).", 0};
                         }
                     }
@@ -275,7 +275,7 @@ namespace user_update
             }
         }
         else if (tableName == "shipment") {
-            // Rule 5.6: Logistics Lock if parent transaction is CONFIRMED, COMPLETED, or CANCELLED
+            // Rule 5.6: Logistics Lock if parent transaction is COMPLETED or CANCELLED
             int outId = -1;
             if (oldRecord.has("sell_id") && std::holds_alternative<int>(oldRecord.get("sell_id"))) {
                 outId = std::get<int>(oldRecord.get("sell_id"));
@@ -292,7 +292,7 @@ namespace user_update
                     const Record* outRec = outTab->getRecordById(outId);
                     if (outRec && outRec->has("status") && std::holds_alternative<std::string>(outRec->get("status"))) {
                         std::string pSt = std::get<std::string>(outRec->get("status"));
-                        if (pSt == "CONFIRMED" || pSt == "COMPLETED" || pSt == "CANCELLED") {
+                        if (pSt == "COMPLETED" || pSt == "CANCELLED") {
                             return OperationResult{false, "Đơn hàng (" + pSt + ") đã hoàn tất hoặc bị hủy. Toàn bộ các đợt xuất hàng đã bị khóa vĩnh viễn (Rule 5.6).", 0};
                         }
                     }
@@ -843,7 +843,7 @@ namespace user_update
 
         std::string outTxnSt = outTxnRec->has("status") && std::holds_alternative<std::string>(outTxnRec->get("status"))
                              ? std::get<std::string>(outTxnRec->get("status")) : "";
-        if (outTxnSt == "CONFIRMED" || outTxnSt == "COMPLETED" || outTxnSt == "CANCELLED") {
+        if (outTxnSt == "COMPLETED" || outTxnSt == "CANCELLED") {
             return OperationResult{false, "Đơn xuất kho (" + outTxnSt + ") đã hoàn tất hoặc bị hủy. Toàn bộ các đợt xuất hàng đã bị khóa vĩnh viễn (Rule 5.6).", 0};
         }
 
@@ -1032,10 +1032,10 @@ namespace user_update
             db->update("shipment", shipmentId, shipStatusUp);
         }
 
-        // Update outbound_transaction status to PROCESSING if not already COMPLETED/CONFIRMED
+        // Update outbound_transaction status to PROCESSING if not already COMPLETED
         std::string curOutTxnSt = outTxnRec->has("status") && std::holds_alternative<std::string>(outTxnRec->get("status"))
             ? std::get<std::string>(outTxnRec->get("status")) : "";
-        if (curOutTxnSt != "COMPLETED" && curOutTxnSt != "completed" && curOutTxnSt != "CONFIRMED") {
+        if (curOutTxnSt != "COMPLETED" && curOutTxnSt != "completed") {
             Record outTxnStatusUp;
             outTxnStatusUp.set("status", std::string("PROCESSING"));
             db->update("outbound_transaction", outTxnId, outTxnStatusUp);
@@ -1143,7 +1143,7 @@ namespace user_update
             }
         }
 
-        if (txnStatus == "CONFIRMED" || txnStatus == "COMPLETED" || txnStatus == "CANCELLED") {
+        if (txnStatus == "COMPLETED" || txnStatus == "CANCELLED") {
             return OperationResult{false, "Đơn hàng (" + txnStatus + ") đã đóng/hủy. Toàn bộ các đợt vận chuyển liên quan đã bị khóa vĩnh viễn (Rule 5.6).", 0};
         }
 
@@ -1314,7 +1314,7 @@ namespace user_update
                 const Record* chk = chkTbl->getRecordById(checkId);
                 if (chk && chk->has("status") && std::holds_alternative<std::string>(chk->get("status")) && std::get<std::string>(chk->get("status")) == "PENDING") {
                     Record chkUp;
-                    chkUp.set("status", std::string("IN_PROCESS"));
+                    chkUp.set("status", std::string("PROCESSING"));
                     db->update("inventory_check", checkId, chkUp);
                 }
             }
@@ -1370,7 +1370,7 @@ namespace user_update
             const Record* chk = chkTbl->getRecordById(checkId);
             if (chk && chk->has("status") && std::holds_alternative<std::string>(chk->get("status")) && std::get<std::string>(chk->get("status")) == "PENDING") {
                 Record chkUp;
-                chkUp.set("status", std::string("IN_PROCESS"));
+                chkUp.set("status", std::string("PROCESSING"));
                 db->update("inventory_check", checkId, chkUp);
             }
         }
@@ -1455,7 +1455,7 @@ namespace user_update
             const Record* chk = chkTbl->getRecordById(checkId);
             if (chk && chk->has("status") && std::holds_alternative<std::string>(chk->get("status")) && std::get<std::string>(chk->get("status")) == "PENDING") {
                 Record chkUp;
-                chkUp.set("status", std::string("IN_PROCESS"));
+                chkUp.set("status", std::string("PROCESSING"));
                 db->update("inventory_check", checkId, chkUp);
             }
         }
@@ -1599,12 +1599,12 @@ namespace user_update
             }
         }
 
-        // 4. Update check status to IN_PROCESS if it was PENDING
+        // 4. Update check status to PROCESSING if it was PENDING
         if (checkSt == "PENDING") {
             const Record* chkRec = chkTbl->getRecordById(checkId);
             if (chkRec) {
                 Record updatedChk = *chkRec;
-                updatedChk.set("status", std::string("IN_PROCESS"));
+                updatedChk.set("status", std::string("PROCESSING"));
                 db->update("inventory_check", checkId, updatedChk);
             }
         }
@@ -1735,9 +1735,9 @@ namespace user_update
 
             // Fill remainder if needed from unit_inventory
             if (static_cast<int>(candidates.size()) < reqQty) {
-                for (const auto& u : unitTbl->view()) {
+                for (const auto& u : unitTbl->view("product_id", Value(pid))) {
                     int uId = std::get<int>(u.get("unit_id"));
-                    if (!pickedUnitIds.contains(uId) && std::get<int>(u.get("product_id")) == pid && std::get<std::string>(u.get("status")) == fromSt) {
+                    if (!pickedUnitIds.contains(uId) && std::get<std::string>(u.get("status")) == fromSt) {
                         candidates.push_back(u);
                         pickedUnitIds[uId] = true;
                         if (static_cast<int>(candidates.size()) == reqQty) break;
@@ -1956,7 +1956,7 @@ namespace user_update
         }
 
         Record adjUp;
-        adjUp.set("status", std::string(allCompleted ? "COMPLETED" : "PARTLY_COMPLETED"));
+        adjUp.set("status", std::string(allCompleted ? "COMPLETED" : "PROCESSING"));
         OperationResult rAdj = db->update("adjustment_movement", adjustId, adjUp);
         if (!rAdj) { db->rollback(); return rAdj; }
         totalAffected++;

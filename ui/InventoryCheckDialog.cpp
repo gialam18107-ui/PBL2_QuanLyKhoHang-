@@ -628,7 +628,7 @@ void InventoryCheckReconciliationDialog::setupUI()
     headerTitle->setStyleSheet("font-size: 16px; font-weight: 700; color: #0f172a;");
     titleBox->addWidget(headerTitle);
 
-    QString stColor = (checkStatus == "COMPLETED" ? "#16a34a" : (checkStatus == "IN_PROCESS" ? "#2563eb" : "#ca8a04"));
+    QString stColor = (checkStatus == "COMPLETED" ? "#16a34a" : (checkStatus == "PROCESSING" ? "#2563eb" : "#ca8a04"));
     auto* stBadge = new QLabel(QString("<span style='background-color:%1; color:#ffffff; font-weight:bold; padding:4px 10px; border-radius:4px;'>Trạng thái: %2</span>")
         .arg(stColor, checkStatus), this);
     titleBox->addWidget(stBadge);
@@ -1543,7 +1543,7 @@ void InventoryCheckDetailDialog::loadCheckInfo()
     checkNote = safeGetQString(*r, "note");
 
     if (statusLabel) {
-        QString col = (checkStatus == "COMPLETED" ? "#16a34a" : (checkStatus == "IN_PROCESS" ? "#2563eb" : "#ca8a04"));
+        QString col = (checkStatus == "COMPLETED" ? "#16a34a" : (checkStatus == "PROCESSING" ? "#2563eb" : "#ca8a04"));
         statusLabel->setText(QString("<b>Trạng thái:</b> <span style='color:%1; font-weight:bold;'>%2</span>").arg(col, checkStatus));
     }
 }
@@ -1566,7 +1566,7 @@ void InventoryCheckDetailDialog::setupUI()
     typeLabel = new QLabel(QString("<b>Loại kiểm:</b> %1 (%2)")
         .arg(checkType, checkType == "QUAN" ? "Kiểm kê Số lượng" : "Kiểm kê Chi tiết Từng Linh Kiện/Serial"), headerCard);
     statusLabel = new QLabel(QString("<b>Trạng thái:</b> <span style='color:%1; font-weight:bold;'>%2</span>")
-        .arg(checkStatus == "COMPLETED" ? "#16a34a" : (checkStatus == "IN_PROCESS" ? "#2563eb" : "#ca8a04"), checkStatus), headerCard);
+        .arg(checkStatus == "COMPLETED" ? "#16a34a" : (checkStatus == "PROCESSING" ? "#2563eb" : "#ca8a04"), checkStatus), headerCard);
     dateLabel = new QLabel(QString("<b>Ngày kiểm:</b> %1").arg(checkDate), headerCard);
     noteLabel = new QLabel(QString("<b>Lý do kiểm kê:</b> %1").arg(checkNote.isEmpty() ? "(Không có)" : checkNote), headerCard);
     noteLabel->setWordWrap(true);
@@ -2922,7 +2922,7 @@ void InventoryCheckDetailDialog::onSaveChanges()
         return;
     }
 
-    checkStatus = "IN_PROCESS";
+    checkStatus = "PROCESSING";
     loadCheckInfo();
     dataModified = true;
     showToast(QString("💾 Đã lưu thành công %1 linh kiện mới và %2 cập nhật vào CSDL!").arg(newCount).arg(modCount), true);
@@ -4568,3 +4568,4 @@ void InventoryCheckInspectDialog::renderSummaryTable()
         }
     }
 }
+

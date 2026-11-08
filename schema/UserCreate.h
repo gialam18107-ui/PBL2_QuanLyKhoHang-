@@ -256,7 +256,7 @@ namespace user_create
 
     /**
      * @brief Create an Inventory Check (Rule: product scope must be declared upfront).
-     * @param checkType "QUAN" (Quantity Check) or "UNIT" (Detailed Unit Check)
+     * @param checkType "UNIT" (Detailed Unit Check)
      * @param checkDate YYYY-MM-DD
      * @param productIds Pre-declared list of products to inspect (locked scope)
      * @param note Notes
@@ -272,7 +272,7 @@ namespace user_create
     /**
      * @brief Create an Adjustment Movement (Rule: details must be declared upfront).
      * @param sourceCheckCode Code of inventory check (CHK-...) or empty
-     * @param reason Must exist in reason table
+     * @param reason Must exist in reason table (STOCKTAKE_DIFF, DAMAGED, OTHER)
      * @param adjustedAt YYYY-MM-DD
      * @param items Pre-declared list of adjustment items (locked scope)
      * @param note Notes
@@ -288,8 +288,7 @@ namespace user_create
 
     /**
      * @brief Automatically generate adjustments from an inventory check (if user confirms).
-     * For QUAN check: creates ADJUSTMENT_IN or ADJUSTMENT_OUT transactions (customer_id = NULL, source_code = check_code).
-     * For UNIT check: creates ADJUSTMENT_IN, ADJUSTMENT_OUT, and/or ADJUSTMENT_MOVEMENT.
+     * For UNIT check: creates ADJUSTMENT_IN, ADJUSTMENT_OUT, and/or ADJUSTMENT_MOVEMENT (Rule 5.3).
      */
     OperationResult createAdjustmentsFromCheck(
         Database* db,

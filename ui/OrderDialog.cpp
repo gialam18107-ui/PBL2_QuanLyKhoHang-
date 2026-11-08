@@ -1912,8 +1912,8 @@ TransactionStatusDialog::TransactionStatusDialog(
         } else {
             statuses = {"PENDING", "PROCESSING"};
         }
-    } else if (initialStatus == "PROCESSING" || initialStatus == "PARTIALLY_CONFIRMED") {
-        statuses = {"PROCESSING", "CONFIRMED"};
+    } else if (initialStatus == "PROCESSING") {
+        statuses = {"PROCESSING", "COMPLETED"};
     } else {
         statuses = {initialStatus};
     }
@@ -1943,11 +1943,11 @@ TransactionStatusDialog::TransactionStatusDialog(
                 ? "ℹ️ <b>Quy tắc đơn điều chỉnh:</b> Đơn đã phát sinh ghi nhận linh kiện, không thể hủy sang CANCELLED."
                 : "ℹ️ <b>Quy trình chuyển trạng thái:</b> Đơn đã phát sinh ghi nhận linh kiện/vận chuyển thực tế, không thể hủy sang CANCELLED. Chỉ có thể chọn <b>PROCESSING</b>.";
         }
-    } else if (initialStatus == "PROCESSING" || initialStatus == "PARTIALLY_CONFIRMED") {
+    } else if (initialStatus == "PROCESSING") {
         if (totalPlanQty > 0 && totalActQty >= totalPlanQty) {
-            tipText = QString("✅ <b>Quy trình chuyển trạng thái:</b> Đã xử lý đủ 100% số lượng (%1/%2 cái). Có thể xác nhận <b>CONFIRMED</b>.").arg(totalActQty).arg(totalPlanQty);
+            tipText = QString("✅ <b>Quy trình chuyển trạng thái:</b> Đã xử lý đủ 100% số lượng (%1/%2 cái). Có thể xác nhận <b>COMPLETED</b>.").arg(totalActQty).arg(totalPlanQty);
         } else {
-            tipText = QString("⏳ <b>Quy trình chuyển trạng thái:</b> Đang xử lý (%1/%2 cái). Có thể chọn <b>CONFIRMED</b> để đóng hoàn tất đơn (yêu cầu xác nhận qua hộp thoại cảnh báo và dấu tick).").arg(totalActQty).arg(totalPlanQty);
+            tipText = QString("⏳ <b>Quy trình chuyển trạng thái:</b> Đang xử lý (%1/%2 cái). Có thể chọn <b>COMPLETED</b> để đóng hoàn tất đơn (yêu cầu xác nhận qua hộp thoại cảnh báo và dấu tick).").arg(totalActQty).arg(totalPlanQty);
         }
     }
     if (!tipText.isEmpty()) {
@@ -1957,7 +1957,7 @@ TransactionStatusDialog::TransactionStatusDialog(
         mainLayout->addWidget(tipLbl);
     }
 
-    bool isCompleted = (initialStatus == "COMPLETED" || initialStatus == "CONFIRMED" || initialStatus == "CANCELLED");
+    bool isCompleted = (initialStatus == "COMPLETED" || initialStatus == "CANCELLED");
     if (isCompleted) {
         auto* warnLbl = new QLabel(
             QString("🔒 <b>Đơn hàng đã ở trạng thái hoàn tất (%1).</b><br>Toàn bộ thông tin đơn và trạng thái đã bị khóa vĩnh viễn.")
@@ -2011,7 +2011,7 @@ void TransactionStatusDialog::onSave()
         }
     }
 
-    if ((newStatus == "CONFIRMED" || newStatus == "COMPLETED") && oldStatus != newStatus) {
+    if (newStatus == "COMPLETED" && oldStatus != newStatus) {
         bool isUnder = (totalPlanQty > 0 && totalActQty < totalPlanQty);
         CompletionConfirmationDialog confirmDlg(
             !orderCodeStr.isEmpty() ? orderCodeStr : QString::number(txnId),
@@ -2069,7 +2069,7 @@ CompletionConfirmationDialog::CompletionConfirmationDialog(
 
         int missingQuantity = std::max(0, plannedQuantity - actualQuantity);
         auto* msgLabel = new QLabel(
-            QString("Bạn đang yêu cầu chuyển %1 <b>[%2]</b> sang trạng thái <b>HOÀN THÀNH (CONFIRMED / COMPLETED)</b> khi chưa xử lý đủ 100% số lượng:<br><br>"
+            QString("Bạn đang yêu cầu chuyển %1 <b>[%2]</b> sang trạng thái <b>HOÀN THÀNH (COMPLETED)</b> khi chưa xử lý đủ 100% số lượng:<br><br>"
                     "• <b>Số lượng đã thực tế xử lý:</b> <span style='color:#16a34a; font-weight:bold;'>%3</span> cái<br>"
                     "• <b>Số lượng kế hoạch đặt ra:</b> <span style='color:#2563eb; font-weight:bold;'>%4</span> cái<br>"
                     "• <b>Số lượng còn thiếu:</b> <span style='color:#dc2626; font-weight:bold;'>%5</span> cái<br><br>"
@@ -2095,7 +2095,7 @@ CompletionConfirmationDialog::CompletionConfirmationDialog(
         layout->addWidget(warnIconLabel);
 
         auto* msgLabel = new QLabel(
-            QString("Bạn có chắc chắn muốn chuyển %1 <b>[%2]</b> sang trạng thái <b>HOÀN THÀNH (CONFIRMED / COMPLETED)</b>?<br><br>"
+            QString("Bạn có chắc chắn muốn chuyển %1 <b>[%2]</b> sang trạng thái <b>HOÀN THÀNH (COMPLETED)</b>?<br><br>"
                     "<b>Lưu ý quan trọng:</b><br>"
                     "• Sau khi hoàn thành, toàn bộ các đợt vận chuyển liên quan sẽ bị <b>KHÓA VĨNH VIỄN</b>.<br>"
                     "• Bạn sẽ <b>KHÔNG THỂ</b> nhận thêm, xuất thêm hoặc thay đổi trạng thái bất kỳ linh kiện nào nữa.")
@@ -2279,7 +2279,7 @@ LogisticsUpdateDialog::LogisticsUpdateDialog(
     }
     if (statuses.isEmpty()) {
         statuses = (hubType == HubType::INBOUND)
-            ? QStringList{"EXPECTED", "RECEIVING", "INSPECTING", "COMPLETED", "CANCELLED"}
+            ? QStringList{"PENDING", "RECEIVING", "COMPLETED", "CANCELLED"}
             : QStringList{"PENDING", "PICKING", "COMPLETED", "CANCELLED"};
     }
 
@@ -3928,7 +3928,7 @@ UnitEntryDialog::UnitEntryDialog(
                 parentOrderStatus = std::get<std::string>(ordRecs[0].get("status"));
             }
         }
-        if (parentOrderStatus == "CONFIRMED" || parentOrderStatus == "COMPLETED" || parentOrderStatus == "CANCELLED") {
+        if (parentOrderStatus == "COMPLETED" || parentOrderStatus == "CANCELLED") {
             isLogisticsCompleted = true;
         }
     }
@@ -4222,7 +4222,7 @@ void UnitEntryDialog::setupUI()
     headerLayout->addStretch();
 
     if (isLogisticsCompleted) {
-        QString lockText = (parentOrderStatus == "CONFIRMED" || parentOrderStatus == "COMPLETED" || parentOrderStatus == "CANCELLED")
+        QString lockText = (parentOrderStatus == "COMPLETED" || parentOrderStatus == "CANCELLED")
                          ? QString("🔒 ĐÃ KHÓA THEO ĐƠN (%1)").arg(QString::fromStdString(parentOrderStatus))
                          : "🔒 ĐÃ HOÀN THÀNH (READ-ONLY)";
         auto* lockBadge = new QLabel(lockText, headerBox);
@@ -4232,7 +4232,7 @@ void UnitEntryDialog::setupUI()
     mainLayout->addWidget(headerBox);
 
     if (isLogisticsCompleted) {
-        QString bannerText = (parentOrderStatus == "CONFIRMED" || parentOrderStatus == "COMPLETED" || parentOrderStatus == "CANCELLED")
+        QString bannerText = (parentOrderStatus == "COMPLETED" || parentOrderStatus == "CANCELLED")
             ? QString("ℹ️ <b>Chế độ chỉ xem (Read-only):</b> Đơn giao dịch [%1] đã ở trạng thái <code>%2</code>. "
                       "Toàn bộ các đợt vận chuyển liên quan đã bị khóa vĩnh viễn (Rule 5.6). Bạn có thể xem danh sách và lịch sử nhưng không thể quét thêm hoặc chỉnh sửa linh kiện.")
                 .arg(parentOrderCodeStr, QString::fromStdString(parentOrderStatus))

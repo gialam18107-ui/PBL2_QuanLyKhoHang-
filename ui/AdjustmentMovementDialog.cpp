@@ -1,4 +1,4 @@
-﻿#include "ui/AdjustmentMovementDialog.h"
+#include "ui/AdjustmentMovementDialog.h"
 #include "ui/OrderDialog.h"
 #include "ui/InventoryCheckDialog.h"
 #include "ui/TableClipboardHelper.h"
@@ -312,7 +312,6 @@ void AdjustmentMovementCreateDialog::populateReasons()
     if (reasonCombo->count() == 0) {
         reasonCombo->addItem("STOCKTAKE_DIFF", "STOCKTAKE_DIFF");
         reasonCombo->addItem("DAMAGED", "DAMAGED");
-        reasonCombo->addItem("DATA_ERROR", "DATA_ERROR");
         reasonCombo->addItem("OTHER", "OTHER");
     }
 }

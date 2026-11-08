@@ -619,7 +619,7 @@ namespace user_create
         del.set("inbound_transaction_id", inTxnId);
         del.set("expected_at", expectedDeliveryDate);
         del.set("delivery_at", Value{});
-        del.set("status", std::string("EXPECTED"));
+        del.set("status", std::string("PENDING"));
 
         OperationResult r2 = db->insertRecord("delivery", del);
         if (!r2) { db->rollback(); return r2; }
@@ -1071,7 +1071,7 @@ namespace user_create
             del.set("inbound_transaction_id", inTxnId);
             del.set("expected_at", batch.expectedDate);
             del.set("delivery_at", Value{});
-            del.set("status", std::string("EXPECTED"));
+            del.set("status", std::string("PENDING"));
 
             OperationResult rDel = db->insertRecord("delivery", del);
             if (!rDel) { db->rollback(); return rDel; }
@@ -1339,7 +1339,7 @@ namespace user_create
 
         std::string inTxnSt = inTxnRec->has("status") && std::holds_alternative<std::string>(inTxnRec->get("status"))
                             ? std::get<std::string>(inTxnRec->get("status")) : "";
-        if (inTxnSt == "CONFIRMED" || inTxnSt == "COMPLETED" || inTxnSt == "CANCELLED") {
+        if (inTxnSt == "COMPLETED" || inTxnSt == "CANCELLED") {
             return OperationResult{false, "Đơn nhập kho (" + inTxnSt + ") đã hoàn tất hoặc bị hủy. Toàn bộ các đợt nhận hàng đã bị khóa vĩnh viễn (Rule 5.6).", 0};
         }
 
@@ -1672,10 +1672,10 @@ namespace user_create
             db->update("delivery", deliveryId, delStatusUp);
         }
 
-        // Update inbound_transaction status to PROCESSING if not already COMPLETED/CONFIRMED
+        // Update inbound_transaction status to PROCESSING if not already COMPLETED
         std::string curInTxnSt = inTxnRec->has("status") && std::holds_alternative<std::string>(inTxnRec->get("status"))
             ? std::get<std::string>(inTxnRec->get("status")) : "";
-        if (curInTxnSt != "COMPLETED" && curInTxnSt != "completed" && curInTxnSt != "CONFIRMED") {
+        if (curInTxnSt != "COMPLETED" && curInTxnSt != "completed") {
             Record inTxnStatusUp;
             inTxnStatusUp.set("status", std::string("PROCESSING"));
             db->update("inbound_transaction", inTxnId, inTxnStatusUp);
@@ -1728,7 +1728,6 @@ namespace user_create
     std::string generateUniqueAdjustCode(Database* db, const std::string& reason) {
         std::string rCode = "STD";
         if (reason == "DAMAGED" || reason == "DMG") rCode = "DMG";
-        else if (reason == "DATA_ERROR" || reason == "DTE") rCode = "DTE";
         else if (reason == "OTHER" || reason == "OTH") rCode = "OTH";
         else if (reason == "STOCKTAKE_DIFF" || reason == "STD") rCode = "STD";
         else if (db) {
@@ -1861,32 +1860,29 @@ namespace user_create
             const Table* cuTbl = db->getTable("inventory_check_unit");
             if (!cuTbl) { db->rollback(); return OperationResult{false, "Bảng inventory_check_unit không tồn tại.", 0}; }
 
-            HashMap<int, bool> allowedPids;
-            for (size_t i = 0; i < productIds.size(); ++i) allowedPids[productIds[i]] = true;
-
             int nextCuId = getNextTableId(db, "inventory_check_unit");
-            for (const auto& u : unitTbl->view()) {
-                int pid = (u.has("product_id") && std::holds_alternative<int>(u.get("product_id"))) ? std::get<int>(u.get("product_id")) : -1;
-                if (!allowedPids.contains(pid)) continue;
-
-                std::string st = (u.has("status") && std::holds_alternative<std::string>(u.get("status"))) ? std::get<std::string>(u.get("status")) : "";
-                if (st == "OUT") continue; // Only inspect physical units in warehouse
-
-                std::string sn = (u.has("serial") && std::holds_alternative<std::string>(u.get("serial"))) ? std::get<std::string>(u.get("serial")) : "";
+            for (size_t pi = 0; pi < productIds.size(); ++pi) {
+                int pid = productIds[pi];
                 int cqId = pidToCqId.contains(pid) ? pidToCqId[pid] : 0;
+                for (const auto& u : unitTbl->view("product_id", Value(pid))) {
+                    std::string st = (u.has("status") && std::holds_alternative<std::string>(u.get("status"))) ? std::get<std::string>(u.get("status")) : "";
+                    if (st == "OUT") continue; // Only inspect physical units in warehouse
 
-                int cuId = nextCuId++;
-                Record cuRec;
-                cuRec.set("check_unit_id", cuId);
-                cuRec.set("check_id", checkId);
-                cuRec.set("check_quantity_id", cqId);
-                cuRec.set("serial", sn);
-                cuRec.set("system_status", st);
-                cuRec.set("scanned_status", Value{});
+                    std::string sn = (u.has("serial") && std::holds_alternative<std::string>(u.get("serial"))) ? std::get<std::string>(u.get("serial")) : "";
 
-                OperationResult rCu = db->insertRecord("inventory_check_unit", cuRec);
-                if (!rCu) { db->rollback(); return rCu; }
-                totalAffected++;
+                    int cuId = nextCuId++;
+                    Record cuRec;
+                    cuRec.set("check_unit_id", cuId);
+                    cuRec.set("check_id", checkId);
+                    cuRec.set("check_quantity_id", cqId);
+                    cuRec.set("serial", sn);
+                    cuRec.set("system_status", st);
+                    cuRec.set("scanned_status", Value{});
+
+                    OperationResult rCu = db->insertRecord("inventory_check_unit", cuRec);
+                    if (!rCu) { db->rollback(); return rCu; }
+                    totalAffected++;
+                }
             }
         }
 
@@ -2062,91 +2058,76 @@ namespace user_create
         Vector<Pair<int, int>> outboundItems;
         Vector<AdjustMovementItem> movements;
 
-        if (checkType == "UNIT") {
-            const Table* cuTbl = db->getTable("inventory_check_unit");
-            HashMap<int, int> inMap;
-            HashMap<int, int> outMap;
-            struct ShiftKey {
-                int pid;
-                std::string fromSt;
-                std::string toSt;
-                bool operator==(const ShiftKey& o) const {
-                    return pid == o.pid && fromSt == o.fromSt && toSt == o.toSt;
-                }
-            };
-            struct ShiftHash {
-                size_t operator()(const ShiftKey& k) const {
-                    return std::hash<int>()(k.pid) ^ (std::hash<std::string>()(k.fromSt) << 1) ^ (std::hash<std::string>()(k.toSt) << 2);
-                }
-            };
-            Vector<ShiftKey> shiftKeys;
-            Vector<int> shiftCounts;
+        // All inventory checks are UNIT-level checks (Rule 4.3, 5.3)
+        const Table* cuTbl = db->getTable("inventory_check_unit");
+        HashMap<int, int> inMap;
+        HashMap<int, int> outMap;
+        struct ShiftKey {
+            int pid;
+            std::string fromSt;
+            std::string toSt;
+            bool operator==(const ShiftKey& o) const {
+                return pid == o.pid && fromSt == o.fromSt && toSt == o.toSt;
+            }
+        };
+        struct ShiftHash {
+            size_t operator()(const ShiftKey& k) const {
+                return std::hash<int>()(k.pid) ^ (std::hash<std::string>()(k.fromSt) << 1) ^ (std::hash<std::string>()(k.toSt) << 2);
+            }
+        };
+        Vector<ShiftKey> shiftKeys;
+        Vector<int> shiftCounts;
 
-            if (cuTbl) {
-                TableView cuRows = cuTbl->view("check_id", Value(checkId));
-                for (const auto& cu : cuRows) {
-                    std::string sysSt = (cu.has("system_status") && std::holds_alternative<std::string>(cu.get("system_status")))
-                                      ? std::get<std::string>(cu.get("system_status")) : "";
-                    std::string scanSt = (cu.has("scanned_status") && std::holds_alternative<std::string>(cu.get("scanned_status")))
-                                       ? std::get<std::string>(cu.get("scanned_status")) : "";
+        if (cuTbl) {
+            TableView cuRows = cuTbl->view("check_id", Value(checkId));
+            for (const auto& cu : cuRows) {
+                std::string sysSt = (cu.has("system_status") && std::holds_alternative<std::string>(cu.get("system_status")))
+                                  ? std::get<std::string>(cu.get("system_status")) : "";
+                std::string scanSt = (cu.has("scanned_status") && std::holds_alternative<std::string>(cu.get("scanned_status")))
+                                   ? std::get<std::string>(cu.get("scanned_status")) : "";
 
-                    int cqId = cu.has("check_quantity_id") && std::holds_alternative<int>(cu.get("check_quantity_id"))
-                             ? std::get<int>(cu.get("check_quantity_id")) : 0;
-                    const Record* qRec = cqTbl->getRecordById(cqId);
-                    int pid = qRec && qRec->has("product_id") && std::holds_alternative<int>(qRec->get("product_id"))
-                            ? std::get<int>(qRec->get("product_id")) : 0;
-                    if (pid <= 0) continue;
+                int cqId = cu.has("check_quantity_id") && std::holds_alternative<int>(cu.get("check_quantity_id"))
+                         ? std::get<int>(cu.get("check_quantity_id")) : 0;
+                const Record* qRec = cqTbl->getRecordById(cqId);
+                int pid = qRec && qRec->has("product_id") && std::holds_alternative<int>(qRec->get("product_id"))
+                        ? std::get<int>(qRec->get("product_id")) : 0;
+                if (pid <= 0) continue;
 
-                    // Strict No-Netting Classification (Rule 5.3.2)
-                    if (sysSt == "OUT" || sysSt.empty()) {
-                        // Surplus unit (Type 1 or Type 2)
-                        if (!scanSt.empty() && scanSt != "OUT") {
-                            inMap[pid] = (inMap.contains(pid) ? inMap[pid] : 0) + 1;
+                // Strict No-Netting Classification (Rule 5.3.2)
+                if (sysSt == "OUT" || sysSt.empty()) {
+                    // Surplus unit (Type 1 or Type 2)
+                    if (!scanSt.empty() && scanSt != "OUT") {
+                        inMap[pid] = (inMap.contains(pid) ? inMap[pid] : 0) + 1;
+                    }
+                } else if (scanSt.empty() || scanSt == "OUT") {
+                    // Missing unit
+                    outMap[pid] = (outMap.contains(pid) ? outMap[pid] : 0) + 1;
+                } else if (sysSt != scanSt) {
+                    // Status shift internal to warehouse
+                    bool found = false;
+                    for (size_t sk = 0; sk < shiftKeys.size(); ++sk) {
+                        if (shiftKeys[sk].pid == pid && shiftKeys[sk].fromSt == sysSt && shiftKeys[sk].toSt == scanSt) {
+                            shiftCounts[sk]++;
+                            found = true;
+                            break;
                         }
-                    } else if (scanSt.empty() || scanSt == "OUT") {
-                        // Missing unit
-                        outMap[pid] = (outMap.contains(pid) ? outMap[pid] : 0) + 1;
-                    } else if (sysSt != scanSt) {
-                        // Status shift internal to warehouse
-                        bool found = false;
-                        for (size_t sk = 0; sk < shiftKeys.size(); ++sk) {
-                            if (shiftKeys[sk].pid == pid && shiftKeys[sk].fromSt == sysSt && shiftKeys[sk].toSt == scanSt) {
-                                shiftCounts[sk]++;
-                                found = true;
-                                break;
-                            }
-                        }
-                        if (!found) {
-                            shiftKeys.push_back({pid, sysSt, scanSt});
-                            shiftCounts.push_back(1);
-                        }
+                    }
+                    if (!found) {
+                        shiftKeys.push_back({pid, sysSt, scanSt});
+                        shiftCounts.push_back(1);
                     }
                 }
             }
+        }
 
-            for (const auto& kv : inMap) {
-                if (kv.second > 0) inboundItems.push_back({kv.first, kv.second});
-            }
-            for (const auto& kv : outMap) {
-                if (kv.second > 0) outboundItems.push_back({kv.first, kv.second});
-            }
-            for (size_t sk = 0; sk < shiftKeys.size(); ++sk) {
-                movements.push_back({shiftKeys[sk].pid, shiftKeys[sk].fromSt, shiftKeys[sk].toSt, shiftCounts[sk]});
-            }
-        } else {
-            // QUAN Check: net calculation per product
-            for (const auto& r : cqRows) {
-                int pid = std::get<int>(r.get("product_id"));
-                int sysTotal = std::get<int>(r.get("system_available_quan")) + std::get<int>(r.get("system_warranty_quan")) + std::get<int>(r.get("system_scrapped_quan"));
-                int actTotal = std::get<int>(r.get("actual_available_quan")) + std::get<int>(r.get("actual_warranty_quan")) + std::get<int>(r.get("actual_scrapped_quan"));
-                int diff = actTotal - sysTotal;
-
-                if (diff > 0) {
-                    inboundItems.push_back({pid, diff});
-                } else if (diff < 0) {
-                    outboundItems.push_back({pid, -diff});
-                }
-            }
+        for (const auto& kv : inMap) {
+            if (kv.second > 0) inboundItems.push_back({kv.first, kv.second});
+        }
+        for (const auto& kv : outMap) {
+            if (kv.second > 0) outboundItems.push_back({kv.first, kv.second});
+        }
+        for (size_t sk = 0; sk < shiftKeys.size(); ++sk) {
+            movements.push_back({shiftKeys[sk].pid, shiftKeys[sk].fromSt, shiftKeys[sk].toSt, shiftCounts[sk]});
         }
 
         int createdCount = 0;

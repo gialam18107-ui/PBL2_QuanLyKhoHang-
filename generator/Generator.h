@@ -109,13 +109,13 @@ namespace Generator
         void initialize();
 
         /**
-         * @brief Generate an inventory check record (CHK-QUAN or CHK-UNIT) with product snapshots.
-         * @param checkType "QUAN" or "UNIT".
+         * @brief Generate an inventory check record (CHK-UNIT) with product snapshots.
+         * @param checkType "UNIT" (Rule 4.3).
          * @param checkDate Date string (or current date if empty).
          * @param productIds List of product IDs included in the audit.
-         * @return Generated check_code (e.g., CHK-QUAN-000001).
+         * @return Generated check_code (e.g., CHK-UNIT-000001).
          */
-        string generateInventoryCheck(const string& checkType = "QUAN",
+        string generateInventoryCheck(const string& checkType = "UNIT",
                                       const string& checkDate = "",
                                       const Vector<int>& productIds = Vector<int>());
 
@@ -157,7 +157,7 @@ namespace Generator
 
         /**
          * @brief Generate an internal adjustment movement (ADJUSTMENT_MOVEMENT and adjust_movement_detail).
-         * @param reason STD (STOCKTAKE_DIFF), DMG (DAMAGED), DTE (DATA_ERROR), OTH (OTHER).
+         * @param reason STD (STOCKTAKE_DIFF), DMG (DAMAGED), OTH (OTHER).
          * @param items List of status shift lines (productId, fromStatus, toStatus, quantity).
          * @param adjustDate Date string (or generated if empty).
          * @param sourceCode Check code reference (mandatory per Rule 5.5; auto-generated if empty).

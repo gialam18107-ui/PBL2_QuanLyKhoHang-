@@ -60,18 +60,16 @@ INBOUND_TYPES: List[Dict[str, Any]] = [
 INBOUND_STATUSES: List[Dict[str, Any]] = [
     {"status_id": 1, "status": "PENDING"},
     {"status_id": 2, "status": "PROCESSING"},
-    {"status_id": 3, "status": "PARTIALLY_CONFIRMED"},
-    {"status_id": 4, "status": "CONFIRMED"},
-    {"status_id": 5, "status": "CANCELLED"},
+    {"status_id": 3, "status": "COMPLETED"},
+    {"status_id": 4, "status": "CANCELLED"},
 ]
 
 # Master Delivery Statuses
 DELIVERY_STATUSES: List[Dict[str, Any]] = [
-    {"status_id": 1, "status": "EXPECTED"},
+    {"status_id": 1, "status": "PENDING"},
     {"status_id": 2, "status": "RECEIVING"},
-    {"status_id": 3, "status": "INSPECTING"},
-    {"status_id": 4, "status": "COMPLETED"},
-    {"status_id": 5, "status": "CANCELLED"},
+    {"status_id": 3, "status": "COMPLETED"},
+    {"status_id": 4, "status": "CANCELLED"},
 ]
 
 # Master Outbound Types
@@ -87,9 +85,8 @@ OUTBOUND_TYPES: List[Dict[str, Any]] = [
 OUTBOUND_STATUSES: List[Dict[str, Any]] = [
     {"status_id": 1, "status": "PENDING"},
     {"status_id": 2, "status": "PROCESSING"},
-    {"status_id": 3, "status": "CONFIRMED"},
-    {"status_id": 4, "status": "PARTIALLY_CONFIRMED"},
-    {"status_id": 5, "status": "CANCELLED"},
+    {"status_id": 3, "status": "COMPLETED"},
+    {"status_id": 4, "status": "CANCELLED"},
 ]
 
 # Master Shipment Statuses
@@ -127,14 +124,13 @@ BUSINESS_INFO: List[Dict[str, Any]] = [
 
 # Master Check Types
 CHECK_TYPES: List[Dict[str, Any]] = [
-    {"type_id": 1, "check_type": "QUAN", "next_code_no": 1},
-    {"type_id": 2, "check_type": "UNIT", "next_code_no": 1},
+    {"type_id": 1, "check_type": "UNIT", "next_code_no": 1},
 ]
 
 # Master Inventory Check Statuses
 INVENTORY_CHECK_STATUSES: List[Dict[str, Any]] = [
     {"status_id": 1, "status": "PENDING"},
-    {"status_id": 2, "status": "IN_PROCESS"},
+    {"status_id": 2, "status": "PROCESSING"},
     {"status_id": 3, "status": "COMPLETED"},
     {"status_id": 4, "status": "CANCELLED"},
 ]
@@ -143,14 +139,13 @@ INVENTORY_CHECK_STATUSES: List[Dict[str, Any]] = [
 REASONS: List[Dict[str, Any]] = [
     {"reason_id": 1, "reason": "STOCKTAKE_DIFF", "code": "STD", "next_code_no": 1},
     {"reason_id": 2, "reason": "DAMAGED", "code": "DMG", "next_code_no": 1},
-    {"reason_id": 3, "reason": "DATA_ERROR", "code": "DTE", "next_code_no": 1},
-    {"reason_id": 4, "reason": "OTHER", "code": "OTH", "next_code_no": 1},
+    {"reason_id": 3, "reason": "OTHER", "code": "OTH", "next_code_no": 1},
 ]
 
 # Master Adjustment Statuses
 ADJUSTMENT_STATUSES: List[Dict[str, Any]] = [
     {"status_id": 1, "status": "PENDING"},
-    {"status_id": 2, "status": "COMPLETED"},
-    {"status_id": 3, "status": "PARTLY_COMPLETED"},
+    {"status_id": 2, "status": "PROCESSING"},
+    {"status_id": 3, "status": "COMPLETED"},
     {"status_id": 4, "status": "CANCELLED"},
 ]
