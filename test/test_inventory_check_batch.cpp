@@ -47,7 +47,7 @@ OperationResult saveInventoryCheckBatchDirect(
 
 int main() {
     cout << "\n======================================================================\n";
-    cout << "  SO SANH HIEU NANG: saveInventoryCheckBatch (2500 LINH KIEN)\n";
+    cout << "  SO SANH HIEU NANG: saveInventoryCheckBatch (10000 LINH KIEN)\n";
     cout << "======================================================================\n";
 
     Database db;
@@ -69,9 +69,7 @@ int main() {
         if (pid > 0) productIds.push_back(pid);
     }
 
-    const size_t TARGET_MODIFIED = 1500;
-    const size_t TARGET_SURPLUS  = 1000;
-    const size_t TOTAL_COMPONENTS = TARGET_MODIFIED + TARGET_SURPLUS;
+    const size_t TOTAL_COMPONENTS = 10000;
 
     // -------------------------------------------------------------
     // TEST 1: user_update::saveInventoryCheckBatch (Database API chuan)
@@ -84,26 +82,31 @@ int main() {
     assert(chk1.success);
     int checkId1 = chk1.affectedCount;
 
-    Vector<Record> units1 = Query::filterRecords(*cuTbl, "check_id", Value(checkId1));
-    Vector<Record> cqs1   = Query::filterRecords(*cqTbl, "check_id", Value(checkId1));
     Vector<int> cqIds1;
-    for (size_t i = 0; i < cqs1.size(); ++i) {
-        int id = safeGetInt(cqs1[i], "check_quantity_id");
+    for (const auto& cq : cqTbl->view("check_id", Value(checkId1))) {
+        int id = safeGetInt(cq, "check_quantity_id");
         if (id > 0) cqIds1.push_back(id);
     }
 
+    auto cuView1 = cuTbl->view("check_id", Value(checkId1));
+    size_t targetMod1 = (cuView1.size() < 2000) ? cuView1.size() : 2000;
+    size_t targetSur1 = TOTAL_COMPONENTS - targetMod1;
+
     Vector<user_update::BatchCheckUnitUpdate> mod1;
-    mod1.reserve(TARGET_MODIFIED);
-    for (size_t i = 0; i < TARGET_MODIFIED; ++i) {
+    mod1.reserve(targetMod1);
+    size_t modCount1 = 0;
+    for (const auto& u : cuView1) {
+        if (modCount1 >= targetMod1) break;
         user_update::BatchCheckUnitUpdate m;
-        m.checkUnitId = safeGetInt(units1[i], "check_unit_id");
-        m.scannedStatus = (i % 3 == 0) ? "AVAILABLE" : (i % 3 == 1 ? "WARRANTY" : "SCRAPPED");
+        m.checkUnitId = safeGetInt(u, "check_unit_id");
+        m.scannedStatus = (modCount1 % 3 == 0) ? "AVAILABLE" : (modCount1 % 3 == 1 ? "WARRANTY" : "SCRAPPED");
         mod1.push_back(m);
+        modCount1++;
     }
 
     Vector<user_update::BatchCheckUnitSurplus> sur1;
-    sur1.reserve(TARGET_SURPLUS);
-    for (size_t i = 1; i <= TARGET_SURPLUS; ++i) {
+    sur1.reserve(targetSur1);
+    for (size_t i = 1; i <= targetSur1; ++i) {
         user_update::BatchCheckUnitSurplus s;
         s.checkQuantityId = cqIds1[i % cqIds1.size()];
         char buf[32];
@@ -137,26 +140,31 @@ int main() {
     assert(chk2.success);
     int checkId2 = chk2.affectedCount;
 
-    Vector<Record> units2 = Query::filterRecords(*cuTbl, "check_id", Value(checkId2));
-    Vector<Record> cqs2   = Query::filterRecords(*cqTbl, "check_id", Value(checkId2));
     Vector<int> cqIds2;
-    for (size_t i = 0; i < cqs2.size(); ++i) {
-        int id = safeGetInt(cqs2[i], "check_quantity_id");
+    for (const auto& cq : cqTbl->view("check_id", Value(checkId2))) {
+        int id = safeGetInt(cq, "check_quantity_id");
         if (id > 0) cqIds2.push_back(id);
     }
 
+    auto cuView2 = cuTbl->view("check_id", Value(checkId2));
+    size_t targetMod2 = (cuView2.size() < 2000) ? cuView2.size() : 2000;
+    size_t targetSur2 = TOTAL_COMPONENTS - targetMod2;
+
     Vector<user_update::BatchCheckUnitUpdate> mod2;
-    mod2.reserve(TARGET_MODIFIED);
-    for (size_t i = 0; i < TARGET_MODIFIED; ++i) {
+    mod2.reserve(targetMod2);
+    size_t modCount2 = 0;
+    for (const auto& u : cuView2) {
+        if (modCount2 >= targetMod2) break;
         user_update::BatchCheckUnitUpdate m;
-        m.checkUnitId = safeGetInt(units2[i], "check_unit_id");
-        m.scannedStatus = (i % 3 == 0) ? "AVAILABLE" : (i % 3 == 1 ? "WARRANTY" : "SCRAPPED");
+        m.checkUnitId = safeGetInt(u, "check_unit_id");
+        m.scannedStatus = (modCount2 % 3 == 0) ? "AVAILABLE" : (modCount2 % 3 == 1 ? "WARRANTY" : "SCRAPPED");
         mod2.push_back(m);
+        modCount2++;
     }
 
     Vector<user_update::BatchCheckUnitSurplus> sur2;
-    sur2.reserve(TARGET_SURPLUS);
-    for (size_t i = 1; i <= TARGET_SURPLUS; ++i) {
+    sur2.reserve(targetSur2);
+    for (size_t i = 1; i <= targetSur2; ++i) {
         user_update::BatchCheckUnitSurplus s;
         s.checkQuantityId = cqIds2[i % cqIds2.size()];
         char buf[32];
@@ -183,7 +191,7 @@ int main() {
     // TONG HOP SO SANH
     // -------------------------------------------------------------
     cout << "\n======================================================================\n";
-    cout << "  BANG SO SANH HIEU NANG TONG HOP (2500 LINH KIEN)\n";
+    cout << "  BANG SO SANH HIEU NANG TONG HOP (10000 LINH KIEN)\n";
     cout << "======================================================================\n";
     cout << left << setw(35) << "  Phuong phap" 
          << right << setw(18) << "Thoi gian (ms)" 
