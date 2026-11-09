@@ -6,7 +6,7 @@
 using namespace std;
 
 Database::Database(const string& name)
-    : databaseName(name), inTransaction(false), transactionDepth(0)
+    : databaseName(name), inTransaction(false)
 {
 }
 
@@ -14,11 +14,9 @@ Database::Database(Database&& other) noexcept
     : databaseName(std::move(other.databaseName)),
       tables(std::move(other.tables)),
       inTransaction(other.inTransaction),
-      transactionDepth(other.transactionDepth),
       undoLog(std::move(other.undoLog))
 {
     other.inTransaction = false;
-    other.transactionDepth = 0;
 }
 
 Database& Database::operator=(Database&& other) noexcept
@@ -31,11 +29,9 @@ Database& Database::operator=(Database&& other) noexcept
         databaseName = std::move(other.databaseName);
         tables = std::move(other.tables);
         inTransaction = other.inTransaction;
-        transactionDepth = other.transactionDepth;
         undoLog = std::move(other.undoLog);
 
         other.inTransaction = false;
-        other.transactionDepth = 0;
     }
     return *this;
 }
@@ -311,26 +307,16 @@ void Database::clear()
 
 bool Database::beginTransaction()
 {
-    if (inTransaction)
-    {
-        ++transactionDepth;
-        return true;
-    }
+    if (inTransaction) return false;
     undoLog.clear();
     undoLog.reserve(100);
     inTransaction = true;
-    transactionDepth = 1;
     return true;
 }
 
 bool Database::commit()
 {
     if (!inTransaction) return false;
-    if (transactionDepth > 1)
-    {
-        --transactionDepth;
-        return true;
-    }
     for (const auto& item : tables)
     {
         if (item.second != nullptr)
@@ -340,7 +326,6 @@ bool Database::commit()
     }
     undoLog.clear();
     inTransaction = false;
-    transactionDepth = 0;
     return true;
 }
 
@@ -366,10 +351,7 @@ bool Database::rollback()
     }
     undoLog.clear();
     inTransaction = false;
-    transactionDepth = 0;
     return true;
 }
 
 bool Database::isInTransaction() const { return inTransaction; }
-
-int Database::getTransactionDepth() const { return transactionDepth; }

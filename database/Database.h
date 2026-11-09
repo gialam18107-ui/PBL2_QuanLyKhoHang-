@@ -27,7 +27,6 @@ private:
 
     // Transaction management
     bool inTransaction;
-    int transactionDepth = 0;
     enum class UndoType
     {
         INSERT,
@@ -186,9 +185,6 @@ public:
 
     /// Check if currently in an active transaction block.
     bool isInTransaction() const;
-
-    /// Get current transaction nesting depth.
-    int getTransactionDepth() const;
 };
 
 #endif // DATABASE_H
