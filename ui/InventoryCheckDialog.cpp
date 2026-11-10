@@ -1782,9 +1782,12 @@ void InventoryCheckDetailDialog::setupUI()
             else if (chosen == aOut) newSt = "OUT";
 
             if (!newSt.isEmpty() && stagedUnits[idx].currentScannedStatus != newSt) {
+                bool wasAlreadyChecked = (!stagedUnits[idx].currentScannedStatus.isEmpty() && stagedUnits[idx].currentScannedStatus != "UNCHECKED");
                 stagedUnits[idx].currentScannedStatus = newSt;
                 stagedUnits[idx].isModified = (stagedUnits[idx].currentScannedStatus != stagedUnits[idx].savedScannedStatus);
-                stagedUnits[idx].lastTouchSeq = ++actionCounter;
+                if (!wasAlreadyChecked) {
+                    stagedUnits[idx].lastTouchSeq = ++actionCounter;
+                }
                 refreshUnitTable();
                 refreshQuantityTablePreview();
                 updateSaveButtonState();
@@ -2035,9 +2038,20 @@ void InventoryCheckDetailDialog::loadUnitData()
     Vector<Record> records;
     user_query::inventory_check_unit_query(db, checkId, records);
 
+    QHash<QString, uint64_t> preservedTouchSeq;
+    for (const auto& u : stagedUnits) {
+        if (u.lastTouchSeq > 0) {
+            preservedTouchSeq.insert(u.serial.toUpper(), u.lastTouchSeq);
+        }
+    }
+
     stagedUnits.clear();
     serialToIndexMap.clear();
-    actionCounter = 0;
+
+    if (actionCounter == 0) {
+        actionCounter = 1;
+    }
+
     for (size_t i = 0; i < records.size(); ++i) {
         const auto& rec = records[i];
         StagedCheckUnit u;
@@ -2053,9 +2067,19 @@ void InventoryCheckDetailDialog::loadUnitData()
         u.isNew = false;
         u.isModified = false;
         u.addedTime = "";
-        u.lastTouchSeq = (u.currentScannedStatus.isEmpty() ? 0 : 1);
+
+        QString snUpper = u.serial.toUpper();
+        if (preservedTouchSeq.contains(snUpper)) {
+            u.lastTouchSeq = preservedTouchSeq.value(snUpper);
+        } else {
+            u.lastTouchSeq = (u.currentScannedStatus.isEmpty() || u.currentScannedStatus == "UNCHECKED" ? 0 : 1);
+        }
+        if (u.lastTouchSeq > actionCounter) {
+            actionCounter = u.lastTouchSeq;
+        }
+
         stagedUnits.push_back(u);
-        serialToIndexMap.insert(u.serial.toUpper(), static_cast<int>(i));
+        serialToIndexMap.insert(snUpper, static_cast<int>(i));
     }
 
     refreshUnitTable();
@@ -2074,6 +2098,8 @@ void InventoryCheckDetailDialog::refreshUnitTable()
 {
     if (!unitTable) return;
 
+    int prevRow = unitTable->currentRow();
+    int prevCol = unitTable->currentColumn();
     bool wasAtBottom = false;
     int prevScroll = 0;
     if (unitTable->verticalScrollBar()) {
@@ -2268,6 +2294,9 @@ void InventoryCheckDetailDialog::refreshUnitTable()
             unitTable->verticalScrollBar()->setValue(prevScroll);
         }
     }
+    if (prevRow >= 0 && prevRow < unitTable->rowCount()) {
+        unitTable->setCurrentCell(prevRow, prevCol >= 0 ? prevCol : 0);
+    }
 
     if (unitSummaryLabel) {
         int checkedCount = matchedCount + surplusCount + shiftCount + (isCompleted ? missingCount : 0);
@@ -2297,9 +2326,12 @@ bool InventoryCheckDetailDialog::processUnitScan(const QString& sn, const QStrin
         QString finalStatus = (chosenMode == "AUTO_MATCH")
             ? (u.systemStatus.isEmpty() ? "AVAILABLE" : (u.systemStatus == "OUT" ? "AVAILABLE" : u.systemStatus))
             : chosenMode;
+        bool wasAlreadyChecked = (!u.currentScannedStatus.isEmpty() && u.currentScannedStatus != "UNCHECKED");
         u.currentScannedStatus = finalStatus;
         u.isModified = (u.currentScannedStatus != u.savedScannedStatus);
-        u.lastTouchSeq = ++actionCounter;
+        if (!wasAlreadyChecked) {
+            u.lastTouchSeq = ++actionCounter;
+        }
 
         QString succMsg = QString("✅ Đã ghi nhận SN [%1] -> Trạng thái: %2 (%3) (Chưa lưu DB)").arg(cleanSn, finalStatus, u.productName);
         if (feedbackLabel) {
@@ -2581,9 +2613,12 @@ void InventoryCheckDetailDialog::onRecordUnitStatus()
                     ? (u.systemStatus.isEmpty() ? "AVAILABLE" : (u.systemStatus == "OUT" ? "AVAILABLE" : u.systemStatus))
                     : chosenMode;
                 if (u.currentScannedStatus != finalStatus) {
+                    bool wasAlreadyChecked = (!u.currentScannedStatus.isEmpty() && u.currentScannedStatus != "UNCHECKED");
                     u.currentScannedStatus = finalStatus;
                     u.isModified = (u.currentScannedStatus != u.savedScannedStatus);
-                    u.lastTouchSeq = ++actionCounter;
+                    if (!wasAlreadyChecked) {
+                        u.lastTouchSeq = ++actionCounter;
+                    }
                     changedCount++;
                 }
             }
@@ -2635,9 +2670,12 @@ bool InventoryCheckDetailDialog::recordSingleSerialFromSim(const QString& sn, in
     int existingIdx = serialToIndexMap.value(cleanSn, -1);
     if (existingIdx >= 0 && existingIdx < static_cast<int>(stagedUnits.size())) {
         auto& u = stagedUnits[existingIdx];
+        bool wasAlreadyChecked = (!u.currentScannedStatus.isEmpty() && u.currentScannedStatus != "UNCHECKED");
         u.currentScannedStatus = status;
         u.isModified = (u.currentScannedStatus != u.savedScannedStatus);
-        u.lastTouchSeq = ++actionCounter;
+        if (!wasAlreadyChecked) {
+            u.lastTouchSeq = ++actionCounter;
+        }
         refreshUnitTable();
         refreshQuantityTablePreview();
         updateSaveButtonState();
@@ -2697,9 +2735,12 @@ void InventoryCheckDetailDialog::applyBatchSimulationUpdates(
         if (idx >= 0 && idx < static_cast<int>(stagedUnits.size())) {
             auto& u = stagedUnits[idx];
             if (u.currentScannedStatus != upd.second) {
+                bool wasAlreadyChecked = (!u.currentScannedStatus.isEmpty() && u.currentScannedStatus != "UNCHECKED");
                 u.currentScannedStatus = upd.second;
                 u.isModified = (u.currentScannedStatus != u.savedScannedStatus);
-                u.lastTouchSeq = ++actionCounter;
+                if (!wasAlreadyChecked) {
+                    u.lastTouchSeq = ++actionCounter;
+                }
                 modCount++;
             }
         }
@@ -3058,29 +3099,67 @@ void InventoryCheckDetailDialog::onCompleteCheck()
 {
     if (!db || checkId <= 0) return;
 
-    if (hasPendingChanges()) {
-        auto ansSave = QMessageBox::question(
-            this, "Chưa lưu thay đổi",
-            "Đang có thay đổi kiểm kê chưa lưu vào CSDL. Bạn có muốn lưu trước khi hoàn tất không?",
-            QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel,
-            QMessageBox::Yes
-        );
-        if (ansSave == QMessageBox::Yes) {
-            onSaveChanges();
-        } else if (ansSave == QMessageBox::Cancel) {
-            return;
+    int uncheckCount = 0;
+    if (checkType == "UNIT") {
+        for (const auto& u : stagedUnits) {
+            if (u.currentScannedStatus.isEmpty() || u.currentScannedStatus == "UNCHECKED") {
+                uncheckCount++;
+            }
         }
     }
 
+    QString msg = QString("Bạn có chắc chắn muốn chuyển trạng thái đợt kiểm kho [%1] sang HOÀN THÀNH (COMPLETED) không?\n\n"
+            "⚠️ Lưu ý quan trọng (Rule 5.1.2 & 5.3):\n"
+            "- Sau khi hoàn thành, toàn bộ dữ liệu kiểm đếm sẽ bị KHÓA BẤT BIẾN, không thể quét hay sửa đổi thêm.\n").arg(checkCode);
+    if (uncheckCount > 0) {
+        msg += QString("- Phát hiện %1 linh kiện chưa được kiểm đếm. Hệ thống sẽ tự động chuyển các linh kiện này thành VẮNG MẶT / THẤT THOÁT (OUT) và đưa vào danh sách xuất điều chỉnh.\n").arg(uncheckCount);
+    }
+    msg += "- Khi đó, hệ thống sẽ mở Báo Cáo Đối Soát 3 Tầng để bạn xem và tạo các đơn điều chỉnh chênh lệch kho.";
+
     auto ans = QMessageBox::warning(
         this, "Xác nhận hoàn thành kiểm kho",
-        QString("Bạn có chắc chắn muốn chuyển trạng thái đợt kiểm kho [%1] sang HOÀN THÀNH (COMPLETED) không?\n\n"
-                "⚠️ Lưu ý quan trọng (Rule 5.1.2 & 5.3):\n"
-                "- Sau khi hoàn thành, toàn bộ dữ liệu kiểm đếm sẽ bị KHÓA BẤT BIẾN, không thể quét hay sửa đổi thêm.\n"
-                "- Khi đó, hệ thống sẽ mở Báo Cáo Đối Soát 3 Tầng để bạn xem và tạo các đơn điều chỉnh chênh lệch kho.").arg(checkCode),
+        msg,
         QMessageBox::Yes | QMessageBox::No, QMessageBox::No
     );
     if (ans != QMessageBox::Yes) return;
+
+    if (checkType == "UNIT") {
+        // Automatically mark all un-scanned units as OUT
+        for (auto& u : stagedUnits) {
+            if (u.currentScannedStatus.isEmpty() || u.currentScannedStatus == "UNCHECKED") {
+                u.currentScannedStatus = "OUT";
+                u.isModified = true;
+            }
+        }
+
+        // Pack modified and surplus units into batch and save before completing
+        Vector<user_update::BatchCheckUnitUpdate> modifiedBatch;
+        Vector<user_update::BatchCheckUnitSurplus> surplusBatch;
+
+        for (const auto& u : stagedUnits) {
+            if (u.isNew) {
+                user_update::BatchCheckUnitSurplus s;
+                s.checkQuantityId = u.checkQuantityId;
+                s.serial = u.serial.toStdString();
+                s.systemStatus = u.systemStatus.toStdString();
+                s.scannedStatus = u.currentScannedStatus.toStdString();
+                surplusBatch.push_back(s);
+            } else if (u.isModified) {
+                user_update::BatchCheckUnitUpdate m;
+                m.checkUnitId = u.checkUnitId;
+                m.scannedStatus = u.currentScannedStatus.toStdString();
+                modifiedBatch.push_back(m);
+            }
+        }
+
+        if (!modifiedBatch.empty() || !surplusBatch.empty()) {
+            OperationResult saveRes = user_update::saveInventoryCheckBatch(db, checkId, modifiedBatch, surplusBatch);
+            if (!saveRes.success) {
+                QMessageBox::critical(this, "Lỗi lưu dữ liệu kiểm kê", QString::fromStdString(saveRes.message));
+                return;
+            }
+        }
+    }
 
     OperationResult res = user_update::completeInventoryCheck(db, checkId);
     if (!res.success) {
