@@ -599,20 +599,30 @@ void AdjustmentProductUnitPickerDialog::setupUI()
 
     connect(searchInput, &QLineEdit::textChanged, this, &AdjustmentProductUnitPickerDialog::filterTable);
     connect(selectAllBtn, &QPushButton::clicked, [this]() {
+        unitsTable->blockSignals(true);
+        unitsTable->setUpdatesEnabled(false);
         for (int r = 0; r < unitsTable->rowCount(); ++r) {
             auto* item = unitsTable->item(r, 0);
             if (item) item->setCheckState(Qt::Checked);
         }
+        unitsTable->blockSignals(false);
+        unitsTable->setUpdatesEnabled(true);
         updateSelectionCount();
     });
     connect(deselectAllBtn, &QPushButton::clicked, [this]() {
+        unitsTable->blockSignals(true);
+        unitsTable->setUpdatesEnabled(false);
         for (int r = 0; r < unitsTable->rowCount(); ++r) {
             auto* item = unitsTable->item(r, 0);
             if (item) item->setCheckState(Qt::Unchecked);
         }
+        unitsTable->blockSignals(false);
+        unitsTable->setUpdatesEnabled(true);
         updateSelectionCount();
     });
     connect(quickSelectBtn, &QPushButton::clicked, [this]() {
+        unitsTable->blockSignals(true);
+        unitsTable->setUpdatesEnabled(false);
         for (int r = 0; r < unitsTable->rowCount(); ++r) {
             auto* item = unitsTable->item(r, 0);
             if (item) item->setCheckState(Qt::Unchecked);
@@ -626,6 +636,8 @@ void AdjustmentProductUnitPickerDialog::setupUI()
                 count++;
             }
         }
+        unitsTable->blockSignals(false);
+        unitsTable->setUpdatesEnabled(true);
         updateSelectionCount();
     });
     connect(unitsTable, &QTableWidget::itemChanged, [this](QTableWidgetItem* item) {
@@ -685,6 +697,7 @@ void AdjustmentProductUnitPickerDialog::filterTable()
 {
     QString kw = searchInput ? searchInput->text().trimmed().toUpper() : "";
     unitsTable->blockSignals(true);
+    unitsTable->setUpdatesEnabled(false);
     unitsTable->setRowCount(0);
 
     std::vector<const CandidateRow*> visible;
@@ -725,6 +738,7 @@ void AdjustmentProductUnitPickerDialog::filterTable()
     }
 
     unitsTable->blockSignals(false);
+    unitsTable->setUpdatesEnabled(true);
     updateSelectionCount();
 }
 
@@ -1037,6 +1051,7 @@ void AdjustmentSimulationDialog::filterCandidates()
 {
     QString kw = searchSerialInput ? searchSerialInput->text().trimmed().toUpper() : "";
     candidatesTable->blockSignals(true);
+    candidatesTable->setUpdatesEnabled(false);
     candidatesTable->setRowCount(0);
 
     std::vector<const LineCandidate*> visible;
@@ -1075,15 +1090,13 @@ void AdjustmentSimulationDialog::filterCandidates()
     }
 
     candidatesTable->blockSignals(false);
+    candidatesTable->setUpdatesEnabled(true);
     onSelectionChanged();
 }
 
 void AdjustmentSimulationDialog::onSelectionChanged()
 {
-    auto selectedItems = candidatesTable->selectedItems();
-    std::unordered_set<int> rowSet;
-    for (const auto* it : selectedItems) rowSet.insert(it->row());
-    int sel = static_cast<int>(rowSet.size());
+    int sel = candidatesTable->selectionModel()->selectedRows().count();
 
     if (selectionCountLabel) selectionCountLabel->setText(QString("Đã chọn: <b>%1</b> linh kiện").arg(sel));
     if (confirmCandidatesBtn) {
@@ -1109,21 +1122,14 @@ void AdjustmentSimulationDialog::onConfirmCandidates()
     int detId = lineFilterCombo ? lineFilterCombo->currentData().toInt() : 0;
     if (detId <= 0 || !mainDlg) return;
 
-    auto selectedItems = candidatesTable->selectedItems();
-    std::vector<int> rowVec;
-    std::unordered_set<int> rowSet;
-    for (const auto* it : selectedItems) {
-        if (!rowSet.count(it->row())) {
-            rowSet.insert(it->row());
-            rowVec.push_back(it->row());
-        }
-    }
-    std::sort(rowVec.begin(), rowVec.end());
-
+    QModelIndexList selectedRows = candidatesTable->selectionModel()->selectedRows();
     std::vector<std::string> chosen;
-    for (int r : rowVec) {
-        auto* snItem = candidatesTable->item(r, 1);
-        if (snItem) chosen.push_back(snItem->text().toStdString());
+    for (const auto& idx : selectedRows) {
+        int r = idx.row();
+        if (r >= 0 && r < candidatesTable->rowCount()) {
+            auto* snItem = candidatesTable->item(r, 1);
+            if (snItem) chosen.push_back(snItem->text().trimmed().toStdString());
+        }
     }
     if (chosen.empty()) return;
 
@@ -1379,6 +1385,58 @@ void AdjustmentMovementDetailDialog::setupUI()
     connect(finalizeMovementBtn, &QPushButton::clicked, this, &AdjustmentMovementDetailDialog::onFinalizeMovement);
     connect(cancelMovementBtn, &QPushButton::clicked, this, &AdjustmentMovementDetailDialog::onCancelMovement);
     connect(closeBtn, &QPushButton::clicked, this, &QDialog::accept);
+
+    connect(unitsTable, &QTableWidget::cellClicked, this, [this](int row, int col) {
+        bool isCompleted = (adjustStatus == "COMPLETED" || adjustStatus == "CANCELLED");
+        if (isCompleted || row < 0 || row >= unitsTable->rowCount()) return;
+
+        if (col == 7) {
+            auto* snItem = unitsTable->item(row, 1);
+            if (snItem) {
+                onRemoveStagedUnitBySerial(snItem->text());
+            }
+        } else if (col == 5) {
+            auto* snItem = unitsTable->item(row, 1);
+            if (!snItem) return;
+            QString sn = snItem->text();
+            for (auto& su : stagedUnits) {
+                if (su.serial == sn) {
+                    QStringList destOpts;
+                    for (const auto& dl : detailLines) {
+                        if (dl.productId == su.productId && dl.fromStatus == su.fromStatus) {
+                            if (!destOpts.contains(dl.toStatus)) destOpts << dl.toStatus;
+                        }
+                    }
+                    if (destOpts.size() > 1) {
+                        QMenu menu(this);
+                        for (const auto& opt : destOpts) {
+                            auto* act = menu.addAction(translateStatus(opt));
+                            act->setCheckable(true);
+                            if (opt == su.toStatus) act->setChecked(true);
+                            connect(act, &QAction::triggered, [this, sn, opt]() {
+                                for (auto& s : stagedUnits) {
+                                    if (s.serial == sn) {
+                                        for (const auto& dl : detailLines) {
+                                            if (dl.productId == s.productId && dl.fromStatus == s.fromStatus && dl.toStatus == opt) {
+                                                s.adjustDetailId = dl.adjustDetailId;
+                                                s.toStatus = opt;
+                                                break;
+                                            }
+                                        }
+                                        syncStagedCache();
+                                        refreshAllViews(false);
+                                        break;
+                                    }
+                                }
+                            });
+                        }
+                        menu.exec(QCursor::pos());
+                    }
+                    break;
+                }
+            }
+        }
+    });
 }
 
 void AdjustmentMovementDetailDialog::loadMovementDetails()
@@ -1407,6 +1465,7 @@ void AdjustmentMovementDetailDialog::loadMovementDetails()
 void AdjustmentMovementDetailDialog::loadExecutedUnits()
 {
     executedUnits.clear();
+    executedSerialSet.clear();
     if (!db || adjustId <= 0) return;
 
     Vector<Record> histRecs;
@@ -1418,10 +1477,22 @@ void AdjustmentMovementDetailDialog::loadExecutedUnits()
         eu.productId = r.has("product_id") && holds_alternative<int>(r.get("product_id")) ? get<int>(r.get("product_id")) : 0;
         eu.productCode = r.has("product_code") && holds_alternative<string>(r.get("product_code")) ? QString::fromStdString(get<string>(r.get("product_code"))) : "";
         eu.productName = r.has("product_name") && holds_alternative<string>(r.get("product_name")) ? QString::fromStdString(get<string>(r.get("product_name"))) : "";
-        eu.serial = r.has("serial") && holds_alternative<string>(r.get("serial")) ? QString::fromStdString(get<string>(r.get("serial"))) : "";
+        string snStd = r.has("serial") && holds_alternative<string>(r.get("serial")) ? get<string>(r.get("serial")) : "";
+        eu.serial = QString::fromStdString(snStd);
         eu.fromStatus = r.has("from_status") && holds_alternative<string>(r.get("from_status")) ? QString::fromStdString(get<string>(r.get("from_status"))) : "";
         eu.toStatus = r.has("to_status") && holds_alternative<string>(r.get("to_status")) ? QString::fromStdString(get<string>(r.get("to_status"))) : "";
         executedUnits.push_back(eu);
+        if (!snStd.empty()) executedSerialSet.insert(snStd);
+    }
+}
+
+void AdjustmentMovementDetailDialog::syncStagedCache()
+{
+    stagedSerialSet.clear();
+    detailStagedCountMap.clear();
+    for (const auto& su : stagedUnits) {
+        stagedSerialSet.insert(su.serial.toStdString());
+        detailStagedCountMap[su.adjustDetailId]++;
     }
 }
 
@@ -1437,27 +1508,18 @@ int AdjustmentMovementDetailDialog::getSelectedDetailId() const
 
 int AdjustmentMovementDetailDialog::getStagedCountForDetail(int detailId) const
 {
-    int count = 0;
-    for (const auto& s : stagedUnits) {
-        if (s.adjustDetailId == detailId) count++;
-    }
-    return count;
+    auto it = detailStagedCountMap.find(detailId);
+    return (it != detailStagedCountMap.end()) ? it->second : 0;
 }
 
 bool AdjustmentMovementDetailDialog::isSerialStaged(const std::string& sn) const
 {
-    for (const auto& s : stagedUnits) {
-        if (s.serial.toStdString() == sn) return true;
-    }
-    return false;
+    return stagedSerialSet.find(sn) != stagedSerialSet.end();
 }
 
 bool AdjustmentMovementDetailDialog::isSerialExecuted(const std::string& sn) const
 {
-    for (const auto& e : executedUnits) {
-        if (e.serial.toStdString() == sn) return true;
-    }
-    return false;
+    return executedSerialSet.find(sn) != executedSerialSet.end();
 }
 
 void AdjustmentMovementDetailDialog::refreshAllViews(bool scrollToBottom)
@@ -1705,56 +1767,26 @@ void AdjustmentMovementDetailDialog::refreshUnitsTable(bool scrollToBottom)
             }
         }
 
+        auto* itTo = new QTableWidgetItem(translateStatus(su.toStatus) + (destOpts.size() > 1 && !isCompleted ? " ▾" : ""));
+        itTo->setTextAlignment(Qt::AlignCenter);
+        itTo->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
+        itTo->setForeground(QColor("#2563eb"));
         if (destOpts.size() > 1 && !isCompleted) {
-            auto* combo = new QComboBox();
-            for (const auto& opt : destOpts) {
-                combo->addItem(translateStatus(opt), opt);
-            }
-            int cIdx = combo->findData(su.toStatus);
-            if (cIdx >= 0) combo->setCurrentIndex(cIdx);
-            combo->setStyleSheet("QComboBox { font-size: 11px; font-weight: bold; padding: 2px 6px; color: #1e40af; }");
-            QString sSn = su.serial;
-            connect(combo, QOverload<int>::of(&QComboBox::currentIndexChanged), [this, sSn, combo](int) {
-                QString newDest = combo->currentData().toString();
-                for (auto& s : stagedUnits) {
-                    if (s.serial == sSn) {
-                        for (const auto& dl : detailLines) {
-                            if (dl.productId == s.productId && dl.fromStatus == s.fromStatus && dl.toStatus == newDest) {
-                                s.adjustDetailId = dl.adjustDetailId;
-                                s.toStatus = newDest;
-                                break;
-                            }
-                        }
-                        refreshAllViews(false);
-                        break;
-                    }
-                }
-            });
-            unitsTable->setCellWidget(rowIdx, 5, combo);
-        } else {
-            auto* itTo = new QTableWidgetItem(translateStatus(su.toStatus));
-            itTo->setTextAlignment(Qt::AlignCenter);
-            itTo->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
-            itTo->setForeground(QColor("#2563eb"));
-            unitsTable->setItem(rowIdx, 5, itTo);
+            itTo->setToolTip("Nhấp vào đây để đổi trạng thái đích");
         }
+        unitsTable->setItem(rowIdx, 5, itTo);
 
         auto* itClass = new QTableWidgetItem("⏳ Chờ chuyển");
         itClass->setTextAlignment(Qt::AlignCenter);
         itClass->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
         itClass->setForeground(QColor("#2563eb"));
 
-        auto* delBtn = new QPushButton("🗑️ Bỏ chọn");
-        delBtn->setCursor(Qt::PointingHandCursor);
-        delBtn->setEnabled(!isCompleted);
-        delBtn->setStyleSheet(
-            "QPushButton { background-color: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; border-radius: 4px; padding: 2px 8px; font-size: 11px; font-weight: bold; }"
-            "QPushButton:hover { background-color: #fecaca; color: #b91c1c; }"
-        );
-        QString sSn = su.serial;
-        connect(delBtn, &QPushButton::clicked, [this, sSn]() {
-            onRemoveStagedUnitBySerial(sSn);
-        });
+        auto* delItem = new QTableWidgetItem("🗑️ Bỏ chọn");
+        delItem->setTextAlignment(Qt::AlignCenter);
+        delItem->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
+        delItem->setForeground(QColor("#dc2626"));
+        delItem->setBackground(QBrush(QColor("#fee2e2")));
+        delItem->setToolTip("Nhấp vào đây để bỏ chọn");
 
         unitsTable->setItem(rowIdx, 0, itStt);
         unitsTable->setItem(rowIdx, 1, itSn);
@@ -1762,7 +1794,7 @@ void AdjustmentMovementDetailDialog::refreshUnitsTable(bool scrollToBottom)
         unitsTable->setItem(rowIdx, 3, itName);
         unitsTable->setItem(rowIdx, 4, itFrom);
         unitsTable->setItem(rowIdx, 6, itClass);
-        unitsTable->setCellWidget(rowIdx, 7, delBtn);
+        unitsTable->setItem(rowIdx, 7, delItem);
 
         rowIdx++;
     }
@@ -1923,6 +1955,8 @@ void AdjustmentMovementDetailDialog::onDirectSerialEntered()
     su.fromStatus = targetLine.fromStatus;
     su.toStatus = targetLine.toStatus;
     stagedUnits.push_back(su);
+    stagedSerialSet.insert(sn.toStdString());
+    detailStagedCountMap[targetLine.adjustDetailId]++;
 
     refreshAllViews(true);
 }
@@ -2029,6 +2063,8 @@ void AdjustmentMovementDetailDialog::stageUnitsBatch(int detailId, const std::ve
         su.fromStatus = line->fromStatus;
         su.toStatus = line->toStatus;
         stagedUnits.push_back(su);
+        stagedSerialSet.insert(sn);
+        detailStagedCountMap[line->adjustDetailId]++;
         added++;
         remaining--;
     }
@@ -2059,6 +2095,9 @@ void AdjustmentMovementDetailDialog::onRemoveStagedUnitBySerial(const QString& s
         return su.serial == sn;
     });
     if (it != stagedUnits.end()) {
+        std::string snStd = it->serial.toStdString();
+        stagedSerialSet.erase(snStd);
+        detailStagedCountMap[it->adjustDetailId]--;
         stagedUnits.erase(it);
         refreshAllViews(false);
     }
@@ -2069,9 +2108,11 @@ void AdjustmentMovementDetailDialog::preloadUnitsFromCheck()
     if (adjustStatus == "COMPLETED" || adjustStatus == "CANCELLED") return;
     if (!db || sourceCode.isEmpty() || !sourceCode.startsWith("CHK-")) return;
 
+    std::unordered_set<std::string> stagedSet = stagedSerialSet;
+    for (const auto& e : executedUnits) stagedSet.insert(e.serial.toStdString());
+
     Vector<string> stagedList;
-    for (const auto& s : stagedUnits) stagedList.push_back(s.serial.toStdString());
-    for (const auto& e : executedUnits) stagedList.push_back(e.serial.toStdString());
+    for (const auto& s : stagedSet) stagedList.push_back(s);
 
     for (const auto& dl : detailLines) {
         int stagedCount = getStagedCountForDetail(dl.adjustDetailId);
@@ -2090,6 +2131,8 @@ void AdjustmentMovementDetailDialog::preloadUnitsFromCheck()
             if (!isDiscrepancy) continue;
 
             string sn = r.has("serial") && holds_alternative<string>(r.get("serial")) ? get<string>(r.get("serial")) : "";
+            if (sn.empty() || stagedSet.find(sn) != stagedSet.end()) continue;
+
             StagedUnit su;
             su.adjustDetailId = dl.adjustDetailId;
             su.productId = dl.productId;
@@ -2099,6 +2142,9 @@ void AdjustmentMovementDetailDialog::preloadUnitsFromCheck()
             su.fromStatus = dl.fromStatus;
             su.toStatus = dl.toStatus;
             stagedUnits.push_back(su);
+            stagedSet.insert(sn);
+            stagedSerialSet.insert(sn);
+            detailStagedCountMap[dl.adjustDetailId]++;
             stagedList.push_back(sn);
             remaining--;
         }
@@ -2109,9 +2155,11 @@ void AdjustmentMovementDetailDialog::autoPickAllAccordingToPlan()
 {
     if (!db) return;
 
+    std::unordered_set<std::string> stagedSet = stagedSerialSet;
+    for (const auto& e : executedUnits) stagedSet.insert(e.serial.toStdString());
+
     Vector<string> stagedList;
-    for (const auto& s : stagedUnits) stagedList.push_back(s.serial.toStdString());
-    for (const auto& e : executedUnits) stagedList.push_back(e.serial.toStdString());
+    for (const auto& s : stagedSet) stagedList.push_back(s);
 
     int addedTotal = 0;
 
@@ -2133,6 +2181,8 @@ void AdjustmentMovementDetailDialog::autoPickAllAccordingToPlan()
             if (!isDiscrepancy) continue;
 
             string sn = r.has("serial") && holds_alternative<string>(r.get("serial")) ? get<string>(r.get("serial")) : "";
+            if (sn.empty() || stagedSet.find(sn) != stagedSet.end()) continue;
+
             StagedUnit su;
             su.adjustDetailId = dl.adjustDetailId;
             su.productId = dl.productId;
@@ -2142,6 +2192,9 @@ void AdjustmentMovementDetailDialog::autoPickAllAccordingToPlan()
             su.fromStatus = dl.fromStatus;
             su.toStatus = dl.toStatus;
             stagedUnits.push_back(su);
+            stagedSet.insert(sn);
+            stagedSerialSet.insert(sn);
+            detailStagedCountMap[dl.adjustDetailId]++;
             stagedList.push_back(sn);
             addedTotal++;
             remaining--;
@@ -2154,11 +2207,7 @@ void AdjustmentMovementDetailDialog::autoPickAllAccordingToPlan()
             if (isDiscrepancy) continue;
 
             string sn = r.has("serial") && holds_alternative<string>(r.get("serial")) ? get<string>(r.get("serial")) : "";
-            bool alreadyInList = false;
-            for (const auto& sl : stagedList) {
-                if (sl == sn) { alreadyInList = true; break; }
-            }
-            if (alreadyInList) continue;
+            if (sn.empty() || stagedSet.find(sn) != stagedSet.end()) continue;
 
             StagedUnit su;
             su.adjustDetailId = dl.adjustDetailId;
@@ -2169,6 +2218,9 @@ void AdjustmentMovementDetailDialog::autoPickAllAccordingToPlan()
             su.fromStatus = dl.fromStatus;
             su.toStatus = dl.toStatus;
             stagedUnits.push_back(su);
+            stagedSet.insert(sn);
+            stagedSerialSet.insert(sn);
+            detailStagedCountMap[dl.adjustDetailId]++;
             stagedList.push_back(sn);
             addedTotal++;
             remaining--;
@@ -2223,6 +2275,7 @@ void AdjustmentMovementDetailDialog::onConfirmSaveUnits()
 
     isExecuted = true;
     stagedUnits.clear();
+    syncStagedCache();
 
     QMessageBox::information(this, "Thành công", QString::fromStdString(res.message));
     loadMovementInfo();

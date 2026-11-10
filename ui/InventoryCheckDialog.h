@@ -24,9 +24,12 @@
 #include <QFrame>
 #include <QScrollArea>
 #include <QPainter>
+#include <QMenu>
 #include <vector>
 #include <string>
 #include <utility>
+#include <unordered_set>
+#include <unordered_map>
 
 #include "database/Database.h"
 #include "schema/UserCreate.h"

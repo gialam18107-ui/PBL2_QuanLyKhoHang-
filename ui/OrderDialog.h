@@ -18,8 +18,11 @@
 #include <QTextEdit>
 #include <QCloseEvent>
 #include <QDateTime>
+#include <QMenu>
 #include <vector>
 #include <string>
+#include <unordered_set>
+#include <unordered_map>
 
 #include "database/Database.h"
 #include "schema/UserCreate.h"
@@ -662,6 +665,13 @@ private:
     QPushButton* closeBtn;
 
     SimulationToolDialog* simulationDialog = nullptr;
+
+    void syncCache();
+    std::unordered_set<std::string> stagedSerialSet;
+    std::unordered_set<std::string> pendingInboundSerialSet;
+    std::unordered_set<std::string> pendingOutboundSerialSet;
+    std::unordered_map<int, int> pendingInboundCountMap;
+    std::unordered_map<int, int> pendingOutboundCountMap;
 
     std::vector<StagedUnit> stagedUnits;
     std::vector<PendingInboundUnit> pendingInboundUnits;

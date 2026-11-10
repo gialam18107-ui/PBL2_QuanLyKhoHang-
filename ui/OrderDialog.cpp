@@ -2872,10 +2872,10 @@ void OutboundProductUnitPickerDialog::setupUI()
     unitsTable->setSelectionMode(QAbstractItemView::ExtendedSelection);
     unitsTable->verticalHeader()->setVisible(false);
     unitsTable->verticalHeader()->setDefaultSectionSize(32);
-    unitsTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    unitsTable->setColumnWidth(0, 50);
     unitsTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
-    unitsTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
-    unitsTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+    unitsTable->setColumnWidth(2, 140);
+    unitsTable->setColumnWidth(3, 160);
     mainLayout->addWidget(unitsTable, 1);
 
     selectionCountLabel = new QLabel("Đã chọn: 0 đơn vị (Kéo chuột hoặc nhấn Shift/Ctrl để chọn nhiều dòng).", this);
@@ -2921,23 +2921,40 @@ void OutboundProductUnitPickerDialog::setupUI()
 
     if (quickSelectBtn) {
         connect(quickSelectBtn, &QPushButton::clicked, [this]() {
+            unitsTable->blockSignals(true);
+            unitsTable->setUpdatesEnabled(false);
             unitsTable->clearSelection();
             int limit = targetQty;
+            QItemSelection selection;
             for (int r = 0; r < unitsTable->rowCount() && limit > 0; ++r) {
                 if (!unitsTable->isRowHidden(r)) {
-                    unitsTable->selectRow(r);
+                    selection.select(unitsTable->model()->index(r, 0), unitsTable->model()->index(r, unitsTable->columnCount() - 1));
                     limit--;
                 }
             }
+            unitsTable->selectionModel()->select(selection, QItemSelectionModel::Select);
+            unitsTable->blockSignals(false);
+            unitsTable->setUpdatesEnabled(true);
+            updateSelectionCount();
         });
     }
 
     connect(selectAllBtn, &QPushButton::clicked, [this]() {
+        unitsTable->blockSignals(true);
+        unitsTable->setUpdatesEnabled(false);
         unitsTable->selectAll();
+        unitsTable->blockSignals(false);
+        unitsTable->setUpdatesEnabled(true);
+        updateSelectionCount();
     });
 
     connect(deselectAllBtn, &QPushButton::clicked, [this]() {
+        unitsTable->blockSignals(true);
+        unitsTable->setUpdatesEnabled(false);
         unitsTable->clearSelection();
+        unitsTable->blockSignals(false);
+        unitsTable->setUpdatesEnabled(true);
+        updateSelectionCount();
     });
 
     connect(searchInput, &QLineEdit::textChanged, [this](const QString&) {
@@ -2988,8 +3005,15 @@ void OutboundProductUnitPickerDialog::loadCandidates()
     // Auto quick-select if targetQty is specified
     if (targetQty > 0 && !candidateList.empty()) {
         int limit = std::min(targetQty, static_cast<int>(candidateList.size()));
-        for (int r = 0; r < limit; ++r) {
-            unitsTable->selectRow(r);
+        if (limit > 0) {
+            unitsTable->blockSignals(true);
+            unitsTable->setUpdatesEnabled(false);
+            QItemSelection selection;
+            selection.select(unitsTable->model()->index(0, 0), unitsTable->model()->index(limit - 1, unitsTable->columnCount() - 1));
+            unitsTable->selectionModel()->select(selection, QItemSelectionModel::Select);
+            unitsTable->blockSignals(false);
+            unitsTable->setUpdatesEnabled(true);
+            updateSelectionCount();
         }
     }
 }
@@ -3004,6 +3028,7 @@ void OutboundProductUnitPickerDialog::filterTable()
     }
 
     unitsTable->blockSignals(true);
+    unitsTable->setUpdatesEnabled(false);
     unitsTable->setRowCount(static_cast<int>(visible.size()));
     for (int r = 0; r < static_cast<int>(visible.size()); ++r) {
         const auto* c = visible[r];
@@ -3034,6 +3059,7 @@ void OutboundProductUnitPickerDialog::filterTable()
         unitsTable->setItem(r, 3, itNote);
     }
     unitsTable->blockSignals(false);
+    unitsTable->setUpdatesEnabled(true);
     updateSelectionCount();
 }
 
@@ -3417,6 +3443,7 @@ void SimulationToolDialog::filterTable()
     }
 
     unitsTable->blockSignals(true);
+    unitsTable->setUpdatesEnabled(false);
     unitsTable->setRowCount(static_cast<int>(displayList.size()));
     for (int r = 0; r < static_cast<int>(displayList.size()); ++r) {
         const auto* c = displayList[r];
@@ -3424,6 +3451,7 @@ void SimulationToolDialog::filterTable()
         auto* itSn = new QTableWidgetItem(QString::fromStdString(c->serial));
         itSn->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
         itSn->setData(Qt::UserRole, c->productId);
+        itSn->setData(Qt::UserRole + 1, c->isEligible);
 
         auto* itPn = new QTableWidgetItem(QString::fromStdString(c->productName));
         auto* itPc = new QTableWidgetItem(QString::fromStdString(c->productCode));
@@ -3450,25 +3478,23 @@ void SimulationToolDialog::filterTable()
         unitsTable->setItem(r, 4, itRe);
     }
     unitsTable->blockSignals(false);
+    unitsTable->setUpdatesEnabled(true);
     onSelectionChanged();
 }
 
 void SimulationToolDialog::onSelectionChanged()
 {
     auto selectedItems = unitsTable->selectedItems();
-    std::vector<int> rows;
+    std::unordered_set<int> rowSet;
     for (const auto* it : selectedItems) {
-        if (it->column() == 0) rows.push_back(it->row());
+        rowSet.insert(it->row());
     }
 
     int eligibleCount = 0;
-    for (int r : rows) {
-        QString sn = unitsTable->item(r, 0)->text();
-        for (const auto& c : candidates) {
-            if (QString::fromStdString(c.serial) == sn && c.isEligible) {
-                eligibleCount++;
-                break;
-            }
+    for (int r : rowSet) {
+        auto* it = unitsTable->item(r, 0);
+        if (it && it->data(Qt::UserRole + 1).toBool()) {
+            eligibleCount++;
         }
     }
 
@@ -3484,21 +3510,18 @@ void SimulationToolDialog::onSelectionChanged()
 void SimulationToolDialog::onSelectAllEligible()
 {
     unitsTable->blockSignals(true);
+    unitsTable->setUpdatesEnabled(false);
     unitsTable->clearSelection();
+    QItemSelection selection;
     for (int r = 0; r < unitsTable->rowCount(); ++r) {
-        QString sn = unitsTable->item(r, 0)->text();
-        bool elig = false;
-        for (const auto& c : candidates) {
-            if (QString::fromStdString(c.serial) == sn && c.isEligible) {
-                elig = true;
-                break;
-            }
-        }
-        if (elig) {
-            unitsTable->selectRow(r);
+        auto* it = unitsTable->item(r, 0);
+        if (it && it->data(Qt::UserRole + 1).toBool()) {
+            selection.select(unitsTable->model()->index(r, 0), unitsTable->model()->index(r, unitsTable->columnCount() - 1));
         }
     }
+    unitsTable->selectionModel()->select(selection, QItemSelectionModel::Select);
     unitsTable->blockSignals(false);
+    unitsTable->setUpdatesEnabled(true);
     onSelectionChanged();
 }
 
@@ -3517,12 +3540,9 @@ void SimulationToolDialog::onConfirmCandidates()
     for (const auto* it : selectedItems) rowSet.insert(it->row());
 
     for (int r : rowSet) {
-        QString sn = unitsTable->item(r, 0)->text();
-        for (const auto& c : candidates) {
-            if (QString::fromStdString(c.serial) == sn && c.isEligible) {
-                serials.push_back(c.serial);
-                break;
-            }
+        auto* it = unitsTable->item(r, 0);
+        if (it && it->data(Qt::UserRole + 1).toBool()) {
+            serials.push_back(it->text().trimmed().toStdString());
         }
     }
 
@@ -4003,6 +4023,45 @@ void UnitEntryDialog::setupUI()
         "QHeaderView::section { background-color: #f1f5f9; color: #334155; font-weight: 600; padding: 6px 8px; border: none; border-bottom: 1px solid #cbd5e1; }"
     );
     TableClipboardHelper::setupClipboardForTable(allUnitsTable);
+    connect(allUnitsTable, &QTableWidget::cellClicked, this, [this](int row, int col) {
+        if (isLogisticsCompleted || row < 0 || row >= allUnitsTable->rowCount()) return;
+        auto* snItem = allUnitsTable->item(row, 1);
+        if (!snItem) return;
+        std::string sn = snItem->text().trimmed().toStdString();
+
+        if (col == 7) {
+            if (isSerialInPending(sn)) {
+                removePendingUnitBySerial(sn);
+            } else if (isSerialInPendingOutbound(sn)) {
+                removePendingOutboundUnitBySerial(sn);
+            }
+        } else if (col == 5) {
+            QStringList opts = getAllowedStatusOptions();
+            if (opts.isEmpty()) return;
+
+            QMenu menu(this);
+            for (const auto& opt : opts) {
+                auto* act = menu.addAction(opt);
+                connect(act, &QAction::triggered, [this, sn, opt]() {
+                    for (auto& pending : pendingInboundUnits) {
+                        if (pending.serial == sn) {
+                            pending.status = opt.toStdString();
+                            hasModifiedUnits = true;
+                            refreshAllViews(false);
+                            return;
+                        }
+                    }
+                    for (auto& u : stagedUnits) {
+                        if (u.serial == sn) {
+                            onUnitStatusChanged(u.unitId, opt);
+                            return;
+                        }
+                    }
+                });
+            }
+            menu.exec(QCursor::pos());
+        }
+    });
     tab1Layout->addWidget(allUnitsTable, 1);
 
     // ==========================================
@@ -4156,6 +4215,45 @@ void UnitEntryDialog::setupUI()
         "QHeaderView::section { background-color: #f1f5f9; color: #334155; font-weight: 600; padding: 5px 8px; border: none; border-bottom: 1px solid #cbd5e1; }"
     );
     TableClipboardHelper::setupClipboardForTable(batchUnitsTable);
+    connect(batchUnitsTable, &QTableWidget::cellClicked, this, [this](int row, int col) {
+        if (isLogisticsCompleted || row < 0 || row >= batchUnitsTable->rowCount()) return;
+        auto* snItem = batchUnitsTable->item(row, 1);
+        if (!snItem) return;
+        std::string sn = snItem->text().trimmed().toStdString();
+
+        if (col == 7) {
+            if (isSerialInPending(sn)) {
+                removePendingUnitBySerial(sn);
+            } else if (isSerialInPendingOutbound(sn)) {
+                removePendingOutboundUnitBySerial(sn);
+            }
+        } else if (col == 5) {
+            QStringList opts = getAllowedStatusOptions();
+            if (opts.isEmpty()) return;
+
+            QMenu menu(this);
+            for (const auto& opt : opts) {
+                auto* act = menu.addAction(opt);
+                connect(act, &QAction::triggered, [this, sn, opt]() {
+                    for (auto& pending : pendingInboundUnits) {
+                        if (pending.serial == sn) {
+                            pending.status = opt.toStdString();
+                            hasModifiedUnits = true;
+                            refreshAllViews(false);
+                            return;
+                        }
+                    }
+                    for (auto& u : stagedUnits) {
+                        if (u.serial == sn) {
+                            onUnitStatusChanged(u.unitId, opt);
+                            return;
+                        }
+                    }
+                });
+            }
+            menu.exec(QCursor::pos());
+        }
+    });
     batchUnitsLayout->addWidget(batchUnitsTable);
 
     tab2Layout->addWidget(batchUnitsBox, 1);
@@ -4344,25 +4442,33 @@ void UnitEntryDialog::loadAllUnitsData()
         stagedUnits.push_back(u);
     }
 
-    // Calculate actual counts of each status in the current batch
+    syncCache();
+
+    // Calculate actual counts of each status in the current batch in a single pass O(N)
+    struct Breakdown { int avail = 0; int wrt = 0; int scrap = 0; int out = 0; };
+    std::unordered_map<int, Breakdown> stagedMap;
+    for (const auto& su : stagedUnits) {
+        auto& b = stagedMap[su.productId];
+        if (su.currentStatus == "AVAILABLE") b.avail++;
+        else if (su.currentStatus == "WARRANTY") b.wrt++;
+        else if (su.currentStatus == "SCRAPPED") b.scrap++;
+        else if (su.currentStatus == "OUT") {
+            b.out++;
+            if (su.originalStatus == "AVAILABLE") b.avail++;
+            else if (su.originalStatus == "WARRANTY") b.wrt++;
+            else if (su.originalStatus == "SCRAPPED") b.scrap++;
+            else b.avail++;
+        }
+    }
     for (auto& item : batchItems) {
-        item.batchAvail = 0;
-        item.batchWrt = 0;
-        item.batchScrap = 0;
-        item.batchOut = 0;
-        for (const auto& u : stagedUnits) {
-            if (u.productId == item.productId) {
-                if (u.currentStatus == "AVAILABLE") item.batchAvail++;
-                else if (u.currentStatus == "WARRANTY") item.batchWrt++;
-                else if (u.currentStatus == "SCRAPPED") item.batchScrap++;
-                else if (u.currentStatus == "OUT") {
-                    item.batchOut++;
-                    if (u.originalStatus == "AVAILABLE") item.batchAvail++;
-                    else if (u.originalStatus == "WARRANTY") item.batchWrt++;
-                    else if (u.originalStatus == "SCRAPPED") item.batchScrap++;
-                    else item.batchAvail++;
-                }
-            }
+        auto it = stagedMap.find(item.productId);
+        if (it != stagedMap.end()) {
+            item.batchAvail = it->second.avail;
+            item.batchWrt = it->second.wrt;
+            item.batchScrap = it->second.scrap;
+            item.batchOut = it->second.out;
+        } else {
+            item.batchAvail = item.batchWrt = item.batchScrap = item.batchOut = 0;
         }
     }
 
@@ -4381,45 +4487,50 @@ void UnitEntryDialog::refreshBatchOverviewTable()
 {
     if (!batchOverviewTable) return;
 
-    // Recalculate status breakdown per item including stagedUnits and pending units
+    // Recalculate status breakdown per item in a single pass O(N)
+    struct Breakdown { int avail = 0; int wrt = 0; int scrap = 0; int out = 0; };
+    std::unordered_map<int, Breakdown> countMap;
+
+    for (const auto& su : stagedUnits) {
+        auto& b = countMap[su.productId];
+        if (su.currentStatus == "AVAILABLE") b.avail++;
+        else if (su.currentStatus == "WARRANTY") b.wrt++;
+        else if (su.currentStatus == "SCRAPPED") b.scrap++;
+        else if (su.currentStatus == "OUT") {
+            b.out++;
+            if (su.originalStatus == "AVAILABLE") b.avail++;
+            else if (su.originalStatus == "WARRANTY") b.wrt++;
+            else if (su.originalStatus == "SCRAPPED") b.scrap++;
+            else b.avail++;
+        }
+    }
+
+    for (const auto& pu : pendingInboundUnits) {
+        auto& b = countMap[pu.productId];
+        if (pu.status == "AVAILABLE") b.avail++;
+        else if (pu.status == "WARRANTY") b.wrt++;
+        else if (pu.status == "SCRAPPED") b.scrap++;
+        else b.avail++;
+    }
+
+    for (const auto& po : pendingOutboundUnits) {
+        auto& b = countMap[po.productId];
+        b.out++;
+        if (po.currentStatus == "AVAILABLE") b.avail++;
+        else if (po.currentStatus == "WARRANTY") b.wrt++;
+        else if (po.currentStatus == "SCRAPPED") b.scrap++;
+        else b.avail++;
+    }
+
     for (auto& item : batchItems) {
-        item.batchAvail = 0;
-        item.batchWrt = 0;
-        item.batchScrap = 0;
-        item.batchOut = 0;
-
-        for (const auto& u : stagedUnits) {
-            if (u.productId == item.productId) {
-                if (u.currentStatus == "AVAILABLE") item.batchAvail++;
-                else if (u.currentStatus == "WARRANTY") item.batchWrt++;
-                else if (u.currentStatus == "SCRAPPED") item.batchScrap++;
-                else if (u.currentStatus == "OUT") {
-                    item.batchOut++;
-                    if (u.originalStatus == "AVAILABLE") item.batchAvail++;
-                    else if (u.originalStatus == "WARRANTY") item.batchWrt++;
-                    else if (u.originalStatus == "SCRAPPED") item.batchScrap++;
-                    else item.batchAvail++;
-                }
-            }
-        }
-
-        for (const auto& pu : pendingInboundUnits) {
-            if (pu.productId == item.productId) {
-                if (pu.status == "AVAILABLE") item.batchAvail++;
-                else if (pu.status == "WARRANTY") item.batchWrt++;
-                else if (pu.status == "SCRAPPED") item.batchScrap++;
-                else item.batchAvail++;
-            }
-        }
-
-        for (const auto& pu : pendingOutboundUnits) {
-            if (pu.productId == item.productId) {
-                item.batchOut++;
-                if (pu.currentStatus == "AVAILABLE") item.batchAvail++;
-                else if (pu.currentStatus == "WARRANTY") item.batchWrt++;
-                else if (pu.currentStatus == "SCRAPPED") item.batchScrap++;
-                else item.batchAvail++;
-            }
+        auto it = countMap.find(item.productId);
+        if (it != countMap.end()) {
+            item.batchAvail = it->second.avail;
+            item.batchWrt = it->second.wrt;
+            item.batchScrap = it->second.scrap;
+            item.batchOut = it->second.out;
+        } else {
+            item.batchAvail = item.batchWrt = item.batchScrap = item.batchOut = 0;
         }
     }
 
@@ -4629,21 +4740,35 @@ void UnitEntryDialog::onOpenProductUnitPicker(int productId, const QString& pCod
     }
 }
 
+void UnitEntryDialog::syncCache()
+{
+    stagedSerialSet.clear();
+    for (const auto& su : stagedUnits) {
+        stagedSerialSet.insert(su.serial);
+    }
+    pendingInboundSerialSet.clear();
+    pendingInboundCountMap.clear();
+    for (const auto& pu : pendingInboundUnits) {
+        pendingInboundSerialSet.insert(pu.serial);
+        pendingInboundCountMap[pu.productId]++;
+    }
+    pendingOutboundSerialSet.clear();
+    pendingOutboundCountMap.clear();
+    for (const auto& po : pendingOutboundUnits) {
+        pendingOutboundSerialSet.insert(po.serial);
+        pendingOutboundCountMap[po.productId]++;
+    }
+}
+
 int UnitEntryDialog::getPendingCountForProduct(int productId) const
 {
-    int count = 0;
-    for (const auto& u : pendingInboundUnits) {
-        if (u.productId == productId) count++;
-    }
-    return count;
+    auto it = pendingInboundCountMap.find(productId);
+    return (it != pendingInboundCountMap.end()) ? it->second : 0;
 }
 
 bool UnitEntryDialog::isSerialInPending(const std::string& sn) const
 {
-    for (const auto& u : pendingInboundUnits) {
-        if (u.serial == sn) return true;
-    }
-    return false;
+    return pendingInboundSerialSet.find(sn) != pendingInboundSerialSet.end();
 }
 
 void UnitEntryDialog::removePendingUnitBySerial(const std::string& sn)
@@ -4652,6 +4777,8 @@ void UnitEntryDialog::removePendingUnitBySerial(const std::string& sn)
         return u.serial == sn;
     });
     if (it != pendingInboundUnits.end()) {
+        pendingInboundSerialSet.erase(sn);
+        pendingInboundCountMap[it->productId]--;
         pendingInboundUnits.erase(it);
         refreshAllViews(false);
         showToast(QString("🗑️ Đã xóa linh kiện [%1] khỏi danh sách chờ lưu.").arg(QString::fromStdString(sn)), true);
@@ -4718,11 +4845,9 @@ bool UnitEntryDialog::recordPendingInboundSerial(int productId, const QString& s
         }
     }
 
-    for (const auto& u : stagedUnits) {
-        if (u.serial == snStd) {
-            outErrMsg = QString("Mã serial '%1' đã có trong đợt này rồi.").arg(sn);
-            return false;
-        }
+    if (stagedSerialSet.count(snStd) > 0) {
+        outErrMsg = QString("Mã serial '%1' đã có trong đợt này rồi.").arg(sn);
+        return false;
     }
 
     if (isSerialInPending(snStd)) {
@@ -4739,9 +4864,9 @@ bool UnitEntryDialog::recordPendingInboundSerial(int productId, const QString& s
     pending.addedTime = QDateTime::currentDateTime().toString("HH:mm:ss");
 
     pendingInboundUnits.push_back(pending);
+    pendingInboundSerialSet.insert(snStd);
+    pendingInboundCountMap[productId]++;
     hasModifiedUnits = true;
-
-
 
     if (refreshViews) {
         refreshAllViews(true);
@@ -4757,19 +4882,13 @@ bool UnitEntryDialog::recordPendingInboundSerial(int productId, const QString& s
 
 int UnitEntryDialog::getPendingOutboundCountForProduct(int productId) const
 {
-    int count = 0;
-    for (const auto& u : pendingOutboundUnits) {
-        if (u.productId == productId) count++;
-    }
-    return count;
+    auto it = pendingOutboundCountMap.find(productId);
+    return (it != pendingOutboundCountMap.end()) ? it->second : 0;
 }
 
 bool UnitEntryDialog::isSerialInPendingOutbound(const std::string& sn) const
 {
-    for (const auto& u : pendingOutboundUnits) {
-        if (u.serial == sn) return true;
-    }
-    return false;
+    return pendingOutboundSerialSet.find(sn) != pendingOutboundSerialSet.end();
 }
 
 void UnitEntryDialog::removePendingOutboundUnitBySerial(const std::string& sn)
@@ -4778,6 +4897,8 @@ void UnitEntryDialog::removePendingOutboundUnitBySerial(const std::string& sn)
         return u.serial == sn;
     });
     if (it != pendingOutboundUnits.end()) {
+        pendingOutboundSerialSet.erase(sn);
+        pendingOutboundCountMap[it->productId]--;
         pendingOutboundUnits.erase(it);
         hasModifiedUnits = true;
         refreshAllViews(false);
@@ -4805,11 +4926,9 @@ bool UnitEntryDialog::recordPendingOutboundSerial(int productId, const QString& 
     }
 
     // 1. Check if already dispatched in DB
-    for (const auto& u : stagedUnits) {
-        if (u.serial == snStd) {
-            outErrMsg = QString("Mã Serial [%1] đã có trong danh sách xuất của đợt này.").arg(snClean);
-            return false;
-        }
+    if (stagedSerialSet.count(snStd) > 0) {
+        outErrMsg = QString("Mã Serial [%1] đã có trong danh sách xuất của đợt này.").arg(snClean);
+        return false;
     }
 
     // 2. Check if already in pendingOutboundUnits
@@ -4902,6 +5021,8 @@ bool UnitEntryDialog::recordPendingOutboundSerial(int productId, const QString& 
     pu.currentStatus = curStatus;
     pu.addedTime = QDateTime::currentDateTime().toString("HH:mm:ss");
     pendingOutboundUnits.push_back(pu);
+    pendingOutboundSerialSet.insert(snStd);
+    pendingOutboundCountMap[effPid]++;
 
     hasModifiedUnits = true;
     return true;
@@ -5115,17 +5236,56 @@ void UnitEntryDialog::setupProductEntryTab()
     prodUnitsTable->setAlternatingRowColors(true);
     prodUnitsTable->verticalHeader()->setVisible(false);
     prodUnitsTable->verticalHeader()->setDefaultSectionSize(32);
-    prodUnitsTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    prodUnitsTable->setColumnWidth(0, 45);
     prodUnitsTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
-    prodUnitsTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
-    prodUnitsTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
-    prodUnitsTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
-    prodUnitsTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::ResizeToContents);
+    prodUnitsTable->setColumnWidth(2, 140);
+    prodUnitsTable->setColumnWidth(3, 110);
+    prodUnitsTable->setColumnWidth(4, 110);
+    prodUnitsTable->setColumnWidth(5, 80);
     prodUnitsTable->setStyleSheet(
         "QTableWidget { background-color: #ffffff; alternate-background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 12px; }"
         "QHeaderView::section { background-color: #f1f5f9; color: #334155; font-weight: 600; padding: 6px 8px; border: none; border-bottom: 1px solid #cbd5e1; }"
     );
+    TableClipboardHelper::setupClipboardForTable(prodUnitsTable);
     mainLayout->addWidget(prodUnitsTable, 1);
+
+    connect(prodUnitsTable, &QTableWidget::cellClicked, this, [this](int row, int col) {
+        if (isLogisticsCompleted || row < 0 || row >= prodUnitsTable->rowCount()) return;
+        auto* snItem = prodUnitsTable->item(row, 1);
+        if (!snItem) return;
+        std::string sn = snItem->text().trimmed().toStdString();
+
+        if (col == 5) {
+            if (isSerialInPending(sn)) {
+                removePendingUnitBySerial(sn);
+            }
+        } else if (col == 2) {
+            QStringList opts = getAllowedStatusOptions();
+            if (opts.isEmpty()) return;
+
+            QMenu menu(this);
+            for (const auto& opt : opts) {
+                auto* act = menu.addAction(opt);
+                connect(act, &QAction::triggered, [this, sn, opt]() {
+                    for (auto& pending : pendingInboundUnits) {
+                        if (pending.serial == sn) {
+                            pending.status = opt.toStdString();
+                            hasModifiedUnits = true;
+                            refreshAllViews(false);
+                            return;
+                        }
+                    }
+                    for (auto& u : stagedUnits) {
+                        if (u.serial == sn) {
+                            onUnitStatusChanged(u.unitId, opt);
+                            return;
+                        }
+                    }
+                });
+            }
+            menu.exec(QCursor::pos());
+        }
+    });
 }
 
 void UnitEntryDialog::refreshProductEntryTab(bool scrollToBottom)
@@ -5278,6 +5438,7 @@ void UnitEntryDialog::onInboundProductComboChanged(int index)
 
     // Refresh units table for this product
     if (prodUnitsTable) {
+        prodUnitsTable->setUpdatesEnabled(false);
         prodUnitsTable->blockSignals(true);
         prodUnitsTable->setRowCount(0);
 
@@ -5300,8 +5461,6 @@ void UnitEntryDialog::onInboundProductComboChanged(int index)
         int totalRows = static_cast<int>(pUnits.size() + pPending.size());
         prodUnitsTable->setRowCount(totalRows);
 
-        QStringList allowedOpts = getAllowedStatusOptions();
-
         int rowIdx = 0;
         // Render DB units
         for (const auto* u : pUnits) {
@@ -5312,30 +5471,18 @@ void UnitEntryDialog::onInboundProductComboChanged(int index)
             itSn->setFont(QFont("Consolas", font().pointSize(), QFont::Bold));
 
             QString curSt = QString::fromStdString(u->currentStatus);
-            if (isLogisticsCompleted) {
-                auto* itSt = new QTableWidgetItem(curSt);
-                itSt->setTextAlignment(Qt::AlignCenter);
-                itSt->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
-                if (curSt == "AVAILABLE") itSt->setForeground(QColor(22, 163, 74));
-                else if (curSt == "WARRANTY") itSt->setForeground(QColor(37, 99, 235));
-                else if (curSt == "SCRAPPED") itSt->setForeground(QColor(220, 38, 38));
-                else if (curSt == "OUT") itSt->setForeground(QColor(234, 88, 12));
-                else itSt->setForeground(QColor(71, 85, 105));
-                prodUnitsTable->setItem(rowIdx, 2, itSt);
-            } else {
-                auto* stCombo = new QComboBox();
-                QStringList opts = allowedOpts;
-                if (!curSt.isEmpty() && !opts.contains(curSt)) opts << curSt;
-                stCombo->addItems(opts);
-                int curIdx = stCombo->findText(curSt);
-                if (curIdx >= 0) stCombo->setCurrentIndex(curIdx);
-                stCombo->setStyleSheet("QComboBox { font-size: 11px; font-weight: bold; padding: 2px 6px; }");
-                int uId = u->unitId;
-                connect(stCombo, &QComboBox::currentTextChanged, [this, uId](const QString& newSt) {
-                    onUnitStatusChanged(uId, newSt);
-                });
-                prodUnitsTable->setCellWidget(rowIdx, 2, stCombo);
+            auto* itSt = new QTableWidgetItem(isLogisticsCompleted ? curSt : curSt + " ▾");
+            itSt->setTextAlignment(Qt::AlignCenter);
+            itSt->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
+            if (!isLogisticsCompleted) {
+                itSt->setToolTip("Nhấn để thay đổi trạng thái");
             }
+            if (curSt == "AVAILABLE") itSt->setForeground(QColor(22, 163, 74));
+            else if (curSt == "WARRANTY") itSt->setForeground(QColor(37, 99, 235));
+            else if (curSt == "SCRAPPED") itSt->setForeground(QColor(220, 38, 38));
+            else if (curSt == "OUT") itSt->setForeground(QColor(234, 88, 12));
+            else itSt->setForeground(QColor(71, 85, 105));
+            prodUnitsTable->setItem(rowIdx, 2, itSt);
 
             auto* itTime = new QTableWidgetItem("Đã lưu CSDL");
             itTime->setTextAlignment(Qt::AlignCenter);
@@ -5368,26 +5515,15 @@ void UnitEntryDialog::onInboundProductComboChanged(int index)
             itSn->setFont(QFont("Consolas", font().pointSize(), QFont::Bold));
             itSn->setForeground(QColor("#1e40af"));
 
-            auto* stCombo = new QComboBox();
-            QStringList opts = allowedOpts;
             QString curSt = QString::fromStdString(pu->status);
-            if (!curSt.isEmpty() && !opts.contains(curSt)) opts << curSt;
-            stCombo->addItems(opts);
-            int curIdx = stCombo->findText(curSt);
-            if (curIdx >= 0) stCombo->setCurrentIndex(curIdx);
-            stCombo->setEnabled(!isLogisticsCompleted);
-            stCombo->setStyleSheet("QComboBox { font-size: 11px; font-weight: bold; padding: 2px 6px; color: #1e40af; }");
-            std::string puSn = pu->serial;
-            connect(stCombo, &QComboBox::currentTextChanged, [this, puSn](const QString& newSt) {
-                for (auto& pending : pendingInboundUnits) {
-                    if (pending.serial == puSn) {
-                        pending.status = newSt.toStdString();
-                        hasModifiedUnits = true;
-                        refreshAllViews(false);
-                        break;
-                    }
-                }
-            });
+            auto* itSt = new QTableWidgetItem(isLogisticsCompleted ? curSt : curSt + " ▾");
+            itSt->setTextAlignment(Qt::AlignCenter);
+            itSt->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
+            itSt->setForeground(QColor("#1e40af"));
+            if (!isLogisticsCompleted) {
+                itSt->setToolTip("Nhấn để thay đổi trạng thái");
+            }
+            prodUnitsTable->setItem(rowIdx, 2, itSt);
 
             auto* itTime = new QTableWidgetItem(pu->addedTime.isEmpty() ? "Mới quét" : pu->addedTime);
             itTime->setTextAlignment(Qt::AlignCenter);
@@ -5398,29 +5534,28 @@ void UnitEntryDialog::onInboundProductComboChanged(int index)
             itClass->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
             itClass->setForeground(QColor("#2563eb"));
 
+            auto* itAct = new QTableWidgetItem(isLogisticsCompleted ? "-" : "🗑️ Xóa");
+            itAct->setTextAlignment(Qt::AlignCenter);
+            itAct->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
+            if (!isLogisticsCompleted) {
+                itAct->setForeground(QColor("#dc2626"));
+                itAct->setToolTip("Nhấn để xóa khỏi danh sách chờ lưu");
+            } else {
+                itAct->setForeground(QColor("#94a3b8"));
+            }
+
             prodUnitsTable->setItem(rowIdx, 0, itStt);
             prodUnitsTable->setItem(rowIdx, 1, itSn);
-            prodUnitsTable->setCellWidget(rowIdx, 2, stCombo);
             prodUnitsTable->setItem(rowIdx, 3, itTime);
             prodUnitsTable->setItem(rowIdx, 4, itClass);
-
-            auto* delBtn = new QPushButton("🗑️ Xóa");
-            delBtn->setCursor(Qt::PointingHandCursor);
-            delBtn->setStyleSheet(
-                "QPushButton { background-color: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; border-radius: 4px; padding: 2px 8px; font-size: 11px; font-weight: bold; }"
-                "QPushButton:hover { background-color: #fecaca; color: #b91c1c; }"
-            );
-            std::string snToDelete = pu->serial;
-            connect(delBtn, &QPushButton::clicked, [this, snToDelete]() {
-                removePendingUnitBySerial(snToDelete);
-            });
-            prodUnitsTable->setCellWidget(rowIdx, 5, delBtn);
+            prodUnitsTable->setItem(rowIdx, 5, itAct);
 
             rowIdx++;
         }
 
         prodUnitsTable->blockSignals(false);
         prodUnitsTable->viewport()->update();
+        prodUnitsTable->setUpdatesEnabled(true);
 
         if (prodUnitsCountLabel) {
             if (pPending.size() > 0) {
@@ -5604,31 +5739,18 @@ void UnitEntryDialog::refreshBatchUnitsTable(bool scrollToBottom)
         batchUnitsTable->setItem(rowIdx, 4, itOrig);
 
         QString curStatusStr = QString::fromStdString(u.currentStatus);
-        if (isLogisticsCompleted) {
-            auto* itSt = new QTableWidgetItem(curStatusStr);
-            itSt->setTextAlignment(Qt::AlignCenter);
-            itSt->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
-            if (curStatusStr == "AVAILABLE") itSt->setForeground(QColor(22, 163, 74));
-            else if (curStatusStr == "WARRANTY") itSt->setForeground(QColor(37, 99, 235));
-            else if (curStatusStr == "SCRAPPED") itSt->setForeground(QColor(220, 38, 38));
-            else if (curStatusStr == "OUT") itSt->setForeground(QColor(234, 88, 12));
-            else itSt->setForeground(QColor(71, 85, 105));
-            batchUnitsTable->setItem(rowIdx, 5, itSt);
-        } else {
-            auto* combo = new QComboBox();
-            QStringList opts = allowedStatuses;
-            if (!curStatusStr.isEmpty() && !opts.contains(curStatusStr)) {
-                opts << curStatusStr;
-            }
-            combo->addItems(opts);
-            int curIdx = combo->findText(curStatusStr);
-            if (curIdx >= 0) combo->setCurrentIndex(curIdx);
-            combo->setStyleSheet("QComboBox { font-size: 11px; font-weight: bold; padding: 2px 6px; }");
-            connect(combo, &QComboBox::currentTextChanged, [this, unitId = u.unitId](const QString& newSt) {
-                onUnitStatusChanged(unitId, newSt);
-            });
-            batchUnitsTable->setCellWidget(rowIdx, 5, combo);
+        auto* itSt = new QTableWidgetItem(isLogisticsCompleted ? curStatusStr : curStatusStr + " ▾");
+        itSt->setTextAlignment(Qt::AlignCenter);
+        itSt->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
+        if (!isLogisticsCompleted) {
+            itSt->setToolTip("Nhấn để thay đổi trạng thái");
         }
+        if (curStatusStr == "AVAILABLE") itSt->setForeground(QColor(22, 163, 74));
+        else if (curStatusStr == "WARRANTY") itSt->setForeground(QColor(37, 99, 235));
+        else if (curStatusStr == "SCRAPPED") itSt->setForeground(QColor(220, 38, 38));
+        else if (curStatusStr == "OUT") itSt->setForeground(QColor(234, 88, 12));
+        else itSt->setForeground(QColor(71, 85, 105));
+        batchUnitsTable->setItem(rowIdx, 5, itSt);
 
         QString savedSt = QString::fromStdString(u.savedStatus);
         auto* itSaved = new QTableWidgetItem(savedSt);
@@ -5671,29 +5793,15 @@ void UnitEntryDialog::refreshBatchUnitsTable(bool scrollToBottom)
         batchUnitsTable->setItem(rowIdx, 3, itName);
         batchUnitsTable->setItem(rowIdx, 4, itOrig);
 
-        auto* combo = new QComboBox();
-        QStringList opts = allowedStatuses;
         QString curStatusStr = QString::fromStdString(pu.status);
-        if (!curStatusStr.isEmpty() && !opts.contains(curStatusStr)) {
-            opts << curStatusStr;
+        auto* itSt = new QTableWidgetItem(isLogisticsCompleted ? curStatusStr : curStatusStr + " ▾");
+        itSt->setTextAlignment(Qt::AlignCenter);
+        itSt->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
+        itSt->setForeground(QColor("#1e40af"));
+        if (!isLogisticsCompleted) {
+            itSt->setToolTip("Nhấn để thay đổi trạng thái");
         }
-        combo->addItems(opts);
-        int curIdx = combo->findText(curStatusStr);
-        if (curIdx >= 0) combo->setCurrentIndex(curIdx);
-        combo->setEnabled(!isLogisticsCompleted);
-        combo->setStyleSheet("QComboBox { font-size: 11px; font-weight: bold; padding: 2px 6px; color: #1e40af; }");
-        std::string puSn = pu.serial;
-        connect(combo, &QComboBox::currentTextChanged, [this, puSn](const QString& newSt) {
-            for (auto& pending : pendingInboundUnits) {
-                if (pending.serial == puSn) {
-                    pending.status = newSt.toStdString();
-                    hasModifiedUnits = true;
-                    refreshAllViews(false);
-                    break;
-                }
-            }
-        });
-        batchUnitsTable->setCellWidget(rowIdx, 5, combo);
+        batchUnitsTable->setItem(rowIdx, 5, itSt);
 
         auto* itStatus = new QTableWidgetItem("⏳ Chờ lưu");
         itStatus->setTextAlignment(Qt::AlignCenter);
@@ -5701,16 +5809,16 @@ void UnitEntryDialog::refreshBatchUnitsTable(bool scrollToBottom)
         itStatus->setForeground(QColor("#2563eb"));
         batchUnitsTable->setItem(rowIdx, 6, itStatus);
 
-        auto* delBtn = new QPushButton("🗑️ Xóa");
-        delBtn->setCursor(Qt::PointingHandCursor);
-        delBtn->setStyleSheet(
-            "QPushButton { background-color: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; border-radius: 4px; padding: 2px 8px; font-size: 11px; font-weight: bold; }"
-            "QPushButton:hover { background-color: #fecaca; color: #b91c1c; }"
-        );
-        connect(delBtn, &QPushButton::clicked, [this, puSn]() {
-            removePendingUnitBySerial(puSn);
-        });
-        batchUnitsTable->setCellWidget(rowIdx, 7, delBtn);
+        auto* itAct = new QTableWidgetItem(isLogisticsCompleted ? "-" : "🗑️ Xóa");
+        itAct->setTextAlignment(Qt::AlignCenter);
+        itAct->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
+        if (!isLogisticsCompleted) {
+            itAct->setForeground(QColor("#dc2626"));
+            itAct->setToolTip("Nhấn để xóa khỏi danh sách chờ lưu");
+        } else {
+            itAct->setForeground(QColor("#94a3b8"));
+        }
+        batchUnitsTable->setItem(rowIdx, 7, itAct);
 
         rowIdx++;
     }
@@ -5752,17 +5860,16 @@ void UnitEntryDialog::refreshBatchUnitsTable(bool scrollToBottom)
         batchUnitsTable->setItem(rowIdx, 5, itTargetStatus);
         batchUnitsTable->setItem(rowIdx, 6, itStatus);
 
-        auto* delBtn = new QPushButton("🗑️ Bỏ chọn");
-        delBtn->setCursor(Qt::PointingHandCursor);
-        delBtn->setStyleSheet(
-            "QPushButton { background-color: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; border-radius: 4px; padding: 2px 8px; font-size: 11px; font-weight: bold; }"
-            "QPushButton:hover { background-color: #fecaca; color: #b91c1c; }"
-        );
-        std::string puSn = pu.serial;
-        connect(delBtn, &QPushButton::clicked, [this, puSn]() {
-            removePendingOutboundUnitBySerial(puSn);
-        });
-        batchUnitsTable->setCellWidget(rowIdx, 7, delBtn);
+        auto* itAct = new QTableWidgetItem(isLogisticsCompleted ? "-" : "🗑️ Bỏ chọn");
+        itAct->setTextAlignment(Qt::AlignCenter);
+        itAct->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
+        if (!isLogisticsCompleted) {
+            itAct->setForeground(QColor("#dc2626"));
+            itAct->setToolTip("Nhấn để bỏ chọn linh kiện này khỏi danh sách chờ xuất");
+        } else {
+            itAct->setForeground(QColor("#94a3b8"));
+        }
+        batchUnitsTable->setItem(rowIdx, 7, itAct);
 
         rowIdx++;
     }
@@ -5881,9 +5988,12 @@ void UnitEntryDialog::refreshAllUnitsTable(bool scrollToBottom)
         allUnitsTable->setItem(rowIdx, 4, itOrigStatus);
 
         QString curStatusStr = QString::fromStdString(u->currentStatus);
-        auto* itSt = new QTableWidgetItem(curStatusStr);
+        auto* itSt = new QTableWidgetItem(isLogisticsCompleted ? curStatusStr : curStatusStr + " ▾");
         itSt->setTextAlignment(Qt::AlignCenter);
         itSt->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
+        if (!isLogisticsCompleted) {
+            itSt->setToolTip("Nhấn để thay đổi trạng thái");
+        }
         if (curStatusStr == "AVAILABLE") itSt->setForeground(QColor(22, 163, 74));
         else if (curStatusStr == "WARRANTY") itSt->setForeground(QColor(37, 99, 235));
         else if (curStatusStr == "SCRAPPED") itSt->setForeground(QColor(220, 38, 38));
@@ -5932,29 +6042,15 @@ void UnitEntryDialog::refreshAllUnitsTable(bool scrollToBottom)
         allUnitsTable->setItem(rowIdx, 3, itName);
         allUnitsTable->setItem(rowIdx, 4, itOrigStatus);
 
-        auto* combo = new QComboBox();
-        QStringList opts = allowedStatuses;
         QString curStatusStr = QString::fromStdString(pu->status);
-        if (!curStatusStr.isEmpty() && !opts.contains(curStatusStr)) {
-            opts << curStatusStr;
+        auto* itSt = new QTableWidgetItem(isLogisticsCompleted ? curStatusStr : curStatusStr + " ▾");
+        itSt->setTextAlignment(Qt::AlignCenter);
+        itSt->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
+        itSt->setForeground(QColor("#1e40af"));
+        if (!isLogisticsCompleted) {
+            itSt->setToolTip("Nhấn để thay đổi trạng thái");
         }
-        combo->addItems(opts);
-        int curIdx = combo->findText(curStatusStr);
-        if (curIdx >= 0) combo->setCurrentIndex(curIdx);
-        combo->setEnabled(!isLogisticsCompleted);
-        combo->setStyleSheet("QComboBox { font-size: 11px; font-weight: bold; padding: 2px 6px; color: #1e40af; }");
-        std::string puSn = pu->serial;
-        connect(combo, &QComboBox::currentTextChanged, [this, puSn](const QString& newSt) {
-            for (auto& pending : pendingInboundUnits) {
-                if (pending.serial == puSn) {
-                    pending.status = newSt.toStdString();
-                    hasModifiedUnits = true;
-                    refreshAllViews(false);
-                    break;
-                }
-            }
-        });
-        allUnitsTable->setCellWidget(rowIdx, 5, combo);
+        allUnitsTable->setItem(rowIdx, 5, itSt);
 
         auto* itStatus = new QTableWidgetItem("⏳ Chờ lưu");
         itStatus->setTextAlignment(Qt::AlignCenter);
@@ -5962,16 +6058,16 @@ void UnitEntryDialog::refreshAllUnitsTable(bool scrollToBottom)
         itStatus->setForeground(QColor("#2563eb"));
         allUnitsTable->setItem(rowIdx, 6, itStatus);
 
-        auto* delBtn = new QPushButton("🗑️ Xóa");
-        delBtn->setCursor(Qt::PointingHandCursor);
-        delBtn->setStyleSheet(
-            "QPushButton { background-color: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; border-radius: 4px; padding: 2px 8px; font-size: 11px; font-weight: bold; }"
-            "QPushButton:hover { background-color: #fecaca; color: #b91c1c; }"
-        );
-        connect(delBtn, &QPushButton::clicked, [this, puSn]() {
-            removePendingUnitBySerial(puSn);
-        });
-        allUnitsTable->setCellWidget(rowIdx, 7, delBtn);
+        auto* itAct = new QTableWidgetItem(isLogisticsCompleted ? "-" : "🗑️ Xóa");
+        itAct->setTextAlignment(Qt::AlignCenter);
+        itAct->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
+        if (!isLogisticsCompleted) {
+            itAct->setForeground(QColor("#dc2626"));
+            itAct->setToolTip("Nhấn để xóa khỏi danh sách chờ lưu");
+        } else {
+            itAct->setForeground(QColor("#94a3b8"));
+        }
+        allUnitsTable->setItem(rowIdx, 7, itAct);
 
         rowIdx++;
     }
@@ -6013,17 +6109,16 @@ void UnitEntryDialog::refreshAllUnitsTable(bool scrollToBottom)
         allUnitsTable->setItem(rowIdx, 5, itTargetStatus);
         allUnitsTable->setItem(rowIdx, 6, itStatus);
 
-        auto* delBtn = new QPushButton("🗑️ Bỏ chọn");
-        delBtn->setCursor(Qt::PointingHandCursor);
-        delBtn->setStyleSheet(
-            "QPushButton { background-color: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; border-radius: 4px; padding: 2px 8px; font-size: 11px; font-weight: bold; }"
-            "QPushButton:hover { background-color: #fecaca; color: #b91c1c; }"
-        );
-        std::string puSn = pu->serial;
-        connect(delBtn, &QPushButton::clicked, [this, puSn]() {
-            removePendingOutboundUnitBySerial(puSn);
-        });
-        allUnitsTable->setCellWidget(rowIdx, 7, delBtn);
+        auto* itAct = new QTableWidgetItem(isLogisticsCompleted ? "-" : "🗑️ Bỏ chọn");
+        itAct->setTextAlignment(Qt::AlignCenter);
+        itAct->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
+        if (!isLogisticsCompleted) {
+            itAct->setForeground(QColor("#dc2626"));
+            itAct->setToolTip("Nhấn để bỏ chọn linh kiện này khỏi danh sách chờ xuất");
+        } else {
+            itAct->setForeground(QColor("#94a3b8"));
+        }
+        allUnitsTable->setItem(rowIdx, 7, itAct);
 
         rowIdx++;
     }
@@ -6653,11 +6748,7 @@ void UnitEntryDialog::onCandidateSerialsSelected(const Vector<std::string>& seri
 
     for (size_t s = 0; s < serials.size(); ++s) {
         const std::string& sn = serials[s];
-        bool already = false;
-        for (const auto& u : stagedUnits) {
-            if (u.serial == sn) { already = true; break; }
-        }
-        if (already) continue;
+        if (stagedSerialSet.count(sn) > 0) continue;
 
         int pid = user_query::get_product_id_by_serial(db, sn);
         if (pid <= 0) continue;
@@ -6731,6 +6822,7 @@ void UnitEntryDialog::onBatchAutoGenerateUnits()
 
     if (hubType == HubType::INBOUND) {
         int totalCreated = 0;
+        QString nowTime = QDateTime::currentDateTime().toString("HH:mm:ss");
         for (const auto& item : batchItems) {
             int effActual = item.actualQty + getPendingCountForProduct(item.productId);
             int needed = item.batchQty - effActual;
@@ -6747,15 +6839,17 @@ void UnitEntryDialog::onBatchAutoGenerateUnits()
                 pending.productName = item.productName;
                 pending.serial = sn;
                 pending.status = targetSt.toStdString();
-                pending.addedTime = QDateTime::currentDateTime().toString("HH:mm:ss");
+                pending.addedTime = nowTime;
                 pendingInboundUnits.push_back(pending);
+                pendingInboundSerialSet.insert(sn);
+                pendingInboundCountMap[item.productId]++;
                 hasModifiedUnits = true;
                 totalCreated++;
             }
         }
 
         if (totalCreated > 0) {
-        
+            syncCache();
             refreshAllViews(true);
             showToast(QString("⚡ Đã giả lập tạo %1 linh kiện mới vào danh sách chờ lưu!").arg(totalCreated), true);
         }
@@ -6767,6 +6861,7 @@ void UnitEntryDialog::onBatchAutoGenerateUnits()
         if (!db) return;
 
         Vector<string> exVec;
+        exVec.reserve(stagedUnits.size() + pendingOutboundUnits.size());
         for (const auto& u : stagedUnits) exVec.push_back(u.serial);
         for (const auto& p : pendingOutboundUnits) exVec.push_back(p.serial);
 

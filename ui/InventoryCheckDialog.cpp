@@ -752,13 +752,13 @@ void InventoryCheckReconciliationDialog::setupUI()
     missingUnitTable = new QTableWidget(b1Widget);
     missingUnitTable->setColumnCount(7);
     missingUnitTable->setHorizontalHeaderLabels({"Chọn", "STT", "Số Serial (SN)", "Mã SP", "Tên sản phẩm", "Trạng thái nhận", "Phân loại"});
-    missingUnitTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
-    missingUnitTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
-    missingUnitTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
-    missingUnitTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+    missingUnitTable->setColumnWidth(0, 55);
+    missingUnitTable->setColumnWidth(1, 45);
+    missingUnitTable->setColumnWidth(2, 150);
+    missingUnitTable->setColumnWidth(3, 95);
     missingUnitTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Stretch);
-    missingUnitTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::ResizeToContents);
-    missingUnitTable->horizontalHeader()->setSectionResizeMode(6, QHeaderView::ResizeToContents);
+    missingUnitTable->setColumnWidth(5, 140);
+    missingUnitTable->setColumnWidth(6, 140);
     missingUnitTable->setAlternatingRowColors(true);
     b1Layout->addWidget(missingUnitTable, 1);
 
@@ -794,13 +794,13 @@ void InventoryCheckReconciliationDialog::setupUI()
     surplusDetailTable = new QTableWidget(b2Widget);
     surplusDetailTable->setColumnCount(7);
     surplusDetailTable->setHorizontalHeaderLabels({"Chọn", "STT", "Số Serial (SN)", "Mã SP", "Tên sản phẩm", "Trạng thái hiện tại", "Phân loại"});
-    surplusDetailTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
-    surplusDetailTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
-    surplusDetailTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
-    surplusDetailTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+    surplusDetailTable->setColumnWidth(0, 55);
+    surplusDetailTable->setColumnWidth(1, 45);
+    surplusDetailTable->setColumnWidth(2, 150);
+    surplusDetailTable->setColumnWidth(3, 95);
     surplusDetailTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Stretch);
-    surplusDetailTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::ResizeToContents);
-    surplusDetailTable->horizontalHeader()->setSectionResizeMode(6, QHeaderView::ResizeToContents);
+    surplusDetailTable->setColumnWidth(5, 140);
+    surplusDetailTable->setColumnWidth(6, 140);
     surplusDetailTable->setAlternatingRowColors(true);
     b2Layout->addWidget(surplusDetailTable, 1);
 
@@ -836,13 +836,13 @@ void InventoryCheckReconciliationDialog::setupUI()
     movementDetailTable = new QTableWidget(b3Widget);
     movementDetailTable->setColumnCount(7);
     movementDetailTable->setHorizontalHeaderLabels({"Chọn", "STT", "Số Serial (SN)", "Mã SP", "Tên sản phẩm", "Từ trạng thái", "Đến trạng thái"});
-    movementDetailTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
-    movementDetailTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
-    movementDetailTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
-    movementDetailTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+    movementDetailTable->setColumnWidth(0, 55);
+    movementDetailTable->setColumnWidth(1, 45);
+    movementDetailTable->setColumnWidth(2, 150);
+    movementDetailTable->setColumnWidth(3, 95);
     movementDetailTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Stretch);
-    movementDetailTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::ResizeToContents);
-    movementDetailTable->horizontalHeader()->setSectionResizeMode(6, QHeaderView::ResizeToContents);
+    movementDetailTable->setColumnWidth(5, 140);
+    movementDetailTable->setColumnWidth(6, 140);
     movementDetailTable->setAlternatingRowColors(true);
     b3Layout->addWidget(movementDetailTable, 1);
 
@@ -888,36 +888,60 @@ void InventoryCheckReconciliationDialog::setupUI()
 
     // Select/Deselect All buttons
     connect(missingSelectAllBtn, &QPushButton::clicked, [this]() {
+        missingUnitTable->blockSignals(true);
+        missingUnitTable->setUpdatesEnabled(false);
         for (int r = 0; r < missingUnitTable->rowCount(); ++r) {
             if (missingUnitTable->item(r, 0)) missingUnitTable->item(r, 0)->setCheckState(Qt::Checked);
         }
+        missingUnitTable->blockSignals(false);
+        missingUnitTable->setUpdatesEnabled(true);
     });
     connect(missingDeselectAllBtn, &QPushButton::clicked, [this]() {
+        missingUnitTable->blockSignals(true);
+        missingUnitTable->setUpdatesEnabled(false);
         for (int r = 0; r < missingUnitTable->rowCount(); ++r) {
             if (missingUnitTable->item(r, 0)) missingUnitTable->item(r, 0)->setCheckState(Qt::Unchecked);
         }
+        missingUnitTable->blockSignals(false);
+        missingUnitTable->setUpdatesEnabled(true);
     });
 
     connect(surplusSelectAllBtn, &QPushButton::clicked, [this]() {
+        surplusDetailTable->blockSignals(true);
+        surplusDetailTable->setUpdatesEnabled(false);
         for (int r = 0; r < surplusDetailTable->rowCount(); ++r) {
             if (surplusDetailTable->item(r, 0)) surplusDetailTable->item(r, 0)->setCheckState(Qt::Checked);
         }
+        surplusDetailTable->blockSignals(false);
+        surplusDetailTable->setUpdatesEnabled(true);
     });
     connect(surplusDeselectAllBtn, &QPushButton::clicked, [this]() {
+        surplusDetailTable->blockSignals(true);
+        surplusDetailTable->setUpdatesEnabled(false);
         for (int r = 0; r < surplusDetailTable->rowCount(); ++r) {
             if (surplusDetailTable->item(r, 0)) surplusDetailTable->item(r, 0)->setCheckState(Qt::Unchecked);
         }
+        surplusDetailTable->blockSignals(false);
+        surplusDetailTable->setUpdatesEnabled(true);
     });
 
     connect(movementSelectAllBtn, &QPushButton::clicked, [this]() {
+        movementDetailTable->blockSignals(true);
+        movementDetailTable->setUpdatesEnabled(false);
         for (int r = 0; r < movementDetailTable->rowCount(); ++r) {
             if (movementDetailTable->item(r, 0)) movementDetailTable->item(r, 0)->setCheckState(Qt::Checked);
         }
+        movementDetailTable->blockSignals(false);
+        movementDetailTable->setUpdatesEnabled(true);
     });
     connect(movementDeselectAllBtn, &QPushButton::clicked, [this]() {
+        movementDetailTable->blockSignals(true);
+        movementDetailTable->setUpdatesEnabled(false);
         for (int r = 0; r < movementDetailTable->rowCount(); ++r) {
             if (movementDetailTable->item(r, 0)) movementDetailTable->item(r, 0)->setCheckState(Qt::Unchecked);
         }
+        movementDetailTable->blockSignals(false);
+        movementDetailTable->setUpdatesEnabled(true);
     });
 }
 
@@ -1697,15 +1721,15 @@ void InventoryCheckDetailDialog::setupUI()
         unitTable->setHorizontalHeaderLabels({
             "STT", "Số Serial (SN)", "Mã SP", "Tên sản phẩm", "Trạng thái sổ", "Trạng thái thực tế", "Kết quả đối soát", "Thao tác", "Trạng thái ghi", "CheckUnitID", "ProductId"
         });
-        unitTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
-        unitTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
-        unitTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
-        unitTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Stretch);
-        unitTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
-        unitTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::ResizeToContents);
-        unitTable->horizontalHeader()->setSectionResizeMode(6, QHeaderView::ResizeToContents);
-        unitTable->horizontalHeader()->setSectionResizeMode(7, QHeaderView::ResizeToContents);
-        unitTable->horizontalHeader()->setSectionResizeMode(8, QHeaderView::ResizeToContents);
+        unitTable->setColumnWidth(0, 45);   // STT
+        unitTable->setColumnWidth(1, 150);  // Serial
+        unitTable->setColumnWidth(2, 95);   // Mã SP
+        unitTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Stretch); // Tên SP
+        unitTable->setColumnWidth(4, 110);  // Trạng thái sổ
+        unitTable->setColumnWidth(5, 130);  // Trạng thái thực tế
+        unitTable->setColumnWidth(6, 140);  // Kết quả đối soát
+        unitTable->setColumnWidth(7, 95);   // Thao tác
+        unitTable->setColumnWidth(8, 140);  // Trạng thái ghi
         unitTable->setColumnHidden(9, true);
         unitTable->setColumnHidden(10, true);
         unitTable->setAlternatingRowColors(true);
@@ -1713,9 +1737,9 @@ void InventoryCheckDetailDialog::setupUI()
         TableClipboardHelper::setupClipboardForTable(unitTable);
         detailLayout->addWidget(unitTable, 1);
 
-        // Fast dropdown menu when clicking column 5 (Trạng thái thực tế)
+        // Fast actions when clicking column 7 (Thao tác) or column 5 (Trạng thái thực tế)
         connect(unitTable, &QTableWidget::cellClicked, [this](int row, int col) {
-            if (col != 5 || row < 0 || row >= unitTable->rowCount()) return;
+            if (row < 0 || row >= unitTable->rowCount()) return;
             if (checkStatus == "COMPLETED" || checkStatus == "CANCELLED") return;
             auto* snItem = unitTable->item(row, 1);
             if (!snItem) return;
@@ -1723,6 +1747,18 @@ void InventoryCheckDetailDialog::setupUI()
 
             int idx = serialToIndexMap.value(sn.toUpper(), -1);
             if (idx < 0 || idx >= static_cast<int>(stagedUnits.size())) return;
+
+            if (col == 7) {
+                const auto& u = stagedUnits[idx];
+                if (u.isNew) {
+                    removeStagedUnitBySerial(sn);
+                } else if (u.isModified) {
+                    revertStagedUnitBySerial(sn);
+                }
+                return;
+            }
+
+            if (col != 5) return;
 
             QMenu menu(this);
             menu.setStyleSheet(
@@ -1779,18 +1815,14 @@ void InventoryCheckDetailDialog::setupUI()
                 serialFeedbackLabel->setStyleSheet("font-size: 12px; color: #64748b; font-weight: 600;");
                 return;
             }
-            bool found = false;
-            for (const auto& u : stagedUnits) {
-                if (u.serial.compare(sn, Qt::CaseInsensitive) == 0) {
-                    QString statusNote = u.currentScannedStatus.isEmpty() ? "(Chưa quét)" : ("(Đã quét: " + u.currentScannedStatus + ")");
-                    serialFeedbackLabel->setText(QString("🟢 Nhận diện thành công: [%1] %2 | Trạng thái HT: %3 %4")
-                        .arg(u.productCode, u.productName, u.systemStatus.isEmpty() ? "(Mới tinh)" : u.systemStatus, statusNote));
-                    serialFeedbackLabel->setStyleSheet("font-size: 12px; color: #16a34a; font-weight: 600;");
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
+            int idx = serialToIndexMap.value(sn, -1);
+            if (idx >= 0 && idx < static_cast<int>(stagedUnits.size())) {
+                const auto& u = stagedUnits[idx];
+                QString statusNote = u.currentScannedStatus.isEmpty() ? "(Chưa quét)" : ("(Đã quét: " + u.currentScannedStatus + ")");
+                serialFeedbackLabel->setText(QString("🟢 Nhận diện thành công: [%1] %2 | Trạng thái HT: %3 %4")
+                    .arg(u.productCode, u.productName, u.systemStatus.isEmpty() ? "(Mới tinh)" : u.systemStatus, statusNote));
+                serialFeedbackLabel->setStyleSheet("font-size: 12px; color: #16a34a; font-weight: 600;");
+            } else {
                 serialFeedbackLabel->setText(QString("🟡 Serial [%1] chưa khớp với danh mục đợt kiểm kê này... (Enter để thêm)").arg(sn));
                 serialFeedbackLabel->setStyleSheet("font-size: 12px; color: #d97706; font-weight: 500;");
             }
@@ -2184,31 +2216,19 @@ void InventoryCheckDetailDialog::refreshUnitTable()
 
         // 7: Thao tác (Xóa cho hàng mới chưa lưu / Hoàn tác cho linh kiện đã sửa)
         if (!isLocked && u.isNew) {
-            auto* delBtn = new QPushButton("🗑️ Xóa");
-            delBtn->setCursor(Qt::PointingHandCursor);
-            delBtn->setStyleSheet(
-                "QPushButton { background-color: #fee2e2; color: #dc2626; font-weight: 600; "
-                "border: 1px solid #fca5a5; border-radius: 4px; padding: 2px 8px; font-size: 11px; } "
-                "QPushButton:hover { background-color: #fecaca; }"
-            );
-            QString sn = u.serial;
-            connect(delBtn, &QPushButton::clicked, [this, sn]() {
-                removeStagedUnitBySerial(sn);
-            });
-            unitTable->setCellWidget(row, 7, delBtn);
+            auto* delItem = makeItem("🗑️ Xóa", Qt::AlignCenter);
+            delItem->setForeground(QColor("#dc2626"));
+            delItem->setBackground(QBrush(QColor("#fee2e2")));
+            delItem->setFont(QFont("Segoe UI", 9, QFont::Bold));
+            delItem->setToolTip("Nhấp vào đây để xóa linh kiện chưa lưu");
+            unitTable->setItem(row, 7, delItem);
         } else if (!isLocked && u.isModified) {
-            auto* undoBtn = new QPushButton("↩️ Hoàn tác");
-            undoBtn->setCursor(Qt::PointingHandCursor);
-            undoBtn->setStyleSheet(
-                "QPushButton { background-color: #ede9fe; color: #6d28d9; font-weight: 600; "
-                "border: 1px solid #c4b5fd; border-radius: 4px; padding: 2px 8px; font-size: 11px; } "
-                "QPushButton:hover { background-color: #ddd6fe; }"
-            );
-            QString sn = u.serial;
-            connect(undoBtn, &QPushButton::clicked, [this, sn]() {
-                revertStagedUnitBySerial(sn);
-            });
-            unitTable->setCellWidget(row, 7, undoBtn);
+            auto* undoItem = makeItem("↩️ Hoàn tác", Qt::AlignCenter);
+            undoItem->setForeground(QColor("#6d28d9"));
+            undoItem->setBackground(QBrush(QColor("#ede9fe")));
+            undoItem->setFont(QFont("Segoe UI", 9, QFont::Bold));
+            undoItem->setToolTip("Nhấp vào đây để hoàn tác");
+            unitTable->setItem(row, 7, undoItem);
         } else {
             unitTable->setItem(row, 7, makeItem("-", Qt::AlignCenter));
         }
@@ -3280,11 +3300,11 @@ void InventoryCheckSimulationDialog::setupUI()
     candidateTable->setHorizontalHeaderLabels({
         "Số Serial (SN)", "Mã SP", "Tên sản phẩm", "Trạng thái Hệ thống", "Trạng thái Quét hiện tại", "CheckUnitID"
     });
-    candidateTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
-    candidateTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
-    candidateTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
-    candidateTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
-    candidateTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
+    candidateTable->setColumnWidth(0, 150); // Serial
+    candidateTable->setColumnWidth(1, 95);  // Mã SP
+    candidateTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch); // Tên SP
+    candidateTable->setColumnWidth(3, 140); // TT Hệ thống
+    candidateTable->setColumnWidth(4, 150); // TT Quét hiện tại
     candidateTable->setColumnHidden(5, true);
     candidateTable->setAlternatingRowColors(true);
     candidateTable->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -3474,6 +3494,7 @@ void InventoryCheckSimulationDialog::filterTable()
     QString stF = statusFilterCombo ? statusFilterCombo->currentData().toString() : "ALL";
     QString q = searchEdit ? searchEdit->text().trimmed().toLower() : "";
 
+    std::vector<const SimCandidateItem*> visible;
     for (const auto& itm : candidateList) {
         if (selPid > 0 && itm.productId != selPid) continue;
 
@@ -3491,21 +3512,24 @@ void InventoryCheckSimulationDialog::filterTable()
             }
         }
 
-        int r = candidateTable->rowCount();
-        candidateTable->insertRow(r);
+        visible.push_back(&itm);
+    }
 
-        candidateTable->setItem(r, 0, makeItem(itm.serial));
-        candidateTable->setItem(r, 1, makeItem(itm.productCode));
-        candidateTable->setItem(r, 2, makeItem(itm.productName));
-        candidateTable->setItem(r, 3, makeItem(itm.systemStatus));
+    candidateTable->setRowCount(static_cast<int>(visible.size()));
+    for (int r = 0; r < static_cast<int>(visible.size()); ++r) {
+        const auto* itm = visible[r];
+        candidateTable->setItem(r, 0, makeItem(itm->serial));
+        candidateTable->setItem(r, 1, makeItem(itm->productCode));
+        candidateTable->setItem(r, 2, makeItem(itm->productName));
+        candidateTable->setItem(r, 3, makeItem(itm->systemStatus));
 
-        auto* scanItem = makeItem(itm.currentStatus);
-        if (itm.currentStatus == "AVAILABLE") scanItem->setForeground(QColor("#16a34a"));
-        else if (itm.currentStatus == "WARRANTY") scanItem->setForeground(QColor("#d97706"));
-        else if (itm.currentStatus == "SCRAPPED" || itm.currentStatus == "OUT") scanItem->setForeground(QColor("#dc2626"));
+        auto* scanItem = makeItem(itm->currentStatus);
+        if (itm->currentStatus == "AVAILABLE") scanItem->setForeground(QColor("#16a34a"));
+        else if (itm->currentStatus == "WARRANTY") scanItem->setForeground(QColor("#d97706"));
+        else if (itm->currentStatus == "SCRAPPED" || itm->currentStatus == "OUT") scanItem->setForeground(QColor("#dc2626"));
         candidateTable->setItem(r, 4, scanItem);
 
-        candidateTable->setItem(r, 5, makeItem(QString::number(itm.checkUnitId)));
+        candidateTable->setItem(r, 5, makeItem(QString::number(itm->checkUnitId)));
     }
 
     candidateTable->setUpdatesEnabled(true);
@@ -3836,12 +3860,13 @@ void InventoryCheckInspectDialog::setupUI()
     unitTable->setHorizontalHeaderLabels({
         "Mã Serial", "Mã SP", "Tên sản phẩm", "Trạng thái HT", "Trạng thái Quét", "Phân loại", "Ghi chú"
     });
-    unitTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
-    unitTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+    unitTable->setColumnWidth(0, 150);
+    unitTable->setColumnWidth(1, 95);
     unitTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
-    for (int c = 3; c < 7; ++c) {
-        unitTable->horizontalHeader()->setSectionResizeMode(c, QHeaderView::ResizeToContents);
-    }
+    unitTable->setColumnWidth(3, 130);
+    unitTable->setColumnWidth(4, 130);
+    unitTable->setColumnWidth(5, 140);
+    unitTable->setColumnWidth(6, 150);
     unitTable->setAlternatingRowColors(true);
     t2Layout->addWidget(unitTable);
     tabWidget->addTab(tab2, "🔍 Chi Tiết Từng Linh Kiện");

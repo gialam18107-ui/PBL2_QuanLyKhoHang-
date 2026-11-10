@@ -16,9 +16,11 @@
 #include <QHeaderView>
 #include <QCheckBox>
 #include <QTabWidget>
+#include <QMenu>
 #include <vector>
 #include <string>
 #include <unordered_set>
+#include <unordered_map>
 
 #include "database/Database.h"
 #include "schema/UserCreate.h"
@@ -301,6 +303,11 @@ private:
     QPushButton* closeBtn;
 
     AdjustmentSimulationDialog* simulationDialog = nullptr;
+
+    void syncStagedCache();
+    std::unordered_set<std::string> stagedSerialSet;
+    std::unordered_set<std::string> executedSerialSet;
+    std::unordered_map<int, int> detailStagedCountMap;
 
     std::vector<DetailLine> detailLines;
     std::vector<StagedUnit> stagedUnits;
