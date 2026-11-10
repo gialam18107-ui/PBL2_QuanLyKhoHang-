@@ -340,6 +340,12 @@ private:
     void removeStagedUnitBySerial(const QString& sn);
     void revertStagedUnitBySerial(const QString& sn);
     void rebuildSerialIndexMap();
+    bool unitMatchesCurrentFilter(const StagedCheckUnit& u) const;
+    void populateTableRow(int row, int stagedIdx);
+    void updateTableRowInPlace(int row, int stagedIdx);
+    void insertUnitRowAtTop(int stagedIdx);
+    void removeTableRowInPlace(int row, const QString& sn);
+    void updateSummaryLabelsOnly();
 
     Database* db = nullptr;
     int checkId = 0;
@@ -406,6 +412,7 @@ private:
 
     std::vector<StagedCheckUnit> stagedUnits;
     QHash<QString, int> serialToIndexMap;
+    QHash<QString, QTableWidgetItem*> serialToTableItemMap;
     uint64_t actionCounter = 0;
 
     struct ProductCheckItem {

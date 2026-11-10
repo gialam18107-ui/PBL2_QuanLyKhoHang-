@@ -1788,9 +1788,14 @@ void InventoryCheckDetailDialog::setupUI()
                 if (!wasAlreadyChecked) {
                     stagedUnits[idx].lastTouchSeq = ++actionCounter;
                 }
-                refreshUnitTable();
+                if (unitMatchesCurrentFilter(stagedUnits[idx])) {
+                    updateTableRowInPlace(row, idx);
+                } else {
+                    removeTableRowInPlace(row, sn);
+                }
                 refreshQuantityTablePreview();
                 updateSaveButtonState();
+                updateSummaryLabelsOnly();
                 showToast(QString("⚡ Đã cập nhật SN [%1] -> %2").arg(sn, localizeStatus(newSt)), true);
             }
         });
@@ -2019,14 +2024,30 @@ void InventoryCheckDetailDialog::rebuildSerialIndexMap()
 
 void InventoryCheckDetailDialog::revertStagedUnitBySerial(const QString& sn)
 {
-    int idx = serialToIndexMap.value(sn.toUpper(), -1);
+    QString snUpper = sn.trimmed().toUpper();
+    int idx = serialToIndexMap.value(snUpper, -1);
     if (idx >= 0 && idx < static_cast<int>(stagedUnits.size())) {
         auto& u = stagedUnits[idx];
         u.currentScannedStatus = u.savedScannedStatus;
         u.isModified = false;
-        refreshUnitTable();
+
+        auto* tableItem = serialToTableItemMap.value(snUpper, nullptr);
+        int row = tableItem ? tableItem->row() : -1;
+        if (row >= 0 && row < unitTable->rowCount()) {
+            if (unitMatchesCurrentFilter(u)) {
+                updateTableRowInPlace(row, idx);
+            } else {
+                removeTableRowInPlace(row, snUpper);
+            }
+        } else {
+            if (unitMatchesCurrentFilter(u)) {
+                insertUnitRowAtTop(idx);
+            }
+        }
+
         refreshQuantityTablePreview();
         updateSaveButtonState();
+        updateSummaryLabelsOnly();
         showToast(QString("↩️ Đã hoàn tác linh kiện [%1]").arg(sn), true);
     }
 }
@@ -2089,6 +2110,276 @@ void InventoryCheckDetailDialog::loadUnitData()
     }
 }
 
+bool InventoryCheckDetailDialog::unitMatchesCurrentFilter(const StagedCheckUnit& u) const
+{
+    if (currentFilterProductId > 0 && u.productId != currentFilterProductId) return false;
+
+    QString search = unitSearchEdit ? unitSearchEdit->text().trimmed().toLower() : "";
+    if (!search.isEmpty()) {
+        if (!u.serial.toLower().contains(search) &&
+            !u.productName.toLower().contains(search) &&
+            !u.productCode.toLower().contains(search)) {
+            return false;
+        }
+    }
+
+    bool isCompleted = (checkStatus == "COMPLETED");
+    bool isUnchecked = (u.currentScannedStatus.isEmpty() || u.currentScannedStatus == "UNCHECKED");
+    bool isUnrecorded = u.systemStatus.isEmpty(); // brand new unrecorded unit (Rule 5.3.1 Type 2)
+    bool isRediscovered = (u.systemStatus == "OUT"); // Rediscovered OUT unit (Rule 5.3.1 Type 1)
+    bool isSurplus = (isUnrecorded || isRediscovered);
+    bool isMissing = (isCompleted && isUnchecked) || (!isUnchecked && u.currentScannedStatus == "OUT");
+    bool isMatched = (!isUnchecked && !isSurplus && u.currentScannedStatus == u.systemStatus);
+    bool isShift = (!isUnchecked && !isSurplus && u.currentScannedStatus != u.systemStatus && u.currentScannedStatus != "OUT");
+    bool isAbnormal = (isSurplus || isMissing || isShift);
+    bool isChecked = (!isUnchecked || u.isNew);
+
+    if (abnormalOnlyCheck && abnormalOnlyCheck->isChecked() && !isAbnormal) return false;
+
+    QString stFilter = unitStatusFilterCombo ? unitStatusFilterCombo->currentData().toString() : "CHECKED";
+    if (stFilter == "CHECKED" && !isChecked) return false;
+    if (stFilter == "UNCHECKED" && isChecked) return false;
+    if (stFilter == "MATCHED" && !isMatched) return false;
+    if (stFilter == "ABNORMAL" && !isAbnormal) return false;
+
+    return true;
+}
+
+void InventoryCheckDetailDialog::updateSummaryLabelsOnly()
+{
+    if (!unitSummaryLabel) return;
+
+    bool isCompleted = (checkStatus == "COMPLETED");
+    int matchedCount = 0;
+    int missingCount = 0;
+    int surplusCount = 0;
+    int shiftCount = 0;
+
+    for (const auto& u : stagedUnits) {
+        bool isUnchecked = (u.currentScannedStatus.isEmpty() || u.currentScannedStatus == "UNCHECKED");
+        bool isUnrecorded = u.systemStatus.isEmpty();
+        bool isRediscovered = (u.systemStatus == "OUT");
+        bool isSurplus = (isUnrecorded || isRediscovered);
+        bool isMissing = (isCompleted && isUnchecked) || (!isUnchecked && u.currentScannedStatus == "OUT");
+        bool isMatched = (!isUnchecked && !isSurplus && u.currentScannedStatus == u.systemStatus);
+        bool isShift = (!isUnchecked && !isSurplus && u.currentScannedStatus != u.systemStatus && u.currentScannedStatus != "OUT");
+
+        if (isMatched) matchedCount++;
+        if (isMissing) missingCount++;
+        if (isSurplus) surplusCount++;
+        if (isShift) shiftCount++;
+    }
+
+    int shownCount = unitTable ? unitTable->rowCount() : 0;
+    int checkedCount = matchedCount + surplusCount + shiftCount + (isCompleted ? missingCount : 0);
+
+    unitSummaryLabel->setText(
+        QString("Hiển thị %1 / %2 đã kiểm (Tổng đợt: %3) | Khớp: %4, Thừa: %5, Lệch: %6, Thiếu: %7")
+            .arg(shownCount).arg(checkedCount).arg(stagedUnits.size())
+            .arg(matchedCount).arg(surplusCount).arg(shiftCount).arg(missingCount)
+    );
+}
+
+void InventoryCheckDetailDialog::updateTableRowInPlace(int row, int idx)
+{
+    if (!unitTable || row < 0 || row >= unitTable->rowCount()) return;
+    if (idx < 0 || idx >= static_cast<int>(stagedUnits.size())) return;
+
+    const auto& u = stagedUnits[idx];
+    bool isCompleted = (checkStatus == "COMPLETED");
+    bool isLocked = (checkStatus == "COMPLETED" || checkStatus == "CANCELLED");
+    bool isUnchecked = (u.currentScannedStatus.isEmpty() || u.currentScannedStatus == "UNCHECKED");
+    bool isUnrecorded = u.systemStatus.isEmpty();
+    bool isRediscovered = (u.systemStatus == "OUT");
+    bool isMissing = (isCompleted && isUnchecked) || (!isUnchecked && u.currentScannedStatus == "OUT");
+    bool isMatched = (!isUnchecked && !isUnrecorded && !isRediscovered && u.currentScannedStatus == u.systemStatus);
+    bool isShift = (!isUnchecked && !isUnrecorded && !isRediscovered && u.currentScannedStatus != u.systemStatus && u.currentScannedStatus != "OUT");
+
+    // 5: TT Thực tế (Staged) with dropdown indicator
+    auto* scanItem = unitTable->item(row, 5);
+    if (!scanItem) {
+        scanItem = makeItem("", Qt::AlignCenter);
+        unitTable->setItem(row, 5, scanItem);
+    }
+    QString scanDisp = isUnchecked ? "(Chưa quét) ▾" : (localizeStatus(u.currentScannedStatus) + " ▾");
+    scanItem->setText(scanDisp);
+    if (u.currentScannedStatus == "AVAILABLE") scanItem->setForeground(QColor("#16a34a"));
+    else if (u.currentScannedStatus == "WARRANTY") scanItem->setForeground(QColor("#d97706"));
+    else if (u.currentScannedStatus == "SCRAPPED" || u.currentScannedStatus == "OUT") scanItem->setForeground(QColor("#dc2626"));
+    else scanItem->setForeground(QColor("#0f172a"));
+    scanItem->setToolTip("Bấm để chọn trạng thái thực tế từ danh sách");
+
+    // 6: Kết quả đối soát (Discrepancy Badge)
+    auto* badgeItem = unitTable->item(row, 6);
+    if (!badgeItem) {
+        badgeItem = makeItem("");
+        unitTable->setItem(row, 6, badgeItem);
+    }
+    QString badgeText;
+    QColor badgeCol;
+    if (isUnrecorded) {
+        badgeText = "⭐ Thừa - Hàng mới";
+        badgeCol = QColor("#d97706");
+    } else if (isRediscovered) {
+        badgeText = "🔵 Thừa - Tái phát hiện";
+        badgeCol = QColor("#2563eb");
+    } else if (isMatched) {
+        badgeText = "🟢 Khớp";
+        badgeCol = QColor("#16a34a");
+    } else if (isShift) {
+        badgeText = "🟣 Lệch trạng thái";
+        badgeCol = QColor("#7c3aed");
+    } else if (isMissing) {
+        badgeText = "🔴 Thiếu";
+        badgeCol = QColor("#dc2626");
+    } else {
+        badgeText = "⚪ Chờ kiểm đếm";
+        badgeCol = QColor("#64748b");
+    }
+    badgeItem->setText(badgeText);
+    badgeItem->setForeground(badgeCol);
+    badgeItem->setFont(QFont("Segoe UI", 9, QFont::Bold));
+
+    // 7: Thao tác (Xóa cho hàng mới chưa lưu / Hoàn tác cho linh kiện đã sửa)
+    auto* actItem = unitTable->item(row, 7);
+    if (!actItem) {
+        actItem = makeItem("", Qt::AlignCenter);
+        unitTable->setItem(row, 7, actItem);
+    }
+    if (!isLocked && u.isNew) {
+        actItem->setText("🗑️ Xóa");
+        actItem->setForeground(QColor("#dc2626"));
+        actItem->setBackground(QBrush(QColor("#fee2e2")));
+        actItem->setFont(QFont("Segoe UI", 9, QFont::Bold));
+        actItem->setToolTip("Nhấp vào đây để xóa linh kiện chưa lưu");
+    } else if (!isLocked && u.isModified) {
+        actItem->setText("↩️ Hoàn tác");
+        actItem->setForeground(QColor("#6d28d9"));
+        actItem->setBackground(QBrush(QColor("#ede9fe")));
+        actItem->setFont(QFont("Segoe UI", 9, QFont::Bold));
+        actItem->setToolTip("Nhấp vào đây để hoàn tác");
+    } else {
+        actItem->setText("-");
+        actItem->setForeground(QColor("#64748b"));
+        actItem->setBackground(QBrush(Qt::transparent));
+        actItem->setFont(QFont("Segoe UI", 9, QFont::Normal));
+        actItem->setToolTip("");
+    }
+
+    // 8: Phân loại / Trạng thái ghi (Soft-staging status badge)
+    auto* stageItem = unitTable->item(row, 8);
+    if (!stageItem) {
+        stageItem = makeItem("");
+        unitTable->setItem(row, 8, stageItem);
+    }
+    QString stageText;
+    QColor stageCol;
+    if (u.isNew) {
+        stageText = "⭐ Mới thêm (Chưa lưu)";
+        stageCol = QColor("#ea580c");
+    } else if (u.isModified) {
+        stageText = "✏️ Đã sửa (Chưa lưu)";
+        stageCol = QColor("#7c3aed");
+    } else {
+        stageText = "✓ Đã lưu CSDL";
+        stageCol = QColor("#16a34a");
+    }
+    stageItem->setText(stageText);
+    stageItem->setForeground(stageCol);
+    stageItem->setFont(QFont("Segoe UI", 9, QFont::Bold));
+}
+
+void InventoryCheckDetailDialog::populateTableRow(int row, int idx)
+{
+    if (!unitTable || row < 0 || row >= unitTable->rowCount()) return;
+    if (idx < 0 || idx >= static_cast<int>(stagedUnits.size())) return;
+
+    const auto& u = stagedUnits[idx];
+    bool isUnrecorded = u.systemStatus.isEmpty();
+    bool isRediscovered = (u.systemStatus == "OUT");
+
+    // 0: STT
+    unitTable->setItem(row, 0, makeItem(QString::number(row + 1), Qt::AlignCenter));
+    // 1: Serial
+    auto* snItem = makeItem(u.serial);
+    unitTable->setItem(row, 1, snItem);
+    serialToTableItemMap.insert(u.serial.toUpper(), snItem);
+
+    // 2: Mã SP
+    unitTable->setItem(row, 2, makeItem(u.productCode));
+    // 3: Tên sản phẩm
+    unitTable->setItem(row, 3, makeItem(u.productName));
+    // 4: TT Sổ
+    QString sysDisp = isUnrecorded ? "(Chưa từng có)" : localizeStatus(u.systemStatus);
+    auto* sysItem = makeItem(sysDisp);
+    if (isUnrecorded) sysItem->setForeground(QColor("#d97706"));
+    else if (isRediscovered) sysItem->setForeground(QColor("#dc2626"));
+    unitTable->setItem(row, 4, sysItem);
+
+    // 5-8: Updated by updateTableRowInPlace
+    updateTableRowInPlace(row, idx);
+
+    // 9: checkUnitId (hidden)
+    unitTable->setItem(row, 9, makeItem(QString::number(u.checkUnitId)));
+    // 10: productId (hidden)
+    unitTable->setItem(row, 10, makeItem(QString::number(u.productId)));
+}
+
+void InventoryCheckDetailDialog::insertUnitRowAtTop(int stagedIdx)
+{
+    if (!unitTable || stagedIdx < 0 || stagedIdx >= static_cast<int>(stagedUnits.size())) return;
+
+    const auto& u = stagedUnits[stagedIdx];
+    if (!unitMatchesCurrentFilter(u)) {
+        updateSummaryLabelsOnly();
+        return;
+    }
+
+    unitTable->setUpdatesEnabled(false);
+    unitTable->blockSignals(true);
+
+    unitTable->insertRow(0);
+    populateTableRow(0, stagedIdx);
+
+    // Update STT column for all rows in table
+    for (int r = 0; r < unitTable->rowCount(); ++r) {
+        auto* it = unitTable->item(r, 0);
+        if (it) it->setText(QString::number(r + 1));
+    }
+
+    unitTable->blockSignals(false);
+    unitTable->setUpdatesEnabled(true);
+    unitTable->viewport()->update();
+
+    unitTable->scrollToTop();
+    unitTable->selectRow(0);
+
+    updateSummaryLabelsOnly();
+}
+
+void InventoryCheckDetailDialog::removeTableRowInPlace(int row, const QString& sn)
+{
+    if (!unitTable || row < 0 || row >= unitTable->rowCount()) return;
+
+    unitTable->setUpdatesEnabled(false);
+    unitTable->blockSignals(true);
+
+    serialToTableItemMap.remove(sn.toUpper());
+    unitTable->removeRow(row);
+
+    // Update STT column
+    for (int r = 0; r < unitTable->rowCount(); ++r) {
+        auto* it = unitTable->item(r, 0);
+        if (it) it->setText(QString::number(r + 1));
+    }
+
+    unitTable->blockSignals(false);
+    unitTable->setUpdatesEnabled(true);
+    unitTable->viewport()->update();
+
+    updateSummaryLabelsOnly();
+}
+
 void InventoryCheckDetailDialog::applyUnitTableFilters()
 {
     refreshUnitTable();
@@ -2110,54 +2401,13 @@ void InventoryCheckDetailDialog::refreshUnitTable()
     unitTable->setUpdatesEnabled(false);
     unitTable->blockSignals(true);
     unitTable->setRowCount(0);
-
-    QString search = unitSearchEdit ? unitSearchEdit->text().trimmed().toLower() : "";
-    QString stFilter = unitStatusFilterCombo ? unitStatusFilterCombo->currentData().toString() : "CHECKED";
-    bool abnormalOnly = abnormalOnlyCheck ? abnormalOnlyCheck->isChecked() : false;
-    bool isCompleted = (checkStatus == "COMPLETED");
-
-    int shownCount = 0;
-    int matchedCount = 0;
-    int missingCount = 0;
-    int surplusCount = 0;
-    int shiftCount = 0;
+    serialToTableItemMap.clear();
 
     std::vector<int> filteredIndices;
-
     for (size_t i = 0; i < stagedUnits.size(); ++i) {
-        const auto& u = stagedUnits[i];
-        if (currentFilterProductId > 0 && u.productId != currentFilterProductId) continue;
-
-        if (!search.isEmpty()) {
-            if (!u.serial.toLower().contains(search) &&
-                !u.productName.toLower().contains(search) &&
-                !u.productCode.toLower().contains(search)) {
-                continue;
-            }
+        if (unitMatchesCurrentFilter(stagedUnits[i])) {
+            filteredIndices.push_back(static_cast<int>(i));
         }
-
-        bool isUnchecked = (u.currentScannedStatus.isEmpty() || u.currentScannedStatus == "UNCHECKED");
-        bool isUnrecorded = u.systemStatus.isEmpty(); // brand new unrecorded unit (Rule 5.3.1 Type 2)
-        bool isRediscovered = (u.systemStatus == "OUT"); // Rediscovered OUT unit (Rule 5.3.1 Type 1)
-        bool isSurplus = (isUnrecorded || isRediscovered);
-        bool isMissing = (isCompleted && isUnchecked) || (!isUnchecked && u.currentScannedStatus == "OUT");
-        bool isMatched = (!isUnchecked && !isSurplus && u.currentScannedStatus == u.systemStatus);
-        bool isShift = (!isUnchecked && !isSurplus && u.currentScannedStatus != u.systemStatus && u.currentScannedStatus != "OUT");
-        bool isAbnormal = (isSurplus || isMissing || isShift);
-        bool isChecked = (!isUnchecked || u.isNew);
-
-        if (isMatched) matchedCount++;
-        if (isMissing) missingCount++;
-        if (isSurplus) surplusCount++;
-        if (isShift) shiftCount++;
-
-        if (abnormalOnly && !isAbnormal) continue;
-        if (stFilter == "CHECKED" && !isChecked) continue;
-        if (stFilter == "UNCHECKED" && isChecked) continue;
-        if (stFilter == "MATCHED" && !isMatched) continue;
-        if (stFilter == "ABNORMAL" && !isAbnormal) continue;
-
-        filteredIndices.push_back(static_cast<int>(i));
     }
 
     // Sort: items with lastTouchSeq > 0 come first, descending by lastTouchSeq (most recently scanned/added is at row 0!)
@@ -2174,113 +2424,10 @@ void InventoryCheckDetailDialog::refreshUnitTable()
     });
 
     unitTable->setRowCount(static_cast<int>(filteredIndices.size()));
-    bool isLocked = (checkStatus == "COMPLETED" || checkStatus == "CANCELLED");
 
     for (int row = 0; row < static_cast<int>(filteredIndices.size()); ++row) {
         int idx = filteredIndices[row];
-        const auto& u = stagedUnits[idx];
-        shownCount++;
-
-        bool isUnchecked = (u.currentScannedStatus.isEmpty() || u.currentScannedStatus == "UNCHECKED");
-        bool isUnrecorded = u.systemStatus.isEmpty();
-        bool isRediscovered = (u.systemStatus == "OUT");
-        bool isMissing = (isCompleted && isUnchecked) || (!isUnchecked && u.currentScannedStatus == "OUT");
-        bool isMatched = (!isUnchecked && !isUnrecorded && !isRediscovered && u.currentScannedStatus == u.systemStatus);
-        bool isShift = (!isUnchecked && !isUnrecorded && !isRediscovered && u.currentScannedStatus != u.systemStatus && u.currentScannedStatus != "OUT");
-
-        // 0: STT
-        unitTable->setItem(row, 0, makeItem(QString::number(shownCount), Qt::AlignCenter));
-        // 1: Serial
-        unitTable->setItem(row, 1, makeItem(u.serial));
-        // 2: Mã SP
-        unitTable->setItem(row, 2, makeItem(u.productCode));
-        // 3: Tên sản phẩm
-        unitTable->setItem(row, 3, makeItem(u.productName));
-        // 4: TT Sổ
-        QString sysDisp = isUnrecorded ? "(Chưa từng có)" : localizeStatus(u.systemStatus);
-        auto* sysItem = makeItem(sysDisp);
-        if (isUnrecorded) sysItem->setForeground(QColor("#d97706"));
-        else if (isRediscovered) sysItem->setForeground(QColor("#dc2626"));
-        unitTable->setItem(row, 4, sysItem);
-
-        // 5: TT Thực tế (Staged) with dropdown indicator
-        QString scanDisp = isUnchecked ? "(Chưa quét) ▾" : (localizeStatus(u.currentScannedStatus) + " ▾");
-        auto* scanItem = makeItem(scanDisp, Qt::AlignCenter);
-        if (u.currentScannedStatus == "AVAILABLE") scanItem->setForeground(QColor("#16a34a"));
-        else if (u.currentScannedStatus == "WARRANTY") scanItem->setForeground(QColor("#d97706"));
-        else if (u.currentScannedStatus == "SCRAPPED" || u.currentScannedStatus == "OUT") scanItem->setForeground(QColor("#dc2626"));
-        scanItem->setToolTip("Bấm để chọn trạng thái thực tế từ danh sách");
-        unitTable->setItem(row, 5, scanItem);
-
-        // 6: Kết quả đối soát (Discrepancy Badge)
-        QString badgeText;
-        QColor badgeCol;
-        if (isUnrecorded) {
-            badgeText = "⭐ Thừa - Hàng mới";
-            badgeCol = QColor("#d97706");
-        } else if (isRediscovered) {
-            badgeText = "🔵 Thừa - Tái phát hiện";
-            badgeCol = QColor("#2563eb");
-        } else if (isMatched) {
-            badgeText = "🟢 Khớp";
-            badgeCol = QColor("#16a34a");
-        } else if (isShift) {
-            badgeText = "🟣 Lệch trạng thái";
-            badgeCol = QColor("#7c3aed");
-        } else if (isMissing) {
-            badgeText = "🔴 Thiếu";
-            badgeCol = QColor("#dc2626");
-        } else {
-            badgeText = "⚪ Chờ kiểm đếm";
-            badgeCol = QColor("#64748b");
-        }
-
-        auto* badgeItem = makeItem(badgeText);
-        badgeItem->setForeground(badgeCol);
-        badgeItem->setFont(QFont("Segoe UI", 9, QFont::Bold));
-        unitTable->setItem(row, 6, badgeItem);
-
-        // 7: Thao tác (Xóa cho hàng mới chưa lưu / Hoàn tác cho linh kiện đã sửa)
-        if (!isLocked && u.isNew) {
-            auto* delItem = makeItem("🗑️ Xóa", Qt::AlignCenter);
-            delItem->setForeground(QColor("#dc2626"));
-            delItem->setBackground(QBrush(QColor("#fee2e2")));
-            delItem->setFont(QFont("Segoe UI", 9, QFont::Bold));
-            delItem->setToolTip("Nhấp vào đây để xóa linh kiện chưa lưu");
-            unitTable->setItem(row, 7, delItem);
-        } else if (!isLocked && u.isModified) {
-            auto* undoItem = makeItem("↩️ Hoàn tác", Qt::AlignCenter);
-            undoItem->setForeground(QColor("#6d28d9"));
-            undoItem->setBackground(QBrush(QColor("#ede9fe")));
-            undoItem->setFont(QFont("Segoe UI", 9, QFont::Bold));
-            undoItem->setToolTip("Nhấp vào đây để hoàn tác");
-            unitTable->setItem(row, 7, undoItem);
-        } else {
-            unitTable->setItem(row, 7, makeItem("-", Qt::AlignCenter));
-        }
-
-        // 8: Phân loại / Trạng thái ghi (Soft-staging status badge)
-        QString stageText;
-        QColor stageCol;
-        if (u.isNew) {
-            stageText = "⭐ Mới thêm (Chưa lưu)";
-            stageCol = QColor("#ea580c");
-        } else if (u.isModified) {
-            stageText = "✏️ Đã sửa (Chưa lưu)";
-            stageCol = QColor("#7c3aed");
-        } else {
-            stageText = "✓ Đã lưu CSDL";
-            stageCol = QColor("#16a34a");
-        }
-        auto* stageItem = makeItem(stageText);
-        stageItem->setForeground(stageCol);
-        stageItem->setFont(QFont("Segoe UI", 9, QFont::Bold));
-        unitTable->setItem(row, 8, stageItem);
-
-        // 9: checkUnitId (hidden)
-        unitTable->setItem(row, 9, makeItem(QString::number(u.checkUnitId)));
-        // 10: productId (hidden)
-        unitTable->setItem(row, 10, makeItem(QString::number(u.productId)));
+        populateTableRow(row, idx);
     }
 
     unitTable->blockSignals(false);
@@ -2298,14 +2445,7 @@ void InventoryCheckDetailDialog::refreshUnitTable()
         unitTable->setCurrentCell(prevRow, prevCol >= 0 ? prevCol : 0);
     }
 
-    if (unitSummaryLabel) {
-        int checkedCount = matchedCount + surplusCount + shiftCount + (isCompleted ? missingCount : 0);
-        unitSummaryLabel->setText(
-            QString("Hiển thị %1 / %2 đã kiểm (Tổng đợt: %3) | Khớp: %4, Thừa: %5, Lệch: %6, Thiếu: %7")
-                .arg(shownCount).arg(checkedCount).arg(stagedUnits.size())
-                .arg(matchedCount).arg(surplusCount).arg(shiftCount).arg(missingCount)
-        );
-    }
+    updateSummaryLabelsOnly();
 }
 
 bool InventoryCheckDetailDialog::processUnitScan(const QString& sn, const QString& chosenMode, QLabel* feedbackLabel, QLineEdit* inputLine)
@@ -2329,8 +2469,28 @@ bool InventoryCheckDetailDialog::processUnitScan(const QString& sn, const QStrin
         bool wasAlreadyChecked = (!u.currentScannedStatus.isEmpty() && u.currentScannedStatus != "UNCHECKED");
         u.currentScannedStatus = finalStatus;
         u.isModified = (u.currentScannedStatus != u.savedScannedStatus);
+
+        auto* tableItem = serialToTableItemMap.value(cleanSn, nullptr);
+        int existingRow = tableItem ? tableItem->row() : -1;
+
         if (!wasAlreadyChecked) {
             u.lastTouchSeq = ++actionCounter;
+            if (existingRow >= 0) {
+                removeTableRowInPlace(existingRow, cleanSn);
+            }
+            insertUnitRowAtTop(existingIdx);
+        } else {
+            if (existingRow >= 0) {
+                if (unitMatchesCurrentFilter(u)) {
+                    updateTableRowInPlace(existingRow, existingIdx);
+                } else {
+                    removeTableRowInPlace(existingRow, cleanSn);
+                }
+            } else {
+                if (unitMatchesCurrentFilter(u)) {
+                    insertUnitRowAtTop(existingIdx);
+                }
+            }
         }
 
         QString succMsg = QString("✅ Đã ghi nhận SN [%1] -> Trạng thái: %2 (%3) (Chưa lưu DB)").arg(cleanSn, finalStatus, u.productName);
@@ -2344,9 +2504,9 @@ bool InventoryCheckDetailDialog::processUnitScan(const QString& sn, const QStrin
             inputLine->setFocus();
         }
 
-        refreshUnitTable();
         refreshQuantityTablePreview();
         updateSaveButtonState();
+        updateSummaryLabelsOnly();
         showToast(QString("⚡ Đã cập nhật SN [%1] -> %2 (Chờ lưu)").arg(cleanSn, finalStatus), true);
         return true;
     }
@@ -2438,7 +2598,8 @@ bool InventoryCheckDetailDialog::processUnitScan(const QString& sn, const QStrin
         nu.lastTouchSeq = ++actionCounter;
 
         stagedUnits.push_back(nu);
-        serialToIndexMap.insert(nu.serial.toUpper(), static_cast<int>(stagedUnits.size() - 1));
+        int newIdx = static_cast<int>(stagedUnits.size() - 1);
+        serialToIndexMap.insert(nu.serial.toUpper(), newIdx);
 
         if (feedbackLabel) {
             feedbackLabel->setText(QString("⭐ Đã thêm linh kiện lạ [SN: %1] (%2) -> Chờ lưu").arg(cleanSn, pName));
@@ -2449,7 +2610,7 @@ bool InventoryCheckDetailDialog::processUnitScan(const QString& sn, const QStrin
             inputLine->setFocus();
         }
 
-        refreshUnitTable();
+        insertUnitRowAtTop(newIdx);
         refreshQuantityTablePreview();
         updateSaveButtonState();
         showToast(QString("⭐ Đã thêm linh kiện lạ [%1] vào hàng đợi!").arg(cleanSn), true);
@@ -2541,7 +2702,8 @@ bool InventoryCheckDetailDialog::processUnitScan(const QString& sn, const QStrin
         nu.lastTouchSeq = ++actionCounter;
 
         stagedUnits.push_back(nu);
-        serialToIndexMap.insert(nu.serial.toUpper(), static_cast<int>(stagedUnits.size() - 1));
+        int newIdx = static_cast<int>(stagedUnits.size() - 1);
+        serialToIndexMap.insert(nu.serial.toUpper(), newIdx);
 
         if (feedbackLabel) {
             feedbackLabel->setText(QString("🔵 Đã ghi nhận tái phát hiện [SN: %1] -> %2 (Chờ lưu)").arg(cleanSn, selectedCond));
@@ -2549,7 +2711,7 @@ bool InventoryCheckDetailDialog::processUnitScan(const QString& sn, const QStrin
         }
         if (inputLine) { inputLine->clear(); inputLine->setFocus(); }
 
-        refreshUnitTable();
+        insertUnitRowAtTop(newIdx);
         refreshQuantityTablePreview();
         updateSaveButtonState();
         showToast(QString("🔵 Đã ghi nhận tái phát hiện [%1] vào hàng đợi!").arg(cleanSn), true);
@@ -2572,9 +2734,10 @@ bool InventoryCheckDetailDialog::processUnitScan(const QString& sn, const QStrin
         nu.lastTouchSeq = ++actionCounter;
 
         stagedUnits.push_back(nu);
-        serialToIndexMap.insert(nu.serial.toUpper(), static_cast<int>(stagedUnits.size() - 1));
+        int newIdx = static_cast<int>(stagedUnits.size() - 1);
+        serialToIndexMap.insert(nu.serial.toUpper(), newIdx);
 
-        refreshUnitTable();
+        insertUnitRowAtTop(newIdx);
         refreshQuantityTablePreview();
         updateSaveButtonState();
         showToast(QString("✅ Đã ghi nhận SN [%1] -> %2 (Chờ lưu)").arg(cleanSn, finalStatus), true);
@@ -2619,6 +2782,7 @@ void InventoryCheckDetailDialog::onRecordUnitStatus()
                     if (!wasAlreadyChecked) {
                         u.lastTouchSeq = ++actionCounter;
                     }
+                    updateTableRowInPlace(r, uIdx);
                     changedCount++;
                 }
             }
@@ -2626,9 +2790,9 @@ void InventoryCheckDetailDialog::onRecordUnitStatus()
     }
 
     if (changedCount > 0) {
-        refreshUnitTable();
         refreshQuantityTablePreview();
         updateSaveButtonState();
+        updateSummaryLabelsOnly();
         showToast(QString("⚡ Đã cập nhật trạng thái cho %1 linh kiện!").arg(changedCount), true);
     }
 }
@@ -2673,12 +2837,33 @@ bool InventoryCheckDetailDialog::recordSingleSerialFromSim(const QString& sn, in
         bool wasAlreadyChecked = (!u.currentScannedStatus.isEmpty() && u.currentScannedStatus != "UNCHECKED");
         u.currentScannedStatus = status;
         u.isModified = (u.currentScannedStatus != u.savedScannedStatus);
+
+        auto* tableItem = serialToTableItemMap.value(cleanSn, nullptr);
+        int existingRow = tableItem ? tableItem->row() : -1;
+
         if (!wasAlreadyChecked) {
             u.lastTouchSeq = ++actionCounter;
+            if (existingRow >= 0) {
+                removeTableRowInPlace(existingRow, cleanSn);
+            }
+            insertUnitRowAtTop(existingIdx);
+        } else {
+            if (existingRow >= 0) {
+                if (unitMatchesCurrentFilter(u)) {
+                    updateTableRowInPlace(existingRow, existingIdx);
+                } else {
+                    removeTableRowInPlace(existingRow, cleanSn);
+                }
+            } else {
+                if (unitMatchesCurrentFilter(u)) {
+                    insertUnitRowAtTop(existingIdx);
+                }
+            }
         }
-        refreshUnitTable();
+
         refreshQuantityTablePreview();
         updateSaveButtonState();
+        updateSummaryLabelsOnly();
         showToast(QString("⚡ [Mô phỏng] Đã ghi nhận [%1] -> %2 (Chờ lưu)").arg(cleanSn, status), true);
         return true;
     }
@@ -2716,9 +2901,10 @@ bool InventoryCheckDetailDialog::recordSingleSerialFromSim(const QString& sn, in
     nu.lastTouchSeq = ++actionCounter;
 
     stagedUnits.push_back(nu);
-    serialToIndexMap.insert(nu.serial.toUpper(), static_cast<int>(stagedUnits.size() - 1));
+    int newIdx = static_cast<int>(stagedUnits.size() - 1);
+    serialToIndexMap.insert(nu.serial.toUpper(), newIdx);
 
-    refreshUnitTable();
+    insertUnitRowAtTop(newIdx);
     refreshQuantityTablePreview();
     updateSaveButtonState();
     showToast(QString("⚡ [Mô phỏng] Đã chèn linh kiện lạ [%1] vào hàng đợi!").arg(cleanSn), true);
@@ -2780,13 +2966,23 @@ std::vector<std::pair<int, QString>> InventoryCheckDetailDialog::getCheckProduct
 
 void InventoryCheckDetailDialog::removeStagedUnitBySerial(const QString& sn)
 {
+    QString snUpper = sn.trimmed().toUpper();
     auto it = std::find_if(stagedUnits.begin(), stagedUnits.end(), [&](const StagedCheckUnit& u) {
-        return u.serial == sn && u.isNew;
+        return u.serial.toUpper() == snUpper && u.isNew;
     });
     if (it != stagedUnits.end()) {
+        auto* tableItem = serialToTableItemMap.value(snUpper, nullptr);
+        int row = tableItem ? tableItem->row() : -1;
+
         stagedUnits.erase(it);
         rebuildSerialIndexMap();
-        refreshUnitTable();
+
+        if (row >= 0 && row < unitTable->rowCount()) {
+            removeTableRowInPlace(row, snUpper);
+        } else {
+            refreshUnitTable();
+        }
+
         refreshQuantityTablePreview();
         updateSaveButtonState();
         showToast(QString("🗑️ Đã xóa linh kiện lạ [%1] khỏi danh sách chờ lưu.").arg(sn), true);
@@ -2961,11 +3157,12 @@ void InventoryCheckDetailDialog::onAddUnrecordedSurplus()
             nu.lastTouchSeq = ++actionCounter;
 
             stagedUnits.push_back(nu);
-            serialToIndexMap.insert(nu.serial.toUpper(), static_cast<int>(stagedUnits.size() - 1));
+            int newIdx = static_cast<int>(stagedUnits.size() - 1);
+            serialToIndexMap.insert(nu.serial.toUpper(), newIdx);
+            insertUnitRowAtTop(newIdx);
             addedCount++;
         }
 
-        refreshUnitTable();
         refreshQuantityTablePreview();
         updateSaveButtonState();
         showToast(QString("⭐ Đã thêm %1 linh kiện thừa vào danh sách chờ lưu (Chưa lưu DB)!").arg(addedCount), true);
