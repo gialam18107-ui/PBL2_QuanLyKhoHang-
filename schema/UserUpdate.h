@@ -207,6 +207,12 @@ namespace user_update
         const Vector<BatchCheckUnitSurplus>& surplusUnits
     );
 
+    OperationResult updateInventoryCheckStatus(
+        Database* db,
+        int checkId,
+        const std::string& newStatus
+    );
+
     /**
      * @brief Hủy đợt kiểm kê kho (chuyển sang CANCELLED) nếu chưa COMPLETED.
      */

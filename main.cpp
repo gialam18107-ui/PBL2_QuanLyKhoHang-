@@ -1,15 +1,34 @@
 ﻿#include <QApplication>
 #include <QStyleFactory>
 #include <QFont>
+#include <QEvent>
+#include <QComboBox>
+#include <QAbstractSpinBox>
 #include <iostream>
 
 #include "database/Database.h"
 #include "data_io/DatabaseIO.h"
 #include "ui/MainWindow.h"
 
+class NoWheelEventFilter : public QObject {
+public:
+    explicit NoWheelEventFilter(QObject* parent = nullptr) : QObject(parent) {}
+protected:
+    bool eventFilter(QObject* watched, QEvent* event) override {
+        if (event->type() == QEvent::Wheel) {
+            if (qobject_cast<QComboBox*>(watched) || qobject_cast<QAbstractSpinBox*>(watched)) {
+                return true; // Chặn cuộn chuột đổi lựa chọn; người dùng phải bấm chọn cụ thể
+            }
+        }
+        return QObject::eventFilter(watched, event);
+    }
+};
+
 int main(int argc, char* argv[])
 {
     QApplication app(argc, argv);
+    NoWheelEventFilter wheelFilter(&app);
+    app.installEventFilter(&wheelFilter);
     app.setStyle(QStyleFactory::create("Fusion"));
 
     QPalette palette;

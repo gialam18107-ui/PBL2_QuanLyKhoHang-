@@ -180,6 +180,7 @@ void AdjustmentMovementCreateDialog::setupUI()
     itemsTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents);
     itemsTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::ResizeToContents);
     itemsTable->setAlternatingRowColors(true);
+    itemsTable->verticalHeader()->setVisible(false);
     itemLayout->addWidget(itemsTable, 1);
 
     mainLayout->addWidget(itemGroup, 1);
@@ -1187,28 +1188,42 @@ void AdjustmentMovementDetailDialog::setupUI()
     mainLayout->setContentsMargins(14, 14, 14, 14);
     mainLayout->setSpacing(10);
 
-    // Header card
+    // Header card: Line 1 = code, status combo, reason, date, source check. Line 2 = note
     auto* headerCard = new QGroupBox(QString("Phiếu điều chỉnh: %1").arg(adjustCode), this);
+    headerCard->setStyleSheet("QGroupBox { font-size: 13px; font-weight: bold; }");
     auto* grid = new QGridLayout(headerCard);
-    grid->setContentsMargins(12, 10, 12, 10);
-    grid->setHorizontalSpacing(18);
+    grid->setContentsMargins(12, 8, 12, 8);
+    grid->setHorizontalSpacing(16);
     grid->setVerticalSpacing(6);
 
     codeLabel = new QLabel(QString("<b>Mã phiếu:</b> %1").arg(adjustCode), headerCard);
-    QString dispStatus = translateStatus(adjustStatus);
-    QString stColor = (adjustStatus == "COMPLETED" ? "#16a34a" : (adjustStatus == "PROCESSING" ? "#0284c7" : (adjustStatus == "CANCELLED" ? "#dc2626" : "#ca8a04")));
-    statusLabel = new QLabel(QString("<b>Trạng thái:</b> <span style='color:%1; font-weight:bold;'>%2</span>")
-        .arg(stColor, dispStatus), headerCard);
+
+    auto* statusBox = new QHBoxLayout();
+    statusBox->setContentsMargins(0, 0, 0, 0);
+    statusBox->setSpacing(6);
+    auto* stTitle = new QLabel("<b>Trạng thái:</b>", headerCard);
+    statusCombo = new QComboBox(headerCard);
+    statusCombo->addItem("Chờ xử lý (PENDING)", "PENDING");
+    statusCombo->addItem("Đang thực hiện (PROCESSING)", "PROCESSING");
+    statusCombo->addItem("Hoàn thành (COMPLETED)", "COMPLETED");
+    statusCombo->addItem("Đã hủy (CANCELLED)", "CANCELLED");
+    int curStIdx = statusCombo->findData(adjustStatus);
+    if (curStIdx >= 0) statusCombo->setCurrentIndex(curStIdx);
+    statusCombo->setStyleSheet("QComboBox { font-weight: bold; padding: 2px 8px; border: 1px solid #cbd5e1; border-radius: 4px; }");
+    connect(statusCombo, QOverload<int>::of(&QComboBox::activated), this, &AdjustmentMovementDetailDialog::onStatusComboChanged);
+    statusBox->addWidget(stTitle);
+    statusBox->addWidget(statusCombo);
+
     reasonLabel = new QLabel(QString("<b>Lý do:</b> %1").arg(adjustReason), headerCard);
     dateLabel = new QLabel(QString("<b>Ngày tạo:</b> %1").arg(adjustedAt), headerCard);
     sourceCodeLabel = new QLabel(QString("<b>Đợt kiểm gốc:</b> %1").arg(sourceCode.isEmpty() ? "(Không)" : sourceCode), headerCard);
-    noteLabel = new QLabel(QString("<b>Ghi chú:</b> %1").arg(note.isEmpty() ? "(Không có)" : note), headerCard);
 
     auto* srcLayout = new QHBoxLayout();
+    srcLayout->setContentsMargins(0, 0, 0, 0);
     srcLayout->addWidget(sourceCodeLabel);
     if (!sourceCode.isEmpty() && sourceCode.startsWith("CHK-")) {
-        auto* eyeBtn = new QPushButton(QString("👁️ Xem đợt kiểm (%1)").arg(sourceCode), headerCard);
-        eyeBtn->setStyleSheet("background-color: #ffffff; color: #1e293b; border: 1px solid #cbd5e1; font-weight: 600; padding: 2px 8px; border-radius: 4px; font-size: 11px;");
+        auto* eyeBtn = new QPushButton(QString("👁️ Xem (%1)").arg(sourceCode), headerCard);
+        eyeBtn->setStyleSheet("background-color: #ffffff; color: #1e293b; border: 1px solid #cbd5e1; font-weight: 600; padding: 2px 6px; border-radius: 4px; font-size: 11px;");
         connect(eyeBtn, &QPushButton::clicked, [this]() {
             InventoryCheckInspectDialog::openInspector(db, sourceCode, this, nullptr, "ADJUSTMENT");
         });
@@ -1216,12 +1231,17 @@ void AdjustmentMovementDetailDialog::setupUI()
     }
     srcLayout->addStretch();
 
+    // Line 1: Code, Status, Reason, Date, Source Check
     grid->addWidget(codeLabel, 0, 0);
-    grid->addWidget(statusLabel, 0, 1);
+    grid->addLayout(statusBox, 0, 1);
     grid->addWidget(reasonLabel, 0, 2);
-    grid->addWidget(dateLabel, 1, 0);
-    grid->addLayout(srcLayout, 1, 1);
-    grid->addWidget(noteLabel, 1, 2);
+    grid->addWidget(dateLabel, 0, 3);
+    grid->addLayout(srcLayout, 0, 4);
+
+    // Line 2: Note takes full width
+    noteLabel = new QLabel(QString("<b>Ghi chú:</b> %1").arg(note.isEmpty() ? "(Không có)" : note), headerCard);
+    noteLabel->setWordWrap(true);
+    grid->addWidget(noteLabel, 1, 0, 1, 5);
 
     mainLayout->addWidget(headerCard);
 
@@ -1362,17 +1382,11 @@ void AdjustmentMovementDetailDialog::setupUI()
     finalizeMovementBtn->setCursor(Qt::PointingHandCursor);
     finalizeMovementBtn->setEnabled(!isCompleted);
 
-    cancelMovementBtn = new QPushButton("❌ Hủy phiếu điều chỉnh", this);
-    cancelMovementBtn->setStyleSheet("background-color: #fff1f2; border: 1.5px solid #f43f5e; color: #e11d48; font-weight: 600; padding: 8px 16px; border-radius: 6px;");
-    cancelMovementBtn->setCursor(Qt::PointingHandCursor);
-    cancelMovementBtn->setEnabled(adjustStatus == "PENDING" && executedUnits.empty());
-
     closeBtn = new QPushButton("Đóng", this);
     closeBtn->setStyleSheet("background-color: #ffffff; border: 1px solid #cbd5e1; font-weight: 600; padding: 8px 18px; border-radius: 6px;");
 
     bottomBar->addWidget(confirmSaveUnitsBtn);
     bottomBar->addWidget(finalizeMovementBtn);
-    bottomBar->addWidget(cancelMovementBtn);
     bottomBar->addStretch();
     bottomBar->addWidget(closeBtn);
     mainLayout->addLayout(bottomBar);
@@ -1383,7 +1397,6 @@ void AdjustmentMovementDetailDialog::setupUI()
     connect(openSimulationBtn, &QPushButton::clicked, this, &AdjustmentMovementDetailDialog::onOpenSimulationToolsDialog);
     connect(confirmSaveUnitsBtn, &QPushButton::clicked, this, &AdjustmentMovementDetailDialog::onConfirmSaveUnits);
     connect(finalizeMovementBtn, &QPushButton::clicked, this, &AdjustmentMovementDetailDialog::onFinalizeMovement);
-    connect(cancelMovementBtn, &QPushButton::clicked, this, &AdjustmentMovementDetailDialog::onCancelMovement);
     connect(closeBtn, &QPushButton::clicked, this, &QDialog::accept);
 
     connect(unitsTable, &QTableWidget::cellClicked, this, [this](int row, int col) {
@@ -1540,8 +1553,11 @@ void AdjustmentMovementDetailDialog::refreshAllViews(bool scrollToBottom)
             confirmSaveUnitsBtn->setText("💾 Xác nhận thực hiện chuyển đổi (Lưu kết quả)");
         }
     }
-    if (cancelMovementBtn) {
-        cancelMovementBtn->setEnabled(adjustStatus == "PENDING" && executedUnits.empty() && stagedUnits.empty());
+    if (statusCombo) {
+        statusCombo->blockSignals(true);
+        int idx = statusCombo->findData(adjustStatus);
+        if (idx >= 0) statusCombo->setCurrentIndex(idx);
+        statusCombo->blockSignals(false);
     }
 }
 
@@ -1720,10 +1736,10 @@ void AdjustmentMovementDetailDialog::refreshUnitsTable(bool scrollToBottom)
         itTo->setTextAlignment(Qt::AlignCenter);
         itTo->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
 
-        auto* itClass = new QTableWidgetItem("💾 Đã chuyển");
+        auto* itClass = new QTableWidgetItem("✏️ Đã đổi trạng thái (Đã lưu CSDL)");
         itClass->setTextAlignment(Qt::AlignCenter);
         itClass->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
-        itClass->setForeground(QColor("#15803d"));
+        itClass->setForeground(QColor("#16a34a"));
 
         auto* itAct = new QTableWidgetItem("-");
         itAct->setTextAlignment(Qt::AlignCenter);
@@ -1959,6 +1975,63 @@ void AdjustmentMovementDetailDialog::onDirectSerialEntered()
     detailStagedCountMap[targetLine.adjustDetailId]++;
 
     refreshAllViews(true);
+}
+
+void AdjustmentMovementDetailDialog::onStatusComboChanged(int index)
+{
+    if (!statusCombo) return;
+    QString newSt = statusCombo->itemData(index).toString();
+    if (newSt == adjustStatus) return;
+
+    if (newSt == "CANCELLED") {
+        auto ans = QMessageBox::question(
+            this, "Xác nhận hủy phiếu điều chỉnh",
+            "Bạn có chắc chắn muốn hủy phiếu điều chỉnh này không?\n\nSau khi hủy, phiếu điều chỉnh sẽ bị khóa và không thể thao tác thêm.",
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No
+        );
+        if (ans != QMessageBox::Yes) {
+            statusCombo->blockSignals(true);
+            int curIdx = statusCombo->findData(adjustStatus);
+            if (curIdx >= 0) statusCombo->setCurrentIndex(curIdx);
+            statusCombo->blockSignals(false);
+            return;
+        }
+    } else if (newSt == "COMPLETED") {
+        auto ans = QMessageBox::question(
+            this, "Xác nhận hoàn tất phiếu điều chỉnh",
+            "Bạn có chắc chắn muốn hoàn tất phiếu điều chỉnh này không?\n\nSau khi hoàn tất, toàn bộ kế hoạch điều chuyển sẽ được chốt lại.",
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No
+        );
+        if (ans != QMessageBox::Yes) {
+            statusCombo->blockSignals(true);
+            int curIdx = statusCombo->findData(adjustStatus);
+            if (curIdx >= 0) statusCombo->setCurrentIndex(curIdx);
+            statusCombo->blockSignals(false);
+            return;
+        }
+    }
+
+    OperationResult res = user_update::updateAdjustmentMovementStatus(db, adjustId, newSt.toStdString());
+    if (!res.success) {
+        QMessageBox::warning(this, "Lỗi cập nhật trạng thái", QString("Không thể đổi trạng thái phiếu điều chỉnh:\n%1").arg(QString::fromStdString(res.message)));
+        statusCombo->blockSignals(true);
+        int curIdx = statusCombo->findData(adjustStatus);
+        if (curIdx >= 0) statusCombo->setCurrentIndex(curIdx);
+        statusCombo->blockSignals(false);
+        return;
+    }
+
+    adjustStatus = newSt;
+    isExecuted = true;
+    QMessageBox::information(this, "Thành công", QString("Đã chuyển trạng thái phiếu điều chỉnh sang: %1").arg(statusCombo->currentText()));
+
+    bool isCompleted = (adjustStatus == "COMPLETED" || adjustStatus == "CANCELLED");
+    if (confirmSaveUnitsBtn) confirmSaveUnitsBtn->setEnabled(!isCompleted && !stagedUnits.empty());
+    if (finalizeMovementBtn) finalizeMovementBtn->setEnabled(!isCompleted);
+    if (scanSerialEdit) scanSerialEdit->setEnabled(!isCompleted);
+    if (addSerialBtn) addSerialBtn->setEnabled(!isCompleted);
+    if (openSimulationBtn) openSimulationBtn->setEnabled(!isCompleted);
+    refreshAllViews();
 }
 
 void AdjustmentMovementDetailDialog::onCancelMovement()
@@ -2287,7 +2360,6 @@ void AdjustmentMovementDetailDialog::onConfirmSaveUnits()
     bool isCompleted = (adjustStatus == "COMPLETED" || adjustStatus == "CANCELLED");
     if (confirmSaveUnitsBtn) confirmSaveUnitsBtn->setEnabled(!isCompleted);
     if (finalizeMovementBtn) finalizeMovementBtn->setEnabled(!isCompleted);
-    if (cancelMovementBtn) cancelMovementBtn->setEnabled(adjustStatus == "PENDING" && executedUnits.empty());
     if (scanSerialEdit) scanSerialEdit->setEnabled(!isCompleted);
     if (addSerialBtn) addSerialBtn->setEnabled(!isCompleted);
     if (openSimulationBtn) openSimulationBtn->setEnabled(!isCompleted);
@@ -2344,7 +2416,6 @@ void AdjustmentMovementDetailDialog::onFinalizeMovement()
     bool isCompleted = (adjustStatus == "COMPLETED" || adjustStatus == "CANCELLED");
     if (confirmSaveUnitsBtn) confirmSaveUnitsBtn->setEnabled(!isCompleted);
     if (finalizeMovementBtn) finalizeMovementBtn->setEnabled(!isCompleted);
-    if (cancelMovementBtn) cancelMovementBtn->setEnabled(false);
     if (scanSerialEdit) scanSerialEdit->setEnabled(!isCompleted);
     if (addSerialBtn) addSerialBtn->setEnabled(!isCompleted);
     if (openSimulationBtn) openSimulationBtn->setEnabled(!isCompleted);

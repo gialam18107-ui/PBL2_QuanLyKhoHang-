@@ -331,6 +331,7 @@ private:
     void onAddUnrecordedSurplus();
     void onOpenReconciliationDialog();
     void onCompleteCheck();
+    void onStatusComboChanged(int index);
     void onEditCheckNoteClicked();
     void onEditRowNoteClicked();
 
@@ -364,6 +365,7 @@ private:
     QLabel* codeLabel = nullptr;
     QLabel* typeLabel = nullptr;
     QLabel* statusLabel = nullptr;
+    QComboBox* statusCombo = nullptr;
     QLabel* dateLabel = nullptr;
     QLabel* noteLabel = nullptr;
     QPushButton* editCheckNoteBtn = nullptr;

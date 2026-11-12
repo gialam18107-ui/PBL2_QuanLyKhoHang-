@@ -1609,7 +1609,7 @@ void MainWindow::setupPages()
     // ========================================================
     auxSpecWidget = new QueryTableWidget(
         "Danh mục phụ & Thông số chi tiết",
-        "Truy vấn danh mục phụ bao gồm bảng Brand, bảng Category và toàn bộ các bảng thông số linh kiện (Rule 9.3)",
+        "Truy vấn danh mục phụ bao gồm bảng Thương hiệu, Thể loại và toàn bộ các bảng thông số linh kiện",
         this
     );
 
@@ -2099,12 +2099,9 @@ void MainWindow::setupReportPage()
     headerLayout->setContentsMargins(0, 0, 0, 0);
     headerLayout->setSpacing(4);
 
-    auto* titleLabel = new QLabel("📈 BÁO CÁO XUẤT - NHẬP - TỒN ĐỊNH KỲ (PERIODIC INVENTORY REPORT)", headerFrame);
+    auto* titleLabel = new QLabel("📈 BÁO CÁO XUẤT - NHẬP - TỒN ĐỊNH KỲ", headerFrame);
     titleLabel->setStyleSheet("font-size: 16px; font-weight: bold; color: #0f172a;");
-    auto* descLabel = new QLabel("Thống kê biến động nhập, xuất và số lượng tồn kho theo tháng đối với các sản phẩm trong danh mục (Rule 10.1). Dữ liệu được tính toán dựa trên actual_quantity.", headerFrame);
-    descLabel->setStyleSheet("font-size: 12px; color: #64748b;");
     headerLayout->addWidget(titleLabel);
-    headerLayout->addWidget(descLabel);
     mainLayout->addWidget(headerFrame);
 
     // 2. Control Toolbar (Chọn Tháng, Năm, Nút Xem Báo Cáo, Nút Xuất CSV)

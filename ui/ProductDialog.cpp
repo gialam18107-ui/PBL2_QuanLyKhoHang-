@@ -258,7 +258,7 @@ void ProductDialog::setupUI()
     mainLayout->addWidget(basicGroup);
 
     // Group 2: Identification & Barcode
-    auto* idGroup = new QGroupBox("2. Định danh & Mã vạch (Rule 4.2)", this);
+    auto* idGroup = new QGroupBox("2. Định danh & Mã vạch", this);
     auto* idGrid = new QGridLayout(idGroup);
     idGrid->setContentsMargins(14, 16, 14, 14);
     idGrid->setHorizontalSpacing(16);

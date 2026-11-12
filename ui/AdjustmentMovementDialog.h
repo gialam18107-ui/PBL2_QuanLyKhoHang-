@@ -263,6 +263,7 @@ private:
     void onDirectSerialEntered();
     void onDetailSelectionChanged();
     void onCancelMovement();
+    void onStatusComboChanged(int index);
     void onOpenProductUnitPicker(int adjustDetailId);
     void onOpenSimulationToolsDialog();
     void onRemoveStagedUnitBySerial(const QString& sn);
@@ -282,6 +283,7 @@ private:
 
     QLabel* codeLabel;
     QLabel* statusLabel;
+    QComboBox* statusCombo = nullptr;
     QLabel* reasonLabel;
     QLabel* dateLabel;
     QLabel* sourceCodeLabel;
@@ -299,7 +301,6 @@ private:
 
     QPushButton* confirmSaveUnitsBtn;
     QPushButton* finalizeMovementBtn;
-    QPushButton* cancelMovementBtn;
     QPushButton* closeBtn;
 
     AdjustmentSimulationDialog* simulationDialog = nullptr;

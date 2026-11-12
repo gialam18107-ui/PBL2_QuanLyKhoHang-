@@ -555,6 +555,19 @@ namespace user_update
         return updateRecord(db, "adjustment_movement", adjustId, cols, vals);
     }
 
+    OperationResult updateInventoryCheckStatus(
+        Database* db,
+        int checkId,
+        const std::string& newStatus
+    ) {
+        if (!db || checkId <= 0) return OperationResult{false, "Tham số không hợp lệ.", 0};
+        Vector<std::string> cols;
+        cols.push_back("status");
+        Vector<Value> vals;
+        vals.push_back(Value(newStatus));
+        return updateRecord(db, "inventory_check", checkId, cols, vals);
+    }
+
     OperationResult cancelAdjustmentMovement(
         Database* db,
         int adjustId

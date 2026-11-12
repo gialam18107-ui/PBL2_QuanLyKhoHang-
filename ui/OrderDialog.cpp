@@ -29,6 +29,15 @@
 #include <QButtonGroup>
 #include <QStyle>
 
+static QString translateUnitStatus(const QString& st)
+{
+    if (st == "AVAILABLE") return "Khả dụng";
+    if (st == "WARRANTY") return "Bảo hành";
+    if (st == "SCRAPPED") return "Phế phẩm";
+    if (st == "OUT") return "Đã xuất kho";
+    return st;
+}
+
 static QString commonDialogStyleSheet()
 {
     return
@@ -2289,7 +2298,7 @@ void LogisticsProductStatusSummaryDialog::setupUI()
     QStringList headers = {
         "Mã sản phẩm", "Tên sản phẩm", "SL Đợt này",
         (hubType == HubType::INBOUND ? "Thực nhận" : "Thực xuất"),
-        "Khả dụng (AVAILABLE)", "Bảo hành (WARRANTY)", "Lỗi (SCRAPPED)", "Tổng số lượng"
+        "Khả dụng", "Bảo hành", "Phế phẩm", "Tổng số lượng"
     };
     summaryTable->setColumnCount(8);
     summaryTable->setHorizontalHeaderLabels(headers);
@@ -2595,7 +2604,7 @@ void LogisticsBatchDialog::setupUI()
     titleLbl->setStyleSheet("font-size: 16px; font-weight: 700; color: #0f172a;");
     mainLayout->addWidget(titleLbl);
 
-    auto* topGroup = new QGroupBox("Thiết lập đợt giao nhận (Rule 4.3: sum(received_quantity) <= ordered_quantity)", this);
+    auto* topGroup = new QGroupBox("Thiết lập đợt giao nhận", this);
     auto* topForm = new QFormLayout(topGroup);
     topForm->setSpacing(10);
 
@@ -3038,7 +3047,7 @@ void OutboundProductUnitPickerDialog::filterTable()
         auto* itSn = new QTableWidgetItem(QString::fromStdString(c->serial));
         itSn->setFont(QFont("Consolas", font().pointSize(), QFont::Bold));
 
-        auto* itSt = new QTableWidgetItem(QString::fromStdString(c->status));
+        auto* itSt = new QTableWidgetItem(translateUnitStatus(QString::fromStdString(c->status)));
         itSt->setTextAlignment(Qt::AlignCenter);
         itSt->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
         if (c->status == "AVAILABLE") itSt->setForeground(QColor("#16a34a"));
@@ -3146,21 +3155,21 @@ bool SimulationToolDialog::isUnitEligible(const std::string& status) const
 QString SimulationToolDialog::getEligibilityReason(const std::string& status) const
 {
     if (hubType == HubType::OUTBOUND) {
-        if (status == "OUT") return "❌ Đã ở trạng thái OUT";
+        if (status == "OUT") return "❌ Đã ở trạng thái Đã xuất kho";
         if (transactionType == "SELLING" || transactionType == "SEL")
-            return (status == "AVAILABLE") ? "✅ Hợp lệ (AVAILABLE)" : "❌ Cần trạng thái AVAILABLE";
+            return (status == "AVAILABLE") ? "✅ Hợp lệ (Khả dụng)" : "❌ Cần trạng thái Khả dụng";
         if (transactionType == "WARRANTY_RETURN" || transactionType == "WRT")
-            return (status == "SCRAPPED" || status == "WARRANTY") ? "✅ Hợp lệ (WARRANTY/SCRAPPED)" : "❌ Cần WARRANTY/SCRAPPED";
+            return (status == "SCRAPPED" || status == "WARRANTY") ? "✅ Hợp lệ (Bảo hành / Phế phẩm)" : "❌ Cần Bảo hành hoặc Phế phẩm";
         if (transactionType == "WARRANTY_REPLACEMENT_TO_CUSTOMER" || transactionType == "WRC")
-            return (status == "AVAILABLE" || status == "WARRANTY") ? "✅ Hợp lệ (AVAILABLE/WARRANTY)" : "❌ Cần AVAILABLE/WARRANTY";
+            return (status == "AVAILABLE" || status == "WARRANTY") ? "✅ Hợp lệ (Khả dụng / Bảo hành)" : "❌ Cần Khả dụng hoặc Bảo hành";
         return (status != "OUT") ? "✅ Hợp lệ" : "❌ Không thể xuất";
     } else {
         if (transactionType == "ADJUSTMENT_IN" || transactionType == "ADJ")
-            return (status == "OUT") ? "✅ Hợp lệ tái phát hiện (Đang OUT)" : "❌ Đang trong kho (Chỉ nhận lại linh kiện đã xuất)";
+            return (status == "OUT") ? "✅ Hợp lệ tái phát hiện (Đang ở ngoài kho)" : "❌ Đang trong kho (Chỉ nhận lại linh kiện đã xuất)";
         bool isNew = (transactionType == "PURCHASING" || transactionType == "PUR" ||
                       transactionType == "WARRANTY_REPLACEMENT" || transactionType == "WRP");
         if (isNew) return "ℹ️ Đơn mua mới yêu cầu Serial mới (Không xuất/nhập lại)";
-        return (status == "OUT") ? "✅ Hợp lệ để nhận lại (Đang OUT)" : "❌ Chưa xuất (Không phải OUT)";
+        return (status == "OUT") ? "✅ Hợp lệ để nhận lại (Đang ở ngoài kho)" : "❌ Chưa xuất khỏi kho";
     }
 }
 
@@ -3456,7 +3465,7 @@ void SimulationToolDialog::filterTable()
         auto* itPn = new QTableWidgetItem(QString::fromStdString(c->productName));
         auto* itPc = new QTableWidgetItem(QString::fromStdString(c->productCode));
 
-        auto* itSt = new QTableWidgetItem(QString::fromStdString(c->status));
+        auto* itSt = new QTableWidgetItem(translateUnitStatus(QString::fromStdString(c->status)));
         itSt->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
         if (c->status == "AVAILABLE") itSt->setForeground(QBrush(QColor("#16a34a")));
         else if (c->status == "WARRANTY") itSt->setForeground(QBrush(QColor("#d97706")));
@@ -3910,18 +3919,27 @@ void UnitEntryDialog::setupUI()
     mainLayout->setContentsMargins(16, 14, 16, 14);
     mainLayout->setSpacing(10);
 
-    // Header info banner
+    // Header info banner (thu nhỏ gọn gàng 1 dòng)
     auto* headerBox = new QFrame(this);
-    headerBox->setStyleSheet("background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px;");
+    headerBox->setStyleSheet("background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px 8px;");
     auto* headerLayout = new QHBoxLayout(headerBox);
-    headerLayout->setContentsMargins(8, 4, 8, 4);
+    headerLayout->setContentsMargins(6, 2, 6, 2);
+    headerLayout->setSpacing(8);
+
+    QString viTxnType = QString::fromStdString(transactionType);
+    if (viTxnType == "PURCHASING" || viTxnType == "PUR") viTxnType = "Nhập mua hàng";
+    else if (viTxnType == "SALES" || viTxnType == "SEL") viTxnType = "Xuất bán hàng";
+    else if (viTxnType == "WARRANTY_SEND" || viTxnType == "WRT") viTxnType = "Xuất gửi bảo hành";
+    else if (viTxnType == "WARRANTY_RECEIVE" || viTxnType == "WRC") viTxnType = "Nhập nhận bảo hành";
+    else if (viTxnType == "RETURN" || viTxnType == "RET") viTxnType = "Trả hàng";
+    else if (viTxnType == "ADJUSTMENT" || viTxnType == "ADJ") viTxnType = "Điều chỉnh kho";
 
     auto* titleText = new QLabel(
-        QString("<b>Đợt:</b> %1 &nbsp;&nbsp;|&nbsp;&nbsp; <b>Mã đơn:</b> %2 &nbsp;&nbsp;|&nbsp;&nbsp; <b>Loại giao dịch:</b> %3")
-            .arg(batchCodeStr, parentOrderCodeStr, QString::fromStdString(transactionType)),
+        QString("<b>Đợt:</b> %1 &nbsp;|&nbsp; <b>Mã đơn:</b> %2 &nbsp;|&nbsp; <b>Loại:</b> %3")
+            .arg(batchCodeStr, parentOrderCodeStr, viTxnType),
         headerBox
     );
-    titleText->setStyleSheet("font-size: 13px; color: #1e293b;");
+    titleText->setStyleSheet("font-size: 12px; color: #1e293b;");
     headerLayout->addWidget(titleText);
 
     std::string chkSrcCode = db ? user_query::get_order_source_code_by_code(db, parentOrderCodeStr.toStdString(), hubType == HubType::INBOUND) : "";
@@ -3941,7 +3959,7 @@ void UnitEntryDialog::setupUI()
     if (isLogisticsCompleted) {
         QString lockText = (parentOrderStatus == "COMPLETED" || parentOrderStatus == "CANCELLED")
                          ? QString("🔒 ĐÃ KHÓA THEO ĐƠN (%1)").arg(QString::fromStdString(parentOrderStatus))
-                         : "🔒 ĐÃ HOÀN THÀNH (READ-ONLY)";
+                         : "🔒 ĐÃ HOÀN THÀNH";
         auto* lockBadge = new QLabel(lockText, headerBox);
         lockBadge->setStyleSheet("background-color: #fee2e2; color: #991b1b; font-weight: bold; border-radius: 4px; padding: 3px 8px; font-size: 11px;");
         headerLayout->addWidget(lockBadge);
@@ -3950,11 +3968,11 @@ void UnitEntryDialog::setupUI()
 
     if (isLogisticsCompleted) {
         QString bannerText = (parentOrderStatus == "COMPLETED" || parentOrderStatus == "CANCELLED")
-            ? QString("ℹ️ <b>Chế độ chỉ xem (Read-only):</b> Đơn giao dịch [%1] đã ở trạng thái <code>%2</code>. "
-                      "Toàn bộ các đợt vận chuyển liên quan đã bị khóa vĩnh viễn (Rule 5.6). Bạn có thể xem danh sách và lịch sử nhưng không thể quét thêm hoặc chỉnh sửa linh kiện.")
+            ? QString("ℹ️ <b>Chế độ chỉ xem:</b> Đơn giao dịch [%1] đã ở trạng thái <code>%2</code>. "
+                      "Toàn bộ các đợt vận chuyển liên quan đã bị khóa vĩnh viễn. Bạn có thể xem danh sách và lịch sử nhưng không thể quét thêm hoặc chỉnh sửa linh kiện.")
                 .arg(parentOrderCodeStr, QString::fromStdString(parentOrderStatus))
-            : "ℹ️ <b>Chế độ chỉ xem (Read-only):</b> Đợt giao nhận này đã ở trạng thái <code>COMPLETED</code>. "
-              "Toàn bộ dữ liệu linh kiện đã bị khóa vĩnh viễn (Rule 4.5). Bạn có thể xem danh sách và lịch sử nhưng không thể chỉnh sửa.";
+            : "ℹ️ <b>Chế độ chỉ xem:</b> Đợt giao nhận này đã hoàn thành. "
+              "Toàn bộ dữ liệu linh kiện đã bị khóa vĩnh viễn. Bạn có thể xem danh sách và lịch sử nhưng không thể chỉnh sửa.";
 
         auto* warnBanner = new QLabel(bannerText, this);
         warnBanner->setStyleSheet("background-color: #eff6ff; border: 1px solid #bfdbfe; border-left: 4px solid #2563eb; border-radius: 6px; padding: 8px 12px; font-size: 12px; color: #1e40af;");
@@ -4041,7 +4059,7 @@ void UnitEntryDialog::setupUI()
 
             QMenu menu(this);
             for (const auto& opt : opts) {
-                auto* act = menu.addAction(opt);
+                auto* act = menu.addAction(translateUnitStatus(opt));
                 connect(act, &QAction::triggered, [this, sn, opt]() {
                     for (auto& pending : pendingInboundUnits) {
                         if (pending.serial == sn) {
@@ -4111,7 +4129,28 @@ void UnitEntryDialog::setupUI()
     // Middle: Batch Overview Table (Expands to fill vertical room)
     auto* overviewLbl = new QLabel("📊 Tiến độ số lượng theo từng mặt hàng trong đợt:", tabBatchOverview);
     overviewLbl->setStyleSheet("font-size: 13px; font-weight: 600; color: #1e293b;");
-    tab2Layout->addWidget(overviewLbl);
+
+    auto* prodSearchRow = new QHBoxLayout();
+    prodSearchRow->addWidget(overviewLbl, 1);
+
+    auto* batchProductSearchInput = new QLineEdit(tabBatchOverview);
+    batchProductSearchInput->setPlaceholderText("🔍 Tìm mặt hàng theo mã hoặc tên...");
+    batchProductSearchInput->setClearButtonEnabled(true);
+    batchProductSearchInput->setMaximumWidth(260);
+    connect(batchProductSearchInput, &QLineEdit::textChanged, [this](const QString& text) {
+        QString q = text.trimmed().toLower();
+        for (int r = 0; r < batchOverviewTable->rowCount(); ++r) {
+            if (q.isEmpty()) {
+                batchOverviewTable->setRowHidden(r, false);
+            } else {
+                QString code = batchOverviewTable->item(r, 0) ? batchOverviewTable->item(r, 0)->text().toLower() : "";
+                QString name = batchOverviewTable->item(r, 1) ? batchOverviewTable->item(r, 1)->text().toLower() : "";
+                batchOverviewTable->setRowHidden(r, !code.contains(q) && !name.contains(q));
+            }
+        }
+    });
+    prodSearchRow->addWidget(batchProductSearchInput);
+    tab2Layout->addLayout(prodSearchRow);
 
     batchOverviewTable = new QTableWidget(tabBatchOverview);
     batchOverviewTable->setColumnCount(7);
@@ -4184,9 +4223,27 @@ void UnitEntryDialog::setupUI()
     batchUnitsLayout->setSpacing(6);
 
     auto* bHeaderRow = new QHBoxLayout();
+    auto* batchUnitSearchInput = new QLineEdit(batchUnitsBox);
+    batchUnitSearchInput->setPlaceholderText("🔍 Tìm Serial, Mã SP, Tên sản phẩm...");
+    batchUnitSearchInput->setClearButtonEnabled(true);
+    batchUnitSearchInput->setMaximumWidth(280);
+    connect(batchUnitSearchInput, &QLineEdit::textChanged, [this](const QString& text) {
+        QString q = text.trimmed().toLower();
+        for (int r = 0; r < batchUnitsTable->rowCount(); ++r) {
+            if (q.isEmpty()) {
+                batchUnitsTable->setRowHidden(r, false);
+            } else {
+                QString sn = batchUnitsTable->item(r, 1) ? batchUnitsTable->item(r, 1)->text().toLower() : "";
+                QString code = batchUnitsTable->item(r, 2) ? batchUnitsTable->item(r, 2)->text().toLower() : "";
+                QString name = batchUnitsTable->item(r, 3) ? batchUnitsTable->item(r, 3)->text().toLower() : "";
+                batchUnitsTable->setRowHidden(r, !sn.contains(q) && !code.contains(q) && !name.contains(q));
+            }
+        }
+    });
+    bHeaderRow->addWidget(batchUnitSearchInput);
+    bHeaderRow->addStretch();
     batchUnitsCountLabel = new QLabel("(0 linh kiện)", batchUnitsBox);
     batchUnitsCountLabel->setStyleSheet("font-size: 12px; color: #64748b; font-weight: 500;");
-    bHeaderRow->addStretch();
     bHeaderRow->addWidget(batchUnitsCountLabel);
     batchUnitsLayout->addLayout(bHeaderRow);
 
@@ -4233,7 +4290,7 @@ void UnitEntryDialog::setupUI()
 
             QMenu menu(this);
             for (const auto& opt : opts) {
-                auto* act = menu.addAction(opt);
+                auto* act = menu.addAction(translateUnitStatus(opt));
                 connect(act, &QAction::triggered, [this, sn, opt]() {
                     for (auto& pending : pendingInboundUnits) {
                         if (pending.serial == sn) {
@@ -4262,10 +4319,8 @@ void UnitEntryDialog::setupUI()
         setupProductEntryTab();
         mainTabWidget->addTab(tabProductEntry, "📥 1. Nhập linh kiện theo Sản phẩm (*)");
         mainTabWidget->addTab(tabBatchOverview, "📊 2. Tiến độ & Số lượng đợt");
-        mainTabWidget->addTab(tabAllUnits, "📋 3. Toàn bộ linh kiện trong đợt");
     } else {
-        mainTabWidget->addTab(tabBatchOverview, "📊 1. Tiến độ & Số lượng đợt");
-        mainTabWidget->addTab(tabAllUnits, "📋 2. Danh sách các linh kiện trong đơn hiện tại");
+        mainTabWidget->addTab(tabBatchOverview, "📊 Tiến độ & Số lượng đợt");
     }
 
     mainLayout->addWidget(mainTabWidget, 1);
@@ -4818,7 +4873,7 @@ bool UnitEntryDialog::recordPendingInboundSerial(int productId, const QString& s
     QString sn = serial.trimmed().toUpper();
     std::string snStd = sn.toStdString();
     if (!user_create::isValidSerialFormat(snStd)) {
-        outErrMsg = QString("Mã '%1' sai định dạng chuẩn SN-XXXXXXX (Rule 5.5).").arg(sn);
+        outErrMsg = QString("Mã '%1' sai định dạng chuẩn SN-XXXXXXX.").arg(sn);
         return false;
     }
 
@@ -4921,7 +4976,7 @@ bool UnitEntryDialog::recordPendingOutboundSerial(int productId, const QString& 
 
     std::string snStd = snClean.toStdString();
     if (!user_create::isValidSerialFormat(snStd)) {
-        outErrMsg = QString("Mã '%1' sai định dạng chuẩn SN-XXXXXXX (Rule 5.5).").arg(snClean);
+        outErrMsg = QString("Mã '%1' sai định dạng chuẩn SN-XXXXXXX.").arg(snClean);
         return false;
     }
 
@@ -5061,9 +5116,9 @@ void UnitEntryDialog::setupProductEntryTab()
 
     inboundTargetStatusCombo = new QComboBox(selectGroup);
     inboundTargetStatusCombo->setMinimumHeight(38);
-    inboundTargetStatusCombo->addItem("AVAILABLE — Khả dụng / Mới 100%", "AVAILABLE");
-    inboundTargetStatusCombo->addItem("WARRANTY — Hàng đang bảo hành", "WARRANTY");
-    inboundTargetStatusCombo->addItem("SCRAPPED — Lỗi khi nhận / Phế phẩm", "SCRAPPED");
+    inboundTargetStatusCombo->addItem("Khả dụng (Mới 100%)", "AVAILABLE");
+    inboundTargetStatusCombo->addItem("Đang bảo hành", "WARRANTY");
+    inboundTargetStatusCombo->addItem("Lỗi khi nhận (Phế phẩm)", "SCRAPPED");
     inboundTargetStatusCombo->setStyleSheet(
         "QComboBox { font-size: 13px; font-weight: 600; padding: 4px 10px; background-color: #ffffff; border: 1.5px solid #94a3b8; border-radius: 6px; }"
     );
@@ -5076,7 +5131,78 @@ void UnitEntryDialog::setupProductEntryTab()
 
     mainLayout->addWidget(selectGroup);
 
-    // 2. Real-time Product Progress Card (As requested: "hiện luôn cả tiến độ khi nhập sản phẩm này nữa")
+    // Middle Row: Scan Group (LEFT) & Real-time Progress Card (RIGHT) side-by-side
+    auto* middleRow = new QHBoxLayout();
+    middleRow->setSpacing(10);
+
+    // 2. Serial Input and Quick Actions (BÊN TRÁI)
+    auto* scanGroup = new QGroupBox("2. Quét hoặc nhập mã Serial cho sản phẩm", tabProductEntry);
+    auto* scanLayout = new QVBoxLayout(scanGroup);
+    scanLayout->setContentsMargins(10, 8, 10, 8);
+    scanLayout->setSpacing(6);
+
+    auto* scanHeaderRow = new QHBoxLayout();
+    auto* scanDescLbl = new QLabel("Nhập / quét mã barcode:", scanGroup);
+    scanDescLbl->setStyleSheet("font-size: 11px; color: #64748b; font-style: italic;");
+    scanHeaderRow->addWidget(scanDescLbl);
+    scanHeaderRow->addStretch();
+
+    openSimFromTab1Btn = new QPushButton("🧪 Giả lập quét mã...", scanGroup);
+    openSimFromTab1Btn->setCursor(Qt::PointingHandCursor);
+    openSimFromTab1Btn->setToolTip("Mở bộ công cụ sinh mã ngẫu nhiên hoặc chọn linh kiện để test không cần máy quét");
+    openSimFromTab1Btn->setStyleSheet(
+        "QPushButton { background: transparent; color: #4f46e5; border: 1px solid #c7d2fe; border-radius: 4px; padding: 2px 8px; font-size: 11px; font-weight: 600; }"
+        "QPushButton:hover { background-color: #eef2ff; border-color: #818cf8; }"
+    );
+    connect(openSimFromTab1Btn, &QPushButton::clicked, this, &UnitEntryDialog::onOpenSimulationToolsDialog);
+    scanHeaderRow->addWidget(openSimFromTab1Btn);
+    scanLayout->addLayout(scanHeaderRow);
+
+    auto* inputRow = new QHBoxLayout();
+    inputRow->setSpacing(6);
+
+    inboundSerialInput = new QLineEdit(scanGroup);
+    inboundSerialInput->setPlaceholderText("Quét mã Serial (SN-XXXXXXX) rồi nhấn Enter...");
+    inboundSerialInput->setClearButtonEnabled(true);
+    inboundSerialInput->setMinimumHeight(32);
+    inboundSerialInput->setStyleSheet("font-size: 12px; font-weight: 600; padding: 2px 8px; border: 1.5px solid #94a3b8; border-radius: 5px;");
+    inboundSerialInput->setEnabled(!isLogisticsCompleted);
+    connect(inboundSerialInput, &QLineEdit::returnPressed, this, &UnitEntryDialog::onRecordInboundSerial);
+    inputRow->addWidget(inboundSerialInput, 1);
+
+    recordInboundSerialBtn = new QPushButton("➕ Ghi nhận", scanGroup);
+    recordInboundSerialBtn->setCursor(Qt::PointingHandCursor);
+    recordInboundSerialBtn->setMinimumHeight(32);
+    recordInboundSerialBtn->setStyleSheet(
+        "QPushButton { background-color: #16a34a; border: none; border-radius: 5px; padding: 4px 14px; font-size: 12px; font-weight: 600; color: #ffffff; }"
+        "QPushButton:hover { background-color: #15803d; }"
+        "QPushButton:disabled { background-color: #94a3b8; }"
+    );
+    recordInboundSerialBtn->setEnabled(!isLogisticsCompleted);
+    connect(recordInboundSerialBtn, &QPushButton::clicked, this, &UnitEntryDialog::onRecordInboundSerial);
+    inputRow->addWidget(recordInboundSerialBtn);
+    scanLayout->addLayout(inputRow);
+
+    auto* subRow = new QHBoxLayout();
+    batchPasteSerialsBtn = new QPushButton("📋 Dán nhiều Serial...", scanGroup);
+    batchPasteSerialsBtn->setCursor(Qt::PointingHandCursor);
+    batchPasteSerialsBtn->setStyleSheet(
+        "QPushButton { background-color: #f8fafc; border: 1px solid #7c3aed; border-radius: 4px; padding: 3px 10px; font-size: 11px; font-weight: 600; color: #7c3aed; }"
+        "QPushButton:hover { background-color: #f5f3ff; }"
+        "QPushButton:disabled { background-color: #f1f5f9; color: #94a3b8; border-color: #cbd5e1; }"
+    );
+    batchPasteSerialsBtn->setEnabled(!isLogisticsCompleted);
+    connect(batchPasteSerialsBtn, &QPushButton::clicked, this, &UnitEntryDialog::onBatchPasteSerials);
+    subRow->addWidget(batchPasteSerialsBtn);
+
+    inboundFeedbackLabel = new QLabel("⚪ Sẵn sàng quét mã...", scanGroup);
+    inboundFeedbackLabel->setStyleSheet("font-size: 11px; color: #64748b; font-weight: 500;");
+    subRow->addWidget(inboundFeedbackLabel, 1);
+    scanLayout->addLayout(subRow);
+
+    middleRow->addWidget(scanGroup, 1);
+
+    // 3. Real-time Product Progress Card (BÊN PHẢI)
     prodProgressCard = new QFrame(tabProductEntry);
     prodProgressCard->setObjectName("prodProgressCard");
     prodProgressCard->setStyleSheet(
@@ -5084,33 +5210,33 @@ void UnitEntryDialog::setupProductEntryTab()
         "  background-color: #f8fafc;"
         "  border: 1.5px solid #cbd5e1;"
         "  border-radius: 8px;"
-        "  padding: 10px 14px;"
+        "  padding: 8px 12px;"
         "}"
     );
     auto* cardLayout = new QVBoxLayout(prodProgressCard);
-    cardLayout->setContentsMargins(10, 8, 10, 8);
-    cardLayout->setSpacing(8);
+    cardLayout->setContentsMargins(10, 6, 10, 6);
+    cardLayout->setSpacing(6);
 
     auto* cardHeaderRow = new QHBoxLayout();
-    auto* cardTitle = new QLabel("📊 <b>Tiến độ nhận hàng của sản phẩm đang chọn:</b>", prodProgressCard);
-    cardTitle->setStyleSheet("font-size: 13px; color: #1e293b;");
+    auto* cardTitle = new QLabel("📊 <b>Tiến độ nhận hàng của sản phẩm:</b>", prodProgressCard);
+    cardTitle->setStyleSheet("font-size: 12px; color: #1e293b;");
     cardHeaderRow->addWidget(cardTitle);
     cardHeaderRow->addStretch();
 
     prodProgressBadge = new QLabel("ĐANG NHẬP HÀNG", prodProgressCard);
-    prodProgressBadge->setStyleSheet("background-color: #eff6ff; color: #2563eb; font-weight: bold; border-radius: 4px; padding: 3px 10px; font-size: 11px; border: 1px solid #bfdbfe;");
+    prodProgressBadge->setStyleSheet("background-color: #eff6ff; color: #2563eb; font-weight: bold; border-radius: 4px; padding: 2px 8px; font-size: 11px; border: 1px solid #bfdbfe;");
     cardHeaderRow->addWidget(prodProgressBadge);
     cardLayout->addLayout(cardHeaderRow);
 
     auto* statRow = new QHBoxLayout();
-    statRow->setSpacing(16);
+    statRow->setSpacing(12);
 
-    prodTargetQtyLabel = new QLabel("Kế hoạch: <b>0</b> cái", prodProgressCard);
-    prodTargetQtyLabel->setStyleSheet("font-size: 13px; color: #334155;");
-    prodActualQtyLabel = new QLabel("Đã nhận: <b style='color:#16a34a;'>0</b> cái", prodProgressCard);
-    prodActualQtyLabel->setStyleSheet("font-size: 13px; color: #334155;");
-    prodRemQtyLabel = new QLabel("Còn thiếu: <b style='color:#ea580c;'>0</b> cái", prodProgressCard);
-    prodRemQtyLabel->setStyleSheet("font-size: 13px; color: #334155;");
+    prodTargetQtyLabel = new QLabel("Kế hoạch: <b>0</b>", prodProgressCard);
+    prodTargetQtyLabel->setStyleSheet("font-size: 12px; color: #334155;");
+    prodActualQtyLabel = new QLabel("Đã nhận: <b style='color:#16a34a;'>0</b>", prodProgressCard);
+    prodActualQtyLabel->setStyleSheet("font-size: 12px; color: #334155;");
+    prodRemQtyLabel = new QLabel("Còn thiếu: <b style='color:#ea580c;'>0</b>", prodProgressCard);
+    prodRemQtyLabel->setStyleSheet("font-size: 12px; color: #334155;");
 
     statRow->addWidget(prodTargetQtyLabel);
     statRow->addWidget(new QLabel("|", prodProgressCard));
@@ -5118,20 +5244,18 @@ void UnitEntryDialog::setupProductEntryTab()
     statRow->addWidget(new QLabel("|", prodProgressCard));
     statRow->addWidget(prodRemQtyLabel);
     statRow->addStretch();
-
     cardLayout->addLayout(statRow);
 
-    // Progress Bar
     prodProgressBar = new QProgressBar(prodProgressCard);
     prodProgressBar->setRange(0, 100);
     prodProgressBar->setValue(0);
     prodProgressBar->setTextVisible(true);
     prodProgressBar->setFormat("%p% (%v / %m cái)");
-    prodProgressBar->setMinimumHeight(22);
+    prodProgressBar->setMinimumHeight(18);
     prodProgressBar->setStyleSheet(
         "QProgressBar {"
         "  border: 1px solid #cbd5e1;"
-        "  border-radius: 6px;"
+        "  border-radius: 5px;"
         "  text-align: center;"
         "  font-weight: 600;"
         "  font-size: 11px;"
@@ -5140,83 +5264,17 @@ void UnitEntryDialog::setupProductEntryTab()
         "}"
         "QProgressBar::chunk {"
         "  background-color: #16a34a;"
-        "  border-radius: 5px;"
+        "  border-radius: 4px;"
         "}"
     );
     cardLayout->addWidget(prodProgressBar);
 
     overallBatchProgressLabel = new QLabel("Tổng tiến độ toàn đợt nhận: Đã nhận 0 / 0 cái.", prodProgressCard);
-    overallBatchProgressLabel->setStyleSheet("font-size: 12px; color: #64748b; font-style: italic;");
+    overallBatchProgressLabel->setStyleSheet("font-size: 11px; color: #64748b; font-style: italic;");
     cardLayout->addWidget(overallBatchProgressLabel);
 
-    mainLayout->addWidget(prodProgressCard);
-
-    // 3. Serial Input and Quick Actions
-    auto* scanGroup = new QGroupBox("2. Quét hoặc nhập mã Serial cho sản phẩm này", tabProductEntry);
-    auto* scanLayout = new QVBoxLayout(scanGroup);
-    scanLayout->setContentsMargins(12, 10, 12, 10);
-    scanLayout->setSpacing(8);
-
-    auto* scanHeaderRow = new QHBoxLayout();
-    auto* scanDescLbl = new QLabel("Nhập hoặc dùng máy quét barcode để ghi nhận các mã serial:", scanGroup);
-    scanDescLbl->setStyleSheet("font-size: 12px; color: #64748b; font-style: italic;");
-    scanHeaderRow->addWidget(scanDescLbl);
-    scanHeaderRow->addStretch();
-
-    openSimFromTab1Btn = new QPushButton("🧪 Giả lập quét mã (Test)...", scanGroup);
-    openSimFromTab1Btn->setCursor(Qt::PointingHandCursor);
-    openSimFromTab1Btn->setToolTip("Mở bộ công cụ sinh mã ngẫu nhiên hoặc chọn linh kiện để test không cần máy quét");
-    openSimFromTab1Btn->setStyleSheet(
-        "QPushButton { background: transparent; color: #4f46e5; border: 1px solid #c7d2fe; border-radius: 4px; padding: 3px 10px; font-size: 11px; font-weight: 600; }"
-        "QPushButton:hover { background-color: #eef2ff; border-color: #818cf8; }"
-    );
-    connect(openSimFromTab1Btn, &QPushButton::clicked, this, &UnitEntryDialog::onOpenSimulationToolsDialog);
-    scanHeaderRow->addWidget(openSimFromTab1Btn);
-    scanLayout->addLayout(scanHeaderRow);
-
-    auto* inputRow = new QHBoxLayout();
-    inputRow->setSpacing(8);
-
-    inboundSerialInput = new QLineEdit(scanGroup);
-    inboundSerialInput->setPlaceholderText("Quét mã vạch hoặc nhập mã Serial (SN-XXXXXXX) rồi nhấn Enter...");
-    inboundSerialInput->setClearButtonEnabled(true);
-    inboundSerialInput->setMinimumHeight(36);
-    inboundSerialInput->setStyleSheet("font-size: 13px; font-weight: 600; padding: 2px 8px; border: 1.5px solid #94a3b8; border-radius: 6px;");
-    inboundSerialInput->setEnabled(!isLogisticsCompleted);
-    connect(inboundSerialInput, &QLineEdit::returnPressed, this, &UnitEntryDialog::onRecordInboundSerial);
-    inputRow->addWidget(inboundSerialInput, 1);
-
-    recordInboundSerialBtn = new QPushButton("➕ Ghi nhận linh kiện", scanGroup);
-    recordInboundSerialBtn->setCursor(Qt::PointingHandCursor);
-    recordInboundSerialBtn->setMinimumHeight(36);
-    recordInboundSerialBtn->setStyleSheet(
-        "QPushButton { background-color: #16a34a; border: none; border-radius: 6px; padding: 6px 18px; font-size: 13px; font-weight: 600; color: #ffffff; }"
-        "QPushButton:hover { background-color: #15803d; }"
-        "QPushButton:disabled { background-color: #94a3b8; }"
-    );
-    recordInboundSerialBtn->setEnabled(!isLogisticsCompleted);
-    connect(recordInboundSerialBtn, &QPushButton::clicked, this, &UnitEntryDialog::onRecordInboundSerial);
-    inputRow->addWidget(recordInboundSerialBtn);
-
-    batchPasteSerialsBtn = new QPushButton("📋 Dán nhiều Serial...", scanGroup);
-    batchPasteSerialsBtn->setCursor(Qt::PointingHandCursor);
-    batchPasteSerialsBtn->setMinimumHeight(36);
-    batchPasteSerialsBtn->setStyleSheet(
-        "QPushButton { background-color: #f8fafc; border: 1.5px solid #7c3aed; border-radius: 6px; padding: 6px 14px; font-size: 12px; font-weight: 600; color: #7c3aed; }"
-        "QPushButton:hover { background-color: #f5f3ff; }"
-        "QPushButton:disabled { background-color: #f1f5f9; color: #94a3b8; border-color: #cbd5e1; }"
-    );
-    batchPasteSerialsBtn->setEnabled(!isLogisticsCompleted);
-    connect(batchPasteSerialsBtn, &QPushButton::clicked, this, &UnitEntryDialog::onBatchPasteSerials);
-    inputRow->addWidget(batchPasteSerialsBtn);
-
-    scanLayout->addLayout(inputRow);
-
-    inboundFeedbackLabel = new QLabel("⚪ Sẵn sàng quét mã Serial cho sản phẩm...", scanGroup);
-    inboundFeedbackLabel->setStyleSheet("font-size: 12px; color: #64748b; font-weight: 500;");
-    scanLayout->addWidget(inboundFeedbackLabel);
-
-    mainLayout->addWidget(scanGroup);
+    middleRow->addWidget(prodProgressCard, 1);
+    mainLayout->addLayout(middleRow);
 
     // 4. Units Table for this selected product
     auto* tableHeaderRow = new QHBoxLayout();
@@ -5265,7 +5323,7 @@ void UnitEntryDialog::setupProductEntryTab()
 
             QMenu menu(this);
             for (const auto& opt : opts) {
-                auto* act = menu.addAction(opt);
+                auto* act = menu.addAction(translateUnitStatus(opt));
                 connect(act, &QAction::triggered, [this, sn, opt]() {
                     for (auto& pending : pendingInboundUnits) {
                         if (pending.serial == sn) {
@@ -5471,7 +5529,8 @@ void UnitEntryDialog::onInboundProductComboChanged(int index)
             itSn->setFont(QFont("Consolas", font().pointSize(), QFont::Bold));
 
             QString curSt = QString::fromStdString(u->currentStatus);
-            auto* itSt = new QTableWidgetItem(isLogisticsCompleted ? curSt : curSt + " ▾");
+            QString dispCurSt = translateUnitStatus(curSt);
+            auto* itSt = new QTableWidgetItem(isLogisticsCompleted ? dispCurSt : dispCurSt + " ▾");
             itSt->setTextAlignment(Qt::AlignCenter);
             itSt->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
             if (!isLogisticsCompleted) {
@@ -5488,10 +5547,21 @@ void UnitEntryDialog::onInboundProductComboChanged(int index)
             itTime->setTextAlignment(Qt::AlignCenter);
             itTime->setForeground(QColor("#64748b"));
 
-            auto* itClass = new QTableWidgetItem("💾 Đã lưu CSDL");
+            QTableWidgetItem* itClass = nullptr;
+            if (!u->originalStatus.empty() && u->originalStatus != u->savedStatus) {
+                itClass = new QTableWidgetItem("✏️ Đã đổi trạng thái (Đã lưu CSDL)");
+                itClass->setForeground(QColor("#16a34a"));
+                itClass->setToolTip(QString("Ban đầu: %1 -> Đã chuyển sang: %2")
+                    .arg(translateUnitStatus(QString::fromStdString(u->originalStatus)), translateUnitStatus(QString::fromStdString(u->savedStatus))));
+            } else if (u->isModified) {
+                itClass = new QTableWidgetItem("⚠️ Chờ lưu thay đổi");
+                itClass->setForeground(QColor("#d97706"));
+            } else {
+                itClass = new QTableWidgetItem("💾 Đã lưu CSDL");
+                itClass->setForeground(QColor("#15803d"));
+            }
             itClass->setTextAlignment(Qt::AlignCenter);
             itClass->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
-            itClass->setForeground(QColor("#15803d"));
 
             auto* itAct = new QTableWidgetItem("-");
             itAct->setTextAlignment(Qt::AlignCenter);
@@ -5516,7 +5586,8 @@ void UnitEntryDialog::onInboundProductComboChanged(int index)
             itSn->setForeground(QColor("#1e40af"));
 
             QString curSt = QString::fromStdString(pu->status);
-            auto* itSt = new QTableWidgetItem(isLogisticsCompleted ? curSt : curSt + " ▾");
+            QString dispCurSt = translateUnitStatus(curSt);
+            auto* itSt = new QTableWidgetItem(isLogisticsCompleted ? dispCurSt : dispCurSt + " ▾");
             itSt->setTextAlignment(Qt::AlignCenter);
             itSt->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
             itSt->setForeground(QColor("#1e40af"));
@@ -5529,7 +5600,7 @@ void UnitEntryDialog::onInboundProductComboChanged(int index)
             itTime->setTextAlignment(Qt::AlignCenter);
             itTime->setForeground(QColor("#2563eb"));
 
-            auto* itClass = new QTableWidgetItem("⏳ Chờ lưu");
+            auto* itClass = new QTableWidgetItem("⏳ Chờ lưu mới");
             itClass->setTextAlignment(Qt::AlignCenter);
             itClass->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
             itClass->setForeground(QColor("#2563eb"));
@@ -5728,6 +5799,7 @@ void UnitEntryDialog::refreshBatchUnitsTable(bool scrollToBottom)
 
         QString origSt = QString::fromStdString(u.originalStatus);
         if (origSt.isEmpty()) origSt = "(Tạo mới)";
+        else origSt = translateUnitStatus(origSt);
         auto* itOrig = new QTableWidgetItem(origSt);
         itOrig->setTextAlignment(Qt::AlignCenter);
         itOrig->setForeground(QColor(100, 116, 139));
@@ -5739,7 +5811,8 @@ void UnitEntryDialog::refreshBatchUnitsTable(bool scrollToBottom)
         batchUnitsTable->setItem(rowIdx, 4, itOrig);
 
         QString curStatusStr = QString::fromStdString(u.currentStatus);
-        auto* itSt = new QTableWidgetItem(isLogisticsCompleted ? curStatusStr : curStatusStr + " ▾");
+        QString dispCurStatus = translateUnitStatus(curStatusStr);
+        auto* itSt = new QTableWidgetItem(isLogisticsCompleted ? dispCurStatus : dispCurStatus + " ▾");
         itSt->setTextAlignment(Qt::AlignCenter);
         itSt->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
         if (!isLogisticsCompleted) {
@@ -5752,16 +5825,22 @@ void UnitEntryDialog::refreshBatchUnitsTable(bool scrollToBottom)
         else itSt->setForeground(QColor(71, 85, 105));
         batchUnitsTable->setItem(rowIdx, 5, itSt);
 
-        QString savedSt = QString::fromStdString(u.savedStatus);
-        auto* itSaved = new QTableWidgetItem(savedSt);
-        itSaved->setTextAlignment(Qt::AlignCenter);
-        itSaved->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
-        if (savedSt == "AVAILABLE") itSaved->setForeground(QColor(22, 163, 74));
-        else if (savedSt == "WARRANTY") itSaved->setForeground(QColor(37, 99, 235));
-        else if (savedSt == "SCRAPPED") itSaved->setForeground(QColor(220, 38, 38));
-        else if (savedSt == "OUT") itSaved->setForeground(QColor(234, 88, 12));
-        else itSaved->setForeground(QColor(71, 85, 105));
-        batchUnitsTable->setItem(rowIdx, 6, itSaved);
+        QTableWidgetItem* itClass = nullptr;
+        if (!u.originalStatus.empty() && u.originalStatus != u.savedStatus) {
+            itClass = new QTableWidgetItem("✏️ Đã đổi trạng thái (Đã lưu CSDL)");
+            itClass->setForeground(QColor("#16a34a"));
+            itClass->setToolTip(QString("Ban đầu: %1 -> Hiện tại: %2")
+                .arg(translateUnitStatus(QString::fromStdString(u.originalStatus)), translateUnitStatus(QString::fromStdString(u.savedStatus))));
+        } else if (u.isModified) {
+            itClass = new QTableWidgetItem("⚠️ Chờ lưu thay đổi");
+            itClass->setForeground(QColor("#d97706"));
+        } else {
+            itClass = new QTableWidgetItem("💾 Đã lưu CSDL");
+            itClass->setForeground(QColor("#64748b"));
+        }
+        itClass->setTextAlignment(Qt::AlignCenter);
+        itClass->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
+        batchUnitsTable->setItem(rowIdx, 6, itClass);
 
         auto* itAct = new QTableWidgetItem("-");
         itAct->setTextAlignment(Qt::AlignCenter);
@@ -5794,7 +5873,8 @@ void UnitEntryDialog::refreshBatchUnitsTable(bool scrollToBottom)
         batchUnitsTable->setItem(rowIdx, 4, itOrig);
 
         QString curStatusStr = QString::fromStdString(pu.status);
-        auto* itSt = new QTableWidgetItem(isLogisticsCompleted ? curStatusStr : curStatusStr + " ▾");
+        QString dispCurStatus = translateUnitStatus(curStatusStr);
+        auto* itSt = new QTableWidgetItem(isLogisticsCompleted ? dispCurStatus : dispCurStatus + " ▾");
         itSt->setTextAlignment(Qt::AlignCenter);
         itSt->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
         itSt->setForeground(QColor("#1e40af"));
@@ -5803,7 +5883,7 @@ void UnitEntryDialog::refreshBatchUnitsTable(bool scrollToBottom)
         }
         batchUnitsTable->setItem(rowIdx, 5, itSt);
 
-        auto* itStatus = new QTableWidgetItem("⏳ Chờ lưu");
+        auto* itStatus = new QTableWidgetItem("⏳ Chờ lưu mới");
         itStatus->setTextAlignment(Qt::AlignCenter);
         itStatus->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
         itStatus->setForeground(QColor("#2563eb"));
@@ -5835,19 +5915,19 @@ void UnitEntryDialog::refreshBatchUnitsTable(bool scrollToBottom)
         auto* itCode = new QTableWidgetItem(pu.productCode);
         auto* itName = new QTableWidgetItem(pu.productName);
 
-        auto* itOrigStatus = new QTableWidgetItem(QString::fromStdString(pu.currentStatus));
+        auto* itOrigStatus = new QTableWidgetItem(translateUnitStatus(QString::fromStdString(pu.currentStatus)));
         itOrigStatus->setTextAlignment(Qt::AlignCenter);
         itOrigStatus->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
         if (pu.currentStatus == "AVAILABLE") itOrigStatus->setForeground(QColor("#16a34a"));
         else if (pu.currentStatus == "WARRANTY") itOrigStatus->setForeground(QColor("#d97706"));
         else if (pu.currentStatus == "SCRAPPED") itOrigStatus->setForeground(QColor("#dc2626"));
 
-        auto* itTargetStatus = new QTableWidgetItem("OUT (Xuất kho)");
+        auto* itTargetStatus = new QTableWidgetItem("Đã xuất kho");
         itTargetStatus->setTextAlignment(Qt::AlignCenter);
         itTargetStatus->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
         itTargetStatus->setForeground(QColor("#ea580c"));
 
-        auto* itStatus = new QTableWidgetItem("⏳ Chờ xuất");
+        auto* itStatus = new QTableWidgetItem("⏳ Chờ xuất kho");
         itStatus->setTextAlignment(Qt::AlignCenter);
         itStatus->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
         itStatus->setForeground(QColor("#ea580c"));
@@ -5977,6 +6057,7 @@ void UnitEntryDialog::refreshAllUnitsTable(bool scrollToBottom)
 
         QString origStatusStr = QString::fromStdString(u->originalStatus);
         if (origStatusStr.isEmpty()) origStatusStr = "(Tạo mới)";
+        else origStatusStr = translateUnitStatus(origStatusStr);
         auto* itOrigStatus = new QTableWidgetItem(origStatusStr);
         itOrigStatus->setTextAlignment(Qt::AlignCenter);
         itOrigStatus->setForeground(QColor(100, 116, 139));
@@ -5988,7 +6069,8 @@ void UnitEntryDialog::refreshAllUnitsTable(bool scrollToBottom)
         allUnitsTable->setItem(rowIdx, 4, itOrigStatus);
 
         QString curStatusStr = QString::fromStdString(u->currentStatus);
-        auto* itSt = new QTableWidgetItem(isLogisticsCompleted ? curStatusStr : curStatusStr + " ▾");
+        QString dispCurStatus = translateUnitStatus(curStatusStr);
+        auto* itSt = new QTableWidgetItem(isLogisticsCompleted ? dispCurStatus : dispCurStatus + " ▾");
         itSt->setTextAlignment(Qt::AlignCenter);
         itSt->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
         if (!isLogisticsCompleted) {
@@ -6001,16 +6083,22 @@ void UnitEntryDialog::refreshAllUnitsTable(bool scrollToBottom)
         else itSt->setForeground(QColor(71, 85, 105));
         allUnitsTable->setItem(rowIdx, 5, itSt);
 
-        QString savedStatusStr = QString::fromStdString(u->savedStatus);
-        auto* itSavedStatus = new QTableWidgetItem(savedStatusStr);
-        itSavedStatus->setTextAlignment(Qt::AlignCenter);
-        itSavedStatus->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
-        if (savedStatusStr == "AVAILABLE") itSavedStatus->setForeground(QColor(22, 163, 74));
-        else if (savedStatusStr == "WARRANTY") itSavedStatus->setForeground(QColor(37, 99, 235));
-        else if (savedStatusStr == "SCRAPPED") itSavedStatus->setForeground(QColor(220, 38, 38));
-        else if (savedStatusStr == "OUT") itSavedStatus->setForeground(QColor(234, 88, 12));
-        else itSavedStatus->setForeground(QColor(71, 85, 105));
-        allUnitsTable->setItem(rowIdx, 6, itSavedStatus);
+        QTableWidgetItem* itClass = nullptr;
+        if (!u->originalStatus.empty() && u->originalStatus != u->savedStatus) {
+            itClass = new QTableWidgetItem("✏️ Đã đổi trạng thái (Đã lưu CSDL)");
+            itClass->setForeground(QColor("#16a34a"));
+            itClass->setToolTip(QString("Ban đầu: %1 -> Hiện tại: %2")
+                .arg(translateUnitStatus(QString::fromStdString(u->originalStatus)), translateUnitStatus(QString::fromStdString(u->savedStatus))));
+        } else if (u->isModified) {
+            itClass = new QTableWidgetItem("⚠️ Chờ lưu thay đổi");
+            itClass->setForeground(QColor("#d97706"));
+        } else {
+            itClass = new QTableWidgetItem("💾 Đã lưu CSDL");
+            itClass->setForeground(QColor("#64748b"));
+        }
+        itClass->setTextAlignment(Qt::AlignCenter);
+        itClass->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
+        allUnitsTable->setItem(rowIdx, 6, itClass);
 
         auto* itAct = new QTableWidgetItem("-");
         itAct->setTextAlignment(Qt::AlignCenter);
@@ -6043,7 +6131,8 @@ void UnitEntryDialog::refreshAllUnitsTable(bool scrollToBottom)
         allUnitsTable->setItem(rowIdx, 4, itOrigStatus);
 
         QString curStatusStr = QString::fromStdString(pu->status);
-        auto* itSt = new QTableWidgetItem(isLogisticsCompleted ? curStatusStr : curStatusStr + " ▾");
+        QString dispCurStatus = translateUnitStatus(curStatusStr);
+        auto* itSt = new QTableWidgetItem(isLogisticsCompleted ? dispCurStatus : dispCurStatus + " ▾");
         itSt->setTextAlignment(Qt::AlignCenter);
         itSt->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
         itSt->setForeground(QColor("#1e40af"));
@@ -6052,7 +6141,7 @@ void UnitEntryDialog::refreshAllUnitsTable(bool scrollToBottom)
         }
         allUnitsTable->setItem(rowIdx, 5, itSt);
 
-        auto* itStatus = new QTableWidgetItem("⏳ Chờ lưu");
+        auto* itStatus = new QTableWidgetItem("⏳ Chờ lưu mới");
         itStatus->setTextAlignment(Qt::AlignCenter);
         itStatus->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
         itStatus->setForeground(QColor("#2563eb"));
@@ -6084,19 +6173,19 @@ void UnitEntryDialog::refreshAllUnitsTable(bool scrollToBottom)
         auto* itCode = new QTableWidgetItem(pu->productCode);
         auto* itName = new QTableWidgetItem(pu->productName);
 
-        auto* itOrigStatus = new QTableWidgetItem(QString::fromStdString(pu->currentStatus));
+        auto* itOrigStatus = new QTableWidgetItem(translateUnitStatus(QString::fromStdString(pu->currentStatus)));
         itOrigStatus->setTextAlignment(Qt::AlignCenter);
         itOrigStatus->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
         if (pu->currentStatus == "AVAILABLE") itOrigStatus->setForeground(QColor("#16a34a"));
         else if (pu->currentStatus == "WARRANTY") itOrigStatus->setForeground(QColor("#d97706"));
         else if (pu->currentStatus == "SCRAPPED") itOrigStatus->setForeground(QColor("#dc2626"));
 
-        auto* itTargetStatus = new QTableWidgetItem("OUT (Xuất kho)");
+        auto* itTargetStatus = new QTableWidgetItem("Đã xuất kho");
         itTargetStatus->setTextAlignment(Qt::AlignCenter);
         itTargetStatus->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
         itTargetStatus->setForeground(QColor("#ea580c"));
 
-        auto* itStatus = new QTableWidgetItem("⏳ Chờ xuất");
+        auto* itStatus = new QTableWidgetItem("⏳ Chờ xuất kho");
         itStatus->setTextAlignment(Qt::AlignCenter);
         itStatus->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
         itStatus->setForeground(QColor("#ea580c"));
@@ -6175,7 +6264,7 @@ void UnitEntryDialog::refreshAllViews(bool scrollToBottom)
 void UnitEntryDialog::onSaveChanges()
 {
     if (isLogisticsCompleted) {
-        QMessageBox::warning(this, "Đợt đã hoàn thành", "Đợt giao nhận này đã hoàn thành, không thể lưu thay đổi trạng thái linh kiện nữa (Rule 4.5).");
+        QMessageBox::warning(this, "Đợt đã hoàn thành", "Đợt giao nhận này đã hoàn thành, không thể lưu thay đổi trạng thái linh kiện nữa.");
         return;
     }
 
@@ -6372,7 +6461,7 @@ void UnitEntryDialog::onDirectSerialEntered()
     }
 
     if (!user_create::isValidSerialFormat(inputSn.toStdString())) {
-        showToast(QString("⚠️ Mã '%1' sai định dạng chuẩn SN-XXXXXXX (Rule 5.5)").arg(inputSn), false);
+        showToast(QString("⚠️ Mã '%1' sai định dạng chuẩn SN-XXXXXXX").arg(inputSn), false);
         return;
     }
 
@@ -6552,7 +6641,7 @@ bool UnitEntryDialog::recordCustomSerial(const QString& serial, QString& outErrM
         return false;
     }
     if (isLogisticsCompleted) {
-        outErrMsg = "Đợt giao nhận này đã hoàn thành (COMPLETED). Thao tác đã bị khóa (Rule 4.5).";
+        outErrMsg = "Đợt giao nhận này đã hoàn thành. Thao tác đã bị khóa.";
         return false;
     }
 
@@ -6575,7 +6664,7 @@ bool UnitEntryDialog::recordCustomSerial(const QString& serial, QString& outErrM
     }
 
     if (!user_create::isValidSerialFormat(inputSn.toStdString())) {
-        outErrMsg = QString("Mã Serial '%1' không đúng định dạng chuẩn SN-XXXXXXX (Rule 5.5).").arg(inputSn);
+        outErrMsg = QString("Mã Serial '%1' không đúng định dạng chuẩn SN-XXXXXXX.").arg(inputSn);
         return false;
     }
 
