@@ -50,9 +50,9 @@ namespace {
             "  font-size: 13px;"
             "  color: #1e293b;"
             "  border: 1px solid #cbd5e1;"
-            "  border-radius: 8px;"
-            "  margin-top: 10px;"
-            "  padding: 14px 14px 12px 14px;"
+            "  border-radius: 6px;"
+            "  margin-top: 8px;"
+            "  padding: 10px 10px 8px 10px;"
             "  background-color: #ffffff;"
             "}"
             "QGroupBox::title {"
@@ -71,6 +71,21 @@ namespace {
             "  color: #0f172a;"
             "  font-family: 'Segoe UI', Tahoma, Arial, sans-serif;"
             "}"
+            "QComboBox:disabled { color: #64748b; background-color: #f1f5f9; }"
+            "QComboBox QAbstractItemView {"
+            "  background-color: #ffffff;"
+            "  color: #0f172a;"
+            "  border: 1px solid #cbd5e1;"
+            "  selection-background-color: #2563eb;"
+            "  selection-color: #ffffff;"
+            "}"
+            "QComboBox QAbstractItemView::item { color: #0f172a; background-color: #ffffff; padding: 5px 10px; }"
+            "QComboBox QAbstractItemView::item:hover { background-color: #eff6ff; color: #1e40af; }"
+            "QComboBox QAbstractItemView::item:selected { background-color: #2563eb; color: #ffffff; }"
+            "QMenu { background-color: #ffffff; color: #0f172a; border: 1px solid #cbd5e1; border-radius: 6px; padding: 4px; }"
+            "QMenu::item { color: #0f172a; background-color: transparent; padding: 6px 20px; border-radius: 4px; }"
+            "QMenu::item:selected { background-color: #eff6ff; color: #1d4ed8; font-weight: 600; }"
+            "QTabWidget::pane { border: none; border-top: 1px solid #cbd5e1; background: transparent; padding-top: 6px; }"
             "QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDateEdit:focus { border: 1.5px solid #2563eb; }"
             "QTableWidget { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; font-size: 12px; }"
             "QHeaderView::section { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; font-weight: 600; font-size: 12px; }";
@@ -225,15 +240,15 @@ InventoryCheckCreateDialog::InventoryCheckCreateDialog(Database* database, QWidg
 void InventoryCheckCreateDialog::setupUI()
 {
     auto* mainLayout = new QVBoxLayout(this);
-    mainLayout->setContentsMargins(18, 18, 18, 18);
-    mainLayout->setSpacing(14);
+    mainLayout->setContentsMargins(10, 10, 10, 10);
+    mainLayout->setSpacing(8);
 
     // Header info box
     auto* infoGroup = new QGroupBox("1. Thông tin đợt kiểm kho", this);
     auto* infoGrid = new QGridLayout(infoGroup);
-    infoGrid->setContentsMargins(14, 14, 14, 14);
-    infoGrid->setHorizontalSpacing(14);
-    infoGrid->setVerticalSpacing(10);
+    infoGrid->setContentsMargins(10, 8, 10, 8);
+    infoGrid->setHorizontalSpacing(12);
+    infoGrid->setVerticalSpacing(8);
 
     infoGrid->addWidget(new QLabel("Hình thức kiểm kê (*):", infoGroup), 0, 0);
     typeCombo = new QComboBox(infoGroup);
@@ -253,25 +268,24 @@ void InventoryCheckCreateDialog::setupUI()
 
     mainLayout->addWidget(infoGroup);
 
-    // Product selection box
-    auto* prodGroup = new QGroupBox("2. Khai báo phạm vi sản phẩm kiểm kê", this);
-    auto* pLayout = new QVBoxLayout(prodGroup);
-    pLayout->setContentsMargins(14, 14, 14, 14);
-    pLayout->setSpacing(10);
+    // Product selection section (single border on productTable)
+    auto* prodHeaderLbl = new QLabel("<b>2. Khai báo phạm vi sản phẩm kiểm kê</b>", this);
+    prodHeaderLbl->setStyleSheet("color: #2563eb; font-size: 13px;");
+    mainLayout->addWidget(prodHeaderLbl);
 
     auto* filterBar = new QHBoxLayout();
-    searchEdit = new QLineEdit(prodGroup);
+    searchEdit = new QLineEdit(this);
     searchEdit->setPlaceholderText("🔍 Tìm theo mã SP, tên sản phẩm hoặc danh mục...");
     searchEdit->setClearButtonEnabled(true);
     filterBar->addWidget(searchEdit, 1);
 
-    selectAllBtn = new QPushButton("Chọn tất cả", prodGroup);
-    deselectAllBtn = new QPushButton("Bỏ chọn", prodGroup);
+    selectAllBtn = new QPushButton("Chọn tất cả", this);
+    deselectAllBtn = new QPushButton("Bỏ chọn", this);
     filterBar->addWidget(selectAllBtn);
     filterBar->addWidget(deselectAllBtn);
-    pLayout->addLayout(filterBar);
+    mainLayout->addLayout(filterBar);
 
-    productTable = new QTableWidget(prodGroup);
+    productTable = new QTableWidget(this);
     productTable->setColumnCount(8);
     productTable->setHorizontalHeaderLabels({
         "Chọn", "Mã SP", "Tên sản phẩm", "Danh mục", "Khả dụng", "Bảo hành", "Hư hỏng", "Tổng tồn"
@@ -286,14 +300,15 @@ void InventoryCheckCreateDialog::setupUI()
     productTable->verticalHeader()->setVisible(false);
     productTable->setAlternatingRowColors(true);
     productTable->setSelectionBehavior(QAbstractItemView::SelectRows);
-    productTable->verticalHeader()->setVisible(false);
-    pLayout->addWidget(productTable, 1);
+    productTable->setStyleSheet(
+        "QTableWidget { background-color: #ffffff; alternate-background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 12px; }"
+        "QHeaderView::section { background-color: #f1f5f9; color: #334155; font-weight: 600; padding: 6px 8px; border: none; border-bottom: 1px solid #cbd5e1; }"
+    );
+    mainLayout->addWidget(productTable, 1);
 
-    countSelectedLabel = new QLabel("Đã chọn: 0 sản phẩm.", prodGroup);
+    countSelectedLabel = new QLabel("Đã chọn: 0 sản phẩm.", this);
     countSelectedLabel->setStyleSheet("font-weight: 600; color: #1e40af;");
-    pLayout->addWidget(countSelectedLabel);
-
-    mainLayout->addWidget(prodGroup, 1);
+    mainLayout->addWidget(countSelectedLabel);
 
     // Action buttons
     auto* btnBox = new QHBoxLayout();
@@ -475,12 +490,14 @@ UnrecordedSurplusDialog::UnrecordedSurplusDialog(Database* database, int id, con
 void UnrecordedSurplusDialog::setupUI()
 {
     auto* mainLayout = new QVBoxLayout(this);
-    mainLayout->setContentsMargins(18, 18, 18, 18);
-    mainLayout->setSpacing(14);
+    mainLayout->setContentsMargins(10, 10, 10, 10);
+    mainLayout->setSpacing(10);
 
     auto* descBox = new QFrame(this);
-    descBox->setStyleSheet("background-color: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 10px;");
+    descBox->setObjectName("descBox");
+    descBox->setStyleSheet("QFrame#descBox { background-color: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 8px 10px; } QFrame#descBox QLabel { border: none; padding: 0; }");
     auto* dLayout = new QVBoxLayout(descBox);
+    dLayout->setContentsMargins(0, 0, 0, 0);
     auto* descLabel = new QLabel(
         "<b>Ghi nhận linh kiện thừa trong kho:</b><br>"
         "Linh kiện thừa mới tinh chưa từng nhập kho (chưa có trong CSDL) "
@@ -621,8 +638,8 @@ InventoryCheckReconciliationDialog::InventoryCheckReconciliationDialog(Database*
 void InventoryCheckReconciliationDialog::setupUI()
 {
     auto* mainLayout = new QVBoxLayout(this);
-    mainLayout->setContentsMargins(16, 16, 16, 16);
-    mainLayout->setSpacing(12);
+    mainLayout->setContentsMargins(10, 10, 10, 10);
+    mainLayout->setSpacing(8);
 
     // Dialog Header Title
     auto* titleBox = new QHBoxLayout();
@@ -642,12 +659,13 @@ void InventoryCheckReconciliationDialog::setupUI()
     // ========================================================================
     auto* tier1Group = new QGroupBox("Tổng hợp chỉ số kiểm kê toàn đợt", this);
     auto* t1Layout = new QHBoxLayout(tier1Group);
-    t1Layout->setContentsMargins(10, 4, 10, 4);
+    t1Layout->setContentsMargins(8, 4, 8, 4);
     t1Layout->setSpacing(8);
 
     auto makeKpiBadge = [](const QString& title, QLabel*& valLabel, const QString& bgCol, const QString& borderCol, const QString& textCol) -> QFrame* {
         auto* card = new QFrame();
-        card->setStyleSheet(QString("QFrame { background-color: %1; border: 1px solid %2; border-radius: 4px; padding: 2px 8px; }").arg(bgCol, borderCol));
+        card->setObjectName("kpiBadge");
+        card->setStyleSheet(QString("QFrame#kpiBadge { background-color: %1; border: 1px solid %2; border-radius: 4px; padding: 2px 8px; } QFrame#kpiBadge QLabel { border: none; padding: 0; }").arg(bgCol, borderCol));
         auto* cLayout = new QHBoxLayout(card);
         cLayout->setContentsMargins(4, 2, 4, 2);
         cLayout->setSpacing(6);
@@ -679,16 +697,19 @@ void InventoryCheckReconciliationDialog::setupUI()
     mainLayout->addWidget(tier1Group);
 
     // ========================================================================
-    // TIER 2: Product Matrix Table (Bảng đối soát sản phẩm - 11 columns)
+    // TIER 2: Product Matrix Table (Single crisp border)
     // ========================================================================
-    auto* tier2Group = new QGroupBox("Bảng đối soát sản phẩm", this);
-    auto* t2Layout = new QVBoxLayout(tier2Group);
-    t2Layout->setContentsMargins(10, 8, 10, 8);
+    auto* tier2Box = new QWidget(this);
+    auto* t2Layout = new QVBoxLayout(tier2Box);
+    t2Layout->setContentsMargins(0, 2, 0, 2);
     t2Layout->setSpacing(6);
 
     auto* searchRow = new QHBoxLayout();
+    auto* tier2Hdr = new QLabel("<b>📊 Bảng đối soát sản phẩm</b>", tier2Box);
+    tier2Hdr->setStyleSheet("color: #2563eb; font-size: 13px;");
+    searchRow->addWidget(tier2Hdr);
     searchRow->addStretch();
-    matrixSearchEdit = new QLineEdit(tier2Group);
+    matrixSearchEdit = new QLineEdit(tier2Box);
     matrixSearchEdit->setPlaceholderText("🔍 Tìm theo Mã hoặc Tên sản phẩm...");
     matrixSearchEdit->setClearButtonEnabled(true);
     matrixSearchEdit->setMaximumWidth(280);
@@ -707,7 +728,7 @@ void InventoryCheckReconciliationDialog::setupUI()
     searchRow->addWidget(matrixSearchEdit);
     t2Layout->addLayout(searchRow);
 
-    matrixTable = new QTableWidget(tier2Group);
+    matrixTable = new QTableWidget(tier2Box);
     matrixTable->setHorizontalHeader(new GroupedReconcileHeaderView(Qt::Horizontal, matrixTable));
     matrixTable->setColumnCount(11);
     matrixTable->setHorizontalHeaderLabels({
@@ -723,17 +744,20 @@ void InventoryCheckReconciliationDialog::setupUI()
     matrixTable->setAlternatingRowColors(true);
     matrixTable->setSelectionBehavior(QAbstractItemView::SelectRows);
     matrixTable->verticalHeader()->setVisible(false);
+    matrixTable->setStyleSheet(
+        "QTableWidget { background-color: #ffffff; alternate-background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 12px; }"
+    );
     t2Layout->addWidget(matrixTable);
 
     // ========================================================================
-    // TIER 3: Gom Rổ Xử Lý Điều Chỉnh (3 Action Buckets)
+    // TIER 3: Gom Rổ Xử Lý Điều Chỉnh (3 Action Buckets directly in tabs)
     // ========================================================================
-    auto* tier3Group = new QGroupBox("Xử lý chứng từ điều chỉnh", this);
-    auto* t3Layout = new QVBoxLayout(tier3Group);
-    t3Layout->setContentsMargins(10, 8, 10, 8);
-    t3Layout->setSpacing(8);
-
-    bucketTabWidget = new QTabWidget(tier3Group);
+    bucketTabWidget = new QTabWidget(this);
+    bucketTabWidget->setStyleSheet(
+        "QTabWidget::pane { border: none; border-top: 1px solid #cbd5e1; background: transparent; padding-top: 6px; }"
+        "QTabBar::tab { background-color: #f1f5f9; color: #475569; font-weight: 600; font-size: 12px; padding: 6px 14px; border-top-left-radius: 6px; border-top-right-radius: 6px; margin-right: 2px; }"
+        "QTabBar::tab:selected { background-color: #ffffff; color: #2563eb; border-bottom: 2px solid #2563eb; }"
+    );
 
     // ------------------------------------------------------------------------
     // Bucket 1: Hàng cần nhập điều chỉnh (Missing on system -> ADJUSTMENT_IN)
@@ -918,15 +942,13 @@ void InventoryCheckReconciliationDialog::setupUI()
 
     bucketTabWidget->addTab(b3Widget, "🔄 Điều chỉnh trạng thái");
 
-    t3Layout->addWidget(bucketTabWidget);
-
     // Option B: Vertical QSplitter between Product Matrix and Adjustment Processing box
     auto* reconSplitter = new QSplitter(Qt::Vertical, this);
-    reconSplitter->addWidget(tier2Group);
-    reconSplitter->addWidget(tier3Group);
+    reconSplitter->addWidget(tier2Box);
+    reconSplitter->addWidget(bucketTabWidget);
     reconSplitter->setStretchFactor(0, 2);
     reconSplitter->setStretchFactor(1, 5);
-    reconSplitter->setSizes({220, 520});
+    reconSplitter->setSizes({240, 520});
     mainLayout->addWidget(reconSplitter, 1);
 
     // Bottom Close Bar
@@ -1559,14 +1581,14 @@ void InventoryCheckDetailDialog::setupUI()
 {
     auto* mainLayout = new QVBoxLayout(this);
     mainLayout->setSizeConstraint(QLayout::SetNoConstraint);
-    mainLayout->setContentsMargins(14, 14, 14, 14);
-    mainLayout->setSpacing(10);
+    mainLayout->setContentsMargins(10, 10, 10, 10);
+    mainLayout->setSpacing(6);
 
     // Banner / Header Card
     auto* headerCard = new QGroupBox(QString("Đợt kiểm kho: %1").arg(checkCode), this);
     auto* hGrid = new QGridLayout(headerCard);
-    hGrid->setContentsMargins(14, 10, 14, 10);
-    hGrid->setHorizontalSpacing(20);
+    hGrid->setContentsMargins(10, 6, 10, 6);
+    hGrid->setHorizontalSpacing(18);
     hGrid->setVerticalSpacing(6);
 
     codeLabel = new QLabel(QString("<b>Mã đợt:</b> %1").arg(checkCode), headerCard);
@@ -1584,7 +1606,13 @@ void InventoryCheckDetailDialog::setupUI()
     statusCombo->addItem("Đã hủy (CANCELLED)", "CANCELLED");
     int curIdx = statusCombo->findData(checkStatus);
     if (curIdx >= 0) statusCombo->setCurrentIndex(curIdx);
-    statusCombo->setStyleSheet("QComboBox { font-weight: bold; padding: 2px 8px; border: 1px solid #cbd5e1; border-radius: 4px; }");
+    statusCombo->setStyleSheet(
+        "QComboBox { font-weight: bold; padding: 2px 8px; background-color: #ffffff; color: #0f172a; border: 1px solid #cbd5e1; border-radius: 4px; }"
+        "QComboBox QAbstractItemView { background-color: #ffffff; color: #0f172a; selection-background-color: #2563eb; selection-color: #ffffff; }"
+        "QComboBox QAbstractItemView::item { color: #0f172a; background-color: #ffffff; padding: 5px 10px; }"
+        "QComboBox QAbstractItemView::item:hover { background-color: #eff6ff; color: #1e40af; }"
+        "QComboBox QAbstractItemView::item:selected { background-color: #2563eb; color: #ffffff; }"
+    );
     connect(statusCombo, QOverload<int>::of(&QComboBox::activated), this, &InventoryCheckDetailDialog::onStatusComboChanged);
     statusBox->addWidget(stTitle);
     statusBox->addWidget(statusCombo);
@@ -1845,8 +1873,8 @@ void InventoryCheckDetailDialog::setupUI()
 
             QMenu menu(this);
             menu.setStyleSheet(
-                "QMenu { background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 12px; padding: 4px; } "
-                "QMenu::item { padding: 6px 20px; border-radius: 4px; } "
+                "QMenu { background-color: #ffffff; color: #0f172a; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 12px; padding: 4px; } "
+                "QMenu::item { background-color: transparent; color: #0f172a; padding: 6px 20px; border-radius: 4px; } "
                 "QMenu::item:selected { background-color: #eff6ff; color: #1d4ed8; font-weight: 600; }"
             );
             auto* aAvail = menu.addAction("🟢 Khả dụng (AVAILABLE)");
@@ -3681,8 +3709,8 @@ void InventoryCheckSimulationDialog::setupUI()
 {
     auto* mainLayout = new QVBoxLayout(this);
     mainLayout->setSizeConstraint(QLayout::SetNoConstraint);
-    mainLayout->setContentsMargins(14, 14, 14, 14);
-    mainLayout->setSpacing(10);
+    mainLayout->setContentsMargins(10, 10, 10, 10);
+    mainLayout->setSpacing(8);
 
     auto* tabWidget = new QTabWidget(this);
 
@@ -3691,8 +3719,8 @@ void InventoryCheckSimulationDialog::setupUI()
     // ========================================================================
     auto* tab1 = new QWidget(tabWidget);
     auto* t1Layout = new QVBoxLayout(tab1);
-    t1Layout->setContentsMargins(10, 10, 10, 10);
-    t1Layout->setSpacing(10);
+    t1Layout->setContentsMargins(6, 8, 6, 4);
+    t1Layout->setSpacing(8);
 
     auto* filterBar = new QHBoxLayout();
     productFilterCombo = new QComboBox(tab1);
@@ -3777,8 +3805,8 @@ void InventoryCheckSimulationDialog::setupUI()
     // ========================================================================
     auto* tab2 = new QWidget(tabWidget);
     auto* t2Layout = new QVBoxLayout(tab2);
-    t2Layout->setContentsMargins(14, 14, 14, 14);
-    t2Layout->setSpacing(14);
+    t2Layout->setContentsMargins(6, 8, 6, 4);
+    t2Layout->setSpacing(8);
 
     // Section 1: Sinh 1 mã Serial
     auto* singleGroup = new QGroupBox("1. Giả lập phần cứng: Sinh 1 mã Serial ngẫu nhiên", tab2);

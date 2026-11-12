@@ -36,8 +36,8 @@ TransactionHubWidget::TransactionHubWidget(HubType type, Database* database, con
 void TransactionHubWidget::setupUI()
 {
     auto* mainLayout = new QVBoxLayout(this);
-    mainLayout->setContentsMargins(14, 8, 14, 8);
-    mainLayout->setSpacing(6);
+    mainLayout->setContentsMargins(8, 6, 8, 6);
+    mainLayout->setSpacing(4);
 
     // 1. Header info
     titleLabel = new QLabel(titleText, this);
@@ -61,12 +61,13 @@ void TransactionHubWidget::setupUI()
 void TransactionHubWidget::setupFilterUI(QVBoxLayout* mainLayout)
 {
     filterFrame = new QFrame(this);
+    filterFrame->setObjectName("filterFrame");
     filterFrame->setStyleSheet(
-        "QFrame {"
+        "QFrame#filterFrame {"
         "  background-color: #ffffff;"
         "  border: 1px solid #e2e8f0;"
-        "  border-radius: 8px;"
-        "  padding: 4px;"
+        "  border-radius: 6px;"
+        "  padding: 2px;"
         "}"
     );
 

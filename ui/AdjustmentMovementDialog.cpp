@@ -11,7 +11,55 @@
 #include <QMessageBox>
 #include <QScrollBar>
 #include <QInputDialog>
+#include <QCompleter>
+#include <QAbstractItemView>
 #include <algorithm>
+
+static QString commonDialogStyleSheet() {
+    return
+        "QDialog { background-color: #f8fafc; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; }"
+        "QGroupBox {"
+        "  font-weight: 600;"
+        "  font-size: 13px;"
+        "  color: #1e293b;"
+        "  border: 1px solid #cbd5e1;"
+        "  border-radius: 6px;"
+        "  margin-top: 8px;"
+        "  padding: 10px 10px 8px 10px;"
+        "  background-color: #ffffff;"
+        "}"
+        "QGroupBox::title {"
+        "  subcontrol-origin: margin;"
+        "  subcontrol-position: top left;"
+        "  padding: 0 6px;"
+        "  color: #2563eb;"
+        "}"
+        "QLabel { color: #334155; font-size: 12px; }"
+        "QLineEdit, QComboBox, QSpinBox, QDateEdit {"
+        "  background-color: #ffffff;"
+        "  border: 1px solid #cbd5e1;"
+        "  border-radius: 6px;"
+        "  padding: 5px 10px;"
+        "  font-size: 12px;"
+        "  color: #0f172a;"
+        "}"
+        "QComboBox:disabled { color: #64748b; background-color: #f1f5f9; }"
+        "QComboBox QAbstractItemView {"
+        "  background-color: #ffffff;"
+        "  color: #0f172a;"
+        "  border: 1px solid #cbd5e1;"
+        "  selection-background-color: #2563eb;"
+        "  selection-color: #ffffff;"
+        "}"
+        "QComboBox QAbstractItemView::item { color: #0f172a; background-color: #ffffff; padding: 5px 10px; }"
+        "QComboBox QAbstractItemView::item:hover { background-color: #eff6ff; color: #1e40af; }"
+        "QComboBox QAbstractItemView::item:selected { background-color: #2563eb; color: #ffffff; }"
+        "QMenu { background-color: #ffffff; color: #0f172a; border: 1px solid #cbd5e1; border-radius: 6px; padding: 4px; }"
+        "QMenu::item { color: #0f172a; background-color: transparent; padding: 6px 20px; border-radius: 4px; }"
+        "QMenu::item:selected { background-color: #eff6ff; color: #1d4ed8; font-weight: 600; }"
+        "QTabWidget::pane { border: none; border-top: 1px solid #cbd5e1; background: transparent; padding-top: 6px; }"
+        "QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDateEdit:focus { border: 1.5px solid #2563eb; }";
+}
 
 static QString translateStatus(const QString& st) {
     if (st == "AVAILABLE") return "Khả dụng";
@@ -35,6 +83,7 @@ AdjustmentMovementCreateDialog::AdjustmentMovementCreateDialog(Database* databas
     setWindowTitle("Tạo phiếu điều chỉnh trạng thái");
     setWindowFlags(windowFlags() | Qt::WindowMaximizeButtonHint | Qt::WindowMinimizeButtonHint);
     setWindowState(Qt::WindowMaximized);
+    setStyleSheet(commonDialogStyleSheet());
     setupUI();
     populateReasons();
     populateChecks();
@@ -45,15 +94,15 @@ AdjustmentMovementCreateDialog::AdjustmentMovementCreateDialog(Database* databas
 void AdjustmentMovementCreateDialog::setupUI()
 {
     auto* mainLayout = new QVBoxLayout(this);
-    mainLayout->setContentsMargins(16, 16, 16, 16);
-    mainLayout->setSpacing(12);
+    mainLayout->setContentsMargins(10, 10, 10, 10);
+    mainLayout->setSpacing(8);
 
     // Header info
     auto* headerGroup = new QGroupBox("1. Thông tin chung của phiếu điều chỉnh", this);
     auto* grid = new QGridLayout(headerGroup);
-    grid->setContentsMargins(12, 12, 12, 12);
-    grid->setHorizontalSpacing(14);
-    grid->setVerticalSpacing(10);
+    grid->setContentsMargins(10, 8, 10, 8);
+    grid->setHorizontalSpacing(12);
+    grid->setVerticalSpacing(8);
 
     grid->addWidget(new QLabel("Lý do điều chỉnh (*):", headerGroup), 0, 0);
     reasonCombo = new QComboBox(headerGroup);
@@ -63,6 +112,11 @@ void AdjustmentMovementCreateDialog::setupUI()
     sourceCheckCombo = new QComboBox(headerGroup);
     sourceCheckCombo->setEditable(true);
     sourceCheckCombo->setInsertPolicy(QComboBox::NoInsert);
+    if (auto* comp = sourceCheckCombo->completer()) {
+        comp->setFilterMode(Qt::MatchContains);
+        comp->setCaseSensitivity(Qt::CaseInsensitive);
+        comp->setCompletionMode(QCompleter::PopupCompletion);
+    }
 
     viewCheckBtn = new QPushButton("👁️ Xem chi tiết đợt kiểm", headerGroup);
     viewCheckBtn->setStyleSheet("background-color: #f1f5f9; color: #0f172a; border: 1px solid #cbd5e1; font-weight: 600; padding: 4px 10px; border-radius: 4px;");
@@ -128,49 +182,58 @@ void AdjustmentMovementCreateDialog::setupUI()
 
     mainLayout->addWidget(headerGroup);
 
-    // Detail scope group
-    auto* itemGroup = new QGroupBox("2. Khai báo chi tiết các sản phẩm cần điều chỉnh", this);
-    auto* itemLayout = new QVBoxLayout(itemGroup);
-    itemLayout->setContentsMargins(12, 12, 12, 12);
-    itemLayout->setSpacing(10);
+    // Detail scope section (single crisp border on itemsTable)
+    auto* itemHeaderLbl = new QLabel("<b>2. Khai báo chi tiết các sản phẩm cần điều chỉnh</b>", this);
+    itemHeaderLbl->setStyleSheet("color: #2563eb; font-size: 13px;");
+    mainLayout->addWidget(itemHeaderLbl);
 
     auto* addRow = new QHBoxLayout();
     addRow->setSpacing(8);
 
-    productCombo = new QComboBox(itemGroup);
+    productCombo = new QComboBox(this);
     productCombo->setEditable(true);
     productCombo->setInsertPolicy(QComboBox::NoInsert);
+    if (auto* comp = productCombo->completer()) {
+        comp->setFilterMode(Qt::MatchContains);
+        comp->setCaseSensitivity(Qt::CaseInsensitive);
+        comp->setCompletionMode(QCompleter::PopupCompletion);
+    }
+    if (productCombo->lineEdit()) {
+        productCombo->lineEdit()->setPlaceholderText("Gõ mã SP hoặc tên sản phẩm để tìm...");
+        productCombo->lineEdit()->setClearButtonEnabled(true);
+    }
+    productCombo->view()->setTextElideMode(Qt::ElideNone);
 
-    fromStatusCombo = new QComboBox(itemGroup);
+    fromStatusCombo = new QComboBox(this);
     fromStatusCombo->addItem("Khả dụng", "AVAILABLE");
     fromStatusCombo->addItem("Bảo hành", "WARRANTY");
     fromStatusCombo->addItem("Hư hỏng", "SCRAPPED");
 
-    toStatusCombo = new QComboBox(itemGroup);
+    toStatusCombo = new QComboBox(this);
     toStatusCombo->addItem("Bảo hành", "WARRANTY");
     toStatusCombo->addItem("Hư hỏng", "SCRAPPED");
     toStatusCombo->addItem("Khả dụng", "AVAILABLE");
 
-    quantitySpin = new QSpinBox(itemGroup);
+    quantitySpin = new QSpinBox(this);
     quantitySpin->setRange(1, 100000);
     quantitySpin->setValue(1);
 
-    addItemBtn = new QPushButton("➕ Thêm dòng", itemGroup);
+    addItemBtn = new QPushButton("➕ Thêm dòng", this);
     addItemBtn->setStyleSheet("background-color: #2563eb; color: #ffffff; font-weight: 600; padding: 6px 14px; border-radius: 4px;");
 
-    addRow->addWidget(new QLabel("Sản phẩm:"));
+    addRow->addWidget(new QLabel("Sản phẩm:", this));
     addRow->addWidget(productCombo, 2);
-    addRow->addWidget(new QLabel("Từ:"));
+    addRow->addWidget(new QLabel("Từ:", this));
     addRow->addWidget(fromStatusCombo, 1);
-    addRow->addWidget(new QLabel("Sang:"));
+    addRow->addWidget(new QLabel("Sang:", this));
     addRow->addWidget(toStatusCombo, 1);
-    addRow->addWidget(new QLabel("SL:"));
+    addRow->addWidget(new QLabel("SL:", this));
     addRow->addWidget(quantitySpin);
     addRow->addWidget(addItemBtn);
 
-    itemLayout->addLayout(addRow);
+    mainLayout->addLayout(addRow);
 
-    itemsTable = new QTableWidget(itemGroup);
+    itemsTable = new QTableWidget(this);
     itemsTable->setColumnCount(6);
     itemsTable->setHorizontalHeaderLabels({"Mã SP", "Tên sản phẩm", "Trạng thái nguồn", "Trạng thái đích", "Số lượng", "Thao tác"});
     itemsTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
@@ -181,9 +244,11 @@ void AdjustmentMovementCreateDialog::setupUI()
     itemsTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::ResizeToContents);
     itemsTable->setAlternatingRowColors(true);
     itemsTable->verticalHeader()->setVisible(false);
-    itemLayout->addWidget(itemsTable, 1);
-
-    mainLayout->addWidget(itemGroup, 1);
+    itemsTable->setStyleSheet(
+        "QTableWidget { background-color: #ffffff; alternate-background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 12px; }"
+        "QHeaderView::section { background-color: #f1f5f9; color: #334155; font-weight: 600; padding: 6px 8px; border: none; border-bottom: 1px solid #cbd5e1; }"
+    );
+    mainLayout->addWidget(itemsTable, 1);
 
     // Bottom action bar
     auto* bottomBar = new QHBoxLayout();
@@ -506,6 +571,7 @@ AdjustmentProductUnitPickerDialog::AdjustmentProductUnitPickerDialog(
     setWindowTitle(QString("Chọn đơn vị điều chỉnh trạng thái: [%1] %2 (%3 ➔ %4)").arg(prodCode, prodName, translateStatus(fromSt), translateStatus(toSt)));
     setWindowFlags(windowFlags() | Qt::WindowMaximizeButtonHint | Qt::WindowMinimizeButtonHint);
     setWindowState(Qt::WindowMaximized);
+    setStyleSheet(commonDialogStyleSheet());
 
     setupUI();
     loadCandidates();
@@ -514,12 +580,13 @@ AdjustmentProductUnitPickerDialog::AdjustmentProductUnitPickerDialog(
 void AdjustmentProductUnitPickerDialog::setupUI()
 {
     auto* mainLayout = new QVBoxLayout(this);
-    mainLayout->setContentsMargins(14, 14, 14, 14);
-    mainLayout->setSpacing(10);
+    mainLayout->setContentsMargins(10, 10, 10, 10);
+    mainLayout->setSpacing(8);
 
     // Header info banner
     auto* headerBox = new QFrame(this);
-    headerBox->setStyleSheet("background-color: #f0fdf4; border: 1.5px solid #86efac; border-radius: 6px; padding: 10px 12px;");
+    headerBox->setObjectName("pickerHeaderBox");
+    headerBox->setStyleSheet("QFrame#pickerHeaderBox { background-color: #f0fdf4; border: 1.5px solid #86efac; border-radius: 6px; padding: 8px 12px; } QFrame#pickerHeaderBox QLabel { border: none; padding: 0; }");
     auto* hLayout = new QHBoxLayout(headerBox);
     hLayout->setContentsMargins(0, 0, 0, 0);
 
@@ -786,6 +853,7 @@ AdjustmentSimulationDialog::AdjustmentSimulationDialog(
     setWindowTitle("🧪 Bộ công cụ giả lập & kiểm thử điều chỉnh trạng thái");
     setWindowFlags(windowFlags() | Qt::WindowMaximizeButtonHint | Qt::WindowMinimizeButtonHint);
     setWindowState(Qt::WindowMaximized);
+    setStyleSheet(commonDialogStyleSheet());
 
     setupUI();
     refreshData();
@@ -794,21 +862,21 @@ AdjustmentSimulationDialog::AdjustmentSimulationDialog(
 void AdjustmentSimulationDialog::setupUI()
 {
     auto* mainLayout = new QVBoxLayout(this);
-    mainLayout->setContentsMargins(14, 14, 14, 14);
-    mainLayout->setSpacing(12);
+    mainLayout->setContentsMargins(10, 10, 10, 10);
+    mainLayout->setSpacing(8);
 
     auto* topHeader = new QLabel(
         QString("<b>Phiếu điều chuyển:</b> %1 &nbsp;&nbsp;|&nbsp;&nbsp; <b>Đợt kiểm kê gốc:</b> %2")
             .arg(adjCode, srcCode.empty() ? "(Không tham chiếu)" : QString::fromStdString(srcCode)),
         this
     );
-    topHeader->setStyleSheet("background-color: #eef2ff; border: 1px solid #c7d2fe; border-radius: 6px; padding: 8px 12px; font-size: 13px; color: #3730a3;");
+    topHeader->setStyleSheet("background-color: #eef2ff; border: 1px solid #c7d2fe; border-radius: 6px; padding: 6px 12px; font-size: 13px; color: #3730a3;");
     mainLayout->addWidget(topHeader);
 
     auto* tabs = new QTabWidget(this);
     tabs->setStyleSheet(
-        "QTabWidget::pane { border: 1px solid #cbd5e1; border-radius: 6px; background-color: #ffffff; }"
-        "QTabBar::tab { background-color: #f1f5f9; color: #475569; font-weight: 600; font-size: 12px; padding: 8px 18px; border-top-left-radius: 6px; border-top-right-radius: 6px; margin-right: 2px; }"
+        "QTabWidget::pane { border: none; border-top: 1px solid #cbd5e1; background: transparent; padding-top: 6px; }"
+        "QTabBar::tab { background-color: #f1f5f9; color: #475569; font-weight: 600; font-size: 12px; padding: 7px 16px; border-top-left-radius: 6px; border-top-right-radius: 6px; margin-right: 2px; }"
         "QTabBar::tab:selected { background-color: #ffffff; color: #4f46e5; border-bottom: 2px solid #4f46e5; }"
     );
 
@@ -817,8 +885,8 @@ void AdjustmentSimulationDialog::setupUI()
     // -------------------------------------------------------------
     auto* tab1 = new QWidget(tabs);
     auto* t1Layout = new QVBoxLayout(tab1);
-    t1Layout->setContentsMargins(12, 12, 12, 12);
-    t1Layout->setSpacing(10);
+    t1Layout->setContentsMargins(4, 6, 4, 4);
+    t1Layout->setSpacing(8);
 
     auto* pickRow = new QHBoxLayout();
     pickRow->addWidget(new QLabel("Chọn dòng kế hoạch điều chuyển:", tab1));
@@ -1153,6 +1221,7 @@ void AdjustmentSimulationDialog::onExecuteAutoPickAll()
 AdjustmentMovementDetailDialog::AdjustmentMovementDetailDialog(Database* database, int id, QWidget* parent)
     : QDialog(parent), db(database), adjustId(id), isExecuted(false)
 {
+    setStyleSheet(commonDialogStyleSheet());
     setWindowTitle("Chi tiết và thực hiện phiếu điều chỉnh trạng thái");
     setWindowFlags(windowFlags() | Qt::WindowMaximizeButtonHint | Qt::WindowMinimizeButtonHint);
     setWindowState(Qt::WindowMaximized);
@@ -1185,16 +1254,16 @@ void AdjustmentMovementDetailDialog::loadMovementInfo()
 void AdjustmentMovementDetailDialog::setupUI()
 {
     auto* mainLayout = new QVBoxLayout(this);
-    mainLayout->setContentsMargins(14, 14, 14, 14);
-    mainLayout->setSpacing(10);
+    mainLayout->setContentsMargins(10, 10, 10, 10);
+    mainLayout->setSpacing(8);
 
     // Header card: Line 1 = code, status combo, reason, date, source check. Line 2 = note
     auto* headerCard = new QGroupBox(QString("Phiếu điều chỉnh: %1").arg(adjustCode), this);
-    headerCard->setStyleSheet("QGroupBox { font-size: 13px; font-weight: bold; }");
+    headerCard->setStyleSheet("QGroupBox { font-size: 13px; font-weight: bold; padding-top: 12px; }");
     auto* grid = new QGridLayout(headerCard);
-    grid->setContentsMargins(12, 8, 12, 8);
-    grid->setHorizontalSpacing(16);
-    grid->setVerticalSpacing(6);
+    grid->setContentsMargins(10, 6, 10, 6);
+    grid->setHorizontalSpacing(14);
+    grid->setVerticalSpacing(5);
 
     codeLabel = new QLabel(QString("<b>Mã phiếu:</b> %1").arg(adjustCode), headerCard);
 
@@ -1209,7 +1278,14 @@ void AdjustmentMovementDetailDialog::setupUI()
     statusCombo->addItem("Đã hủy (CANCELLED)", "CANCELLED");
     int curStIdx = statusCombo->findData(adjustStatus);
     if (curStIdx >= 0) statusCombo->setCurrentIndex(curStIdx);
-    statusCombo->setStyleSheet("QComboBox { font-weight: bold; padding: 2px 8px; border: 1px solid #cbd5e1; border-radius: 4px; }");
+    statusCombo->setStyleSheet(
+        "QComboBox { color: #0f172a; background-color: #ffffff; font-weight: bold; padding: 2px 8px; border: 1px solid #cbd5e1; border-radius: 4px; }"
+        "QComboBox:disabled { color: #64748b; background-color: #f1f5f9; }"
+        "QComboBox QAbstractItemView { background-color: #ffffff; color: #0f172a; selection-background-color: #2563eb; selection-color: #ffffff; border: 1px solid #cbd5e1; outline: 0px; }"
+        "QComboBox QAbstractItemView::item { padding: 5px 8px; min-height: 22px; color: #0f172a; background-color: #ffffff; }"
+        "QComboBox QAbstractItemView::item:hover { background-color: #eff6ff; color: #1d4ed8; }"
+        "QComboBox QAbstractItemView::item:selected { background-color: #2563eb; color: #ffffff; }"
+    );
     connect(statusCombo, QOverload<int>::of(&QComboBox::activated), this, &AdjustmentMovementDetailDialog::onStatusComboChanged);
     statusBox->addWidget(stTitle);
     statusBox->addWidget(statusCombo);
@@ -1246,11 +1322,21 @@ void AdjustmentMovementDetailDialog::setupUI()
     mainLayout->addWidget(headerCard);
 
     // 1. Detail targets table
-    auto* detailGroup = new QGroupBox("📊 1. Kế hoạch điều chuyển (Tiến độ thực tế)", this);
-    auto* dLayout = new QVBoxLayout(detailGroup);
-    dLayout->setContentsMargins(10, 8, 10, 8);
+    auto* dHeaderRow = new QHBoxLayout();
+    dHeaderRow->setContentsMargins(0, 2, 0, 0);
+    dHeaderRow->setSpacing(8);
+    auto* dTitle = new QLabel("📊 1. Kế hoạch điều chuyển (Tiến độ thực tế)", this);
+    dTitle->setStyleSheet("font-size: 13px; font-weight: 700; color: #0f172a;");
+    detailSearchEdit = new QLineEdit(this);
+    detailSearchEdit->setPlaceholderText("🔍 Tìm theo Mã SP hoặc Tên sản phẩm...");
+    detailSearchEdit->setClearButtonEnabled(true);
+    detailSearchEdit->setMaximumWidth(280);
+    dHeaderRow->addWidget(dTitle);
+    dHeaderRow->addStretch();
+    dHeaderRow->addWidget(detailSearchEdit);
+    mainLayout->addLayout(dHeaderRow);
 
-    detailTable = new QTableWidget(detailGroup);
+    detailTable = new QTableWidget(this);
     detailTable->setColumnCount(7);
     detailTable->setHorizontalHeaderLabels({
         "Mã SP", "Tên sản phẩm", "Từ trạng thái", "Sang trạng thái", "SL Kế hoạch", "SL Đã chuyển", "Còn lại"
@@ -1285,14 +1371,14 @@ void AdjustmentMovementDetailDialog::setupUI()
         "QHeaderView::section { background-color: #f1f5f9; color: #334155; font-weight: 600; padding: 6px 8px; border: none; border-bottom: 1px solid #cbd5e1; }"
     );
     TableClipboardHelper::setupClipboardForTable(detailTable);
-    dLayout->addWidget(detailTable);
-    mainLayout->addWidget(detailGroup, 1);
+    mainLayout->addWidget(detailTable, 1);
 
     // 2. Smart Scan & Simulation Tool Row
     bool isCompleted = (adjustStatus == "COMPLETED" || adjustStatus == "CANCELLED");
 
     auto* scanBox = new QFrame(this);
-    scanBox->setStyleSheet("background-color: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 6px; padding: 8px 12px;");
+    scanBox->setObjectName("adjustScanBox");
+    scanBox->setStyleSheet("QFrame#adjustScanBox { background-color: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 6px; padding: 6px 10px; }");
     auto* scanMainLayout = new QVBoxLayout(scanBox);
     scanMainLayout->setContentsMargins(0, 0, 0, 0);
     scanMainLayout->setSpacing(6);
@@ -1323,7 +1409,9 @@ void AdjustmentMovementDetailDialog::setupUI()
         "QPushButton:hover { background-color: #eef2ff; border-color: #4f46e5; }"
     );
 
-    scanLayout->addWidget(new QLabel("Mã Serial:", scanBox));
+    auto* scanLbl = new QLabel("Mã Serial:", scanBox);
+    scanLbl->setStyleSheet("border: none; padding: 0; background: transparent; font-weight: 600; color: #334155;");
+    scanLayout->addWidget(scanLbl);
     scanLayout->addWidget(scanSerialEdit, 1);
     scanLayout->addWidget(addSerialBtn);
     scanLayout->addWidget(openSimulationBtn);
@@ -1331,19 +1419,24 @@ void AdjustmentMovementDetailDialog::setupUI()
     mainLayout->addWidget(scanBox);
 
     // 3. Staged / Executed Units Table (Bottom overview, synchronized with Inbound/Outbound)
-    auto* unitsBox = new QGroupBox("📋 2. Danh sách linh kiện trong phiếu điều chỉnh", this);
-    auto* uLayout = new QVBoxLayout(unitsBox);
-    uLayout->setContentsMargins(10, 8, 10, 8);
-    uLayout->setSpacing(6);
-
     auto* uHeaderRow = new QHBoxLayout();
-    unitsCountLabel = new QLabel("(0 linh kiện)", unitsBox);
+    uHeaderRow->setContentsMargins(0, 2, 0, 0);
+    uHeaderRow->setSpacing(8);
+    auto* uTitle = new QLabel("📋 2. Danh sách linh kiện trong phiếu điều chỉnh", this);
+    uTitle->setStyleSheet("font-size: 13px; font-weight: 700; color: #0f172a;");
+    unitsSearchEdit = new QLineEdit(this);
+    unitsSearchEdit->setPlaceholderText("🔍 Tìm Serial, Mã SP, Tên sản phẩm...");
+    unitsSearchEdit->setClearButtonEnabled(true);
+    unitsSearchEdit->setMaximumWidth(280);
+    unitsCountLabel = new QLabel("(0 linh kiện)", this);
     unitsCountLabel->setStyleSheet("font-size: 12px; color: #64748b; font-weight: 500;");
+    uHeaderRow->addWidget(uTitle);
+    uHeaderRow->addWidget(unitsSearchEdit);
     uHeaderRow->addStretch();
     uHeaderRow->addWidget(unitsCountLabel);
-    uLayout->addLayout(uHeaderRow);
+    mainLayout->addLayout(uHeaderRow);
 
-    unitsTable = new QTableWidget(unitsBox);
+    unitsTable = new QTableWidget(this);
     unitsTable->setColumnCount(8);
     unitsTable->setHorizontalHeaderLabels({
         "STT", "Mã Serial", "Mã SP", "Tên sản phẩm", "Từ trạng thái", "Sang trạng thái (*)", "Phân loại", "Thao tác"
@@ -1368,8 +1461,7 @@ void AdjustmentMovementDetailDialog::setupUI()
         "QHeaderView::section { background-color: #f1f5f9; color: #334155; font-weight: 600; padding: 5px 8px; border: none; border-bottom: 1px solid #cbd5e1; }"
     );
     TableClipboardHelper::setupClipboardForTable(unitsTable);
-    uLayout->addWidget(unitsTable);
-    mainLayout->addWidget(unitsBox, 1);
+    mainLayout->addWidget(unitsTable, 1);
 
     // Bottom action row
     auto* bottomBar = new QHBoxLayout();
@@ -1383,7 +1475,7 @@ void AdjustmentMovementDetailDialog::setupUI()
     finalizeMovementBtn->setEnabled(!isCompleted);
 
     closeBtn = new QPushButton("Đóng", this);
-    closeBtn->setStyleSheet("background-color: #ffffff; border: 1px solid #cbd5e1; font-weight: 600; padding: 8px 18px; border-radius: 6px;");
+    closeBtn->setStyleSheet("background-color: #ffffff; color: #334155; border: 1px solid #cbd5e1; font-weight: 600; padding: 8px 18px; border-radius: 6px;");
 
     bottomBar->addWidget(confirmSaveUnitsBtn);
     bottomBar->addWidget(finalizeMovementBtn);
@@ -1391,6 +1483,8 @@ void AdjustmentMovementDetailDialog::setupUI()
     bottomBar->addWidget(closeBtn);
     mainLayout->addLayout(bottomBar);
 
+    connect(detailSearchEdit, &QLineEdit::textChanged, this, [this](const QString&) { applyDetailTableFilter(); });
+    connect(unitsSearchEdit, &QLineEdit::textChanged, this, [this](const QString&) { applyUnitsTableFilter(); });
     connect(detailTable, &QTableWidget::itemSelectionChanged, this, &AdjustmentMovementDetailDialog::onDetailSelectionChanged);
     connect(scanSerialEdit, &QLineEdit::returnPressed, this, &AdjustmentMovementDetailDialog::onDirectSerialEntered);
     connect(addSerialBtn, &QPushButton::clicked, this, &AdjustmentMovementDetailDialog::onDirectSerialEntered);
@@ -1422,6 +1516,11 @@ void AdjustmentMovementDetailDialog::setupUI()
                     }
                     if (destOpts.size() > 1) {
                         QMenu menu(this);
+                        menu.setStyleSheet(
+                            "QMenu { background-color: #ffffff; color: #0f172a; border: 1px solid #cbd5e1; border-radius: 6px; padding: 4px; }"
+                            "QMenu::item { background-color: transparent; color: #0f172a; padding: 6px 18px; border-radius: 4px; }"
+                            "QMenu::item:selected { background-color: #eff6ff; color: #1d4ed8; font-weight: 600; }"
+                        );
                         for (const auto& opt : destOpts) {
                             auto* act = menu.addAction(translateStatus(opt));
                             act->setCheckable(true);
@@ -1664,6 +1763,7 @@ void AdjustmentMovementDetailDialog::refreshDetailTable()
         detailTable->selectRow(targetSelectRow);
     }
     onDetailSelectionChanged();
+    applyDetailTableFilter();
 }
 
 void AdjustmentMovementDetailDialog::onDetailSelectionChanged()
@@ -1823,6 +1923,38 @@ void AdjustmentMovementDetailDialog::refreshUnitsTable(bool scrollToBottom)
         unitsTable->scrollToBottom();
     } else if (unitsTable->verticalScrollBar()) {
         unitsTable->verticalScrollBar()->setValue(prevScroll);
+    }
+    applyUnitsTableFilter();
+}
+
+void AdjustmentMovementDetailDialog::applyDetailTableFilter()
+{
+    if (!detailTable) return;
+    QString q = detailSearchEdit ? detailSearchEdit->text().trimmed().toLower() : QString();
+    for (int r = 0; r < detailTable->rowCount(); ++r) {
+        if (q.isEmpty()) {
+            detailTable->setRowHidden(r, false);
+        } else {
+            QString code = detailTable->item(r, 0) ? detailTable->item(r, 0)->text().toLower() : QString();
+            QString name = detailTable->item(r, 1) ? detailTable->item(r, 1)->text().toLower() : QString();
+            detailTable->setRowHidden(r, !code.contains(q) && !name.contains(q));
+        }
+    }
+}
+
+void AdjustmentMovementDetailDialog::applyUnitsTableFilter()
+{
+    if (!unitsTable) return;
+    QString q = unitsSearchEdit ? unitsSearchEdit->text().trimmed().toLower() : QString();
+    for (int r = 0; r < unitsTable->rowCount(); ++r) {
+        if (q.isEmpty()) {
+            unitsTable->setRowHidden(r, false);
+        } else {
+            QString sn = unitsTable->item(r, 1) ? unitsTable->item(r, 1)->text().toLower() : QString();
+            QString code = unitsTable->item(r, 2) ? unitsTable->item(r, 2)->text().toLower() : QString();
+            QString name = unitsTable->item(r, 3) ? unitsTable->item(r, 3)->text().toLower() : QString();
+            unitsTable->setRowHidden(r, !sn.contains(q) && !code.contains(q) && !name.contains(q));
+        }
     }
 }
 

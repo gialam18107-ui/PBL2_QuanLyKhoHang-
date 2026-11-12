@@ -73,9 +73,9 @@ void CustomerDialog::setupUI(bool allowSwitchKind)
         "  font-size: 13px;"
         "  color: #1e293b;"
         "  border: 1px solid #cbd5e1;"
-        "  border-radius: 8px;"
-        "  margin-top: 10px;"
-        "  padding: 14px 12px 12px 12px;"
+        "  border-radius: 6px;"
+        "  margin-top: 8px;"
+        "  padding: 10px 10px 8px 10px;"
         "  background-color: #ffffff;"
         "}"
         "QGroupBox::title {"
@@ -93,6 +93,16 @@ void CustomerDialog::setupUI(bool allowSwitchKind)
         "  font-size: 13px;"
         "  color: #0f172a;"
         "}"
+        "QComboBox QAbstractItemView {"
+        "  background-color: #ffffff;"
+        "  color: #0f172a;"
+        "  border: 1px solid #cbd5e1;"
+        "  selection-background-color: #2563eb;"
+        "  selection-color: #ffffff;"
+        "}"
+        "QComboBox QAbstractItemView::item { color: #0f172a; background-color: #ffffff; padding: 5px 10px; }"
+        "QComboBox QAbstractItemView::item:hover { background-color: #eff6ff; color: #1e40af; }"
+        "QComboBox QAbstractItemView::item:selected { background-color: #2563eb; color: #ffffff; }"
         "QLineEdit:read-only {"
         "  background-color: #f1f5f9;"
         "  color: #64748b;"
@@ -121,8 +131,8 @@ void CustomerDialog::setupUI(bool allowSwitchKind)
     );
 
     auto* mainLayout = new QVBoxLayout(this);
-    mainLayout->setContentsMargins(18, 16, 18, 16);
-    mainLayout->setSpacing(12);
+    mainLayout->setContentsMargins(10, 10, 10, 10);
+    mainLayout->setSpacing(8);
 
     auto* titleLbl = new QLabel(
         isEditMode ? "✏️ Cập Nhật Thông Tin Khách Hàng / Đối Tác"

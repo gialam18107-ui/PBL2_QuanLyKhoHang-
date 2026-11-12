@@ -482,7 +482,7 @@ namespace user_create
         std::string effectiveCustomerCode = customerCode;
         if (isAdj) {
             if (!customerCode.empty()) {
-                return OperationResult{false, "Đối với đơn điều chỉnh nhập kho (ADJ), không được có khách hàng/đối tác (Rule 4.3).", 0};
+                return OperationResult{false, "Đối với đơn điều chỉnh nhập kho (ADJ), không được có khách hàng/đối tác.", 0};
             }
             if (sourceCode.empty()) {
                 return OperationResult{false, "Đơn điều chỉnh nhập kho (ADJ) bắt buộc phải có source_code tham chiếu đến đợt kiểm kho (check_code) hợp lệ.", 0};
@@ -504,7 +504,7 @@ namespace user_create
                 }
                 for (size_t k = 0; k < items.size(); ++k) {
                     if (!allowedPids.contains(items[k].first)) {
-                        return OperationResult{false, "Sản phẩm [" + getProductCodeStr(db, items[k].first) + "] không thuộc phạm vi đợt kiểm kho " + sourceCode + " (Rule 5.5).", 0};
+                        return OperationResult{false, "Sản phẩm [" + getProductCodeStr(db, items[k].first) + "] không thuộc phạm vi đợt kiểm kho " + sourceCode + ".", 0};
                     }
                 }
             }
@@ -549,7 +549,7 @@ namespace user_create
             }
             if (inboundType != "ADJUSTMENT_IN" && inboundType != "ADJ") {
                 if (pRec->has("is_sold") && std::holds_alternative<bool>(pRec->get("is_sold")) && !std::get<bool>(pRec->get("is_sold"))) {
-                    return OperationResult{false, "Sản phẩm ID " + std::to_string(pid) + " đã ngừng kinh doanh (is_sold = FALSE), không thể nhập kho (Rule 4.2).", 0};
+                    return OperationResult{false, "Sản phẩm ID " + std::to_string(pid) + " đã ngừng kinh doanh (is_sold = FALSE), không thể nhập kho.", 0};
                 }
             }
         }
@@ -655,7 +655,7 @@ namespace user_create
         std::string effectiveCustomerCode = customerCode;
         if (isAdj) {
             if (!customerCode.empty()) {
-                return OperationResult{false, "Đối với đơn điều chỉnh xuất kho (ADJ), không được có khách hàng/đối tác (Rule 4.3).", 0};
+                return OperationResult{false, "Đối với đơn điều chỉnh xuất kho (ADJ), không được có khách hàng/đối tác.", 0};
             }
             if (sourceCode.empty()) {
                 return OperationResult{false, "Đơn điều chỉnh xuất kho (ADJ) bắt buộc phải có source_code tham chiếu đến đợt kiểm kho (check_code) hợp lệ.", 0};
@@ -677,7 +677,7 @@ namespace user_create
                 }
                 for (size_t k = 0; k < items.size(); ++k) {
                     if (!allowedPids.contains(items[k].first)) {
-                        return OperationResult{false, "Sản phẩm [" + getProductCodeStr(db, items[k].first) + "] không thuộc phạm vi đợt kiểm kho " + sourceCode + " (Rule 5.5).", 0};
+                        return OperationResult{false, "Sản phẩm [" + getProductCodeStr(db, items[k].first) + "] không thuộc phạm vi đợt kiểm kho " + sourceCode + ".", 0};
                     }
                 }
             }
@@ -724,7 +724,7 @@ namespace user_create
             }
             if (outboundType != "ADJUSTMENT_OUT" && outboundType != "ADJ") {
                 if (pRec->has("is_sold") && std::holds_alternative<bool>(pRec->get("is_sold")) && !std::get<bool>(pRec->get("is_sold"))) {
-                    return OperationResult{false, "Sản phẩm ID " + std::to_string(pid) + " đã ngừng kinh doanh (is_sold = FALSE), không thể xuất kho (Rule 4.2).", 0};
+                    return OperationResult{false, "Sản phẩm ID " + std::to_string(pid) + " đã ngừng kinh doanh (is_sold = FALSE), không thể xuất kho.", 0};
                 }
             }
 
@@ -894,7 +894,7 @@ namespace user_create
         if (!inTxnRec) {
             return OperationResult{false, "Không tìm thấy đơn nhập kho với ID " + std::to_string(inboundTransactionId) + ".", 0};
         }
-        return OperationResult{false, "Không được phép tạo thêm đợt giao hàng (delivery) sau khi đã xác nhận đơn transaction (Rule 4.3).", 0};
+        return OperationResult{false, "Không được phép tạo thêm đợt giao hàng (delivery) sau khi đã xác nhận đơn transaction.", 0};
     }
 
     OperationResult createShipmentBatch(
@@ -912,7 +912,7 @@ namespace user_create
         if (!outTxnRec) {
             return OperationResult{false, "Không tìm thấy đơn xuất kho với ID " + std::to_string(outboundTransactionId) + ".", 0};
         }
-        return OperationResult{false, "Không được phép tạo thêm đợt xuất hàng (shipment) sau khi đã xác nhận đơn transaction (Rule 4.3).", 0};
+        return OperationResult{false, "Không được phép tạo thêm đợt xuất hàng (shipment) sau khi đã xác nhận đơn transaction.", 0};
     }
 
     OperationResult createInboundOrderWithDeliveries(
@@ -930,7 +930,7 @@ namespace user_create
         std::string effectiveCustomerCode = customerCode;
         if (isAdj) {
             if (!customerCode.empty()) {
-                return OperationResult{false, "Đối với đơn điều chỉnh nhập kho (ADJ), không được có khách hàng/đối tác (Rule 4.3).", 0};
+                return OperationResult{false, "Đối với đơn điều chỉnh nhập kho (ADJ), không được có khách hàng/đối tác.", 0};
             }
             if (sourceCode.empty()) {
                 return OperationResult{false, "Đơn điều chỉnh nhập kho (ADJ) bắt buộc phải có source_code tham chiếu đến đợt kiểm kho (check_code) hợp lệ.", 0};
@@ -952,7 +952,7 @@ namespace user_create
                 }
                 for (size_t k = 0; k < totalOrderedItems.size(); ++k) {
                     if (!allowedPids.contains(totalOrderedItems[k].first)) {
-                        return OperationResult{false, "Sản phẩm [" + getProductCodeStr(db, totalOrderedItems[k].first) + "] không thuộc phạm vi đợt kiểm kho " + sourceCode + " (Rule 5.5).", 0};
+                        return OperationResult{false, "Sản phẩm [" + getProductCodeStr(db, totalOrderedItems[k].first) + "] không thuộc phạm vi đợt kiểm kho " + sourceCode + ".", 0};
                     }
                 }
             }
@@ -985,7 +985,7 @@ namespace user_create
             if (!pRec) return OperationResult{false, "Sản phẩm ID " + std::to_string(pid) + " không tồn tại.", 0};
             if (inboundType != "ADJUSTMENT_IN" && inboundType != "ADJ") {
                 if (pRec->has("is_sold") && std::holds_alternative<bool>(pRec->get("is_sold")) && !std::get<bool>(pRec->get("is_sold"))) {
-                    return OperationResult{false, "Sản phẩm ID " + std::to_string(pid) + " đã ngừng kinh doanh (Rule 4.2).", 0};
+                    return OperationResult{false, "Sản phẩm ID " + std::to_string(pid) + " đã ngừng kinh doanh.", 0};
                 }
             }
             orderedMap[pid] = qty;
@@ -1021,7 +1021,7 @@ namespace user_create
             int allocQty = totalAllocated.contains(pid) ? totalAllocated[pid] : 0;
             if (allocQty != ordQty) {
                 return OperationResult{false, "Tổng số lượng của từng đợt nhận hàng (" + std::to_string(allocQty) +
-                    ") phải bằng đúng số lượng của đơn transaction (" + std::to_string(ordQty) + ") cho sản phẩm ID " + std::to_string(pid) + " (Rule 4.3).", 0};
+                    ") phải bằng đúng số lượng của đơn transaction (" + std::to_string(ordQty) + ") cho sản phẩm ID " + std::to_string(pid) + ".", 0};
             }
         }
 
@@ -1135,7 +1135,7 @@ namespace user_create
         std::string effectiveCustomerCode = customerCode;
         if (isAdj) {
             if (!customerCode.empty()) {
-                return OperationResult{false, "Đối với đơn điều chỉnh xuất kho (ADJ), không được có khách hàng/đối tác (Rule 4.3).", 0};
+                return OperationResult{false, "Đối với đơn điều chỉnh xuất kho (ADJ), không được có khách hàng/đối tác.", 0};
             }
             if (sourceCode.empty()) {
                 return OperationResult{false, "Đơn điều chỉnh xuất kho (ADJ) bắt buộc phải có source_code tham chiếu đến đợt kiểm kho (check_code) hợp lệ.", 0};
@@ -1157,7 +1157,7 @@ namespace user_create
                 }
                 for (size_t k = 0; k < totalOrderedItems.size(); ++k) {
                     if (!allowedPids.contains(totalOrderedItems[k].first)) {
-                        return OperationResult{false, "Sản phẩm [" + getProductCodeStr(db, totalOrderedItems[k].first) + "] không thuộc phạm vi đợt kiểm kho " + sourceCode + " (Rule 5.5).", 0};
+                        return OperationResult{false, "Sản phẩm [" + getProductCodeStr(db, totalOrderedItems[k].first) + "] không thuộc phạm vi đợt kiểm kho " + sourceCode + ".", 0};
                     }
                 }
             }
@@ -1190,7 +1190,7 @@ namespace user_create
             if (!pRec) return OperationResult{false, "Sản phẩm ID " + std::to_string(pid) + " không tồn tại.", 0};
             if (outboundType != "ADJUSTMENT_OUT" && outboundType != "ADJ") {
                 if (pRec->has("is_sold") && std::holds_alternative<bool>(pRec->get("is_sold")) && !std::get<bool>(pRec->get("is_sold"))) {
-                    return OperationResult{false, "Sản phẩm ID " + std::to_string(pid) + " đã ngừng kinh doanh (Rule 4.2).", 0};
+                    return OperationResult{false, "Sản phẩm ID " + std::to_string(pid) + " đã ngừng kinh doanh.", 0};
                 }
             }
 
@@ -1228,7 +1228,7 @@ namespace user_create
             int allocQty = totalAllocated.contains(pid) ? totalAllocated[pid] : 0;
             if (allocQty != ordQty) {
                 return OperationResult{false, "Tổng số lượng của từng đợt xuất hàng (" + std::to_string(allocQty) +
-                    ") phải bằng đúng số lượng của đơn transaction (" + std::to_string(ordQty) + ") cho sản phẩm ID " + std::to_string(pid) + " (Rule 4.3).", 0};
+                    ") phải bằng đúng số lượng của đơn transaction (" + std::to_string(ordQty) + ") cho sản phẩm ID " + std::to_string(pid) + ".", 0};
             }
         }
 
@@ -1366,7 +1366,7 @@ namespace user_create
         std::string inTxnSt = inTxnRec->has("status") && std::holds_alternative<std::string>(inTxnRec->get("status"))
                             ? std::get<std::string>(inTxnRec->get("status")) : "";
         if (inTxnSt == "COMPLETED" || inTxnSt == "CANCELLED") {
-            return OperationResult{false, "Đơn nhập kho (" + inTxnSt + ") đã hoàn tất hoặc bị hủy. Toàn bộ các đợt nhận hàng đã bị khóa vĩnh viễn (Rule 5.6).", 0};
+            return OperationResult{false, "Đơn nhập kho (" + inTxnSt + ") đã hoàn tất hoặc bị hủy. Toàn bộ các đợt nhận hàng đã bị khóa vĩnh viễn.", 0};
         }
 
         std::string inType = inTxnRec->has("type") && std::holds_alternative<std::string>(inTxnRec->get("type"))
@@ -1424,35 +1424,35 @@ namespace user_create
         if (inType == "PURCHASING" || inType == "PUR") {
             if (effTarget.empty()) effTarget = "AVAILABLE";
             if (effTarget != "AVAILABLE" && effTarget != "SCRAPPED") {
-                return OperationResult{false, "Đơn mua hàng mới (PUR) chỉ được nhận linh kiện với trạng thái AVAILABLE hoặc SCRAPPED (Rule 4.4.2).", 0};
+                return OperationResult{false, "Đơn mua hàng mới (PUR) chỉ được nhận linh kiện với trạng thái AVAILABLE hoặc SCRAPPED.", 0};
             }
         } else if (inType == "WARRANTY_REPLACEMENT" || inType == "WRP") {
             if (effTarget.empty()) effTarget = "WARRANTY";
             if (effTarget != "WARRANTY") {
-                return OperationResult{false, "Đơn đổi bảo hành từ nhà cung cấp (WRP) chỉ được nhận linh kiện với trạng thái WARRANTY (Rule 4.4.2).", 0};
+                return OperationResult{false, "Đơn đổi bảo hành từ nhà cung cấp (WRP) chỉ được nhận linh kiện với trạng thái WARRANTY.", 0};
             }
         } else if (inType == "WARRANTY_CHECKING" || inType == "WCK") {
             if (effTarget.empty()) effTarget = "WARRANTY";
             if (effTarget != "WARRANTY") {
-                return OperationResult{false, "Đơn nhận bảo hành từ khách (WCK) chỉ được nhận linh kiện với trạng thái WARRANTY (Rule 4.4.2).", 0};
+                return OperationResult{false, "Đơn nhận bảo hành từ khách (WCK) chỉ được nhận linh kiện với trạng thái WARRANTY.", 0};
             }
         } else if (inType == "CUSTOMER_RETURN" || inType == "CRT") {
             if (effTarget.empty()) effTarget = "AVAILABLE";
             if (effTarget != "AVAILABLE" && effTarget != "WARRANTY" && effTarget != "SCRAPPED") {
-                return OperationResult{false, "Đơn khách hàng trả hàng (CRT) chỉ được nhận linh kiện với trạng thái AVAILABLE, WARRANTY, hoặc SCRAPPED (Rule 4.4.2).", 0};
+                return OperationResult{false, "Đơn khách hàng trả hàng (CRT) chỉ được nhận linh kiện với trạng thái AVAILABLE, WARRANTY, hoặc SCRAPPED.", 0};
             }
         } else if (isAdjustmentIn) {
             // Rule 4.4.2: ADJ Inbound allows transition from ANY status to ANY internal warehouse status (target cannot be OUT)
             if (effTarget.empty()) effTarget = "AVAILABLE";
             if (effTarget != "AVAILABLE" && effTarget != "WARRANTY" && effTarget != "SCRAPPED") {
-                return OperationResult{false, "Đơn nhập điều chỉnh kho (ADJ) chỉ được nhận linh kiện với trạng thái AVAILABLE, WARRANTY, hoặc SCRAPPED (Rule 4.4.2).", 0};
+                return OperationResult{false, "Đơn nhập điều chỉnh kho (ADJ) chỉ được nhận linh kiện với trạng thái AVAILABLE, WARRANTY, hoặc SCRAPPED.", 0};
             }
         } else {
             if (effTarget.empty()) effTarget = "AVAILABLE";
         }
 
         if (effTarget == "OUT") {
-            return OperationResult{false, "Trạng thái nhận của đơn nhập kho tuyệt đối không được là 'OUT' (Rule 4.4.2).", 0};
+            return OperationResult{false, "Trạng thái nhận của đơn nhập kho tuyệt đối không được là 'OUT'.", 0};
         }
 
         if (!isNewAcquisition && !isAdjustmentIn && customSerials.size() < static_cast<size_t>(quantity)) {
@@ -1499,7 +1499,7 @@ namespace user_create
                 if (targetUnitId != -1) {
                     if (currentUnitStatus != "OUT") {
                         db->rollback();
-                        return OperationResult{false, "Đơn nhập điều chỉnh (ADJ) chỉ được nhận linh kiện có old_status là 'OUT' (tái phát hiện) hoặc 'NULL' (hàng mới). Linh kiện '" + sn + "' hiện đang có trạng thái '" + currentUnitStatus + "' trong kho (Rule 4.4.1).", 0};
+                        return OperationResult{false, "Đơn nhập điều chỉnh (ADJ) chỉ được nhận linh kiện có old_status là 'OUT' (tái phát hiện) hoặc 'NULL' (hàng mới). Linh kiện '" + sn + "' hiện đang có trạng thái '" + currentUnitStatus + "' trong kho.", 0};
                     }
                     // Existing unit transition: OUT -> effTarget
                     Record uUp;
@@ -1528,7 +1528,7 @@ namespace user_create
                     if (!sn.empty()) {
                         if (!isValidSerialFormat(sn)) {
                             db->rollback();
-                            return OperationResult{false, "Mã serial '" + sn + "' không đúng định dạng SN-XXXXXXX (Rule 5.5).", 0};
+                            return OperationResult{false, "Mã serial '" + sn + "' không đúng định dạng SN-XXXXXXX.", 0};
                         }
                         if (!isSerialUnique(db, sn)) {
                             db->rollback();
@@ -1575,7 +1575,7 @@ namespace user_create
                     sn = customSerials[k];
                     if (!isValidSerialFormat(sn)) {
                         db->rollback();
-                        return OperationResult{false, "Mã serial '" + sn + "' không đúng định dạng SN-XXXXXXX (Rule 5.5).", 0};
+                        return OperationResult{false, "Mã serial '" + sn + "' không đúng định dạng SN-XXXXXXX.", 0};
                     }
                     if (!isSerialUnique(db, sn)) {
                         db->rollback();
@@ -1635,7 +1635,7 @@ namespace user_create
                 }
                 if (currentUnitStatus != "OUT") {
                     db->rollback();
-                    return OperationResult{false, "Linh kiện có serial '" + sn + "' hiện đang có trạng thái '" + currentUnitStatus + "', không phải 'OUT' (Rule 4.4.2).", 0};
+                    return OperationResult{false, "Linh kiện có serial '" + sn + "' hiện đang có trạng thái '" + currentUnitStatus + "', không phải 'OUT'.", 0};
                 }
 
                 Record uUp;
@@ -1973,7 +1973,7 @@ namespace user_create
                     }
                     for (size_t i = 0; i < effectiveItems.size(); ++i) {
                         if (!allowedPids.contains(effectiveItems[i].productId)) {
-                            return OperationResult{false, "Sản phẩm [" + getProductCodeStr(db, effectiveItems[i].productId) + "] không thuộc phạm vi đợt kiểm kho " + sourceCheckCode + " (Rule 5.5).", 0};
+                            return OperationResult{false, "Sản phẩm [" + getProductCodeStr(db, effectiveItems[i].productId) + "] không thuộc phạm vi đợt kiểm kho " + sourceCheckCode + ".", 0};
                         }
                     }
                 }
@@ -2068,7 +2068,7 @@ namespace user_create
         std::string curStatus = (chkRec->has("status") && std::holds_alternative<std::string>(chkRec->get("status")))
                               ? std::get<std::string>(chkRec->get("status")) : "";
         if (curStatus != "COMPLETED") {
-            return OperationResult{false, "Chỉ có thể tạo đơn điều chỉnh sau khi đợt kiểm kê đã được chuyển sang trạng thái HOÀN THÀNH (COMPLETED) (Rule 5.2 & 5.3).", 0};
+            return OperationResult{false, "Chỉ có thể tạo đơn điều chỉnh sau khi đợt kiểm kê đã được chuyển sang trạng thái HOÀN THÀNH (COMPLETED).", 0};
         }
 
         std::string checkCode = std::get<std::string>(chkRec->get("check_code"));

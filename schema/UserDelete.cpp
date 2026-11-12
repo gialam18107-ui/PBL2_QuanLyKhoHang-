@@ -202,7 +202,7 @@ namespace user_delete
             tableName == "inventory_check" || tableName == "inventory_check_quantity" ||
             tableName == "inventory_check_unit" || tableName == "adjustment_movement" ||
             tableName == "adjust_movement_detail") {
-            return OperationResult{false, "Bảng '" + tableName + "' là dữ liệu hệ thống / chứng từ giao dịch đã xác nhận, không được phép xóa (Rule 5.3).", 0};
+            return OperationResult{false, "Bảng '" + tableName + "' là dữ liệu hệ thống / chứng từ giao dịch đã xác nhận, không được phép xóa.", 0};
         }
 
         // 2. Handlers for coupled / special tables

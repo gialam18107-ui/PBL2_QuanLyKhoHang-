@@ -584,7 +584,6 @@ private:
     void setupUI();
     void loadBatchData();
     void loadAllUnitsData();
-    void refreshAllUnitsTable(bool scrollToBottom = false);
     void refreshBatchUnitsTable(bool scrollToBottom = false);
     void refreshBatchOverviewTable();
     void refreshProductEntryTab(bool scrollToBottom = false);
@@ -621,7 +620,6 @@ private:
 
     // Structure
     QTabWidget* mainTabWidget;
-    QWidget* tabAllUnits;
     QWidget* tabBatchOverview;
     QWidget* tabProductEntry = nullptr;
 
@@ -644,12 +642,6 @@ private:
 
     QTableWidget* prodUnitsTable = nullptr;
     QLabel* prodUnitsCountLabel = nullptr;
-
-    // Tab 1 controls
-    QLineEdit* serialSearchInput;
-    QComboBox* productFilterCombo;
-    QTableWidget* allUnitsTable;
-    QLabel* allUnitsCountLabel;
 
     // Tab 2 controls
     QLineEdit* unifiedSerialInput;

@@ -259,6 +259,8 @@ private:
     void refreshAllViews(bool scrollToBottom = false);
     void refreshDetailTable();
     void refreshUnitsTable(bool scrollToBottom = false);
+    void applyDetailTableFilter();
+    void applyUnitsTableFilter();
 
     void onDirectSerialEntered();
     void onDetailSelectionChanged();
@@ -290,8 +292,10 @@ private:
     QLabel* noteLabel;
 
     QTableWidget* detailTable;
+    QLineEdit* detailSearchEdit = nullptr;
     QLabel* unitsCountLabel;
     QTableWidget* unitsTable;
+    QLineEdit* unitsSearchEdit = nullptr;
 
     // Smart scan bar controls
     QLabel* selectedPlanLabel;

@@ -15,8 +15,8 @@ QueryTableWidget::QueryTableWidget(const QString& title, const QString& descript
       addBtn(nullptr), editBtn(nullptr), deleteBtn(nullptr), extraActionBtn(nullptr)
 {
     auto* mainLayout = new QVBoxLayout(this);
-    mainLayout->setContentsMargins(18, 18, 18, 18);
-    mainLayout->setSpacing(12);
+    mainLayout->setContentsMargins(10, 8, 10, 8);
+    mainLayout->setSpacing(8);
 
     // 1. Header info
     titleLabel = new QLabel(titleText, this);
@@ -41,18 +41,20 @@ QueryTableWidget::QueryTableWidget(const QString& title, const QString& descript
 void QueryTableWidget::setupFilterUI(QVBoxLayout* mainLayout)
 {
     filterFrame = new QFrame(this);
+    filterFrame->setObjectName("filterFrame");
     filterFrame->setStyleSheet(
-        "QFrame {"
+        "QFrame#filterFrame {"
         "  background-color: #ffffff;"
         "  border: 1px solid #e2e8f0;"
-        "  border-radius: 8px;"
-        "  padding: 4px;"
+        "  border-radius: 6px;"
+        "  padding: 2px;"
         "}"
+        "QFrame#filterFrame QLabel { border: none; padding: 0; }"
     );
 
     auto* filterLayout = new QHBoxLayout(filterFrame);
-    filterLayout->setContentsMargins(12, 10, 12, 10);
-    filterLayout->setSpacing(10);
+    filterLayout->setContentsMargins(10, 6, 10, 6);
+    filterLayout->setSpacing(8);
 
     auto* filterIconLabel = new QLabel("🔍 Lọc dữ liệu:", filterFrame);
     filterIconLabel->setStyleSheet("font-size: 13px; font-weight: 600; color: #334155; border: none;");

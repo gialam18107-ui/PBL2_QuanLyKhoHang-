@@ -1625,6 +1625,16 @@ void MainWindow::setupPages()
         "  border-radius: 6px;"
         "  min-width: 240px;"
         "}"
+        "QComboBox QAbstractItemView {"
+        "  background-color: #ffffff;"
+        "  color: #0f172a;"
+        "  border: 1px solid #cbd5e1;"
+        "  selection-background-color: #2563eb;"
+        "  selection-color: #ffffff;"
+        "}"
+        "QComboBox QAbstractItemView::item { color: #0f172a; background-color: #ffffff; padding: 5px 10px; }"
+        "QComboBox QAbstractItemView::item:hover { background-color: #eff6ff; color: #1e40af; }"
+        "QComboBox QAbstractItemView::item:selected { background-color: #2563eb; color: #ffffff; }"
     );
 
     // Thêm các bảng thông số phụ và master
@@ -1713,7 +1723,7 @@ void MainWindow::setupPages()
     // ========================================================
     individualCustomerWidget = new QueryTableWidget(
         "Khách hàng cá nhân",
-        "Danh sách khách hàng cá nhân kèm thông tin liên hệ (số điện thoại, email) - Rule 9.4",
+        "Danh sách khách hàng cá nhân kèm thông tin liên hệ (số điện thoại, email)",
         this
     );
     individualCustomerWidget->setColumns(
@@ -1744,7 +1754,7 @@ void MainWindow::setupPages()
     // ========================================================
     businessCustomerWidget = new QueryTableWidget(
         "Khách hàng doanh nghiệp",
-        "Danh sách khách hàng doanh nghiệp kèm mã số thuế, địa chỉ và thông tin liên hệ - Rule 9.4",
+        "Danh sách khách hàng doanh nghiệp kèm mã số thuế, địa chỉ và thông tin liên hệ",
         this
     );
     businessCustomerWidget->setColumns(
@@ -2082,40 +2092,27 @@ void MainWindow::setupReportPage()
 {
     reportPageWidget = new QWidget(this);
     auto* mainLayout = new QVBoxLayout(reportPageWidget);
-    mainLayout->setContentsMargins(18, 16, 18, 16);
-    mainLayout->setSpacing(12);
+    mainLayout->setContentsMargins(10, 8, 10, 8);
+    mainLayout->setSpacing(8);
 
-    // 1. Header Card (Title & Description)
-    auto* headerFrame = new QFrame(reportPageWidget);
-    headerFrame->setStyleSheet(
-        "QFrame {"
-        "  background-color: #ffffff;"
-        "  border: 1px solid #e2e8f0;"
-        "  border-radius: 8px;"
-        "  padding: 12px 16px;"
-        "}"
-    );
-    auto* headerLayout = new QVBoxLayout(headerFrame);
-    headerLayout->setContentsMargins(0, 0, 0, 0);
-    headerLayout->setSpacing(4);
-
-    auto* titleLabel = new QLabel("📈 BÁO CÁO XUẤT - NHẬP - TỒN ĐỊNH KỲ", headerFrame);
-    titleLabel->setStyleSheet("font-size: 16px; font-weight: bold; color: #0f172a;");
-    headerLayout->addWidget(titleLabel);
-    mainLayout->addWidget(headerFrame);
+    // 1. Header Title
+    auto* titleLabel = new QLabel("📈 BÁO CÁO XUẤT - NHẬP - TỒN ĐỊNH KỲ", reportPageWidget);
+    titleLabel->setStyleSheet("font-size: 18px; font-weight: bold; color: #0f172a;");
+    mainLayout->addWidget(titleLabel);
 
     // 2. Control Toolbar (Chọn Tháng, Năm, Nút Xem Báo Cáo, Nút Xuất CSV)
     auto* controlFrame = new QFrame(reportPageWidget);
+    controlFrame->setObjectName("reportControlFrame");
     controlFrame->setStyleSheet(
-        "QFrame {"
+        "QFrame#reportControlFrame {"
         "  background-color: #ffffff;"
         "  border: 1px solid #e2e8f0;"
-        "  border-radius: 8px;"
-        "  padding: 10px 14px;"
+        "  border-radius: 6px;"
         "}"
+        "QFrame#reportControlFrame QLabel { border: none; padding: 0; }"
     );
     auto* controlLayout = new QHBoxLayout(controlFrame);
-    controlLayout->setContentsMargins(0, 0, 0, 0);
+    controlLayout->setContentsMargins(10, 6, 10, 6);
     controlLayout->setSpacing(10);
 
     auto* lblMonth = new QLabel("📅 Tháng:", controlFrame);
@@ -2134,6 +2131,16 @@ void MainWindow::setupReportPage()
         "  min-width: 60px;"
         "}"
         "QComboBox::drop-down { border: none; }"
+        "QComboBox QAbstractItemView {"
+        "  background-color: #ffffff;"
+        "  color: #0f172a;"
+        "  border: 1px solid #cbd5e1;"
+        "  selection-background-color: #2563eb;"
+        "  selection-color: #ffffff;"
+        "}"
+        "QComboBox QAbstractItemView::item { color: #0f172a; background-color: #ffffff; padding: 4px 10px; }"
+        "QComboBox QAbstractItemView::item:hover { background-color: #eff6ff; color: #1e40af; }"
+        "QComboBox QAbstractItemView::item:selected { background-color: #2563eb; color: #ffffff; }"
     );
     for (int m = 1; m <= 12; ++m) {
         reportMonthCombo->addItem(QString::number(m), m);
@@ -2727,7 +2734,7 @@ void MainWindow::setupCrudWiring()
                     this,
                     "Xác nhận xóa sản phẩm",
                     QString("Bạn có chắc chắn muốn xóa sản phẩm:\n[%1] %2?\n\n"
-                            "Lưu ý: Chỉ sản phẩm có tồn kho = 0 và chưa phát sinh lịch sử giao dịch mới được phép xóa (Rule 4.1).")
+                            "Lưu ý: Chỉ sản phẩm có tồn kho = 0 và chưa phát sinh lịch sử giao dịch mới được phép xóa.")
                         .arg(pCode, pName),
                     QMessageBox::Yes | QMessageBox::No,
                     QMessageBox::No
@@ -2843,12 +2850,12 @@ void MainWindow::setupCrudWiring()
             if (adjId <= 0 || !db) return;
             std::string st = rec.has("status") && holds_alternative<std::string>(rec.get("status")) ? get<std::string>(rec.get("status")) : "";
             if (st != "PENDING") {
-                QMessageBox::warning(this, "Không thể hủy", "Chỉ có thể hủy phiếu điều chuyển khi phiếu đang ở trạng thái PENDING (Rule 5.6).");
+                QMessageBox::warning(this, "Không thể hủy", "Chỉ có thể hủy phiếu điều chuyển khi phiếu đang ở trạng thái PENDING.");
                 return;
             }
             auto rep = QMessageBox::question(
                 this, "Xác nhận hủy phiếu",
-                "Bạn có chắc chắn muốn HỦY phiếu điều chuyển đang chọn không?\n\nSau khi hủy, phiếu sẽ chuyển sang trạng thái CANCELLED và đóng vĩnh viễn (Rule 5.6).",
+                "Bạn có chắc chắn muốn HỦY phiếu điều chuyển đang chọn không?\n\nSau khi hủy, phiếu sẽ chuyển sang trạng thái CANCELLED và đóng vĩnh viễn.",
                 QMessageBox::Yes | QMessageBox::No
             );
             if (rep != QMessageBox::Yes) return;
@@ -3246,7 +3253,7 @@ void MainWindow::onAddAuxSpecOrBrand()
     }
 
     if (!isEditableSpecSubTable(tbl)) {
-        QMessageBox::warning(this, "Bảng dữ liệu chuẩn (Read-Only)", "Bảng danh mục chính / trạng thái hệ thống không cho phép chỉnh sửa (Rule 4.6).");
+        QMessageBox::warning(this, "Bảng dữ liệu chuẩn (Read-Only)", "Bảng danh mục chính / trạng thái hệ thống không cho phép chỉnh sửa.");
         return;
     }
 

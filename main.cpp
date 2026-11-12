@@ -51,6 +51,53 @@ int main(int argc, char* argv[])
     QFont font("Segoe UI", 10);
     app.setFont(font);
 
+    // Ensure readable dark text on light background for all QComboBox popups & context QMenus
+    app.setStyleSheet(
+        "QComboBox { color: #0f172a; background-color: #ffffff; }"
+        "QComboBox:disabled { color: #64748b; background-color: #f1f5f9; }"
+        "QComboBox QAbstractItemView {"
+        "  background-color: #ffffff;"
+        "  color: #0f172a;"
+        "  border: 1px solid #cbd5e1;"
+        "  selection-background-color: #2563eb;"
+        "  selection-color: #ffffff;"
+        "  outline: 0;"
+        "}"
+        "QComboBox QAbstractItemView::item {"
+        "  color: #0f172a;"
+        "  background-color: #ffffff;"
+        "  padding: 5px 10px;"
+        "  min-height: 22px;"
+        "}"
+        "QComboBox QAbstractItemView::item:hover {"
+        "  background-color: #eff6ff;"
+        "  color: #1e40af;"
+        "}"
+        "QComboBox QAbstractItemView::item:selected {"
+        "  background-color: #2563eb;"
+        "  color: #ffffff;"
+        "}"
+        "QMenu {"
+        "  background-color: #ffffff;"
+        "  color: #0f172a;"
+        "  border: 1px solid #cbd5e1;"
+        "  border-radius: 6px;"
+        "  padding: 4px;"
+        "}"
+        "QMenu::item {"
+        "  color: #0f172a;"
+        "  background-color: transparent;"
+        "  padding: 6px 20px;"
+        "  border-radius: 4px;"
+        "}"
+        "QMenu::item:selected {"
+        "  background-color: #eff6ff;"
+        "  color: #1d4ed8;"
+        "  font-weight: 600;"
+        "}"
+        "QMenu::item:disabled { color: #94a3b8; }"
+    );
+
     // Initialize Database and load all 32 tables from data/
     Database db("warehouse_db");
     std::cout << "[Init] Loading database from data/..." << std::endl;
