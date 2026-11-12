@@ -64,7 +64,7 @@ static QString commonDialogStyleSheet() {
 static QString translateStatus(const QString& st) {
     if (st == "AVAILABLE") return "Khả dụng";
     if (st == "WARRANTY") return "Bảo hành";
-    if (st == "SCRAPPED") return "Hư hỏng";
+    if (st == "SCRAPPED") return "Lỗi/hỏng";
     if (st == "OUT") return "Đã xuất";
     if (st == "PENDING") return "Chờ xử lý";
     if (st == "PROCESSING") return "Đang xử lý";
@@ -207,11 +207,11 @@ void AdjustmentMovementCreateDialog::setupUI()
     fromStatusCombo = new QComboBox(this);
     fromStatusCombo->addItem("Khả dụng", "AVAILABLE");
     fromStatusCombo->addItem("Bảo hành", "WARRANTY");
-    fromStatusCombo->addItem("Hư hỏng", "SCRAPPED");
+    fromStatusCombo->addItem("Lỗi/hỏng", "SCRAPPED");
 
     toStatusCombo = new QComboBox(this);
     toStatusCombo->addItem("Bảo hành", "WARRANTY");
-    toStatusCombo->addItem("Hư hỏng", "SCRAPPED");
+    toStatusCombo->addItem("Lỗi/hỏng", "SCRAPPED");
     toStatusCombo->addItem("Khả dụng", "AVAILABLE");
 
     quantitySpin = new QSpinBox(this);
@@ -281,7 +281,7 @@ void AdjustmentMovementCreateDialog::onReasonChanged()
         fromStatusCombo->addItem("Bảo hành", "WARRANTY");
 
         toStatusCombo->clear();
-        toStatusCombo->addItem("Hư hỏng", "SCRAPPED");
+        toStatusCombo->addItem("Lỗi/hỏng", "SCRAPPED");
         toStatusCombo->setEnabled(false);
 
         populateProducts("");
@@ -290,11 +290,11 @@ void AdjustmentMovementCreateDialog::onReasonChanged()
         fromStatusCombo->clear();
         fromStatusCombo->addItem("Khả dụng", "AVAILABLE");
         fromStatusCombo->addItem("Bảo hành", "WARRANTY");
-        fromStatusCombo->addItem("Hư hỏng", "SCRAPPED");
+        fromStatusCombo->addItem("Lỗi/hỏng", "SCRAPPED");
 
         toStatusCombo->clear();
         toStatusCombo->addItem("Bảo hành", "WARRANTY");
-        toStatusCombo->addItem("Hư hỏng", "SCRAPPED");
+        toStatusCombo->addItem("Lỗi/hỏng", "SCRAPPED");
         toStatusCombo->addItem("Khả dụng", "AVAILABLE");
 
         onCheckChanged();
@@ -404,7 +404,7 @@ void AdjustmentMovementCreateDialog::onAddItem()
 
     QString reason = reasonCombo ? reasonCombo->currentData().toString() : "";
     if (reason == "DAMAGED" && toSt != "SCRAPPED") {
-        QMessageBox::warning(this, "Không hợp lệ", "Khi lý do là DAMAGED (Hư hỏng), trạng thái đích chỉ được phép là SCRAPPED (Phế phẩm).");
+        QMessageBox::warning(this, "Không hợp lệ", "Khi lý do là DAMAGED (Hư hỏng), trạng thái đích chỉ được phép là SCRAPPED (Lỗi/hỏng).");
         return;
     }
 
@@ -1836,7 +1836,7 @@ void AdjustmentMovementDetailDialog::refreshUnitsTable(bool scrollToBottom)
         itTo->setTextAlignment(Qt::AlignCenter);
         itTo->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
 
-        auto* itClass = new QTableWidgetItem("✏️ Đã đổi trạng thái (Đã lưu CSDL)");
+        auto* itClass = new QTableWidgetItem("Đã lưu");
         itClass->setTextAlignment(Qt::AlignCenter);
         itClass->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
         itClass->setForeground(QColor("#16a34a"));
@@ -1892,7 +1892,7 @@ void AdjustmentMovementDetailDialog::refreshUnitsTable(bool scrollToBottom)
         }
         unitsTable->setItem(rowIdx, 5, itTo);
 
-        auto* itClass = new QTableWidgetItem("⏳ Chờ chuyển");
+        auto* itClass = new QTableWidgetItem("Chưa lưu");
         itClass->setTextAlignment(Qt::AlignCenter);
         itClass->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
         itClass->setForeground(QColor("#2563eb"));

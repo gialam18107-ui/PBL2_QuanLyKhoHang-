@@ -33,7 +33,7 @@ static QString translateUnitStatus(const QString& st)
 {
     if (st == "AVAILABLE") return "Khả dụng";
     if (st == "WARRANTY") return "Bảo hành";
-    if (st == "SCRAPPED") return "Phế phẩm";
+    if (st == "SCRAPPED") return "Lỗi/hỏng";
     if (st == "OUT") return "Đã xuất kho";
     return st;
 }
@@ -1432,7 +1432,7 @@ void OrderDialog::renderLineItems()
         auto* itCode = new QTableWidgetItem(item.productCode);
         auto* itName = new QTableWidgetItem(item.productName);
         auto* itStock = new QTableWidgetItem(
-            QString("KD: %1 | BH: %2 | Lỗi: %3").arg(item.availQty).arg(item.warrantyQty).arg(item.scrappedQty)
+            QString("KD: %1 | BH: %2 | Lỗi/hỏng: %3").arg(item.availQty).arg(item.warrantyQty).arg(item.scrappedQty)
         );
         QString qtyStr = QString::number(item.orderedQty);
         if (!item.assignedSerials.empty()) {
@@ -2320,7 +2320,7 @@ void LogisticsProductStatusSummaryDialog::setupUI()
     QStringList headers = {
         "Mã sản phẩm", "Tên sản phẩm", "SL Đợt này",
         (hubType == HubType::INBOUND ? "Thực nhận" : "Thực xuất"),
-        "Khả dụng", "Bảo hành", "Phế phẩm", "Tổng số lượng"
+        "Khả dụng", "Bảo hành", "Lỗi/hỏng", "Tổng số lượng"
     };
     summaryTable->setColumnCount(8);
     summaryTable->setHorizontalHeaderLabels(headers);
@@ -3082,7 +3082,7 @@ void OutboundProductUnitPickerDialog::filterTable()
 
         QString noteStr = "Sẵn sàng xuất kho";
         if (c->status == "WARRANTY") noteStr = "Hàng bảo hành";
-        else if (c->status == "SCRAPPED") noteStr = "Lỗi / phế phẩm";
+        else if (c->status == "SCRAPPED") noteStr = "Lỗi/hỏng";
         auto* itNote = new QTableWidgetItem(noteStr);
         if (c->status == "AVAILABLE") itNote->setForeground(QColor("#15803d"));
         else if (c->status == "WARRANTY") itNote->setForeground(QColor("#b45309"));
@@ -3185,7 +3185,7 @@ QString SimulationToolDialog::getEligibilityReason(const std::string& status) co
         if (transactionType == "SELLING" || transactionType == "SEL")
             return (status == "AVAILABLE") ? "✅ Hợp lệ (Khả dụng)" : "❌ Cần trạng thái Khả dụng";
         if (transactionType == "WARRANTY_RETURN" || transactionType == "WRT")
-            return (status == "SCRAPPED" || status == "WARRANTY") ? "✅ Hợp lệ (Bảo hành / Phế phẩm)" : "❌ Cần Bảo hành hoặc Phế phẩm";
+            return (status == "SCRAPPED" || status == "WARRANTY") ? "✅ Hợp lệ (Bảo hành / Lỗi/hỏng)" : "❌ Cần Bảo hành hoặc Lỗi/hỏng";
         if (transactionType == "WARRANTY_REPLACEMENT_TO_CUSTOMER" || transactionType == "WRC")
             return (status == "AVAILABLE" || status == "WARRANTY") ? "✅ Hợp lệ (Khả dụng / Bảo hành)" : "❌ Cần Khả dụng hoặc Bảo hành";
         return (status != "OUT") ? "✅ Hợp lệ" : "❌ Không thể xuất";
@@ -4118,10 +4118,10 @@ void UnitEntryDialog::setupUI()
         }
     }
     if (auto* it5 = batchOverviewTable->horizontalHeaderItem(5)) {
-        it5->setToolTip("Số lượng theo trạng thái: Khả dụng (AVAILABLE) / Bảo hành (WARRANTY) / Lỗi (SCRAPPED)");
+        it5->setToolTip("Số lượng theo trạng thái: Khả dụng (AVAILABLE) / Bảo hành (WARRANTY) / Lỗi/hỏng (SCRAPPED)");
     }
     if (auto* it6 = batchOverviewTable->horizontalHeaderItem(6)) {
-        it6->setToolTip("Tồn kho chung trong hệ thống: Khả dụng (AVAILABLE) / Bảo hành (WARRANTY) / Lỗi (SCRAPPED)");
+        it6->setToolTip("Tồn kho chung trong hệ thống: Khả dụng (AVAILABLE) / Bảo hành (WARRANTY) / Lỗi/hỏng (SCRAPPED)");
     }
 
     batchOverviewTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Interactive);
@@ -4973,7 +4973,7 @@ bool UnitEntryDialog::recordPendingOutboundSerial(int productId, const QString& 
         }
     } else if (transactionType == "WARRANTY_RETURN" || transactionType == "WRT") {
         if (curStatus != "WARRANTY" && curStatus != "SCRAPPED") {
-            outErrMsg = QString("Đơn xuất trả bảo hành yêu cầu linh kiện WARRANTY hoặc SCRAPPED (Hiện tại: %1).").arg(QString::fromStdString(curStatus));
+            outErrMsg = QString("Đơn xuất trả bảo hành yêu cầu linh kiện Bảo hành (WARRANTY) hoặc Lỗi/hỏng (SCRAPPED) (Hiện tại: %1).").arg(translateUnitStatus(QString::fromStdString(curStatus)));
             return false;
         }
     } else if (transactionType == "WARRANTY_REPLACEMENT_TO_CUSTOMER" || transactionType == "WRC") {
@@ -5024,9 +5024,13 @@ void UnitEntryDialog::setupProductEntryTab()
 
     inboundProductCombo = new QComboBox(selectGroup);
     inboundProductCombo->setMinimumHeight(34);
+    inboundProductCombo->setMaxVisibleItems(5);
+    if (inboundProductCombo->view()) {
+        inboundProductCombo->view()->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    }
     inboundProductCombo->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     inboundProductCombo->setStyleSheet(
-        "QComboBox { font-size: 13px; font-weight: 600; padding: 4px 12px; color: #0f172a; background-color: #ffffff; border: 1.5px solid #94a3b8; border-radius: 6px; }"
+        "QComboBox { combobox-popup: 0; font-size: 13px; font-weight: 600; padding: 4px 12px; color: #0f172a; background-color: #ffffff; border: 1.5px solid #94a3b8; border-radius: 6px; }"
         "QComboBox:focus { border: 1.5px solid #2563eb; }"
         "QComboBox:disabled { color: #64748b; background-color: #f1f5f9; }"
         "QComboBox QAbstractItemView { background-color: #ffffff; color: #0f172a; selection-background-color: #2563eb; selection-color: #ffffff; border: 1px solid #cbd5e1; outline: 0px; }"
@@ -5045,7 +5049,7 @@ void UnitEntryDialog::setupProductEntryTab()
     inboundTargetStatusCombo->setMinimumHeight(34);
     inboundTargetStatusCombo->addItem("Khả dụng (Mới 100%)", "AVAILABLE");
     inboundTargetStatusCombo->addItem("Đang bảo hành", "WARRANTY");
-    inboundTargetStatusCombo->addItem("Lỗi khi nhận (Phế phẩm)", "SCRAPPED");
+    inboundTargetStatusCombo->addItem("Lỗi/hỏng", "SCRAPPED");
     inboundTargetStatusCombo->setStyleSheet(
         "QComboBox { font-size: 13px; font-weight: 600; padding: 4px 10px; color: #0f172a; background-color: #ffffff; border: 1.5px solid #94a3b8; border-radius: 6px; }"
         "QComboBox:disabled { color: #64748b; background-color: #f1f5f9; }"
@@ -5486,15 +5490,15 @@ void UnitEntryDialog::onInboundProductComboChanged(int index)
 
             QTableWidgetItem* itClass = nullptr;
             if (!u->originalStatus.empty() && u->originalStatus != u->savedStatus) {
-                itClass = new QTableWidgetItem("✏️ Đã đổi trạng thái (Đã lưu CSDL)");
+                itClass = new QTableWidgetItem("Đã lưu");
                 itClass->setForeground(QColor("#16a34a"));
-                itClass->setToolTip(QString("Ban đầu: %1 -> Đã chuyển sang: %2")
+                itClass->setToolTip(QString("Đã đổi trạng thái và lưu CSDL (%1 -> %2)")
                     .arg(translateUnitStatus(QString::fromStdString(u->originalStatus)), translateUnitStatus(QString::fromStdString(u->savedStatus))));
             } else if (u->isModified) {
-                itClass = new QTableWidgetItem("⚠️ Chờ lưu thay đổi");
+                itClass = new QTableWidgetItem("Chưa lưu");
                 itClass->setForeground(QColor("#d97706"));
             } else {
-                itClass = new QTableWidgetItem("💾 Đã lưu CSDL");
+                itClass = new QTableWidgetItem("Đã lưu");
                 itClass->setForeground(QColor("#15803d"));
             }
             itClass->setTextAlignment(Qt::AlignCenter);
@@ -5537,7 +5541,7 @@ void UnitEntryDialog::onInboundProductComboChanged(int index)
             itTime->setTextAlignment(Qt::AlignCenter);
             itTime->setForeground(QColor("#2563eb"));
 
-            auto* itClass = new QTableWidgetItem("⏳ Chờ lưu mới");
+            auto* itClass = new QTableWidgetItem("Chưa lưu");
             itClass->setTextAlignment(Qt::AlignCenter);
             itClass->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
             itClass->setForeground(QColor("#2563eb"));
@@ -5764,15 +5768,16 @@ void UnitEntryDialog::refreshBatchUnitsTable(bool scrollToBottom)
 
         QTableWidgetItem* itClass = nullptr;
         if (!u.originalStatus.empty() && u.originalStatus != u.savedStatus) {
-            itClass = new QTableWidgetItem("✏️ Đã đổi trạng thái (Đã lưu CSDL)");
+            itClass = new QTableWidgetItem("Đã lưu");
             itClass->setForeground(QColor("#16a34a"));
-            itClass->setToolTip(QString("Ban đầu: %1 -> Hiện tại: %2")
+            itClass->setToolTip(QString("Đã đổi trạng thái — Ban đầu: %1 -> Hiện tại: %2")
                 .arg(translateUnitStatus(QString::fromStdString(u.originalStatus)), translateUnitStatus(QString::fromStdString(u.savedStatus))));
         } else if (u.isModified) {
-            itClass = new QTableWidgetItem("⚠️ Chờ lưu thay đổi");
+            itClass = new QTableWidgetItem("Chưa lưu");
             itClass->setForeground(QColor("#d97706"));
+            itClass->setToolTip("Chờ lưu thay đổi");
         } else {
-            itClass = new QTableWidgetItem("💾 Đã lưu CSDL");
+            itClass = new QTableWidgetItem("Đã lưu");
             itClass->setForeground(QColor("#64748b"));
         }
         itClass->setTextAlignment(Qt::AlignCenter);
@@ -5820,7 +5825,8 @@ void UnitEntryDialog::refreshBatchUnitsTable(bool scrollToBottom)
         }
         batchUnitsTable->setItem(rowIdx, 5, itSt);
 
-        auto* itStatus = new QTableWidgetItem("⏳ Chờ lưu mới");
+        auto* itStatus = new QTableWidgetItem("Chưa lưu");
+        itStatus->setToolTip("Chờ lưu mới");
         itStatus->setTextAlignment(Qt::AlignCenter);
         itStatus->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
         itStatus->setForeground(QColor("#2563eb"));
@@ -5864,7 +5870,8 @@ void UnitEntryDialog::refreshBatchUnitsTable(bool scrollToBottom)
         itTargetStatus->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
         itTargetStatus->setForeground(QColor("#ea580c"));
 
-        auto* itStatus = new QTableWidgetItem("⏳ Chờ xuất kho");
+        auto* itStatus = new QTableWidgetItem("Chưa lưu");
+        itStatus->setToolTip("Chờ xuất kho");
         itStatus->setTextAlignment(Qt::AlignCenter);
         itStatus->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
         itStatus->setForeground(QColor("#ea580c"));

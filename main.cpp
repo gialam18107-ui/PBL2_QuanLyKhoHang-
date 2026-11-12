@@ -53,7 +53,7 @@ int main(int argc, char* argv[])
 
     // Ensure readable dark text on light background for all QComboBox popups & context QMenus
     app.setStyleSheet(
-        "QComboBox { color: #0f172a; background-color: #ffffff; }"
+        "QComboBox { combobox-popup: 0; color: #0f172a; background-color: #ffffff; }"
         "QComboBox:disabled { color: #64748b; background-color: #f1f5f9; }"
         "QComboBox QAbstractItemView {"
         "  background-color: #ffffff;"

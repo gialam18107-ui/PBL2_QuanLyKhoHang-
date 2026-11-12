@@ -33,7 +33,7 @@ bool export_periodic_inventory_report_csv(int month, int year,
 
   Vector<string> headers = {
       "Mã sản phẩm", "Tên sản phẩm", "Tồn đầu kỳ", "Nhập trong tháng",
-      "Xuất trong tháng", "Tồn cuối tháng", "Tồn khả dụng", "Hàng bảo hành", "Hàng lỗi hỏng"
+      "Xuất trong tháng", "Tồn cuối tháng", "Tồn khả dụng", "Hàng bảo hành", "Hàng lỗi/hỏng"
   };
   outFile << CSVHelper::formatLine(headers) << "\n";
 

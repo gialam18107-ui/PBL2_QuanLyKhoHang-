@@ -45,7 +45,7 @@ namespace user_delete
         int wrt = (pRec->has("warranty_quantity") && std::holds_alternative<int>(pRec->get("warranty_quantity"))) ? std::get<int>(pRec->get("warranty_quantity")) : 0;
         int scr = (pRec->has("scrapped_quantity") && std::holds_alternative<int>(pRec->get("scrapped_quantity"))) ? std::get<int>(pRec->get("scrapped_quantity")) : 0;
         if (avail > 0 || wrt > 0 || scr > 0) {
-            return OperationResult{false, "Không thể xóa sản phẩm: Vẫn còn hàng tồn trong kho (Khả dụng: " + std::to_string(avail) + ", Bảo hành: " + std::to_string(wrt) + ", Phế phẩm: " + std::to_string(scr) + ").", 0};
+            return OperationResult{false, "Không thể xóa sản phẩm: Vẫn còn hàng tồn trong kho (Khả dụng: " + std::to_string(avail) + ", Bảo hành: " + std::to_string(wrt) + ", Lỗi/hỏng: " + std::to_string(scr) + ").", 0};
         }
 
         // 3. History Checks (Transactions, Units, Inventory Checks, Movements, Status Changing)

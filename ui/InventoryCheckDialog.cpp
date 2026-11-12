@@ -162,7 +162,7 @@ void GroupedReconcileHeaderView::paintEvent(QPaintEvent* event)
             // Group parent headers:
             // col 5..6: Khả dụng
             // col 7..8: Bảo hành
-            // col 9..10: Hư hỏng
+            // col 9..10: Lỗi/hỏng
             int partnerCol = col + 1;
             int wNext = (!isSectionHidden(partnerCol)) ? sectionSize(partnerCol) : 0;
             int groupW = w + wNext;
@@ -176,7 +176,7 @@ void GroupedReconcileHeaderView::paintEvent(QPaintEvent* event)
 
             painter.setPen(textColor);
             painter.setFont(boldFont);
-            QString groupTitle = (col == 5) ? "Khả dụng" : (col == 7 ? "Bảo hành" : "Hư hỏng");
+            QString groupTitle = (col == 5) ? "Khả dụng" : (col == 7 ? "Bảo hành" : "Lỗi/hỏng");
             painter.drawText(groupRect, Qt::AlignCenter, groupTitle);
 
             // Bottom sub-cell for Tồn
@@ -288,7 +288,7 @@ void InventoryCheckCreateDialog::setupUI()
     productTable = new QTableWidget(this);
     productTable->setColumnCount(8);
     productTable->setHorizontalHeaderLabels({
-        "Chọn", "Mã SP", "Tên sản phẩm", "Danh mục", "Khả dụng", "Bảo hành", "Hư hỏng", "Tổng tồn"
+        "Chọn", "Mã SP", "Tên sản phẩm", "Danh mục", "Khả dụng", "Bảo hành", "Lỗi/hỏng", "Tổng tồn"
     });
     productTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
     productTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
@@ -539,7 +539,7 @@ void UnrecordedSurplusDialog::setupUI()
     conditionCombo = new QComboBox(this);
     conditionCombo->addItem("Khả dụng (Sẵn sàng bán)", "AVAILABLE");
     conditionCombo->addItem("Bảo hành (Cần kiểm tra)", "WARRANTY");
-    conditionCombo->addItem("Phế phẩm (Hỏng)", "SCRAPPED");
+    conditionCombo->addItem("Lỗi/hỏng", "SCRAPPED");
     formLayout->addWidget(conditionCombo, 2, 1);
 
     formLayout->addWidget(new QLabel("Ghi chú chi tiết:"), 3, 0);
@@ -604,7 +604,7 @@ static QString localizeStatus(const QString& st)
 {
     if (st == "AVAILABLE") return "Khả dụng";
     if (st == "WARRANTY") return "Bảo hành";
-    if (st == "SCRAPPED") return "Hư hỏng";
+    if (st == "SCRAPPED") return "Lỗi/hỏng";
     if (st == "OUT") return "Đã xuất";
     return st;
 }
@@ -1758,7 +1758,7 @@ void InventoryCheckDetailDialog::setupUI()
         unitStatusCombo->addItem("⚡ Tự nhận diện & Khớp hệ thống", "AUTO_MATCH");
         unitStatusCombo->addItem("Khả dụng (Tốt)", "AVAILABLE");
         unitStatusCombo->addItem("Đang bảo hành", "WARRANTY");
-        unitStatusCombo->addItem("Hỏng / Phế phẩm", "SCRAPPED");
+        unitStatusCombo->addItem("Lỗi/hỏng", "SCRAPPED");
         unitStatusCombo->addItem("Đánh dấu Không tìm thấy", "OUT");
         unitStatusCombo->setEnabled(!isLocked);
 
@@ -1829,7 +1829,7 @@ void InventoryCheckDetailDialog::setupUI()
         unitTable = new QTableWidget(detailWidget);
         unitTable->setColumnCount(11);
         unitTable->setHorizontalHeaderLabels({
-            "STT", "Số Serial (SN)", "Mã SP", "Tên sản phẩm", "Trạng thái sổ", "Trạng thái thực tế", "Kết quả đối soát", "Thao tác", "Trạng thái ghi", "CheckUnitID", "ProductId"
+            "STT", "Số Serial (SN)", "Mã SP", "Tên sản phẩm", "Trạng thái sổ", "Trạng thái thực tế", "Kết quả đối soát", "Thao tác", "Phân loại", "CheckUnitID", "ProductId"
         });
         unitTable->setColumnWidth(0, 45);   // STT
         unitTable->setColumnWidth(1, 150);  // Serial
@@ -1839,7 +1839,7 @@ void InventoryCheckDetailDialog::setupUI()
         unitTable->setColumnWidth(5, 130);  // Trạng thái thực tế
         unitTable->setColumnWidth(6, 140);  // Kết quả đối soát
         unitTable->setColumnWidth(7, 95);   // Thao tác
-        unitTable->setColumnWidth(8, 140);  // Trạng thái ghi
+        unitTable->setColumnWidth(8, 120);  // Phân loại
         unitTable->setColumnHidden(9, true);
         unitTable->setColumnHidden(10, true);
         unitTable->setAlternatingRowColors(true);
@@ -1879,7 +1879,7 @@ void InventoryCheckDetailDialog::setupUI()
             );
             auto* aAvail = menu.addAction("🟢 Khả dụng (AVAILABLE)");
             auto* aWarr = menu.addAction("🟡 Bảo hành (WARRANTY)");
-            auto* aScrap = menu.addAction("🔴 Hư hỏng / Phế phẩm (SCRAPPED)");
+            auto* aScrap = menu.addAction("🔴 Lỗi/hỏng (SCRAPPED)");
             auto* aOut = menu.addAction("⚫ Đã xuất / Thất thoát (OUT)");
 
             QPoint cellPos = unitTable->viewport()->mapToGlobal(unitTable->visualItemRect(unitTable->item(row, col)).bottomLeft());
@@ -2377,25 +2377,30 @@ void InventoryCheckDetailDialog::updateTableRowInPlace(int row, int idx)
         actItem->setToolTip("");
     }
 
-    // 8: Phân loại / Trạng thái ghi (Soft-staging status badge)
+    // 8: Phân loại (Chưa lưu / Đã lưu)
     auto* stageItem = unitTable->item(row, 8);
     if (!stageItem) {
         stageItem = makeItem("");
         unitTable->setItem(row, 8, stageItem);
     }
     QString stageText;
+    QString stageTip;
     QColor stageCol;
     if (u.isNew) {
-        stageText = "⭐ Mới thêm (Chưa lưu)";
+        stageText = "Chưa lưu";
+        stageTip = "Mới thêm (Chưa lưu)";
         stageCol = QColor("#ea580c");
     } else if (u.isModified) {
-        stageText = "✏️ Đã sửa (Chưa lưu)";
+        stageText = "Chưa lưu";
+        stageTip = "Đã sửa (Chưa lưu)";
         stageCol = QColor("#7c3aed");
     } else {
-        stageText = "✓ Đã lưu CSDL";
+        stageText = "Đã lưu";
+        stageTip = "Đã lưu CSDL";
         stageCol = QColor("#16a34a");
     }
     stageItem->setText(stageText);
+    stageItem->setToolTip(stageTip);
     stageItem->setForeground(stageCol);
     stageItem->setFont(QFont("Segoe UI", 9, QFont::Bold));
 }
@@ -2661,7 +2666,7 @@ bool InventoryCheckDetailDialog::processUnitScan(const QString& sn, const QStrin
         auto* condCombo = new QComboBox(&promptDlg);
         condCombo->addItem("Khả dụng (Sẵn sàng bán)", "AVAILABLE");
         condCombo->addItem("Bảo hành (Cần kiểm tra)", "WARRANTY");
-        condCombo->addItem("Phế phẩm (Hỏng)", "SCRAPPED");
+        condCombo->addItem("Lỗi/hỏng", "SCRAPPED");
         formLayout->addRow("Tình trạng thực tế:", condCombo);
         pLayout->addLayout(formLayout);
 
@@ -2778,7 +2783,7 @@ bool InventoryCheckDetailDialog::processUnitScan(const QString& sn, const QStrin
         auto* cbCond = new QComboBox(&promptDlg);
         cbCond->addItem("Khả dụng (Sẵn sàng bán)", "AVAILABLE");
         cbCond->addItem("Bảo hành (Cần kiểm tra)", "WARRANTY");
-        cbCond->addItem("Phế phẩm (Hỏng)", "SCRAPPED");
+        cbCond->addItem("Lỗi/hỏng", "SCRAPPED");
         pLayout->addWidget(cbCond);
 
         auto* btnBox = new QHBoxLayout();
@@ -3734,7 +3739,7 @@ void InventoryCheckSimulationDialog::setupUI()
     statusFilterCombo->addItem("Chưa quét", "UNCHECKED");
     statusFilterCombo->addItem("Khả dụng", "AVAILABLE");
     statusFilterCombo->addItem("Bảo hành", "WARRANTY");
-    statusFilterCombo->addItem("Phế phẩm", "SCRAPPED");
+    statusFilterCombo->addItem("Lỗi/hỏng", "SCRAPPED");
     statusFilterCombo->addItem("Đã xuất kho", "OUT");
 
     searchEdit = new QLineEdit(tab1);
@@ -3788,7 +3793,7 @@ void InventoryCheckSimulationDialog::setupUI()
     targetModeCombo->addItem("Khớp 100% với trạng thái hệ thống (Chuẩn hóa toàn bộ)", "MATCH");
     targetModeCombo->addItem("Ghi nhận tất cả thành: Khả dụng", "AVAILABLE");
     targetModeCombo->addItem("Ghi nhận tất cả thành: Bảo hành", "WARRANTY");
-    targetModeCombo->addItem("Ghi nhận tất cả thành: Phế phẩm", "SCRAPPED");
+    targetModeCombo->addItem("Ghi nhận tất cả thành: Lỗi/hỏng", "SCRAPPED");
     targetModeCombo->addItem("Ghi nhận tất cả thành: Đã xuất / Thất thoát", "OUT");
     targetModeCombo->addItem("Mô phỏng ngẫu nhiên chênh lệch (90% khớp, 10% lệch)", "RANDOM_DIFF");
     agLayout->addWidget(targetModeCombo, 1);
@@ -3824,7 +3829,7 @@ void InventoryCheckSimulationDialog::setupUI()
     genStatusCombo = new QComboBox(singleGroup);
     genStatusCombo->addItem("Khả dụng", "AVAILABLE");
     genStatusCombo->addItem("Bảo hành", "WARRANTY");
-    genStatusCombo->addItem("Phế phẩm", "SCRAPPED");
+    genStatusCombo->addItem("Lỗi/hỏng", "SCRAPPED");
     genStatusCombo->addItem("Đã xuất kho", "OUT");
     formLayout->addRow("Tình trạng ghi nhận:", genStatusCombo);
 
@@ -4291,7 +4296,7 @@ void InventoryCheckInspectDialog::setupUI()
         "Tổng tồn HT", "Tổng thực tế", "Tổng chênh lệch",
         "HT (Khả dụng)", "Thực (Khả dụng)", "Lệch KD",
         "HT (Bảo hành)", "Thực (Bảo hành)", "Lệch BH",
-        "HT (Phế phẩm)", "Thực (Phế phẩm)", "Lệch PP",
+        "HT (Lỗi/hỏng)", "Thực (Lỗi/hỏng)", "Lệch L/H",
         "Ghi chú kiểm kê"
     });
     matrixTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
@@ -4634,7 +4639,7 @@ void InventoryCheckInspectDialog::renderSummaryTable()
         summaryTable->setColumnCount(8);
         summaryTable->setHorizontalHeaderLabels({
             "STT", "Mã SP", "Tên sản phẩm",
-            "Thừa Khả dụng", "Thừa Bảo hành", "Thừa Phế phẩm",
+            "Thừa Khả dụng", "Thừa Bảo hành", "Thừa Lỗi/hỏng",
             "Tổng SL Cần Nhập", "Chi tiết đối soát"
         });
         summaryTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
@@ -4724,7 +4729,7 @@ void InventoryCheckInspectDialog::renderSummaryTable()
         summaryTable->setColumnCount(8);
         summaryTable->setHorizontalHeaderLabels({
             "STT", "Mã SP", "Tên sản phẩm",
-            "Thiếu Khả dụng", "Thiếu Bảo hành", "Thiếu Phế phẩm",
+            "Thiếu Khả dụng", "Thiếu Bảo hành", "Thiếu Lỗi/hỏng",
             "Tổng SL Cần Xuất", "Chi tiết đối soát"
         });
         summaryTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);

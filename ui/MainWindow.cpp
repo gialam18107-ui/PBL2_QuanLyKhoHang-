@@ -656,11 +656,11 @@ void MainWindow::setupPages()
     // ========================================================
     productQuantityWidget = new QueryTableWidget(
         "Tồn kho sản phẩm",
-        "Thống kê số lượng tồn kho khả dụng, bảo hành và hư hỏng theo từng sản phẩm",
+        "Thống kê số lượng tồn kho khả dụng, bảo hành và lỗi/hỏng theo từng sản phẩm",
         this
     );
     productQuantityWidget->setColumns(
-        {"Mã sản phẩm", "Mã vạch (Barcode)", "Mã SKU", "Tên sản phẩm", "Khả dụng", "Bảo hành", "Hư hỏng", "Đang bán"},
+        {"Mã sản phẩm", "Mã vạch (Barcode)", "Mã SKU", "Tên sản phẩm", "Khả dụng", "Bảo hành", "Lỗi/hỏng", "Đang bán"},
         {"product.product_code", "product.barcode", "product.sku", "product.product_name", "product_quantity.available_quan", "product_quantity.warranty_quan", "product_quantity.scrapped_quan", "product.is_sold"}
     );
     productQuantityWidget->setFilterColumns({
@@ -1069,7 +1069,7 @@ void MainWindow::setupPages()
     });
     inventoryCheckWidget->enableBottomDetailPanel(
         "📋 Chọn một đợt kiểm kho ở trên để xem chi tiết số lượng sản phẩm...",
-        {"Mã SP", "Tên sản phẩm", "Tổng tồn HT", "Tổng thực tế", "Tổng chênh lệch", "Tồn tốt HT", "Thực tốt", "Lệch tốt", "Tồn BH HT", "Thực BH", "Lệch BH", "Tồn phế HT", "Thực phế", "Lệch phế", "Ghi chú"},
+        {"Mã SP", "Tên sản phẩm", "Tổng tồn HT", "Tổng thực tế", "Tổng chênh lệch", "Tồn tốt HT", "Thực tốt", "Lệch tốt", "Tồn BH HT", "Thực BH", "Lệch BH", "Tồn lỗi/hỏng HT", "Thực lỗi/hỏng", "Lệch lỗi/hỏng", "Ghi chú"},
         {"product_code", "product_name", "total_system_quan", "total_actual_quan", "total_diff_quan", "system_available_quan", "actual_available_quan", "diff_available", "system_warranty_quan", "actual_warranty_quan", "diff_warranty", "system_scrapped_quan", "actual_scrapped_quan", "diff_scrapped", "note"},
         [this](const Record* sel, QLabel* banner, QTableWidget* table) {
             if (!banner || !table) return;
@@ -1126,7 +1126,7 @@ void MainWindow::setupPages()
         this
     );
     inventoryCheckQuantityWidget->setColumns(
-        {"Mã đợt kiểm", "Mã sản phẩm", "Tên sản phẩm", "Tổng tồn HT", "Tổng thực tế", "Tổng chênh lệch", "Tồn tốt HT", "Thực tốt", "Lệch tốt", "Tồn BH HT", "Thực BH", "Lệch BH", "Tồn phế HT", "Thực phế", "Lệch phế", "Ghi chú"},
+        {"Mã đợt kiểm", "Mã sản phẩm", "Tên sản phẩm", "Tổng tồn HT", "Tổng thực tế", "Tổng chênh lệch", "Tồn tốt HT", "Thực tốt", "Lệch tốt", "Tồn BH HT", "Thực BH", "Lệch BH", "Tồn lỗi/hỏng HT", "Thực lỗi/hỏng", "Lệch lỗi/hỏng", "Ghi chú"},
         {"check_code", "product_code", "product_name", "total_system_quan", "total_actual_quan", "total_diff_quan", "system_available_quan", "actual_available_quan", "diff_available", "system_warranty_quan", "actual_warranty_quan", "diff_warranty", "system_scrapped_quan", "actual_scrapped_quan", "diff_scrapped", "note"}
     );
     inventoryCheckQuantityWidget->setFilterColumns({
@@ -1249,7 +1249,7 @@ void MainWindow::setupPages()
     // ========================================================
     adjustmentMovementWidget = new QueryTableWidget(
         "Quản lý phiếu điều chuyển",
-        "Điều chỉnh trạng thái tồn kho giữa Khả dụng, Bảo hành và Hư hỏng",
+        "Điều chỉnh trạng thái tồn kho giữa Khả dụng, Bảo hành và Lỗi/hỏng",
         this
     );
     adjustmentMovementWidget->setColumns(
@@ -2226,7 +2226,7 @@ void MainWindow::setupReportPage()
     reportTable->setHorizontalHeaderLabels({
         "Mã sản phẩm", "Tên sản phẩm", "Tồn đầu kỳ",
         "Nhập trong tháng", "Xuất trong tháng", "Tồn cuối tháng",
-        "Tồn khả dụng", "Hàng bảo hành", "Hàng lỗi / hỏng"
+        "Tồn khả dụng", "Hàng bảo hành", "Hàng lỗi/hỏng"
     });
     reportTable->setStyleSheet(
         "QTableWidget {"
@@ -2275,7 +2275,7 @@ void MainWindow::setupReportPage()
     reportTable->setColumnWidth(5, 120); // Tồn cuối tháng
     reportTable->setColumnWidth(6, 110); // Tồn khả dụng
     reportTable->setColumnWidth(7, 120); // Hàng bảo hành
-    reportTable->setColumnWidth(8, 120); // Hàng lỗi / hỏng
+    reportTable->setColumnWidth(8, 120); // Hàng lỗi/hỏng
 
     // Kích hoạt tính năng chọn ("bôi đen") ô/vùng ô và sao chép (Ctrl+C / Chuột phải / Double-click)
     TableClipboardHelper::setupClipboardForTable(reportTable, statusLabel);
