@@ -8,6 +8,7 @@
 
 #include "database/Database.h"
 #include "data_io/DatabaseIO.h"
+#include "schema/Schema.h"
 #include "ui/MainWindow.h"
 
 class NoWheelEventFilter : public QObject {
@@ -98,11 +99,10 @@ int main(int argc, char* argv[])
         "QMenu::item:disabled { color: #94a3b8; }"
     );
 
-    // Initialize Database and load all 32 tables from data/
+    // Initialize Database and load all tables + category specs from data/
     Database db("warehouse_db");
     std::cout << "[Init] Loading database from data/..." << std::endl;
-    bool loaded = DataIO::DatabaseIO::readAll(db, "data");
-    DataIO::DatabaseIO::readAllCategorySpecs(db, "data");
+    bool loaded = Schema::loadDatabase(db, "data", true);
     std::cout << "[Init] Database loaded: " << (loaded ? "SUCCESS" : "PARTIAL") 
               << " (" << db.getTableCount() << " tables)" << std::endl;
 

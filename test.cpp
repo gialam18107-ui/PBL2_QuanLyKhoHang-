@@ -4,6 +4,7 @@
 
 #include "database/Database.h"
 #include "data_io/DatabaseIO.h"
+#include "schema/Schema.h"
 #include "schema/UserQuery.h"
 
 // ----------------------------------------------------------------------------
@@ -105,7 +106,7 @@ int main()
 {
     Database db("warehouse_db");
     std::cout << "[1/4] Dang nap toan bo CSDL tu data/..." << std::endl;
-    DataIO::DatabaseIO::readAll(db, "data");
+    Schema::loadDatabase(db, "data", false);
     std::cout << "[+] Nap xong CSDL (" << db.getTableCount() << " bang).\n" << std::endl;
 
     std::cout << "======================================================================" << std::endl;

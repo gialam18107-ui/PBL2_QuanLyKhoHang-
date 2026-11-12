@@ -14,8 +14,7 @@ int main()
     std::cout << "=================================================" << std::endl;
 
     Database db("test_crud_db");
-    DataIO::DatabaseIO::readAll(db, "data");
-    DataIO::DatabaseIO::readAllCategorySpecs(db, "data");
+    Schema::loadDatabase(db, "data", true);
 
     // ==========================================
     // 1. TEST Product CRUD

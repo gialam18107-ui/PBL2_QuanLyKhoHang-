@@ -616,8 +616,8 @@ int main()
     cout << "======================================================\n" << flush;
 
     Database db;
-    cout << "[+] Loading all 32 database tables from 'data'...\n" << flush;
-    bool loaded = DatabaseIO::readAll(db, "data");
+    cout << "[+] Loading all database tables from 'data'...\n" << flush;
+    bool loaded = Schema::loadDatabase(db, "data", false);
     assert(loaded);
     cout << "[+] Successfully loaded " << db.getTableCount() << " tables.\n" << flush;
 

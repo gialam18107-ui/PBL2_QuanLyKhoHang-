@@ -1,6 +1,5 @@
 #include "TableIO.h"
 #include "CSVHelper.h"
-#include "schema/Schema.h"
 
 #include <filesystem>
 #include <fstream>
@@ -21,31 +20,22 @@ namespace DataIO
 
     bool TableIO::readFromFile(Table& table, const string& filePath)
     {
-        // If table has no columns, populate them from Schema
+        // TableIO is schema-independent: only load data for an already-initialized table.
         if (table.getColumnCount() == 0)
         {
-            Table* schemaTable = Schema::createTable(table.getName());
-            if (schemaTable != nullptr)
-            {
-                for (const auto& col : schemaTable->getColumns())
-                {
-                    table.addColumn(col);
-                }
-                for (const auto& constraint : schemaTable->getConstraints())
-                {
-                    table.addConstraint(constraint->clone());
-                }
-                delete schemaTable;
-            }
+            cerr << "[TableIO Error] Table '" << table.getName()
+                 << "' has no initialized columns." << endl;
+            return false;
         }
 
         ifstream file(filePath);
-        table.clear();
         if (!file.is_open())
         {
             cerr << "[TableIO Error] Cannot open file for reading: " << filePath << endl;
             return false;
         }
+
+        table.clear();
 
         string headerLine;
         if (!getline(file, headerLine))
@@ -57,22 +47,6 @@ namespace DataIO
         if (headers.empty())
         {
             return false;
-        }
-
-        // If table still has no columns (e.g. dynamic spec table), initialize from headers
-        if (table.getColumnCount() == 0)
-        {
-            for (const auto& h : headers)
-            {
-                if (h == "id")
-                {
-                    table.addColumn(Column(h, DataType::INTEGER, 0, true, true, true, true));
-                }
-                else
-                {
-                    table.addColumn(Column(h, DataType::VARCHAR, 255, false, false, true));
-                }
-            }
         }
 
         string line;
@@ -90,70 +64,68 @@ namespace DataIO
                 const string& valStr = fields[i];
 
                 const Column* col = table.getColumn(colName);
-                if (col != nullptr)
+                if (col == nullptr)
                 {
-                    if (col->getType() == DataType::INTEGER)
+                    continue;
+                }
+
+                if (col->getType() == DataType::INTEGER)
+                {
+                    if (valStr.empty())
                     {
-                        if (valStr.empty())
+                        if (!col->getDefaultValue().empty())
                         {
-                            if (!col->getDefaultValue().empty())
-                            {
-                                record.set(colName, stoi(col->getDefaultValue()));
-                            }
-                        }
-                        else
-                        {
-                            try
-                            {
-                                record.set(colName, stoi(valStr));
-                            }
-                            catch (...)
-                            {
-                                cerr << "[TableIO Warning] Failed to parse integer for column " << colName << ": " << valStr << endl;
-                            }
+                            record.set(colName, stoi(col->getDefaultValue()));
                         }
                     }
-                    else if (col->getType() == DataType::BOOLEAN)
+                    else
                     {
-                        if (valStr.empty())
+                        try
                         {
-                            if (!col->getDefaultValue().empty())
-                            {
-                                bool b = (col->getDefaultValue() == "1" || col->getDefaultValue() == "true" || col->getDefaultValue() == "TRUE");
-                                record.set(colName, b);
-                            }
+                            record.set(colName, stoi(valStr));
                         }
-                        else
+                        catch (...)
                         {
-                            bool b = (valStr == "1" || valStr == "true" || valStr == "TRUE" || valStr == "True");
+                            cerr << "[TableIO Warning] Failed to parse integer for column " << colName << ": " << valStr << endl;
+                        }
+                    }
+                }
+                else if (col->getType() == DataType::BOOLEAN)
+                {
+                    if (valStr.empty())
+                    {
+                        if (!col->getDefaultValue().empty())
+                        {
+                            bool b = (col->getDefaultValue() == "1" || col->getDefaultValue() == "true" || col->getDefaultValue() == "TRUE");
                             record.set(colName, b);
                         }
                     }
                     else
                     {
-                        if (valStr.empty())
-                        {
-                            if (col->isNotNull())
-                            {
-                                if (!col->getDefaultValue().empty())
-                                {
-                                    record.set(colName, col->getDefaultValue());
-                                }
-                                else
-                                {
-                                    record.set(colName, string(""));
-                                }
-                            }
-                        }
-                        else
-                        {
-                            record.set(colName, valStr);
-                        }
+                        bool b = (valStr == "1" || valStr == "true" || valStr == "TRUE" || valStr == "True");
+                        record.set(colName, b);
                     }
                 }
                 else
                 {
-                    record.set(colName, valStr);
+                    if (valStr.empty())
+                    {
+                        if (col->isNotNull())
+                        {
+                            if (!col->getDefaultValue().empty())
+                            {
+                                record.set(colName, col->getDefaultValue());
+                            }
+                            else
+                            {
+                                record.set(colName, string(""));
+                            }
+                        }
+                    }
+                    else
+                    {
+                        record.set(colName, valStr);
+                    }
                 }
             }
 

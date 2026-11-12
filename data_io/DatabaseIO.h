@@ -3,6 +3,8 @@
 
 #include <string>
 #include "database/Database.h"
+#include "database/Table.h"
+#include "datastructure/hashmap/HashMap.h"
 #include "datastructure/vector/Vector.h"
 
 using namespace std;
@@ -11,68 +13,54 @@ namespace DataIO
 {
     class DatabaseIO
     {
+    private:
+        // Key: table name, Value: CSV file path
+        HashMap<string, string> tableFilePaths;
+        // Preserves registration order for deterministic/topological readAll & writeAll
+        Vector<string> tableOrder;
+
     public:
-        // ========================================================
-        // DATABASE IO (Domain-aware)
-        // ========================================================
-
-        // Load all tables from CSV files in folderPath in topological dependency order
-        // Automatically resolves domain subfolders (transactions/, unit/, products/, customers/, status_type/)
-        static bool readAll(Database& db, const string& folderPath = "data");
-
-        // Load a specific table from CSV file in folderPath into Database
-        static bool readTable(Database& db, const string& tableName, const string& folderPath = "data");
-
-        // Save all tables registered in Database to domain-organized CSV files in folderPath
-        static bool writeAll(const Database& db, const string& folderPath = "data");
-
-        // Save a specific table in Database to domain-organized CSV file in folderPath
-        static bool writeTable(const Database& db, const string& tableName, const string& folderPath = "data");
+        DatabaseIO() = default;
+        explicit DatabaseIO(const HashMap<string, string>& paths);
 
         // ========================================================
-        // DOMAIN MANAGEMENT (Rule 10)
+        // PATH MAPPING MANAGEMENT (Key = table name, Value = file path)
         // ========================================================
+        void setTablePath(const string& tableName, const string& filePath);
+        void setTablePath(const Table* table, const string& filePath);
+        void setTablePaths(const HashMap<string, string>& paths);
 
-        // Get the domain subfolder name for a table ("transactions", "unit", "products", "customers", "status_type")
-        static string getTableDomain(const string& tableName);
+        string getTablePath(const string& tableName) const;
+        string getTablePath(const Table* table) const;
 
-        // Get the resolved folder path for a table (e.g. folderPath/products)
-        static string getTableFolder(const string& tableName, const string& folderPath = "data");
+        bool hasTablePath(const string& tableName) const;
+        bool removeTablePath(const string& tableName);
+        void clearPaths();
 
-        // Get all supported domain folder names
-        static Vector<string> getDomains();
-
-        // Get all schema table names belonging to a domain
-        static Vector<string> getTablesInDomain(const string& domain);
-
-        // Read all tables belonging to a specific domain into Database
-        static bool readDomain(Database& db, const string& domain, const string& folderPath = "data");
-
-        // Write all tables belonging to a specific domain from Database
-        static bool writeDomain(const Database& db, const string& domain, const string& folderPath = "data");
+        const HashMap<string, string>& getTablePaths() const;
+        const Vector<string>& getTableOrder() const;
 
         // ========================================================
-        // CATEGORY SPECIFICATIONS MANAGEMENT (Rule 10.4)
+        // SCHEMA-INDEPENDENT DATABASE IO
         // ========================================================
 
-        // Get all categories that have specifications
-        static Vector<string> getCategoriesWithSpecs();
+        // Load data for an already-initialized table in Database using mapped file path
+        bool readTable(Database& db, const string& tableName) const;
 
-        // Get the specification sub-table names for a given category
-        static Vector<string> getSpecNamesForCategory(const string& category);
+        // Load data for an already-initialized Table using mapped file path
+        bool readTable(Table& table) const;
 
-        // Read all spec sub-tables for a specific category into Database
-        // Registered in Database as <category>_<specName> (e.g. ssd_type, ssd_gen, ssd_capacity)
-        static bool readCategorySpecs(Database& db, const string& category, const string& folderPath = "data");
+        // Save data of a table in Database to its mapped file path
+        bool writeTable(const Database& db, const string& tableName) const;
 
-        // Write all spec sub-tables for a category from Database to folderPath/<category>_specs/
-        static bool writeCategorySpecs(const Database& db, const string& category, const string& folderPath = "data");
+        // Save data of a Table to its mapped file path
+        bool writeTable(const Table& table) const;
 
-        // Read all spec sub-tables for all categories into Database
-        static bool readAllCategorySpecs(Database& db, const string& folderPath = "data");
+        // Load all mapped tables that exist in Database (in registration order)
+        bool readAll(Database& db) const;
 
-        // Write all spec sub-tables for all categories from Database
-        static bool writeAllCategorySpecs(const Database& db, const string& folderPath = "data");
+        // Save all mapped tables that exist in Database (in registration order)
+        bool writeAll(const Database& db) const;
     };
 }
 

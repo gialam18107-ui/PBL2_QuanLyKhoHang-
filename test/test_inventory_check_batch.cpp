@@ -52,7 +52,7 @@ int main() {
 
     Database db;
     auto tLoadStart = chrono::high_resolution_clock::now();
-    bool ok = DataIO::DatabaseIO::readAll(db, "data");
+    bool ok = Schema::loadDatabase(db, "data", false);
     auto tLoadEnd = chrono::high_resolution_clock::now();
     assert(ok && "Khong the nap du lieu tu data/");
     cout << "[+] Nap CSDL: " << db.getTableCount() << " bang ("

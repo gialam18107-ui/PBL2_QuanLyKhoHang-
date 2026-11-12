@@ -6,6 +6,7 @@
 #include "database/Database.h"
 #include "database/Table.h"
 #include "data_io/DatabaseIO.h"
+#include "schema/Schema.h"
 #include "query/Query.h"
 #include "datastructure/hashmap/Pair.h"
 
@@ -316,8 +317,8 @@ int main()
 
     Database db;
     cout << "[+] Loading database tables from 'data' directory..." << endl;
-    bool ok = DatabaseIO::readAll(db, "data");
-    cout << "[+] DatabaseIO::readAll status: " << (ok ? "SUCCESS" : "PARTIAL") << endl;
+    bool ok = Schema::loadDatabase(db, "data", false);
+    cout << "[+] Schema::loadDatabase status: " << (ok ? "SUCCESS" : "PARTIAL") << endl;
     cout << "[+] Loaded table count: " << db.getTableCount() << endl;
     assert(db.getTableCount() >= 13);
 

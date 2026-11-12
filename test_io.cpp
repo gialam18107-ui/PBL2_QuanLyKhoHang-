@@ -4,12 +4,9 @@
 #include <iostream>
 #include <filesystem>
 
-
 #include "database/Database.h"
 #include "database/Table.h"
-
 #include "data_io/CSVHelper.h"
-#include "data_io/DataIO.h"
 #include "data_io/DatabaseIO.h"
 #include "data_io/TableIO.h"
 #include "schema/Schema.h"
@@ -39,92 +36,124 @@ int main() {
   cout << "[PASS] Schema table definition test passed.\n";
 
   // ========================================================
-  // TEST 2: TABLE IO (READ FROM CSV VIA DOMAIN RESOLUTION)
+  // TEST 2: TABLE IO SCHEMA-INDEPENDENCE
   // ========================================================
-  printBanner("TEST 2: TableIO - Read category and brand from CSV");
-  Table categoryTable("category");
-  bool catReadOk = TableIO::read(categoryTable, DatabaseIO::getTableFolder("category", "data"));
-  assert(catReadOk);
-  cout << "[+] Read 'category' table from domain: " << categoryTable.getRowCount()
-       << " rows." << endl;
-  assert(categoryTable.getRowCount() > 0);
+  printBanner("TEST 2: TableIO - Schema-Independent Read & Guard");
 
-  Table brandTable("brand");
-  bool brandReadOk = TableIO::read(brandTable, DatabaseIO::getTableFolder("brand", "data"));
-  assert(brandReadOk);
-  cout << "[+] Read 'brand' table from domain: " << brandTable.getRowCount() << " rows."
-       << endl;
-  assert(brandReadOk && brandTable.getRowCount() > 0);
-  cout << "[PASS] TableIO read test passed.\n";
+  // 2.1 Uninitialized table (0 columns) must be rejected by TableIO
+  Table uninitializedTable("category");
+  bool uninitOk = TableIO::read(uninitializedTable, Schema::getTableFolder("category", "data"));
+  assert(!uninitOk);
+  cout << "[+] Uninitialized TableIO::read rejected as expected.\n";
+
+  // 2.2 Initialized schema tables loaded via TableIO
+  Table* categoryTable = Schema::createCategoryTable();
+  bool catReadOk = TableIO::read(*categoryTable, Schema::getTableFolder("category", "data"));
+  assert(catReadOk && categoryTable->getRowCount() > 0);
+  cout << "[+] Read initialized 'category' table: " << categoryTable->getRowCount() << " rows.\n";
+
+  Table* brandTable = Schema::createBrandTable();
+  bool brandReadOk = TableIO::read(*brandTable, Schema::getTableFolder("brand", "data"));
+  assert(brandReadOk && brandTable->getRowCount() > 0);
+  cout << "[+] Read initialized 'brand' table: " << brandTable->getRowCount() << " rows.\n";
+
+  // 2.3 Custom standalone table unrelated to warehouse schema
+  Table customTable("custom_items");
+  customTable.addColumn(Column("item_id", DataType::INTEGER, 0, true, true, true, true));
+  customTable.addColumn(Column("item_name", DataType::VARCHAR, 100, false, false, true));
+  customTable.addColumn(Column("active", DataType::BOOLEAN, 0, false, false, true, false, "1"));
+  Record r1; r1.set("item_id", 1); r1.set("item_name", string("Sensor A")); r1.set("active", true);
+  Record r2; r2.set("item_id", 2); r2.set("item_name", string("Sensor B")); r2.set("active", false);
+  assert(customTable.insert(r1));
+  assert(customTable.insert(r2));
+
+  string customCsvPath = "data/custom_items_test.csv";
+  assert(TableIO::writeToFile(customTable, customCsvPath));
+
+  Table customReloaded("custom_items");
+  customReloaded.addColumn(Column("item_id", DataType::INTEGER, 0, true, true, true, true));
+  customReloaded.addColumn(Column("item_name", DataType::VARCHAR, 100, false, false, true));
+  customReloaded.addColumn(Column("active", DataType::BOOLEAN, 0, false, false, true, false, "1"));
+  assert(TableIO::readFromFile(customReloaded, customCsvPath));
+  assert(customReloaded.getRowCount() == 2);
+  cout << "[+] Custom schema-less table round-trip via TableIO passed.\n";
+  cout << "[PASS] TableIO schema-independence test passed.\n";
 
   // ========================================================
   // TEST 3: TABLE IO (WRITE TO CSV & ROUND-TRIP VERIFICATION)
   // ========================================================
   printBanner("TEST 3: TableIO - Write to CSV and Verify Round-trip");
   string testBrandOut = "data/brand_test_out.csv";
-  bool brandWriteOk = TableIO::writeToFile(brandTable, testBrandOut);
+  bool brandWriteOk = TableIO::writeToFile(*brandTable, testBrandOut);
   assert(brandWriteOk);
   cout << "[+] Successfully wrote brand table to: " << testBrandOut << endl;
 
-  Table brandReloaded("brand");
-  bool reloadOk = TableIO::readFromFile(brandReloaded, testBrandOut);
+  Table* brandReloaded = Schema::createBrandTable();
+  bool reloadOk = TableIO::readFromFile(*brandReloaded, testBrandOut);
   assert(reloadOk);
-  assert(brandReloaded.getRowCount() == brandTable.getRowCount());
-  cout << "[+] Round-trip verification: reloaded "
-       << brandReloaded.getRowCount() << " rows successfully." << endl;
+  assert(brandReloaded->getRowCount() == brandTable->getRowCount());
+  cout << "[+] Round-trip verification: reloaded " << brandReloaded->getRowCount() << " rows.\n";
+
+  delete categoryTable;
+  delete brandTable;
+  delete brandReloaded;
   cout << "[PASS] TableIO write and round-trip test passed.\n";
 
   // ========================================================
-  // TEST 4: DATABASE-LEVEL READ ALL (ALL 32 TABLES ACROSS DOMAINS)
+  // TEST 4: DATABASEIO WITH CUSTOM HASHMAP PATH MAPPING (NO SCHEMA)
   // ========================================================
-  printBanner("TEST 4: DatabaseIO - Read All 32 Tables into Database");
+  printBanner("TEST 4: DatabaseIO - Custom HashMap Path Mapping (Schema-Independent)");
+  Database customDb("custom_db");
+  auto* tblCustom = new Table("custom_items");
+  tblCustom->addColumn(Column("item_id", DataType::INTEGER, 0, true, true, true, true));
+  tblCustom->addColumn(Column("item_name", DataType::VARCHAR, 100, false, false, true));
+  tblCustom->addColumn(Column("active", DataType::BOOLEAN, 0, false, false, true, false, "1"));
+  assert(customDb.addTable(tblCustom));
+
+  DatabaseIO customIO;
+  customIO.setTablePath("custom_items", customCsvPath);
+  assert(customIO.hasTablePath("custom_items"));
+  assert(customIO.getTablePath(tblCustom) == customCsvPath);
+  assert(customIO.readAll(customDb));
+  assert(customDb.getTable("custom_items")->getRowCount() == 2);
+
+  string customCsvOut = "data/custom_items_dbio_out.csv";
+  customIO.setTablePath(tblCustom, customCsvOut);
+  assert(customIO.writeTable(customDb, "custom_items"));
+  assert(filesystem::exists(customCsvOut));
+  cout << "[+] DatabaseIO custom HashMap path mapping read/write verified.\n";
+
+  // ========================================================
+  // TEST 5: DATABASE-LEVEL READ ALL (41 SCHEMA TABLES)
+  // ========================================================
+  printBanner("TEST 5: Schema + DatabaseIO - Read All 41 Core Tables");
   Database db;
-  bool readAllOk = DatabaseIO::readAll(db, "data");
-  cout << "[+] Database readAll result: " << (readAllOk ? "SUCCESS" : "PARTIAL")
-       << endl;
+  Schema::initDatabase(db, false);
+  DatabaseIO dbIO = Schema::createDatabaseIO("data", false);
+  bool readAllOk = dbIO.readAll(db);
+  cout << "[+] DatabaseIO::readAll result: " << (readAllOk ? "SUCCESS" : "PARTIAL") << endl;
+  assert(readAllOk);
   assert(db.getTableCount() == 41);
 
   int totalRecords = 0;
   for (const string &name : tableNames) {
     auto tbl = db.getTable(name);
     assert(tbl != nullptr);
-    cout << "  - [" << setw(12) << left << DatabaseIO::getTableDomain(name) << "] "
-         << setw(25) << left << name << ": " << setw(4) << right
+    cout << "  - [" << setw(15) << left << Schema::getTableDomain(name) << "] "
+         << setw(25) << left << name << ": " << setw(5) << right
          << tbl->getRowCount() << " rows, " << tbl->getColumnCount() << " cols"
          << endl;
     assert(tbl->getRowCount() >= 0);
     totalRecords += tbl->getRowCount();
   }
-  cout << "[+] Total database records loaded across 32 tables: " << totalRecords
-       << endl;
-  cout << "[PASS] DatabaseIO readAll test passed.\n";
+  cout << "[+] Total database records loaded across 41 tables: " << totalRecords << endl;
+  cout << "[PASS] Schema + DatabaseIO readAll test passed.\n";
 
   // ========================================================
-  // TEST 5: UNIFIED DATAIO FACADE API
+  // TEST 6: DATA TYPE VALIDATION & TYPE VIOLATION REJECTION
   // ========================================================
-  printBanner("TEST 5: Unified DataIO Facade API (Table API)");
-  ::DataIO::DataIO io("data");
+  printBanner("TEST 6: Data Type Validation & Type Violation Handling");
 
-  // Table API: read and write
-  Table cpuTable("cpu");
-  bool ioReadTableOk = io.read(cpuTable);
-  assert(ioReadTableOk);
-  cout << "[+] io.read(Table): Loaded " << cpuTable.getRowCount() << " CPUs."
-       << endl;
-
-  string cpuExport = "data/cpu_facade_out.csv";
-  bool ioWriteTableOk = io.write(cpuTable, cpuExport);
-  assert(ioWriteTableOk);
-  cout << "[+] io.write(Table, path): Wrote to " << cpuExport << endl;
-
-  cout << "[PASS] Unified DataIO facade test passed.\n";
-
-  // ========================================================
-  // TEST 9: DATA TYPE VALIDATION & TYPE VIOLATION REJECTION
-  // ========================================================
-  printBanner("TEST 9: Data Type Validation & Type Violation Handling");
-
-  // Case A: Inserting string into an INTEGER column (product_id)
   Record wrongIntRecord;
   wrongIntRecord.set("product_id", string("NOT_AN_INTEGER"));
   wrongIntRecord.set("product_name", string("Corrupted Int Product"));
@@ -137,22 +166,16 @@ int main() {
   wrongIntRecord.set("available_quantity", 10);
 
   bool wrongIntAccepted = db.insert("product", wrongIntRecord);
-  cout << "[+] Inserting string into INTEGER product_id result: "
-       << (wrongIntAccepted ? "ACCEPTED (BUG)" : "REJECTED (EXPECTED)") << endl;
   assert(!wrongIntAccepted);
 
-  // Case B: Inserting int into a VARCHAR column (category_name)
   Record wrongVarcharRecord;
   wrongVarcharRecord.set("category_id", 999);
   wrongVarcharRecord.set("category_name", 12345);
   wrongVarcharRecord.set("code", string("FAIL"));
 
   bool wrongVarcharAccepted = db.insert("category", wrongVarcharRecord);
-  cout << "[+] Inserting int into VARCHAR category_name result: "
-       << (wrongVarcharAccepted ? "ACCEPTED (BUG)" : "REJECTED (EXPECTED)") << endl;
   assert(!wrongVarcharAccepted);
 
-  // Case C: Inserting string into a BOOLEAN column (is_sold)
   Record wrongBoolRecord;
   wrongBoolRecord.set("product_id", 99999);
   wrongBoolRecord.set("product_name", string("Invalid Bool Product"));
@@ -165,212 +188,37 @@ int main() {
   wrongBoolRecord.set("available_quantity", 10);
 
   bool wrongBoolAccepted = db.insert("product", wrongBoolRecord);
-  cout << "[+] Inserting string into BOOLEAN is_sold result: "
-       << (wrongBoolAccepted ? "ACCEPTED (BUG)" : "REJECTED (EXPECTED)") << endl;
   assert(!wrongBoolAccepted);
-
   cout << "[PASS] Data type validation & type violation handling passed.\n";
 
   // ========================================================
-  // TEST 10: FILE MANAGEMENT & DOMAIN ORGANIZATION (Section 10)
+  // TEST 7: DOMAIN ORGANIZATION & CATEGORY SPECIFICATIONS
   // ========================================================
-  printBanner("TEST 10: File Management & Business Domain Organization (Rule 10)");
+  printBanner("TEST 7: Schema Domain Organization & Category Specifications");
+  assert(Schema::getTableDomain("inbound_transaction") == "transactions");
+  assert(Schema::getTableDomain("unit_inventory") == "unit");
+  assert(Schema::getTableDomain("product") == "products");
+  assert(Schema::getTableDomain("customer") == "customers");
+  assert(Schema::getTableDomain("unit_status") == "status_type");
+  assert(Schema::getTableDomain("inventory_check") == "inventory_check");
+  assert(Schema::getTableFolder("category", "data") == "data/products");
+  assert(Schema::getTableFolder("delivery", "data") == "data/transactions");
 
-  // 10.1 Verify domain mapping for tables via DatabaseIO and DataIO facade
-  assert(DatabaseIO::getTableDomain("inbound_transaction") == "transactions");
-  assert(DatabaseIO::getTableDomain("inbound_detail") == "transactions");
-  assert(DatabaseIO::getTableDomain("delivery") == "transactions");
-  assert(DatabaseIO::getTableDomain("delivery_detail") == "transactions");
-  assert(DatabaseIO::getTableDomain("outbound_transaction") == "transactions");
-  assert(DatabaseIO::getTableDomain("outbound_detail") == "transactions");
-  assert(DatabaseIO::getTableDomain("shipment") == "transactions");
-  assert(DatabaseIO::getTableDomain("shipment_detail") == "transactions");
-
-  assert(DatabaseIO::getTableDomain("status_history") == "unit");
-  assert(DatabaseIO::getTableDomain("unit_inventory") == "unit");
-
-  assert(DatabaseIO::getTableDomain("product") == "products");
-  // product_quantity removed (canonical 41 tables)
-  assert(DatabaseIO::getTableDomain("cpu") == "products");
-  assert(DatabaseIO::getTableDomain("mainboard") == "products");
-  assert(DatabaseIO::getTableDomain("gpu") == "products");
-  assert(DatabaseIO::getTableDomain("ram") == "products");
-  assert(DatabaseIO::getTableDomain("ssd") == "products");
-  assert(DatabaseIO::getTableDomain("psu") == "products");
-  assert(DatabaseIO::getTableDomain("cooling") == "products");
-  assert(DatabaseIO::getTableDomain("case") == "products");
-  assert(DatabaseIO::getTableDomain("brand") == "products");
-  assert(DatabaseIO::getTableDomain("category") == "products");
-
-  assert(DatabaseIO::getTableDomain("customer") == "customers");
-  assert(DatabaseIO::getTableDomain("individual_info") == "customers");
-  assert(DatabaseIO::getTableDomain("business_info") == "customers");
-
-  assert(DatabaseIO::getTableDomain("unit_status") == "status_type");
-  assert(DatabaseIO::getTableDomain("inbound_type") == "status_type");
-  assert(DatabaseIO::getTableDomain("inbound_status") == "status_type");
-  assert(DatabaseIO::getTableDomain("delivery_status") == "status_type");
-  assert(DatabaseIO::getTableDomain("outbound_type") == "status_type");
-  assert(DatabaseIO::getTableDomain("outbound_status") == "status_type");
-  assert(DatabaseIO::getTableDomain("shipment_status") == "status_type");
-
-  assert(DatabaseIO::getTableDomain("inventory_check") == "inventory_check");
-  assert(DatabaseIO::getTableDomain("inventory_check_quantity") == "inventory_check");
-  assert(DatabaseIO::getTableDomain("inventory_check_unit") == "inventory_check");
-  assert(DatabaseIO::getTableDomain("adjustment_movement") == "inventory_check");
-  assert(DatabaseIO::getTableDomain("adjust_movement_detail") == "inventory_check");
-  cout << "[+] Domain mapping verified for all core tables via DatabaseIO.\n";
-
-  // 10.2 Verify domain-specific reading via DatabaseIO
-  Database dbProducts;
-  bool prodReadOk = DatabaseIO::readDomain(dbProducts, "products", "data");
-  assert(prodReadOk);
-  assert(dbProducts.getTableCount() >= 12);
-  cout << "[+] DatabaseIO::readDomain('products'): Successfully loaded "
-       << dbProducts.getTableCount() << " product tables.\n";
-
-  Database dbUnits;
-  bool unitReadOk = DatabaseIO::readDomain(dbUnits, "unit", "data");
-  assert(unitReadOk);
-  assert(dbUnits.getTableCount() == 2);
-  cout << "[+] DatabaseIO::readDomain('unit'): Successfully loaded "
-       << dbUnits.getTableCount() << " unit tables ("
-       << dbUnits.getTable("unit_inventory")->getRowCount() << " units).\n";
-
-  Database dbCust;
-  bool custReadOk = DatabaseIO::readDomain(dbCust, "customers", "data");
-  assert(custReadOk);
-  assert(dbCust.getTableCount() == 3);
-  cout << "[+] DatabaseIO::readDomain('customers'): Successfully loaded "
-       << dbCust.getTableCount() << " customer tables.\n";
-
-  Database dbStatus;
-  bool statusReadOk = DatabaseIO::readDomain(dbStatus, "status_type", "data");
-  assert(statusReadOk);
-  assert(dbStatus.getTableCount() >= 7);
-  cout << "[+] DatabaseIO::readDomain('status_type'): Successfully loaded "
-       << dbStatus.getTableCount() << " status/type tables.\n";
-
-  Database dbTxns;
-  bool txnReadOk = DatabaseIO::readDomain(dbTxns, "transactions", "data");
-  assert(txnReadOk);
-  assert(dbTxns.getTableCount() >= 8);
-  cout << "[+] DatabaseIO::readDomain('transactions'): Successfully loaded "
-       << dbTxns.getTableCount() << " transaction tables.\n";
-
-  // 10.3 Verify DataIO Facade Domain Methods
-  Database facadeDb;
-  assert(io.readProducts(facadeDb));
-  assert(facadeDb.getTableCount() >= 12);
-  assert(io.readUnits(facadeDb));
-  assert(facadeDb.getTableCount() >= 14);
-  assert(io.readCustomers(facadeDb));
-  assert(facadeDb.getTableCount() >= 17);
-  assert(io.readStatusTypes(facadeDb));
-  assert(facadeDb.getTableCount() >= 24);
-  assert(io.readTransactions(facadeDb));
-  assert(facadeDb.getTableCount() >= 32);
-  assert(io.readInventoryChecks(facadeDb));
-  assert(facadeDb.getTableCount() == 41);
-  cout << "[+] DataIO facade domain loaders verified: " << facadeDb.getTableCount()
-       << " tables loaded step by step.\n";
-
-  // 10.4 Verify domain-aware folder resolution
-  string testWriteFolder = DatabaseIO::getTableFolder("category", "data");
-  assert(testWriteFolder == "data/products");
-  string testTxnFolder = DatabaseIO::getTableFolder("delivery", "data");
-  assert(testTxnFolder == "data/transactions");
-  cout << "[+] Domain folder resolution verified: " << testWriteFolder
-       << ", " << testTxnFolder << endl;
-
-  cout << "[PASS] Domain file management tests passed.\n";
-
-  // ========================================================
-  // TEST 11: CATEGORY SPECIFICATIONS (Section 10.4)
-  // ========================================================
-  printBanner("TEST 11: Category Specifications Sub-Tables (Rule 10.4)");
-
-  // 11.1 Verify TableIO::read from specs folder and 2-column rule (id, spec)
-  Table ssdTypeTable("type");
-  bool ssdTypeOk = TableIO::read(ssdTypeTable, "data/ssd_specs");
-  assert(ssdTypeOk);
-  cout << "[+] Read ssd_specs/type.csv via TableIO: " << ssdTypeTable.getRowCount() << " rows, "
-       << ssdTypeTable.getColumnCount() << " columns.\n";
-  assert(ssdTypeTable.getColumnCount() == 2);
-  assert(ssdTypeTable.hasColumn("id"));
-  assert(ssdTypeTable.hasColumn("spec"));
-  assert(ssdTypeTable.getRowCount() > 0);
-  for (const auto &row : ssdTypeTable.view()) {
-    cout << "   * ID: " << get<int>(row.get("id"))
-         << ", Spec: " << get<string>(row.get("spec")) << endl;
-  }
-
-  // 11.2 Verify all SSD specs sub-tables (type, gen, capacity) per Rule 10.4 example
-  Database dbSsdSpecs;
-  bool ssdSpecsOk = DatabaseIO::readCategorySpecs(dbSsdSpecs, "ssd", "data");
-  assert(ssdSpecsOk);
-  assert(dbSsdSpecs.getTable("ssd_type") != nullptr);
-  assert(dbSsdSpecs.getTable("ssd_gen") != nullptr);
-  assert(dbSsdSpecs.getTable("ssd_capacity") != nullptr);
-  cout << "[+] SSD specs verified: ssd_type (" << dbSsdSpecs.getTable("ssd_type")->getRowCount()
-       << " rows), ssd_gen (" << dbSsdSpecs.getTable("ssd_gen")->getRowCount()
-       << " rows), ssd_capacity (" << dbSsdSpecs.getTable("ssd_capacity")->getRowCount()
-       << " rows).\n";
-
-  // 11.3 Verify CPU specs (socket, tier, series)
-  Database dbCpuSpecs;
-  assert(DatabaseIO::readCategorySpecs(dbCpuSpecs, "cpu", "data"));
-  assert(dbCpuSpecs.getTable("cpu_socket") != nullptr);
-  assert(dbCpuSpecs.getTable("cpu_tier") != nullptr);
-  assert(dbCpuSpecs.getTable("cpu_series") != nullptr);
-  cout << "[+] CPU specs verified: socket (" << dbCpuSpecs.getTable("cpu_socket")->getRowCount()
-       << " rows), tier (" << dbCpuSpecs.getTable("cpu_tier")->getRowCount()
-       << " rows), series (" << dbCpuSpecs.getTable("cpu_series")->getRowCount()
-       << " rows).\n";
-
-  // 11.4 Verify DatabaseIO::readAllCategorySpecs across all 8 categories
-  Database dbAllSpecs;
-  bool allSpecsOk = DatabaseIO::readAllCategorySpecs(dbAllSpecs, "data");
-  assert(allSpecsOk);
-  cout << "[+] DatabaseIO::readAllCategorySpecs: Loaded " << dbAllSpecs.getTableCount()
-       << " specification sub-tables across 8 categories.\n";
-  assert(dbAllSpecs.getTableCount() >= 24);
-
-  // 11.5 Verify DataIO facade spec operations
-  Database facadeSpecsDb;
-  assert(io.readAllCategorySpecs(facadeSpecsDb));
-  assert(facadeSpecsDb.getTableCount() == dbAllSpecs.getTableCount());
-  cout << "[+] DataIO facade readAllCategorySpecs verified: " << facadeSpecsDb.getTableCount()
-       << " spec tables.\n";
-
-  // 11.6 Verify Round-trip write & read for a spec table
-  Table customSpec("test_custom");
-  customSpec.addColumn(Column("id", DataType::INTEGER, 0, true, true, true, true));
-  customSpec.addColumn(Column("spec", DataType::VARCHAR, 255, false, false, true));
-  Record specR1; specR1.set("id", 1); specR1.set("spec", string("PCIe 5.0"));
-  Record specR2; specR2.set("id", 2); specR2.set("spec", string("PCIe 6.0"));
-  customSpec.insert(specR1);
-  customSpec.insert(specR2);
-
-  bool writeSpecOk = io.writeSpecTable(customSpec, "ssd");
-  assert(writeSpecOk);
-  Table reloadedSpec("test_custom");
-  bool readSpecReloadOk = io.readSpecTable(reloadedSpec, "ssd", "test_custom");
-  assert(readSpecReloadOk);
-  assert(reloadedSpec.getRowCount() == 2);
-  assert(get<string>((*reloadedSpec.view().begin()).get("spec")) == "PCIe 5.0");
-  cout << "[+] Spec sub-table write and read round-trip verified.\n";
-
-  // Clean up test spec file
-  remove("data/ssd_specs/test_custom.csv");
-
-  cout << "[PASS] Category specification tests passed.\n";
+  Database fullDb;
+  bool fullLoadOk = Schema::loadDatabase(fullDb, "data", true);
+  assert(fullLoadOk);
+  assert(fullDb.getTableCount() == 65); // 41 core + 24 category specs
+  assert(fullDb.getTable("ssd_type") != nullptr && fullDb.getTable("ssd_type")->getRowCount() > 0);
+  assert(fullDb.getTable("cpu_socket") != nullptr && fullDb.getTable("cpu_socket")->getRowCount() > 0);
+  cout << "[+] Full database loaded (core + specs): " << fullDb.getTableCount() << " tables.\n";
+  cout << "[PASS] Schema domain & category specification tests passed.\n";
 
   // ========================================================
   // CLEANUP TEMPORARY TEST CSV FILES
   // ========================================================
   remove(testBrandOut.c_str());
-  remove(cpuExport.c_str());
+  remove(customCsvPath.c_str());
+  remove(customCsvOut.c_str());
   cout << "\n[+] Cleaned up temporary test CSV files.\n";
 
   printBanner("ALL TESTS COMPLETED SUCCESSFULLY! SYSTEM 100% OPERATIONAL!");

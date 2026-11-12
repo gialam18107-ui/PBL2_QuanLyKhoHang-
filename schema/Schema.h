@@ -5,6 +5,7 @@
 #include "datastructure/vector/Vector.h"
 #include "database/Table.h"
 #include "database/Database.h"
+#include "data_io/DatabaseIO.h"
 
 using namespace std;
 
@@ -79,8 +80,30 @@ namespace Schema
     // Create all tables in topological dependency order
     Vector<Table*> createAllTables();
 
-    // Register all tables into a Database
-    void initDatabase(Database& db);
+    // Register all tables into a Database (core 41 tables, optionally 24 category spec tables)
+    void initDatabase(Database& db, bool includeSpecs = true);
+
+    // ========================================================
+    // DOMAIN & FILE PATH MAPPING (Warehouse Schema Layout)
+    // ========================================================
+
+    string getTableDomain(const string& tableName);
+    string getTableFolder(const string& tableName, const string& baseFolder = "data");
+    string getTableFilePath(const string& tableName, const string& baseFolder = "data");
+    Vector<string> getDomains();
+    Vector<string> getTablesInDomain(const string& domain);
+
+    Vector<string> getCategoriesWithSpecs();
+    Vector<string> getSpecNamesForCategory(const string& category);
+    string getSpecFilePath(const string& category, const string& specName, const string& baseFolder = "data");
+
+    // Configure DatabaseIO with tableName -> filePath mappings
+    void configureDatabaseIO(DataIO::DatabaseIO& dbIO, const string& baseFolder = "data", bool includeSpecs = true);
+    DataIO::DatabaseIO createDatabaseIO(const string& baseFolder = "data", bool includeSpecs = true);
+
+    // Convenience helpers: initialize tables, map CSV paths, and read/write via DatabaseIO
+    bool loadDatabase(Database& db, const string& baseFolder = "data", bool includeSpecs = true);
+    bool saveDatabase(const Database& db, const string& baseFolder = "data", bool includeSpecs = true);
 }
 
 #endif // SCHEMA_H

@@ -1,5 +1,6 @@
 #include "Generator.h"
 #include "data_io/DatabaseIO.h"
+#include "schema/Schema.h"
 
 #include <iostream>
 #include <iomanip>
@@ -2201,7 +2202,7 @@ namespace Generator
             else if (choice == 10)
             {
                 cout << "[+] Saving database to 'data' folder...\n";
-                bool saved = DataIO::DatabaseIO::writeAll(db, "data");
+                bool saved = Schema::saveDatabase(db, "data", false);
                 cout << "[+] Save result: " << (saved ? "SUCCESS" : "FAILED") << "\n";
             }
             else

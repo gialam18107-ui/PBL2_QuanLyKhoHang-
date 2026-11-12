@@ -211,8 +211,8 @@ int main()
     cout << "==========================================================" << endl;
 
     Database db;
-    cout << "[+] Loading all 32 tables from data/ directory..." << endl;
-    bool readAllOk = DatabaseIO::readAll(db, "data");
+    cout << "[+] Loading all tables from data/ directory..." << endl;
+    bool readAllOk = Schema::loadDatabase(db, "data", false);
     cout << "[+] Database readAll result: " << (readAllOk ? "SUCCESS" : "PARTIAL") << endl;
     assert(db.getTableCount() >= 32);
 

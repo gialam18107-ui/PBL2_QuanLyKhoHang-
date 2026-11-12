@@ -10,6 +10,7 @@
 
 #include "data_io/DatabaseIO.h"
 #include "data_io/ExportReport.h"
+#include "schema/Schema.h"
 #include "schema/UserQuery.h"
 #include "ui/TableClipboardHelper.h"
 #include "ui/TransactionHubWidget.h"
@@ -85,6 +86,7 @@ MainWindow::MainWindow(Database* database, QWidget* parent)
       currentReportSortColumn(-1), currentReportSortAscending(true)
 {
     qApp->installEventFilter(new WheelEventBlocker(this));
+    Schema::configureDatabaseIO(dbIO, "data", true);
     setWindowTitle("Hệ thống Quản lý Kho Hàng - PBL2 (Query for Interface)");
     resize(1300, 850);
     setMinimumSize(1020, 680);
@@ -2467,8 +2469,8 @@ void MainWindow::reloadDatabase()
         if (reply != QMessageBox::Yes) return;
     }
 
-    bool ok = DataIO::DatabaseIO::readAll(*db, "data");
-    DataIO::DatabaseIO::readAllCategorySpecs(*db, "data");
+    Schema::initDatabase(*db, true);
+    bool ok = dbIO.readAll(*db);
     qint64 elapsedMs = timer.elapsed();
 
     hasUnsavedChanges = false;
@@ -2509,11 +2511,10 @@ bool MainWindow::saveDatabase(bool showSuccessPopup)
 
     QElapsedTimer timer;
     timer.start();
-    bool okMain = DataIO::DatabaseIO::writeAll(*db, "data");
-    bool okSpecs = DataIO::DatabaseIO::writeAllCategorySpecs(*db, "data");
+    bool ok = dbIO.writeAll(*db);
     qint64 elapsedMs = timer.elapsed();
 
-    if (okMain && okSpecs) {
+    if (ok) {
         hasUnsavedChanges = false;
         if (saveDbBtn) saveDbBtn->setText("💾 Lưu dữ liệu ra CSV");
         statusLabel->setText(QString("✅ Đã ghi toàn bộ dữ liệu CSDL ra thư mục data/ thành công (%1 ms)").arg(elapsedMs));

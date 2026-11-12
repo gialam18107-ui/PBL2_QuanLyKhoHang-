@@ -16,6 +16,7 @@
 #include <QCloseEvent>
 
 #include "database/Database.h"
+#include "data_io/DatabaseIO.h"
 #include "QueryTableWidget.h"
 #include "ui/InventoryCheckDialog.h"
 #include "ui/AdjustmentMovementDialog.h" 
@@ -67,6 +68,7 @@ private:
     void setActiveNavButton(QPushButton* btn);
 
     Database* db;
+    DataIO::DatabaseIO dbIO;
     bool hasUnsavedChanges;
 
     // Top Menus (Rule 9.2, 9.3 & 9.4, Section 9)

@@ -3,6 +3,7 @@
 #include "ui/InventoryCheckDialog.h"
 #include "ui/TableClipboardHelper.h"
 #include "data_io/DatabaseIO.h"
+#include "schema/Schema.h"
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
@@ -2472,11 +2473,12 @@ void AdjustmentMovementDetailDialog::onConfirmSaveUnits()
     }
 
     // Persist changes to CSV files according to canonical business domains (Rule 2.2)
-    DataIO::DatabaseIO::writeTable(*db, "unit_inventory", "data");
-    DataIO::DatabaseIO::writeTable(*db, "product", "data");
-    DataIO::DatabaseIO::writeTable(*db, "status_history", "data");
-    DataIO::DatabaseIO::writeTable(*db, "adjustment_movement", "data");
-    DataIO::DatabaseIO::writeTable(*db, "adjust_movement_detail", "data");
+    DataIO::DatabaseIO dbIO = Schema::createDatabaseIO("data", false);
+    dbIO.writeTable(*db, "unit_inventory");
+    dbIO.writeTable(*db, "product");
+    dbIO.writeTable(*db, "status_history");
+    dbIO.writeTable(*db, "adjustment_movement");
+    dbIO.writeTable(*db, "adjust_movement_detail");
 
     isExecuted = true;
     stagedUnits.clear();
@@ -2536,7 +2538,8 @@ void AdjustmentMovementDetailDialog::onFinalizeMovement()
         return;
     }
 
-    DataIO::DatabaseIO::writeTable(*db, "adjustment_movement", "data");
+    DataIO::DatabaseIO dbIO = Schema::createDatabaseIO("data", false);
+    dbIO.writeTable(*db, "adjustment_movement");
 
     QMessageBox::information(this, "Thành công", "Phiếu điều chỉnh trạng thái đã được hoàn tất thành công. Toàn bộ thao tác đã bị khóa vĩnh viễn.");
     loadMovementInfo();

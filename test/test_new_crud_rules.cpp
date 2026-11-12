@@ -39,7 +39,7 @@ int main() {
     printHeader("TEST: NEW INVENTORY CHECK & BUSINESS CRUD RULES");
 
     Database db;
-    bool ok = DataIO::DatabaseIO::readAll(db, "data");
+    bool ok = Schema::loadDatabase(db, "data", false);
     assert(ok && "Failed to load database from data/");
     cout << "[+] Database loaded successfully: " << db.getTableCount() << " tables.\n";
     assert(db.getTableCount() == 41);

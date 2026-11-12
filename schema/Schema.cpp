@@ -2,6 +2,9 @@
 #include "database/Column.h"
 #include "database/Constraint.h"
 
+#include <cctype>
+#include <filesystem>
+
 namespace Schema
 {
     // ========================================================
@@ -924,11 +927,224 @@ namespace Schema
         return allTables;
     }
 
-    void initDatabase(Database& db)
+    void initDatabase(Database& db, bool includeSpecs)
     {
-        for (const auto& tbl : createAllTables())
+        for (const string& name : getTableNames())
         {
-            db.addTable(tbl);
+            if (!db.hasTable(name))
+            {
+                auto tbl = createTable(name);
+                if (tbl != nullptr)
+                {
+                    db.addTable(tbl);
+                }
+            }
         }
+
+        if (includeSpecs)
+        {
+            for (const string& cat : getCategoriesWithSpecs())
+            {
+                for (const string& specName : getSpecNamesForCategory(cat))
+                {
+                    string dbTableName = cat + "_" + specName;
+                    if (!db.hasTable(dbTableName))
+                    {
+                        db.addTable(createSpecTable(dbTableName));
+                    }
+                }
+            }
+        }
+    }
+
+    // ========================================================
+    // DOMAIN & FILE PATH MAPPING (Warehouse Schema Layout)
+    // ========================================================
+
+    string getTableDomain(const string& tableName)
+    {
+        string name = tableName;
+        for (char& c : name) c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
+
+        if (name == "inbound_transaction" || name == "inbound_detail" ||
+            name == "delivery" || name == "delivery_detail" ||
+            name == "outbound_transaction" || name == "outbound_detail" ||
+            name == "shipment" || name == "shipment_detail")
+        {
+            return "transactions";
+        }
+
+        if (name == "status_history" || name == "unit_inventory")
+        {
+            return "unit";
+        }
+
+        if (name == "product" || name == "is_sold_changing" ||
+            name == "cpu" || name == "mainboard" || name == "gpu" ||
+            name == "ram" || name == "ssd" || name == "psu" ||
+            name == "cooling" || name == "case" || name == "brand" || name == "category")
+        {
+            return "products";
+        }
+
+        if (name == "customer" || name == "individual_info" || name == "individual_infor" || name == "business_info")
+        {
+            return "customers";
+        }
+
+        if (name == "unit_status" || name == "inbound_type" || name == "inbound_status" ||
+            name == "delivery_status" || name == "outbound_type" || name == "outbound_status" ||
+            name == "shipment_status" || name == "inventory_check_status" ||
+            name == "adjustment_status" || name == "check_type" || name == "reason")
+        {
+            return "status_type";
+        }
+
+        if (name == "inventory_check" || name == "inventory_check_quantity" ||
+            name == "inventory_check_unit" || name == "adjustment_movement" ||
+            name == "adjust_movement_detail")
+        {
+            return "inventory_check";
+        }
+
+        return "";
+    }
+
+    static string normalizeBaseFolder(const string& folderPath)
+    {
+        string base = folderPath;
+        if (!base.empty() && base.back() != '/' && base.back() != '\\')
+        {
+            base += "/";
+        }
+        return base;
+    }
+
+    string getTableFolder(const string& tableName, const string& baseFolder)
+    {
+        string domain = getTableDomain(tableName);
+        string base = normalizeBaseFolder(baseFolder);
+
+        if (!domain.empty())
+        {
+            if (base.find(domain + "/") != string::npos || base.find(domain + "\\") != string::npos)
+            {
+                return baseFolder;
+            }
+
+            string domainFolder = base + domain;
+            if (filesystem::exists(domainFolder + "/" + tableName + ".csv"))
+            {
+                return domainFolder;
+            }
+
+            if (domain == "unit" && filesystem::exists(base + "units/" + tableName + ".csv"))
+            {
+                return base + "units";
+            }
+
+            if (filesystem::exists(base + tableName + ".csv"))
+            {
+                return baseFolder;
+            }
+
+            return domainFolder;
+        }
+
+        return baseFolder;
+    }
+
+    string getTableFilePath(const string& tableName, const string& baseFolder)
+    {
+        return normalizeBaseFolder(getTableFolder(tableName, baseFolder)) + tableName + ".csv";
+    }
+
+    Vector<string> getDomains()
+    {
+        return {"transactions", "unit", "products", "customers", "status_type", "inventory_check"};
+    }
+
+    Vector<string> getTablesInDomain(const string& domain)
+    {
+        Vector<string> result;
+        string dom = domain;
+        for (char& c : dom) c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
+
+        for (const string& tableName : getTableNames())
+        {
+            if (getTableDomain(tableName) == dom)
+            {
+                result.push_back(tableName);
+            }
+        }
+        return result;
+    }
+
+    Vector<string> getCategoriesWithSpecs()
+    {
+        return {"cpu", "gpu", "mainboard", "ram", "ssd", "psu", "cooling", "case"};
+    }
+
+    Vector<string> getSpecNamesForCategory(const string& category)
+    {
+        string cat = category;
+        for (char& c : cat) c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
+
+        if (cat == "cpu") return {"socket", "tier", "series"};
+        if (cat == "gpu") return {"series", "producer", "vram"};
+        if (cat == "mainboard") return {"cpu_support", "socket", "size", "chipset", "ram_support"};
+        if (cat == "ram") return {"generation", "quantity", "capacity", "bus"};
+        if (cat == "ssd") return {"type", "gen", "capacity"};
+        if (cat == "psu") return {"quality", "capacity", "size"};
+        if (cat == "cooling") return {"type"};
+        if (cat == "case") return {"size", "product_name"};
+        return {};
+    }
+
+    string getSpecFilePath(const string& category, const string& specName, const string& baseFolder)
+    {
+        string cat = category;
+        for (char& c : cat) c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
+        return normalizeBaseFolder(baseFolder) + cat + "_specs/" + specName + ".csv";
+    }
+
+    void configureDatabaseIO(DataIO::DatabaseIO& dbIO, const string& baseFolder, bool includeSpecs)
+    {
+        for (const string& tableName : getTableNames())
+        {
+            dbIO.setTablePath(tableName, getTableFilePath(tableName, baseFolder));
+        }
+
+        if (includeSpecs)
+        {
+            for (const string& cat : getCategoriesWithSpecs())
+            {
+                for (const string& specName : getSpecNamesForCategory(cat))
+                {
+                    string dbTableName = cat + "_" + specName;
+                    dbIO.setTablePath(dbTableName, getSpecFilePath(cat, specName, baseFolder));
+                }
+            }
+        }
+    }
+
+    DataIO::DatabaseIO createDatabaseIO(const string& baseFolder, bool includeSpecs)
+    {
+        DataIO::DatabaseIO dbIO;
+        configureDatabaseIO(dbIO, baseFolder, includeSpecs);
+        return dbIO;
+    }
+
+    bool loadDatabase(Database& db, const string& baseFolder, bool includeSpecs)
+    {
+        initDatabase(db, includeSpecs);
+        DataIO::DatabaseIO dbIO = createDatabaseIO(baseFolder, includeSpecs);
+        return dbIO.readAll(db);
+    }
+
+    bool saveDatabase(const Database& db, const string& baseFolder, bool includeSpecs)
+    {
+        DataIO::DatabaseIO dbIO = createDatabaseIO(baseFolder, includeSpecs);
+        return dbIO.writeAll(db);
     }
 }

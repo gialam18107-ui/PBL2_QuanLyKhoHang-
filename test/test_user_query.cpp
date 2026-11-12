@@ -6,6 +6,7 @@
 #include "database/Database.h"
 #include "data_io/DatabaseIO.h"
 #include "data_io/ExportReport.h"
+#include "schema/Schema.h"
 #include "schema/UserQuery.h"
 
 using namespace std;
@@ -515,9 +516,8 @@ int main()
 
     Database db;
     cout << "[+] Loading database tables from 'data' directory..." << endl;
-    bool ok = DatabaseIO::readAll(db, "data");
-    DatabaseIO::readAllCategorySpecs(db, "data");
-    cout << "[+] DatabaseIO::readAll status: " << (ok ? "SUCCESS" : "PARTIAL") << endl;
+    bool ok = Schema::loadDatabase(db, "data", true);
+    cout << "[+] Schema::loadDatabase status: " << (ok ? "SUCCESS" : "PARTIAL") << endl;
     cout << "[+] Loaded table count: " << db.getTableCount() << endl;
     assert(db.getTableCount() >= 32);
 

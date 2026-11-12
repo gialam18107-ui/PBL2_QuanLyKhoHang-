@@ -82,7 +82,9 @@ try
     // 1. Initialize Database & load schema
     Database db;
     cout << "[+] Loading database schema and existing data from: " << dataDir << " ...\n" << flush;
-    bool loaded = DatabaseIO::readAll(db, dataDir);
+    Schema::initDatabase(db, false);
+    DatabaseIO dbIO = Schema::createDatabaseIO(dataDir, false);
+    bool loaded = dbIO.readAll(db);
     if (!loaded)
     {
         cout << "[!] Notice: Some tables were empty or initialized fresh.\n" << flush;
@@ -136,7 +138,7 @@ try
     if (shouldSave)
     {
         cout << "\n[+] Saving updated database to: " << dataDir << " ...\n";
-        bool saved = DatabaseIO::writeAll(db, dataDir);
+        bool saved = dbIO.writeAll(db);
         cout << "[+] Save result: " << (saved ? "SUCCESS" : "FAILED") << "\n";
     }
     else
