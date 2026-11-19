@@ -99,6 +99,7 @@ private:
         int scrap;
     };
     std::vector<ProductItem> productList;
+    std::vector<QCheckBox*> productCheckBoxes;
 };
 
 /**
@@ -346,6 +347,7 @@ private:
     void updateTableRowInPlace(int row, int stagedIdx);
     void insertUnitRowAtTop(int stagedIdx);
     void removeTableRowInPlace(int row, const QString& sn);
+    void moveUnitRowToTopInPlace(int existingRow, int stagedIdx, const QString& sn);
     void updateSummaryLabelsOnly();
 
     Database* db = nullptr;

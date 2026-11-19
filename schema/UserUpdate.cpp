@@ -1485,7 +1485,7 @@ namespace user_update
                 affectedCqIds[std::get<int>(r->get("check_quantity_id"))] = true;
             }
 
-            Record updatedRec = *r;
+            Record updatedRec;
             updatedRec.set("scanned_status", m.scannedStatus);
             if (db->update("inventory_check_unit", m.checkUnitId, updatedRec).success) {
                 totalAffected++;
@@ -1542,7 +1542,7 @@ namespace user_update
             const Record* cqRec = cqTbl->getRecordById(cqId);
             if (!cqRec) continue;
             const auto& c = counts[cqId];
-            Record updatedCq = *cqRec;
+            Record updatedCq;
             updatedCq.set("actual_available_quan", c.avail);
             updatedCq.set("actual_warranty_quan", c.warr);
             updatedCq.set("actual_scrapped_quan", c.scrap);

@@ -32,6 +32,9 @@ $(BUILD_DIR)/ui/%.o: ui/%.cpp | $(BUILD_DIRS)
 $(BUILD_DIR)/main.o: main.cpp | $(BUILD_DIRS)
 	$(CXX) $(CXXFLAGS) $(QT_CXXFLAGS) -c $< -o $@
 
+$(BUILD_DIR)/test/test_inventory_check_ui.o: test/test_inventory_check_ui.cpp | $(BUILD_DIRS)
+	$(CXX) $(CXXFLAGS) $(QT_CXXFLAGS) -c $< -o $@
+
 # Compile test files into $(BUILD_DIR)/test
 $(BUILD_DIR)/test/%.o: test/%.cpp | $(BUILD_DIRS)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
@@ -58,6 +61,10 @@ main.exe: app.exe
 
 guiding.exe: $(BUILD_DIR)/guiding.o $(CORE_OBJS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
+
+# Qt6 UI test executable for inventory check
+test_inventory_check_ui.exe test/test_inventory_check_ui.exe: $(BUILD_DIR)/test/test_inventory_check_ui.o $(BUILD_DIR)/ui/InventoryCheckDialog.o $(CORE_OBJS)
+	$(CXX) $(CXXFLAGS) $^ $(QT_LIBS) -o $@
 
 # Pattern to build test executable test/<name>.exe from test/<name>.cpp
 test/%.exe: $(BUILD_DIR)/test/%.o $(CORE_OBJS)
