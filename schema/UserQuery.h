@@ -330,6 +330,22 @@ namespace user_query {
 		string& outboundCode,
 		string& adjustCode
 	);
+
+	// 18.20 Kiểm tra sản phẩm có đang nằm trong đợt kiểm kê đang mở (PENDING/PROCESSING) không (Stock Freeze)
+	string find_active_inventory_check_for_product(Database* db, int productId);
+	string find_active_inventory_check_for_products(
+		Database* db,
+		const Vector<int>& productIds,
+		int& outConflictProductId
+	);
+
+	// 18.21 Tra cứu nhanh trạng thái & product_id hiện thời của 1 Serial qua HashIndex (Live Re-validation)
+	bool get_unit_live_info_by_serial(
+		Database* db,
+		const string& serial,
+		int& outProductId,
+		string& outStatus
+	);
 }
 
 #endif // USERQUERY_H

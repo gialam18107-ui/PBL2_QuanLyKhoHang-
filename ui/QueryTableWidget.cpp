@@ -9,6 +9,7 @@
 #include <QTextStream>
 #include <QDate>
 #include "ui/TableClipboardHelper.h"
+#include "ui/UiLocalization.h"
 
 QueryTableWidget::QueryTableWidget(const QString& title, const QString& description, QWidget* parent)
     : QWidget(parent), titleText(title), descText(description),
@@ -536,7 +537,9 @@ void QueryTableWidget::onFilterColumnChanged(int index)
     case FilterType::SELECT_OR_TYPE:
         filterSelectCombo->blockSignals(true);
         filterSelectCombo->clear();
-        filterSelectCombo->addItems(def.options);
+        for (const QString& opt : def.options) {
+            filterSelectCombo->addItem(UiLocalization::localizeColumnValue(def.columnKey, opt), opt);
+        }
         filterSelectCombo->setEditText("");
         filterSelectCombo->blockSignals(false);
         filterSelectCombo->show();
@@ -570,7 +573,15 @@ void QueryTableWidget::applyFilter()
             onFilter(def.columnKey, d1, d2, true);
         }
     } else if (def.type == FilterType::SELECT_OR_TYPE) {
-        QString val = filterSelectCombo->currentText().trimmed();
+        QString rawText = filterSelectCombo->currentText().trimmed();
+        QString val = rawText;
+        int matchedIdx = filterSelectCombo->findText(rawText, Qt::MatchFixedString);
+        if (matchedIdx >= 0) {
+            QString dataVal = filterSelectCombo->itemData(matchedIdx).toString().trimmed();
+            if (!dataVal.isEmpty()) val = dataVal;
+        } else {
+            val = UiLocalization::unlocalizeFilterValue(def.columnKey, rawText);
+        }
         if (val.isEmpty()) {
             QMessageBox::warning(this, "Thông báo", "Vui lòng chọn hoặc nhập giá trị cần lọc!");
             return;
@@ -678,7 +689,14 @@ void QueryTableWidget::renderRows()
                     }
                 }
             }
-            auto* item = new QTableWidgetItem(text);
+            QString dispText = UiLocalization::localizeColumnValue(keys[c], text);
+            auto* item = new QTableWidgetItem(dispText);
+            if (UiLocalization::isStatusColumnKey(keys[c])) {
+                item->setForeground(UiLocalization::statusTextColor(text));
+                if (UiLocalization::isCompletedStatus(text)) {
+                    item->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
+                }
+            }
             tableWidget->setItem(static_cast<int>(r), static_cast<int>(c), item);
         }
     }
@@ -699,8 +717,11 @@ void QueryTableWidget::renderRows()
     }
 
     for (int c = 0; c < tableWidget->columnCount(); ++c) {
-        if (tableWidget->columnWidth(c) < 120) {
-            tableWidget->setColumnWidth(c, 120);
+        QString colKey = (c < static_cast<int>(keys.size())) ? UiLocalization::stripTablePrefix(keys[c]) : QString();
+        int minColW = (UiLocalization::isStatusColumnKey(colKey.toStdString()) || colKey == "type" || colKey == "reason" || colKey == "check_type")
+                        ? 150 : 120;
+        if (tableWidget->columnWidth(c) < minColW) {
+            tableWidget->setColumnWidth(c, minColW);
         }
     }
 
@@ -751,7 +772,14 @@ void QueryTableWidget::updateRecordInPlace(int row, const std::string& fieldKey,
         if (match) {
             QTableWidgetItem* it = tableWidget->item(row, static_cast<int>(c));
             if (it) {
-                it->setText(formatValue(newValue));
+                QString raw = formatValue(newValue);
+                it->setText(UiLocalization::localizeColumnValue(keys[c], raw));
+                if (UiLocalization::isStatusColumnKey(keys[c])) {
+                    it->setForeground(UiLocalization::statusTextColor(raw));
+                    if (UiLocalization::isCompletedStatus(raw)) {
+                        it->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
+                    }
+                }
             }
             break;
         }

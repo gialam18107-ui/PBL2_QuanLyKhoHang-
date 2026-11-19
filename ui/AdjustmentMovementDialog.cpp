@@ -2,6 +2,7 @@
 #include "ui/OrderDialog.h"
 #include "ui/InventoryCheckDialog.h"
 #include "ui/TableClipboardHelper.h"
+#include "ui/UiLocalization.h"
 #include "data_io/DatabaseIO.h"
 #include "schema/Schema.h"
 #include <QGridLayout>
@@ -63,15 +64,7 @@ static QString commonDialogStyleSheet() {
 }
 
 static QString translateStatus(const QString& st) {
-    if (st == "AVAILABLE") return "Khả dụng";
-    if (st == "WARRANTY") return "Bảo hành";
-    if (st == "SCRAPPED") return "Lỗi/hỏng";
-    if (st == "OUT") return "Đã xuất";
-    if (st == "PENDING") return "Chờ xử lý";
-    if (st == "PROCESSING") return "Đang xử lý";
-    if (st == "COMPLETED") return "Đã hoàn thành";
-    if (st == "CANCELLED") return "Đã hủy";
-    return st;
+    return UiLocalization::localizeStatus(st);
 }
 
 // ============================================================================
@@ -363,14 +356,14 @@ void AdjustmentMovementCreateDialog::populateReasons()
         for (const auto& r : rTable->view()) {
             if (r.has("reason") && std::holds_alternative<std::string>(r.get("reason"))) {
                 QString rName = QString::fromStdString(std::get<std::string>(r.get("reason")));
-                reasonCombo->addItem(rName, rName);
+                reasonCombo->addItem(UiLocalization::localizeReason(rName), rName);
             }
         }
     }
     if (reasonCombo->count() == 0) {
-        reasonCombo->addItem("STOCKTAKE_DIFF", "STOCKTAKE_DIFF");
-        reasonCombo->addItem("DAMAGED", "DAMAGED");
-        reasonCombo->addItem("OTHER", "OTHER");
+        reasonCombo->addItem(UiLocalization::localizeReason("STOCKTAKE_DIFF"), "STOCKTAKE_DIFF");
+        reasonCombo->addItem(UiLocalization::localizeReason("DAMAGED"), "DAMAGED");
+        reasonCombo->addItem(UiLocalization::localizeReason("OTHER"), "OTHER");
     }
 }
 
@@ -465,8 +458,8 @@ void AdjustmentMovementCreateDialog::renderItemsTable()
 
         itemsTable->setItem(r, 0, new QTableWidgetItem(item.productCode));
         itemsTable->setItem(r, 1, new QTableWidgetItem(item.productName));
-        itemsTable->setItem(r, 2, new QTableWidgetItem(item.fromStatus));
-        itemsTable->setItem(r, 3, new QTableWidgetItem(item.toStatus));
+        itemsTable->setItem(r, 2, new QTableWidgetItem(translateStatus(item.fromStatus)));
+        itemsTable->setItem(r, 3, new QTableWidgetItem(translateStatus(item.toStatus)));
 
         auto* qItem = new QTableWidgetItem(QString::number(item.quantity));
         qItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
@@ -787,7 +780,7 @@ void AdjustmentProductUnitPickerDialog::filterTable()
         auto* snItem = new QTableWidgetItem(QString::fromStdString(cr->serial));
         snItem->setFont(QFont("Consolas", font().pointSize(), QFont::Bold));
 
-        auto* stItem = new QTableWidgetItem(QString::fromStdString(cr->status));
+        auto* stItem = new QTableWidgetItem(translateStatus(QString::fromStdString(cr->status)));
         stItem->setTextAlignment(Qt::AlignCenter);
 
         auto* noteItem = new QTableWidgetItem();
@@ -1140,7 +1133,7 @@ void AdjustmentSimulationDialog::filterCandidates()
         auto* snItem = new QTableWidgetItem(QString::fromStdString(lc->serial));
         snItem->setFont(QFont("Consolas", font().pointSize(), QFont::Bold));
 
-        auto* stItem = new QTableWidgetItem(QString::fromStdString(lc->status));
+        auto* stItem = new QTableWidgetItem(translateStatus(QString::fromStdString(lc->status)));
         stItem->setTextAlignment(Qt::AlignCenter);
 
         auto* noteItem = new QTableWidgetItem();
@@ -1273,12 +1266,16 @@ void AdjustmentMovementDetailDialog::setupUI()
     statusBox->setSpacing(6);
     auto* stTitle = new QLabel("<b>Trạng thái:</b>", headerCard);
     statusCombo = new QComboBox(headerCard);
-    statusCombo->addItem("Chờ xử lý (PENDING)", "PENDING");
-    statusCombo->addItem("Đang thực hiện (PROCESSING)", "PROCESSING");
-    statusCombo->addItem("Hoàn thành (COMPLETED)", "COMPLETED");
-    statusCombo->addItem("Đã hủy (CANCELLED)", "CANCELLED");
+    statusCombo->setMinimumWidth(155);
+    statusCombo->addItem(UiLocalization::localizeStatus("PENDING"), "PENDING");
+    statusCombo->addItem(UiLocalization::localizeStatus("PROCESSING"), "PROCESSING");
+    statusCombo->addItem(UiLocalization::localizeStatus("COMPLETED"), "COMPLETED");
+    statusCombo->addItem(UiLocalization::localizeStatus("CANCELLED"), "CANCELLED");
     int curStIdx = statusCombo->findData(adjustStatus);
     if (curStIdx >= 0) statusCombo->setCurrentIndex(curStIdx);
+    if (adjustStatus == "COMPLETED" || adjustStatus == "CANCELLED") {
+        statusCombo->setEnabled(false);
+    }
     statusCombo->setStyleSheet(
         "QComboBox { color: #0f172a; background-color: #ffffff; font-weight: bold; padding: 2px 8px; border: 1px solid #cbd5e1; border-radius: 4px; }"
         "QComboBox:disabled { color: #64748b; background-color: #f1f5f9; }"
@@ -1291,7 +1288,7 @@ void AdjustmentMovementDetailDialog::setupUI()
     statusBox->addWidget(stTitle);
     statusBox->addWidget(statusCombo);
 
-    reasonLabel = new QLabel(QString("<b>Lý do:</b> %1").arg(adjustReason), headerCard);
+    reasonLabel = new QLabel(QString("<b>Lý do:</b> %1").arg(UiLocalization::localizeReason(adjustReason)), headerCard);
     dateLabel = new QLabel(QString("<b>Ngày tạo:</b> %1").arg(adjustedAt), headerCard);
     sourceCodeLabel = new QLabel(QString("<b>Đợt kiểm gốc:</b> %1").arg(sourceCode.isEmpty() ? "(Không)" : sourceCode), headerCard);
 
@@ -1331,7 +1328,8 @@ void AdjustmentMovementDetailDialog::setupUI()
     detailSearchEdit = new QLineEdit(this);
     detailSearchEdit->setPlaceholderText("🔍 Tìm theo Mã SP hoặc Tên sản phẩm...");
     detailSearchEdit->setClearButtonEnabled(true);
-    detailSearchEdit->setMaximumWidth(280);
+    detailSearchEdit->setMinimumWidth(260);
+    detailSearchEdit->setMaximumWidth(360);
     dHeaderRow->addWidget(dTitle);
     dHeaderRow->addStretch();
     dHeaderRow->addWidget(detailSearchEdit);
@@ -1344,8 +1342,6 @@ void AdjustmentMovementDetailDialog::setupUI()
     });
     detailTable->setAlternatingRowColors(true);
     detailTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    detailTable->setSelectionBehavior(QAbstractItemView::SelectRows);
-    detailTable->setSelectionMode(QAbstractItemView::SingleSelection);
     detailTable->verticalHeader()->setVisible(false);
     detailTable->verticalHeader()->setDefaultSectionSize(32);
     detailTable->horizontalHeader()->setHighlightSections(false);
@@ -1359,7 +1355,7 @@ void AdjustmentMovementDetailDialog::setupUI()
     detailTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::Interactive);
     detailTable->horizontalHeader()->setSectionResizeMode(6, QHeaderView::Interactive);
 
-    detailTable->setColumnWidth(0, 120);
+    detailTable->setColumnWidth(0, 155);
     detailTable->setColumnWidth(2, 130);
     detailTable->setColumnWidth(3, 130);
     detailTable->setColumnWidth(4, 95);
@@ -1368,10 +1364,10 @@ void AdjustmentMovementDetailDialog::setupUI()
 
     detailTable->setStyleSheet(
         "QTableWidget { background-color: #ffffff; alternate-background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; }"
-        "QTableWidget::item:selected { background-color: #dbeafe; color: #1e3a8a; font-weight: 600; }"
         "QHeaderView::section { background-color: #f1f5f9; color: #334155; font-weight: 600; padding: 6px 8px; border: none; border-bottom: 1px solid #cbd5e1; }"
     );
     TableClipboardHelper::setupClipboardForTable(detailTable);
+    detailTable->setSelectionMode(QAbstractItemView::SingleSelection);
     mainLayout->addWidget(detailTable, 1);
 
     // 2. Smart Scan & Simulation Tool Row
@@ -1428,7 +1424,8 @@ void AdjustmentMovementDetailDialog::setupUI()
     unitsSearchEdit = new QLineEdit(this);
     unitsSearchEdit->setPlaceholderText("🔍 Tìm Serial, Mã SP, Tên sản phẩm...");
     unitsSearchEdit->setClearButtonEnabled(true);
-    unitsSearchEdit->setMaximumWidth(280);
+    unitsSearchEdit->setMinimumWidth(260);
+    unitsSearchEdit->setMaximumWidth(360);
     unitsCountLabel = new QLabel("(0 linh kiện)", this);
     unitsCountLabel->setStyleSheet("font-size: 12px; color: #64748b; font-weight: 500;");
     uHeaderRow->addWidget(uTitle);
@@ -1451,7 +1448,7 @@ void AdjustmentMovementDetailDialog::setupUI()
     unitsTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Stretch);
     unitsTable->setColumnWidth(0, 45);
     unitsTable->setColumnWidth(1, 150);
-    unitsTable->setColumnWidth(2, 95);
+    unitsTable->setColumnWidth(2, 155);
     unitsTable->setColumnWidth(4, 130);
     unitsTable->setColumnWidth(5, 145);
     unitsTable->setColumnWidth(6, 125);
@@ -1781,11 +1778,12 @@ void AdjustmentMovementDetailDialog::onDetailSelectionChanged()
 
         selectedPlanLabel->setText(
             QString("🎯 Đang chọn dòng: <b>[%1] %2</b> &nbsp;|&nbsp; <b>%3 ➔ %4</b> &nbsp;|&nbsp; %5")
-            .arg(dl.productCode, dl.productName, dl.fromStatus, dl.toStatus, statusText)
+            .arg(dl.productCode, dl.productName, translateStatus(dl.fromStatus), translateStatus(dl.toStatus), statusText)
         );
         selectedPlanLabel->setStyleSheet("font-size: 12px; color: #1e3a8a; font-weight: 500; background-color: #dbeafe; border: 1px solid #3b82f6; border-radius: 4px; padding: 5px 10px;");
         scanSerialEdit->setPlaceholderText(
-            QString("Quét Serial cho [%1: %2 ➔ %3]... Nhấn Enter để nhận luôn").arg(dl.productCode, dl.fromStatus, dl.toStatus)
+            QString("Quét Serial cho [%1: %2 ➔ %3]... Nhấn Enter để nhận luôn")
+                .arg(dl.productCode, translateStatus(dl.fromStatus), translateStatus(dl.toStatus))
         );
     } else {
         selectedPlanLabel->setText("🎯 <i>Chưa chọn dòng cụ thể. Nhấp chọn 1 dòng ở bảng trên để quét/nhập serial gán trực tiếp vào dòng đó.</i>");

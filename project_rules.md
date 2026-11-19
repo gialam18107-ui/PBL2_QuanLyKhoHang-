@@ -57,7 +57,7 @@ CSV files inside `data/` must be organized by the business domain of the corresp
     - `adjustment_status`: `PENDING`, `PROCESSING`, `COMPLETED`, `CANCELLED`
   - **Type & reason tables**:
     - `inbound_type`: `PURCHASING` (`PUR`), `ADJUSTMENT_IN` (`ADJ`), `WARRANTY_CHECKING` (`WCK`), `WARRANTY_REPLACEMENT` (`WRP`), `CUSTOMER_RETURN` (`CRT`)
-    - `outbound_type`: `SELLING` (`SEL`), `ADJUSTMENT_OUT` (`ADJ`), `WARRANTY_RETURN` (`WRT`), `WARRANTY_REPLACEMENT_TO_CUSTOMER` (`WRC`)
+    - `outbound_type`: `SELLING` (`SEL`), `ADJUSTMENT_OUT` (`ADJ`), `WARRANTY_RETURN` (`WRT`), `WARRANTY_REPLACEMENT_TO_CUSTOMER` (`WRC`) *(loại `RETURN_TO_SUPPLIER` / `RTS` đã bỏ)*
     - `check_type`: `UNIT` (Kiểm kho chi tiết theo từng serial; loại `QUAN` đã bỏ)
     - `reason`: `STOCKTAKE_DIFF` (`STD`), `DAMAGED` (`DMG`), `OTHER` (`OTH`) (lý do `DATA_ERROR` đã bỏ)
 
@@ -180,9 +180,8 @@ Unit status transitions must adhere strictly to the business rules of each trans
   - **`WRC` (Warranty Replacement to Customer - Xuất trả hàng đổi bảo hành cho khách)**:
     - Precondition: Selected units must have current status `AVAILABLE` or `WARRANTY`.
     - Transition: `AVAILABLE / WARRANTY -> OUT`.
-  - **`RTS` (Return to Supplier - Xuất trả hàng cho nhà cung cấp)**:
-    - Precondition: Selected units must currently exist in warehouse (status `AVAILABLE`, `WARRANTY`, or `SCRAPPED`). Strictly prohibits units currently outside the warehouse (`OUT -> OUT` is prohibited).
-    - Transition: `AVAILABLE / WARRANTY / SCRAPPED -> OUT`.
+  - **`RTS` (Return to Supplier - Đã loại bỏ)**:
+    - Không còn hỗ trợ tạo mới trên hệ thống và UI (giữ nguyên lookup CSV để bảo toàn toàn vẹn tham chiếu lịch sử).
   - **`ADJ` (Adjustment Out - Xuất điều chỉnh / kiểm kê giảm kho)**:
     - Precondition: Selected units must currently exist in warehouse (status `AVAILABLE`, `WARRANTY`, or `SCRAPPED`).
     - Transition: `AVAILABLE / WARRANTY / SCRAPPED -> OUT`.
@@ -250,11 +249,19 @@ Hệ thống kiểm kê kho áp dụng **duy nhất hình thức Kiểm kê chi 
   - Mọi điều chỉnh tăng/giảm tồn kho hoặc chuyển đổi trạng thái serial sau kiểm kê đều phải thông qua các chứng từ điều chỉnh chính thức (`ADJUSTMENT_IN`, `ADJUSTMENT_OUT`, hoặc `ADJUSTMENT_MOVEMENT`) có liên kết `source_code = check_code`, bảo toàn lịch sử bất biến trong `status_history`.
 
 ### 5.2 Detailed / Unit Inventory Check (`CHK-UNIT`) Workflow & Unit Adjustment Orders
-- **Trạng thái vòng đời của đợt kiểm kê**:
-  - Khởi tạo: Bắt đầu ở trạng thái **`PENDING`**.
-  - Đang kiểm kê / quét serial: Chuyển sang **`PROCESSING`**.
-  - Hoàn tất kiểm kê: Chuyển sang **`COMPLETED`**.
-  - Hủy đợt: Chuyển sang **`CANCELLED`** (chỉ cho phép khi ở `PENDING` và chưa quét bất kỳ serial nào).
+- **Trạng thái vòng đời & Quy tắc chuyển trạng thái đợt kiểm kê**:
+  - Khởi tạo: Bắt đầu ở trạng thái **`PENDING`** (Chờ xử lí).
+  - Đang kiểm kê / quét serial: Chuyển sang **`PROCESSING`** (Đang xử lí); **không được chuyển ngược** từ `PROCESSING` về `PENDING`.
+  - Hoàn tất kiểm kê: Chuyển sang **`COMPLETED`** (Hoàn thành); sau khi `COMPLETED` toàn bộ đợt kiểm kê bị khóa vĩnh viễn.
+  - Hủy đợt: Chuyển sang **`CANCELLED`** (Đã hủy) **chỉ khi** đợt đang ở `PENDING` và **chưa quét/ghi nhận bất kỳ serial hay số lượng nào**; trạng thái `CANCELLED` cũng khóa vĩnh viễn.
+- **Khóa đóng băng tồn kho theo phạm vi kiểm kê (Stock Freeze)**:
+  - Khi một sản phẩm đang nằm trong danh mục (`inventory_check_quantity`) của một đợt kiểm kê đang mở (`PENDING` hoặc `PROCESSING`):
+    - Cấm thực hiện các thao tác làm biến động tồn kho hoặc trạng thái linh kiện của sản phẩm đó (`receiveUnitsForDelivery` / `receiveUnitsForDeliveryBatch`, `dispatchUnitsForShipment` / `dispatchUnitsForShipmentBatch`, `changeUnitStatusInLogistics`, `executeAdjustmentMovement` / `executeAdjustmentMovementUnits`) cho tới khi đợt kiểm kê chuyển `COMPLETED` hoặc `CANCELLED`.
+    - Cấm tạo thêm đợt kiểm kê mới đang mở khác trùng phạm vi sản phẩm đang kiểm.
+  - Các sản phẩm không nằm trong đợt kiểm kê đang mở vẫn nhập/xuất/điều chuyển bình thường.
+- **Đối soát Live (Live Re-validation) & Giao dịch nguyên tử (Atomic 1-Transaction Batch)**:
+  - Khi mở Báo cáo Đối soát sau kiểm kê (`InventoryCheckReconciliationDialog`), các serial bất thường được đối soát lại trực tiếp theo trạng thái hiện thời (`HashIndex` trên `unit_inventory.serial`); dòng nào xung đột (ví dụ đã được nhập/xuất hoặc đã đúng trạng thái đích bởi chứng từ khác sau khi đợt kiểm hoàn tất) sẽ tự động bỏ tick, vô hiệu hóa chọn và hiển thị lý do cảnh báo.
+  - Thao tác lưu nhận hàng (`Delivery`), xuất hàng (`Shipment`), và lập các chứng từ điều chỉnh từ Báo cáo Đối soát (`ADJUSTMENT_IN`, `ADJUSTMENT_OUT`, `ADJUSTMENT_MOVEMENT`) phải thực thi trọn gói trong **01 Transaction duy nhất** (tạo header + chi tiết + cập nhật linh kiện), đảm bảo rollback sạch toàn bộ nếu có bất kỳ lỗi nào.
 - **Khởi tạo danh sách Serial ứng viên**:
   - Toàn bộ các unit hiện có trong kho (`AVAILABLE`, `WARRANTY`, `SCRAPPED`) của các sản phẩm đã khai báo sẽ được nạp vào `inventory_check_unit` với `scanned_status = NULL` (chưa xác minh).
   - Giao diện không đánh dấu sẵn là đã kiểm; chỉ khi người dùng quét/nhập số serial cụ thể thì serial đó mới được ghi nhận trạng thái thực tế.
@@ -470,6 +477,38 @@ All auto-generated codes and user inputs must strictly conform to `QuanLyKhoHang
 - UI classes may freely use Qt containers and presentation widgets, but must remain strictly separated from database storage, custom data structures, and core inventory business logic.
 - UI code must **never** write custom queries, execute raw table scans (`getTable()->getRows()`), manipulate internal table pointers, or directly mutate table rows.
 - The `Vector<Record> results` contain `*_id` columns; **do not display primary key IDs on the screen**. They are used exclusively as internal metadata for CRUD operations.
+
+### 8.1.1 UI Localization Convention (Quy ước hiển thị tiếng Việt trên giao diện)
+Dữ liệu lưu trữ trong CSDL/CSV **giữ nguyên mã gốc tiếng Anh** để bảo toàn toàn vẹn khóa ngoại và tương thích schema; toàn bộ lớp UI (`ui/`) hiển thị và lọc bằng nhãn tiếng Việt thống nhất như sau:
+- **Trạng thái đơn / đợt / kiểm kê / điều chuyển**:
+  - `PENDING` ➔ `Chờ xử lí`
+  - `PROCESSING` ➔ `Đang xử lí`
+  - `RECEIVING` ➔ `Đang nhận hàng`
+  - `PICKING` ➔ `Đang lấy hàng`
+  - `COMPLETED` ➔ `Hoàn thành`
+  - `CANCELLED` ➔ `Đã hủy`
+- **Trạng thái linh kiện (`unit_status`)**:
+  - `AVAILABLE` ➔ `Khả dụng`, `WARRANTY` ➔ `Bảo hành`, `SCRAPPED` ➔ `Lỗi/hỏng`, `OUT` ➔ `Đã xuất`
+- **Loại đơn nhập (`inbound_type`)**:
+  - `PURCHASING` (`PUR`) ➔ `Mua mới`
+  - `ADJUSTMENT_IN` (`ADJ`) ➔ `Nhập điều chỉnh`
+  - `WARRANTY_CHECKING` (`WCK`) ➔ `Nhận bảo hành`
+  - `WARRANTY_REPLACEMENT` (`WRP`) ➔ `Đổi BH hãng`
+  - `CUSTOMER_RETURN` (`CRT`) ➔ `Khách trả hàng`
+- **Loại đơn xuất (`outbound_type`)**:
+  - `SELLING` (`SEL`) ➔ `Bán hàng`
+  - `ADJUSTMENT_OUT` (`ADJ`) ➔ `Xuất điều chỉnh`
+  - `WARRANTY_RETURN` (`WRT`) ➔ `Gửi BH hãng`
+  - `WARRANTY_REPLACEMENT_TO_CUSTOMER` (`WRC`) ➔ `Đổi BH khách`
+  - *(Loại `RETURN_TO_SUPPLIER` / `RTS` đã loại bỏ)*
+- **Lý do điều chuyển (`reason`)**:
+  - `STOCKTAKE_DIFF` (`STD`) ➔ `Lệch kiểm kê`, `DAMAGED` (`DMG`) ➔ `Hư hỏng`, `OTHER` (`OTH`) ➔ `Khác`
+- **Hình thức kiểm kê (`check_type`) & Loại lịch sử (`status_history.type`)**:
+  - `UNIT` ➔ `Theo Serial`; `INBOUND` ➔ `Nhập kho`, `OUTBOUND` ➔ `Xuất kho`, `ADJUSTMENT` ➔ `Điều chuyển`
+- **Quy ước bảng & nhãn gọn trên UI**:
+  - Cột tiến độ trong màn hình Đơn nhập dùng tiêu đề **`Thực nhận`**, màn hình Đơn xuất dùng **`Thực xuất`**.
+  - Huy hiệu lệch trạng thái trên bảng chi tiết kiểm kê hiển thị gọn là **`Lệch`**, nhường độ rộng cho cột `Mã SP`.
+  - Khi chọn một ô trên bảng dữ liệu, giữ chế độ chọn đơn lẻ từng ô (`SelectItems`) để sao chép chính xác, đồng thời highlight toàn bộ dòng đang trỏ bằng màu xanh nhạt thông qua `RowHighlightDelegate`.
 
 ### 8.2 Dedicated Windows and Dialogs for CRUD & Operations
 - **Product Management View**:

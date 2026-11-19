@@ -43,6 +43,9 @@ public:
     bool didCreateAuxCustomer() const { return auxCustomerCreated; }
     QString getCreatedOrderCode() const { return createdOrderCode; }
 
+protected:
+    bool eventFilter(QObject* watched, QEvent* event) override;
+
 private:
     struct OrderLineItem {
         int productId;

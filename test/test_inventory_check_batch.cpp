@@ -129,6 +129,10 @@ int main() {
     cout << "  - Thoi gian thuc thi           : " << fixed << setprecision(2) << time1Ms << " ms\n";
     cout << "  - Toc do xu ly                 : " << fixed << setprecision(1) << thg1 << " linh kien/giay\n";
 
+    // Hoan thanh dot kiem 1 de giai phong Stock Freeze truoc khi tao dot kiem 2 trung san pham
+    OperationResult comp1 = user_update::completeInventoryCheck(&db, checkId1);
+    assert(comp1.success);
+
     // -------------------------------------------------------------
     // TEST 2: saveInventoryCheckBatchDirect (Thao tac truc tiep tren Table)
     // -------------------------------------------------------------

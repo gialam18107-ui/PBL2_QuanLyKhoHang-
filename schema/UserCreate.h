@@ -205,6 +205,34 @@ namespace user_create
         const Vector<std::string>& customSerials = {}
     );
 
+    struct BatchReceiveUnitEntry {
+        int productId = 0;
+        std::string targetStatus;
+        std::string serial; // empty => auto-generate SN-XXXXXXX for PUR/WRP/ADJ new unit
+    };
+
+    /**
+     * @brief Nhận hàng loạt linh kiện thuộc nhiều sản phẩm vào 1 đợt Delivery trong đúng 01 Transaction duy nhất.
+     * Nếu có bất kỳ lỗi nào ở bất kỳ linh kiện nào, toàn bộ đợt sẽ bị rollback sạch sẽ.
+     */
+    OperationResult receiveUnitsForDeliveryBatch(
+        Database* db,
+        int deliveryId,
+        const Vector<BatchReceiveUnitEntry>& entries
+    );
+
+    /**
+     * @brief Tạo đơn Nhập Điều Chỉnh (ADJUSTMENT_IN) từ đợt kiểm kho COMPLETED và nhận toàn bộ linh kiện
+     * trong đúng 01 Transaction duy nhất (rollback cả header nếu có lỗi).
+     */
+    OperationResult createAndReceiveAdjustmentInbound(
+        Database* db,
+        const std::string& checkCode,
+        const std::string& orderDate,
+        const Vector<BatchReceiveUnitEntry>& entries,
+        const std::string& note = ""
+    );
+
     /// Convenience overload for a single unit receiving
     OperationResult receiveUnitForDelivery(
         Database* db,

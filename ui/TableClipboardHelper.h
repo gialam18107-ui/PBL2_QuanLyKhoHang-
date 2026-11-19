@@ -2,6 +2,12 @@
 #define TABLE_CLIPBOARD_HELPER_H
 
 #include <QTableWidget>
+#include <QStyledItemDelegate>
+#include <QPainter>
+#include <QApplication>
+#include <QStyle>
+#include <QItemSelectionModel>
+#include <QStyleOptionViewItem>
 #include <QGuiApplication>
 #include <QClipboard>
 #include <QShortcut>
@@ -13,6 +19,100 @@
 #include <algorithm>
 
 namespace TableClipboardHelper {
+
+class RowHighlightDelegate : public QStyledItemDelegate {
+public:
+    explicit RowHighlightDelegate(QTableWidget* table, QObject* parent = nullptr)
+        : QStyledItemDelegate(parent ? parent : table), m_table(table) {}
+
+    void paint(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const override
+    {
+        QStyleOptionViewItem opt = option;
+        initStyleOption(&opt, index);
+
+        bool isSelected = (opt.state & QStyle::State_Selected);
+        bool hasSel = (m_table && m_table->selectionModel() && m_table->selectionModel()->hasSelection());
+        bool isCurrentRow = (hasSel && m_table->currentIndex().isValid() &&
+                             index.row() == m_table->currentIndex().row());
+
+        if (isSelected) {
+            bool hadFocus = (opt.state & QStyle::State_HasFocus);
+            opt.state &= ~(QStyle::State_Selected | QStyle::State_HasFocus);
+            opt.features &= ~QStyleOptionViewItem::Alternate;
+            opt.backgroundBrush = Qt::NoBrush;
+
+            painter->save();
+            painter->fillRect(opt.rect, QColor("#bfdbfe"));
+            if (!index.data(Qt::ForegroundRole).isValid()) {
+                opt.palette.setColor(QPalette::Text, QColor("#1e3a8a"));
+            }
+            QStyle* style = (opt.widget ? opt.widget->style() : QApplication::style());
+            style->drawControl(QStyle::CE_ItemViewItem, &opt, painter, opt.widget);
+            if (hadFocus) {
+                painter->setPen(QColor("#3b82f6"));
+                painter->drawRect(opt.rect.adjusted(0, 0, -1, -1));
+            }
+            painter->restore();
+            return;
+        }
+
+        if (isCurrentRow) {
+            QVariant bgVar = index.data(Qt::BackgroundRole);
+            bool hasCustomBg = false;
+            if (bgVar.isValid() && bgVar.canConvert<QBrush>()) {
+                QBrush br = bgVar.value<QBrush>();
+                if (br.style() != Qt::NoBrush && br.color().alpha() > 0) {
+                    hasCustomBg = true;
+                }
+            }
+            if (!hasCustomBg) {
+                opt.features &= ~QStyleOptionViewItem::Alternate;
+                opt.backgroundBrush = Qt::NoBrush;
+                painter->save();
+                painter->fillRect(opt.rect, QColor("#eff6ff"));
+                QStyle* style = (opt.widget ? opt.widget->style() : QApplication::style());
+                style->drawControl(QStyle::CE_ItemViewItem, &opt, painter, opt.widget);
+                painter->restore();
+                return;
+            }
+        }
+
+        QStyledItemDelegate::paint(painter, option, index);
+    }
+
+private:
+    QTableWidget* m_table;
+};
+
+inline void installRowHighlight(QTableWidget* table)
+{
+    if (!table || table->property("_rowHighlightInstalled").toBool()) return;
+    table->setProperty("_rowHighlightInstalled", true);
+    table->setItemDelegate(new RowHighlightDelegate(table));
+
+    auto repaintRow = [table](int r) {
+        if (!table || !table->viewport() || r < 0 || r >= table->rowCount()) return;
+        if (table->isRowHidden(r)) return;
+        int y = table->rowViewportPosition(r);
+        int h = table->rowHeight(r);
+        if (h <= 0 || y + h < 0 || y > table->viewport()->height()) return;
+        table->viewport()->update(0, y, table->viewport()->width(), h);
+    };
+
+    if (auto* selModel = table->selectionModel()) {
+        QObject::connect(selModel, &QItemSelectionModel::currentRowChanged, table,
+            [repaintRow](const QModelIndex& current, const QModelIndex& previous) {
+                if (previous.isValid()) repaintRow(previous.row());
+                if (current.isValid()) repaintRow(current.row());
+            });
+        QObject::connect(selModel, &QItemSelectionModel::selectionChanged, table,
+            [table, repaintRow](const QItemSelection&, const QItemSelection&) {
+                if (table->currentIndex().isValid()) {
+                    repaintRow(table->currentIndex().row());
+                }
+            });
+    }
+}
 
 inline void copySelection(QTableWidget* table, QLabel* statusLabel = nullptr)
 {
@@ -113,6 +213,7 @@ inline void setupClipboardForTable(QTableWidget* table, QLabel* statusLabel = nu
     // Cho phép chọn từng ô độc lập hoặc quét khối ô nhiều dòng nhiều cột ("bôi đen" để copy)
     table->setSelectionBehavior(QAbstractItemView::SelectItems);
     table->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    installRowHighlight(table);
 
     // Phím tắt Ctrl+C
     auto* copyShortcut = new QShortcut(QKeySequence::Copy, table);

@@ -3044,4 +3044,75 @@ bool get_check_consequential_codes(
 	return (!inboundCode.empty() || !outboundCode.empty() || !adjustCode.empty());
 }
 
+string find_active_inventory_check_for_products(
+	Database* db,
+	const Vector<int>& productIds,
+	int& outConflictProductId
+) {
+	outConflictProductId = 0;
+	if (!db || productIds.empty()) return "";
+
+	const Table* chkTbl = db->getTable("inventory_check");
+	const Table* cqTbl = db->getTable("inventory_check_quantity");
+	if (!chkTbl || !cqTbl) return "";
+
+	HashMap<int, string> activeChecks;
+	for (const auto& r : chkTbl->view("status", Value(string("PENDING")))) {
+		int chkId = safeGetInt(r, "check_id", 0);
+		if (chkId > 0) activeChecks[chkId] = safeGetStr(r, "check_code");
+	}
+	for (const auto& r : chkTbl->view("status", Value(string("PROCESSING")))) {
+		int chkId = safeGetInt(r, "check_id", 0);
+		if (chkId > 0) activeChecks[chkId] = safeGetStr(r, "check_code");
+	}
+
+	if (activeChecks.empty()) return "";
+
+	HashMap<int, bool> seenPids;
+	for (size_t i = 0; i < productIds.size(); ++i) {
+		int pid = productIds[i];
+		if (pid <= 0 || seenPids.contains(pid)) continue;
+		seenPids[pid] = true;
+
+		for (const auto& cq : cqTbl->view("product_id", Value(pid))) {
+			int chkId = safeGetInt(cq, "check_id", 0);
+			if (activeChecks.contains(chkId)) {
+				outConflictProductId = pid;
+				return activeChecks[chkId];
+			}
+		}
+	}
+
+	return "";
+}
+
+string find_active_inventory_check_for_product(Database* db, int productId) {
+	if (productId <= 0) return "";
+	Vector<int> pids;
+	pids.push_back(productId);
+	int conflictPid = 0;
+	return find_active_inventory_check_for_products(db, pids, conflictPid);
+}
+
+bool get_unit_live_info_by_serial(
+	Database* db,
+	const string& serial,
+	int& outProductId,
+	string& outStatus
+) {
+	outProductId = -1;
+	outStatus.clear();
+	if (!db || serial.empty()) return false;
+
+	const Table* unitTbl = db->getTable("unit_inventory");
+	if (!unitTbl) return false;
+
+	for (const auto& u : unitTbl->view("serial", Value(serial))) {
+		outProductId = safeGetInt(u, "product_id", -1);
+		outStatus = safeGetStr(u, "status");
+		return true;
+	}
+	return false;
+}
+
 } // namespace user_query

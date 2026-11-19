@@ -1,4 +1,5 @@
 #include "UserCreate.h"
+#include "UserQuery.h"
 #include "query/Query.h"
 #include <sstream>
 #include <iomanip>
@@ -1320,16 +1321,14 @@ namespace user_create
         return OperationResult{true, "Tạo đơn xuất kho và các đợt xuất hàng thành công! Mã: " + outCode, totalAffected};
     }
 
-    OperationResult receiveUnitsForDelivery(
+    static OperationResult receiveUnitsForDeliveryBatchInternal(
         Database* db,
         int deliveryId,
-        int productId,
-        const std::string& targetStatus,
-        int quantity,
-        const Vector<std::string>& customSerials
+        const Vector<BatchReceiveUnitEntry>& entries,
+        bool manageTransaction
     ) {
         if (!db) return OperationResult{false, "Cơ sở dữ liệu chưa được khởi tạo.", 0};
-        if (quantity <= 0) return OperationResult{false, "Số lượng unit cần nhận phải lớn hơn 0.", 0};
+        if (entries.empty()) return OperationResult{false, "Danh sách linh kiện cần nhận không được để trống.", 0};
 
         const Table* delTable = db->getTable("delivery");
         const Table* delDetTable = db->getTable("delivery_detail");
@@ -1371,168 +1370,242 @@ namespace user_create
 
         std::string inType = inTxnRec->has("type") && std::holds_alternative<std::string>(inTxnRec->get("type"))
                            ? std::get<std::string>(inTxnRec->get("type")) : "PURCHASING";
-
-        // Find delivery_detail
-        int delDetId = -1;
-        int delRecQty = 0;
-        int delActQty = 0;
-        for (const auto& row : delDetTable->view("delivery_id", Value(deliveryId))) {
-            if (row.has("product_id") && std::holds_alternative<int>(row.get("product_id")) &&
-                std::get<int>(row.get("product_id")) == productId) {
-                delDetId = std::get<int>(row.get("delivery_detail_id"));
-                delRecQty = std::get<int>(row.get("received_quantity"));
-                delActQty = std::get<int>(row.get("actual_quantity"));
-                break;
-            }
-        }
-        if (delDetId == -1) {
-            return OperationResult{false, "Sản phẩm ID " + std::to_string(productId) + " không thuộc đợt nhận hàng ID " + std::to_string(deliveryId) + ".", 0};
-        }
-
-        if (delActQty + quantity > delRecQty) {
-            return OperationResult{false, "Số lượng nhận (" + std::to_string(delActQty + quantity) +
-                ") vượt quá số lượng ấn định (" + std::to_string(delRecQty) + ") của đợt nhận hàng này.", 0};
-        }
-
-        // Find inbound_detail
-        int inDetId = -1;
-        int inOrdQty = 0;
-        int inActQty = 0;
-        for (const auto& row : inDetTable->view("inbound_transaction_id", Value(inTxnId))) {
-            if (row.has("product_id") && std::holds_alternative<int>(row.get("product_id")) &&
-                std::get<int>(row.get("product_id")) == productId) {
-                inDetId = std::get<int>(row.get("inbound_detail_id"));
-                inOrdQty = std::get<int>(row.get("ordered_quantity"));
-                inActQty = std::get<int>(row.get("actual_quantity"));
-                break;
-            }
-        }
-        if (inDetId == -1) {
-            return OperationResult{false, "Sản phẩm ID " + std::to_string(productId) + " không thuộc đơn nhập kho gốc.", 0};
-        }
-
-        if (inActQty + quantity > inOrdQty) {
-            return OperationResult{false, "Số lượng nhận vượt quá tổng số lượng đặt hàng (" + std::to_string(inOrdQty) + ") của đơn nhập.", 0};
-        }
-
-        // Determine effective target status & validate transitions (Rule 4.4.2)
-        std::string effTarget = targetStatus;
         bool isAdjustmentIn = (inType == "ADJUSTMENT_IN" || inType == "ADJ");
         bool isNewAcquisition = (inType == "PURCHASING" || inType == "PUR" ||
                                  inType == "WARRANTY_REPLACEMENT" || inType == "WRP");
 
-        if (inType == "PURCHASING" || inType == "PUR") {
-            if (effTarget.empty()) effTarget = "AVAILABLE";
-            if (effTarget != "AVAILABLE" && effTarget != "SCRAPPED") {
-                return OperationResult{false, "Đơn mua hàng mới (PUR) chỉ được nhận linh kiện với trạng thái AVAILABLE hoặc SCRAPPED.", 0};
+        // Group entry indices by productId while preserving product order & validating statuses upfront
+        HashMap<int, Vector<size_t>> entriesByPid;
+        Vector<int> orderedPids;
+        Vector<std::string> resolvedStatuses;
+        resolvedStatuses.reserve(entries.size());
+
+        for (size_t i = 0; i < entries.size(); ++i) {
+            int pid = entries[i].productId;
+            if (pid <= 0) {
+                return OperationResult{false, "Mã sản phẩm (productId) trong danh sách nhận hàng không hợp lệ.", 0};
             }
-        } else if (inType == "WARRANTY_REPLACEMENT" || inType == "WRP") {
-            if (effTarget.empty()) effTarget = "WARRANTY";
-            if (effTarget != "WARRANTY") {
-                return OperationResult{false, "Đơn đổi bảo hành từ nhà cung cấp (WRP) chỉ được nhận linh kiện với trạng thái WARRANTY.", 0};
+
+            std::string effTarget = entries[i].targetStatus;
+            if (inType == "PURCHASING" || inType == "PUR") {
+                if (effTarget.empty()) effTarget = "AVAILABLE";
+                if (effTarget != "AVAILABLE" && effTarget != "SCRAPPED") {
+                    return OperationResult{false, "Đơn mua hàng mới (PUR) chỉ được nhận linh kiện với trạng thái AVAILABLE hoặc SCRAPPED.", 0};
+                }
+            } else if (inType == "WARRANTY_REPLACEMENT" || inType == "WRP") {
+                if (effTarget.empty()) effTarget = "WARRANTY";
+                if (effTarget != "WARRANTY") {
+                    return OperationResult{false, "Đơn đổi bảo hành từ nhà cung cấp (WRP) chỉ được nhận linh kiện với trạng thái WARRANTY.", 0};
+                }
+            } else if (inType == "WARRANTY_CHECKING" || inType == "WCK") {
+                if (effTarget.empty()) effTarget = "WARRANTY";
+                if (effTarget != "WARRANTY") {
+                    return OperationResult{false, "Đơn nhận bảo hành từ khách (WCK) chỉ được nhận linh kiện với trạng thái WARRANTY.", 0};
+                }
+            } else if (inType == "CUSTOMER_RETURN" || inType == "CRT") {
+                if (effTarget.empty()) effTarget = "AVAILABLE";
+                if (effTarget != "AVAILABLE" && effTarget != "WARRANTY" && effTarget != "SCRAPPED") {
+                    return OperationResult{false, "Đơn khách hàng trả hàng (CRT) chỉ được nhận linh kiện với trạng thái AVAILABLE, WARRANTY, hoặc SCRAPPED.", 0};
+                }
+            } else if (isAdjustmentIn) {
+                if (effTarget.empty()) effTarget = "AVAILABLE";
+                if (effTarget != "AVAILABLE" && effTarget != "WARRANTY" && effTarget != "SCRAPPED") {
+                    return OperationResult{false, "Đơn nhập điều chỉnh kho (ADJ) chỉ được nhận linh kiện với trạng thái AVAILABLE, WARRANTY, hoặc SCRAPPED.", 0};
+                }
+            } else {
+                if (effTarget.empty()) effTarget = "AVAILABLE";
             }
-        } else if (inType == "WARRANTY_CHECKING" || inType == "WCK") {
-            if (effTarget.empty()) effTarget = "WARRANTY";
-            if (effTarget != "WARRANTY") {
-                return OperationResult{false, "Đơn nhận bảo hành từ khách (WCK) chỉ được nhận linh kiện với trạng thái WARRANTY.", 0};
+
+            if (effTarget == "OUT") {
+                return OperationResult{false, "Trạng thái nhận của đơn nhập kho tuyệt đối không được là 'OUT'.", 0};
             }
-        } else if (inType == "CUSTOMER_RETURN" || inType == "CRT") {
-            if (effTarget.empty()) effTarget = "AVAILABLE";
-            if (effTarget != "AVAILABLE" && effTarget != "WARRANTY" && effTarget != "SCRAPPED") {
-                return OperationResult{false, "Đơn khách hàng trả hàng (CRT) chỉ được nhận linh kiện với trạng thái AVAILABLE, WARRANTY, hoặc SCRAPPED.", 0};
+            if (!isNewAcquisition && !isAdjustmentIn && entries[i].serial.empty()) {
+                return OperationResult{false, "Đơn nhận lại hàng (" + inType + ") yêu cầu cung cấp mã serial cho từng linh kiện.", 0};
             }
-        } else if (isAdjustmentIn) {
-            // Rule 4.4.2: ADJ Inbound allows transition from ANY status to ANY internal warehouse status (target cannot be OUT)
-            if (effTarget.empty()) effTarget = "AVAILABLE";
-            if (effTarget != "AVAILABLE" && effTarget != "WARRANTY" && effTarget != "SCRAPPED") {
-                return OperationResult{false, "Đơn nhập điều chỉnh kho (ADJ) chỉ được nhận linh kiện với trạng thái AVAILABLE, WARRANTY, hoặc SCRAPPED.", 0};
+
+            resolvedStatuses.push_back(effTarget);
+            if (!entriesByPid.contains(pid)) {
+                orderedPids.push_back(pid);
             }
-        } else {
-            if (effTarget.empty()) effTarget = "AVAILABLE";
+            entriesByPid[pid].push_back(i);
         }
 
-        if (effTarget == "OUT") {
-            return OperationResult{false, "Trạng thái nhận của đơn nhập kho tuyệt đối không được là 'OUT'.", 0};
+        // Stock Freeze Check: Block receiving products currently locked in an open Inventory Check
+        int conflictPid = 0;
+        std::string activeCheckCode = user_query::find_active_inventory_check_for_products(db, orderedPids, conflictPid);
+        if (!activeCheckCode.empty()) {
+            return OperationResult{
+                false,
+                "Sản phẩm [" + getProductCodeStr(db, conflictPid) + "] đang nằm trong đợt kiểm kê [" + activeCheckCode +
+                "] chưa hoàn tất/hủy. Tạm khóa nhập kho cho tới khi đợt kiểm kê kết thúc.",
+                0
+            };
         }
 
-        if (!isNewAcquisition && !isAdjustmentIn && customSerials.size() < static_cast<size_t>(quantity)) {
-            return OperationResult{false, "Đơn nhận lại hàng (" + inType + ") yêu cầu cung cấp danh sách serial tương ứng cho từng linh kiện.", 0};
+        // Pre-index delivery_detail and inbound_detail rows by product_id
+        struct DetailInfo {
+            int detailId = -1;
+            int planQty = 0;
+            int actQty = 0;
+        };
+        HashMap<int, DetailInfo> delDetailMap;
+        for (const auto& row : delDetTable->view("delivery_id", Value(deliveryId))) {
+            if (row.has("product_id") && std::holds_alternative<int>(row.get("product_id"))) {
+                int p = std::get<int>(row.get("product_id"));
+                DetailInfo info;
+                info.detailId = std::get<int>(row.get("delivery_detail_id"));
+                info.planQty = std::get<int>(row.get("received_quantity"));
+                info.actQty = std::get<int>(row.get("actual_quantity"));
+                delDetailMap[p] = info;
+            }
+        }
+        HashMap<int, DetailInfo> inDetailMap;
+        for (const auto& row : inDetTable->view("inbound_transaction_id", Value(inTxnId))) {
+            if (row.has("product_id") && std::holds_alternative<int>(row.get("product_id"))) {
+                int p = std::get<int>(row.get("product_id"));
+                DetailInfo info;
+                info.detailId = std::get<int>(row.get("inbound_detail_id"));
+                info.planQty = std::get<int>(row.get("ordered_quantity"));
+                info.actQty = std::get<int>(row.get("actual_quantity"));
+                inDetailMap[p] = info;
+            }
         }
 
-        // Preload current inventory bucket counts
-        const Record* pRec = prodTable->getRecordById(productId);
-        int curAvail = 0, curWarr = 0, curScrap = 0;
-        if (pRec) {
-            if (pRec->has("available_quantity") && std::holds_alternative<int>(pRec->get("available_quantity")))
-                curAvail = std::get<int>(pRec->get("available_quantity"));
-            if (pRec->has("warranty_quantity") && std::holds_alternative<int>(pRec->get("warranty_quantity")))
-                curWarr = std::get<int>(pRec->get("warranty_quantity"));
-            if (pRec->has("scrapped_quantity") && std::holds_alternative<int>(pRec->get("scrapped_quantity")))
-                curScrap = std::get<int>(pRec->get("scrapped_quantity"));
+        for (size_t pi = 0; pi < orderedPids.size(); ++pi) {
+            int pid = orderedPids[pi];
+            int qty = static_cast<int>(entriesByPid[pid].size());
+
+            if (!delDetailMap.contains(pid)) {
+                return OperationResult{false, "Sản phẩm ID " + std::to_string(pid) + " không thuộc đợt nhận hàng ID " + std::to_string(deliveryId) + ".", 0};
+            }
+            const auto& dInfo = delDetailMap[pid];
+            if (dInfo.actQty + qty > dInfo.planQty) {
+                return OperationResult{false, "Số lượng nhận của sản phẩm ID " + std::to_string(pid) + " (" + std::to_string(dInfo.actQty + qty) +
+                    ") vượt quá số lượng ấn định (" + std::to_string(dInfo.planQty) + ") của đợt nhận hàng này.", 0};
+            }
+
+            if (!inDetailMap.contains(pid)) {
+                return OperationResult{false, "Sản phẩm ID " + std::to_string(pid) + " không thuộc đơn nhập kho gốc.", 0};
+            }
+            const auto& iInfo = inDetailMap[pid];
+            if (iInfo.actQty + qty > iInfo.planQty) {
+                return OperationResult{false, "Số lượng nhận của sản phẩm ID " + std::to_string(pid) + " vượt quá tổng số lượng đặt hàng (" + std::to_string(iInfo.planQty) + ") của đơn nhập.", 0};
+            }
         }
 
-        if (!db->beginTransaction()) {
+        if (manageTransaction && !db->beginTransaction()) {
             return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
         }
 
+        auto failRollback = [&](const OperationResult& err) -> OperationResult {
+            if (manageTransaction) db->rollback();
+            return err;
+        };
+
         int totalAffected = 0;
 
-        // Process units
-        if (isAdjustmentIn) {
-            // Inbound ADJ: From ANY status to ANY status (except OUT)
-            for (int k = 0; k < quantity; ++k) {
-                std::string sn = (k < static_cast<int>(customSerials.size())) ? customSerials[k] : "";
-                int targetUnitId = -1;
-                std::string currentUnitStatus = "";
+        for (size_t pi = 0; pi < orderedPids.size(); ++pi) {
+            int productId = orderedPids[pi];
+            const Vector<size_t>& idxList = entriesByPid[productId];
+            int quantity = static_cast<int>(idxList.size());
 
-                if (!sn.empty()) {
-                    for (const auto& uRow : unitTable->view("serial", Value(sn))) {
-                        if (uRow.has("product_id") && std::holds_alternative<int>(uRow.get("product_id")) &&
-                            std::get<int>(uRow.get("product_id")) == productId) {
+            const Record* pRec = prodTable->getRecordById(productId);
+            int curAvail = 0, curWarr = 0, curScrap = 0;
+            if (pRec) {
+                if (pRec->has("available_quantity") && std::holds_alternative<int>(pRec->get("available_quantity")))
+                    curAvail = std::get<int>(pRec->get("available_quantity"));
+                if (pRec->has("warranty_quantity") && std::holds_alternative<int>(pRec->get("warranty_quantity")))
+                    curWarr = std::get<int>(pRec->get("warranty_quantity"));
+                if (pRec->has("scrapped_quantity") && std::holds_alternative<int>(pRec->get("scrapped_quantity")))
+                    curScrap = std::get<int>(pRec->get("scrapped_quantity"));
+            }
+
+            for (size_t k = 0; k < idxList.size(); ++k) {
+                size_t eIdx = idxList[k];
+                std::string sn = entries[eIdx].serial;
+                const std::string& effTarget = resolvedStatuses[eIdx];
+
+                if (isAdjustmentIn) {
+                    int targetUnitId = -1;
+                    int existingPid = -1;
+                    std::string currentUnitStatus = "";
+
+                    if (!sn.empty()) {
+                        for (const auto& uRow : unitTable->view("serial", Value(sn))) {
                             targetUnitId = std::get<int>(uRow.get("unit_id"));
+                            existingPid = (uRow.has("product_id") && std::holds_alternative<int>(uRow.get("product_id")))
+                                        ? std::get<int>(uRow.get("product_id")) : -1;
                             currentUnitStatus = std::get<std::string>(uRow.get("status"));
                             break;
                         }
                     }
-                }
 
-                if (targetUnitId != -1) {
-                    if (currentUnitStatus != "OUT") {
-                        db->rollback();
-                        return OperationResult{false, "Đơn nhập điều chỉnh (ADJ) chỉ được nhận linh kiện có old_status là 'OUT' (tái phát hiện) hoặc 'NULL' (hàng mới). Linh kiện '" + sn + "' hiện đang có trạng thái '" + currentUnitStatus + "' trong kho.", 0};
+                    if (targetUnitId != -1) {
+                        if (existingPid != productId) {
+                            return failRollback(OperationResult{false, "Linh kiện serial '" + sn + "' thuộc sản phẩm khác, không khớp sản phẩm ID " + std::to_string(productId) + ".", 0});
+                        }
+                        if (currentUnitStatus != "OUT") {
+                            return failRollback(OperationResult{false, "Đơn nhập điều chỉnh (ADJ) chỉ được nhận linh kiện có old_status là 'OUT' (tái phát hiện) hoặc 'NULL' (hàng mới). Linh kiện '" + sn + "' hiện đang có trạng thái '" + currentUnitStatus + "' trong kho.", 0});
+                        }
+                        Record uUp;
+                        uUp.set("status", effTarget);
+                        OperationResult rU = db->update("unit_inventory", targetUnitId, uUp);
+                        if (!rU) return failRollback(rU);
+                        totalAffected++;
+
+                        Record hRec;
+                        hRec.set("unit_id", targetUnitId);
+                        hRec.set("old_status", currentUnitStatus);
+                        hRec.set("curr_status", effTarget);
+                        hRec.set("transaction", deliveryId);
+                        hRec.set("type", std::string("INBOUND"));
+
+                        OperationResult rH = db->insertRecord("status_history", hRec);
+                        if (!rH) return failRollback(rH);
+                        totalAffected++;
+                    } else {
+                        if (!sn.empty()) {
+                            if (!isValidSerialFormat(sn)) {
+                                return failRollback(OperationResult{false, "Mã serial '" + sn + "' không đúng định dạng SN-XXXXXXX.", 0});
+                            }
+                            if (!isSerialUnique(db, sn)) {
+                                return failRollback(OperationResult{false, "Mã serial '" + sn + "' đã tồn tại trong kho linh kiện.", 0});
+                            }
+                        } else {
+                            sn = generateUniqueSerial(db);
+                        }
+
+                        Record uRec;
+                        uRec.set("product_id", productId);
+                        uRec.set("serial", sn);
+                        uRec.set("status", effTarget);
+
+                        OperationResult rU = db->insertRecord("unit_inventory", uRec);
+                        if (!rU) return failRollback(rU);
+                        totalAffected++;
+
+                        auto uView = unitTable->view("serial", Value(sn));
+                        if (uView.empty()) return failRollback(OperationResult{false, "Không thể tìm lại linh kiện vừa thêm.", 0});
+                        int unitId = std::get<int>((*uView.begin()).get("unit_id"));
+
+                        Record hRec;
+                        hRec.set("unit_id", unitId);
+                        hRec.set("old_status", Value{});
+                        hRec.set("curr_status", effTarget);
+                        hRec.set("transaction", deliveryId);
+                        hRec.set("type", std::string("INBOUND"));
+
+                        OperationResult rH = db->insertRecord("status_history", hRec);
+                        if (!rH) return failRollback(rH);
+                        totalAffected++;
                     }
-                    // Existing unit transition: OUT -> effTarget
-                    Record uUp;
-                    uUp.set("status", effTarget);
-                    OperationResult rU = db->update("unit_inventory", targetUnitId, uUp);
-                    if (!rU) { db->rollback(); return rU; }
-                    totalAffected++;
-
-                    Record hRec;
-                    hRec.set("unit_id", targetUnitId);
-                    hRec.set("old_status", currentUnitStatus);
-                    hRec.set("curr_status", effTarget);
-                    hRec.set("transaction", deliveryId);
-                    hRec.set("type", std::string("INBOUND"));
-
-                    OperationResult rH = db->insertRecord("status_history", hRec);
-                    if (!rH) { db->rollback(); return rH; }
-                    totalAffected++;
-
-                    // Old status was OUT, so no internal bucket to decrement
-                    if (effTarget == "AVAILABLE") curAvail++;
-                    else if (effTarget == "WARRANTY") curWarr++;
-                    else if (effTarget == "SCRAPPED") curScrap++;
-                } else {
-                    // New unit registration: NULL -> effTarget
+                } else if (isNewAcquisition) {
                     if (!sn.empty()) {
                         if (!isValidSerialFormat(sn)) {
-                            db->rollback();
-                            return OperationResult{false, "Mã serial '" + sn + "' không đúng định dạng SN-XXXXXXX.", 0};
+                            return failRollback(OperationResult{false, "Mã serial '" + sn + "' không đúng định dạng SN-XXXXXXX.", 0});
                         }
                         if (!isSerialUnique(db, sn)) {
-                            db->rollback();
-                            return OperationResult{false, "Mã serial '" + sn + "' đã tồn tại trong kho linh kiện.", 0};
+                            return failRollback(OperationResult{false, "Mã serial '" + sn + "' đã tồn tại trong kho linh kiện.", 0});
                         }
                     } else {
                         sn = generateUniqueSerial(db);
@@ -1544,83 +1617,28 @@ namespace user_create
                     uRec.set("status", effTarget);
 
                     OperationResult rU = db->insertRecord("unit_inventory", uRec);
-                    if (!rU) { db->rollback(); return rU; }
+                    if (!rU) return failRollback(rU);
                     totalAffected++;
 
                     auto uView = unitTable->view("serial", Value(sn));
-                    if (uView.empty()) { db->rollback(); return OperationResult{false, "Không thể tìm lại linh kiện vừa thêm.", 0}; }
+                    if (uView.empty()) return failRollback(OperationResult{false, "Không thể tìm lại linh kiện vừa thêm.", 0});
                     int unitId = std::get<int>((*uView.begin()).get("unit_id"));
 
                     Record hRec;
                     hRec.set("unit_id", unitId);
-                    hRec.set("old_status", Value{}); // NULL on new registration
+                    hRec.set("old_status", Value{});
                     hRec.set("curr_status", effTarget);
                     hRec.set("transaction", deliveryId);
                     hRec.set("type", std::string("INBOUND"));
 
                     OperationResult rH = db->insertRecord("status_history", hRec);
-                    if (!rH) { db->rollback(); return rH; }
+                    if (!rH) return failRollback(rH);
                     totalAffected++;
-
-                    if (effTarget == "AVAILABLE") curAvail++;
-                    else if (effTarget == "WARRANTY") curWarr++;
-                    else if (effTarget == "SCRAPPED") curScrap++;
-                }
-            }
-        } else if (isNewAcquisition) {
-            // Create new physical units
-            for (int k = 0; k < quantity; ++k) {
-                std::string sn;
-                if (k < static_cast<int>(customSerials.size()) && !customSerials[k].empty()) {
-                    sn = customSerials[k];
-                    if (!isValidSerialFormat(sn)) {
-                        db->rollback();
-                        return OperationResult{false, "Mã serial '" + sn + "' không đúng định dạng SN-XXXXXXX.", 0};
-                    }
-                    if (!isSerialUnique(db, sn)) {
-                        db->rollback();
-                        return OperationResult{false, "Mã serial '" + sn + "' đã tồn tại trong kho linh kiện.", 0};
-                    }
                 } else {
-                    sn = generateUniqueSerial(db);
-                }
+                    int targetUnitId = -1;
+                    std::string currentUnitStatus = "";
 
-                Record uRec;
-                uRec.set("product_id", productId);
-                uRec.set("serial", sn);
-                uRec.set("status", effTarget);
-
-                OperationResult rU = db->insertRecord("unit_inventory", uRec);
-                if (!rU) { db->rollback(); return rU; }
-                totalAffected++;
-
-                auto uView = unitTable->view("serial", Value(sn));
-                if (uView.empty()) { db->rollback(); return OperationResult{false, "Không thể tìm lại linh kiện vừa thêm.", 0}; }
-                int unitId = std::get<int>((*uView.begin()).get("unit_id"));
-
-                Record hRec;
-                hRec.set("unit_id", unitId);
-                hRec.set("old_status", Value{}); // NULL on first acquisition
-                hRec.set("curr_status", effTarget);
-                hRec.set("transaction", deliveryId);
-                hRec.set("type", std::string("INBOUND"));
-
-                OperationResult rH = db->insertRecord("status_history", hRec);
-                if (!rH) { db->rollback(); return rH; }
-                totalAffected++;
-
-                if (effTarget == "AVAILABLE") curAvail++;
-                else if (effTarget == "WARRANTY") curWarr++;
-                else if (effTarget == "SCRAPPED") curScrap++;
-            }
-        } else {
-            // Update existing units from OUT -> effTarget
-            for (int k = 0; k < quantity; ++k) {
-                std::string sn = customSerials[k];
-                int targetUnitId = -1;
-                std::string currentUnitStatus = "";
-
-                for (const auto& uRow : unitTable->view("serial", Value(sn))) {
+                    for (const auto& uRow : unitTable->view("serial", Value(sn))) {
                         if (uRow.has("product_id") && std::holds_alternative<int>(uRow.get("product_id")) &&
                             std::get<int>(uRow.get("product_id")) == productId) {
                             targetUnitId = std::get<int>(uRow.get("unit_id"));
@@ -1629,80 +1647,270 @@ namespace user_create
                         }
                     }
 
-                if (targetUnitId == -1) {
-                    db->rollback();
-                    return OperationResult{false, "Không tìm thấy linh kiện có serial '" + sn + "' của sản phẩm ID " + std::to_string(productId) + ".", 0};
+                    if (targetUnitId == -1) {
+                        return failRollback(OperationResult{false, "Không tìm thấy linh kiện có serial '" + sn + "' của sản phẩm ID " + std::to_string(productId) + ".", 0});
+                    }
+                    if (currentUnitStatus != "OUT") {
+                        return failRollback(OperationResult{false, "Linh kiện có serial '" + sn + "' hiện đang có trạng thái '" + currentUnitStatus + "', không phải 'OUT'.", 0});
+                    }
+
+                    Record uUp;
+                    uUp.set("status", effTarget);
+                    OperationResult rU = db->update("unit_inventory", targetUnitId, uUp);
+                    if (!rU) return failRollback(rU);
+                    totalAffected++;
+
+                    Record hRec;
+                    hRec.set("unit_id", targetUnitId);
+                    hRec.set("old_status", std::string("OUT"));
+                    hRec.set("curr_status", effTarget);
+                    hRec.set("transaction", deliveryId);
+                    hRec.set("type", std::string("INBOUND"));
+
+                    OperationResult rH = db->insertRecord("status_history", hRec);
+                    if (!rH) return failRollback(rH);
+                    totalAffected++;
                 }
-                if (currentUnitStatus != "OUT") {
-                    db->rollback();
-                    return OperationResult{false, "Linh kiện có serial '" + sn + "' hiện đang có trạng thái '" + currentUnitStatus + "', không phải 'OUT'.", 0};
-                }
-
-                Record uUp;
-                uUp.set("status", effTarget);
-                OperationResult rU = db->update("unit_inventory", targetUnitId, uUp);
-                if (!rU) { db->rollback(); return rU; }
-                totalAffected++;
-
-                Record hRec;
-                hRec.set("unit_id", targetUnitId);
-                hRec.set("old_status", std::string("OUT"));
-                hRec.set("curr_status", effTarget);
-                hRec.set("transaction", deliveryId);
-                hRec.set("type", std::string("INBOUND"));
-
-                OperationResult rH = db->insertRecord("status_history", hRec);
-                if (!rH) { db->rollback(); return rH; }
-                totalAffected++;
 
                 if (effTarget == "AVAILABLE") curAvail++;
                 else if (effTarget == "WARRANTY") curWarr++;
                 else if (effTarget == "SCRAPPED") curScrap++;
             }
+
+            Record pUp;
+            pUp.set("available_quantity", curAvail);
+            pUp.set("warranty_quantity", curWarr);
+            pUp.set("scrapped_quantity", curScrap);
+            OperationResult rPq = db->update("product", productId, pUp);
+            if (!rPq) return failRollback(rPq);
+            totalAffected++;
+
+            const auto& dInfo = delDetailMap[productId];
+            Record ddUp;
+            ddUp.set("actual_quantity", dInfo.actQty + quantity);
+            OperationResult rDUp = db->update("delivery_detail", dInfo.detailId, ddUp);
+            if (!rDUp) return failRollback(rDUp);
+            totalAffected++;
+
+            const auto& iInfo = inDetailMap[productId];
+            Record idUp;
+            idUp.set("actual_quantity", iInfo.actQty + quantity);
+            OperationResult rIUp = db->update("inbound_detail", iInfo.detailId, idUp);
+            if (!rIUp) return failRollback(rIUp);
+            totalAffected++;
         }
 
-        // Update product bucket directly
-        Record pUp;
-        pUp.set("available_quantity", curAvail);
-        pUp.set("warranty_quantity", curWarr);
-        pUp.set("scrapped_quantity", curScrap);
-        OperationResult rPq = db->update("product", productId, pUp);
-        if (!rPq) { db->rollback(); return rPq; }
-        totalAffected++;
-
-        // Update actual_quantity in delivery_detail and inbound_detail
-        Record ddUp;
-        ddUp.set("actual_quantity", delActQty + quantity);
-        OperationResult rDUp = db->update("delivery_detail", delDetId, ddUp);
-        if (!rDUp) { db->rollback(); return rDUp; }
-        totalAffected++;
-
-        Record idUp;
-        idUp.set("actual_quantity", inActQty + quantity);
-        OperationResult rIUp = db->update("inbound_detail", inDetId, idUp);
-        if (!rIUp) { db->rollback(); return rIUp; }
-        totalAffected++;
-
-        // Update delivery status to RECEIVING if not already COMPLETED (Rule 4.5: do not auto-complete)
         std::string curDelSt = delRec->has("status") && std::holds_alternative<std::string>(delRec->get("status"))
             ? std::get<std::string>(delRec->get("status")) : "";
         if (curDelSt != "COMPLETED" && curDelSt != "completed") {
             Record delStatusUp;
             delStatusUp.set("status", std::string("RECEIVING"));
-            db->update("delivery", deliveryId, delStatusUp);
+            OperationResult rDelSt = db->update("delivery", deliveryId, delStatusUp);
+            if (!rDelSt) return failRollback(rDelSt);
         }
 
-        // Update inbound_transaction status to PROCESSING if not already COMPLETED
         std::string curInTxnSt = inTxnRec->has("status") && std::holds_alternative<std::string>(inTxnRec->get("status"))
             ? std::get<std::string>(inTxnRec->get("status")) : "";
         if (curInTxnSt != "COMPLETED" && curInTxnSt != "completed") {
             Record inTxnStatusUp;
             inTxnStatusUp.set("status", std::string("PROCESSING"));
-            db->update("inbound_transaction", inTxnId, inTxnStatusUp);
+            OperationResult rTxnSt = db->update("inbound_transaction", inTxnId, inTxnStatusUp);
+            if (!rTxnSt) return failRollback(rTxnSt);
+        }
+
+        if (manageTransaction) {
+            db->commit();
+        }
+        return OperationResult{true, "Đã nhận " + std::to_string(entries.size()) + " unit vào đợt giao " + std::to_string(deliveryId) + " thành công!", totalAffected};
+    }
+
+    OperationResult receiveUnitsForDeliveryBatch(
+        Database* db,
+        int deliveryId,
+        const Vector<BatchReceiveUnitEntry>& entries
+    ) {
+        return receiveUnitsForDeliveryBatchInternal(db, deliveryId, entries, true);
+    }
+
+    OperationResult receiveUnitsForDelivery(
+        Database* db,
+        int deliveryId,
+        int productId,
+        const std::string& targetStatus,
+        int quantity,
+        const Vector<std::string>& customSerials
+    ) {
+        if (quantity <= 0) return OperationResult{false, "Số lượng unit cần nhận phải lớn hơn 0.", 0};
+        Vector<BatchReceiveUnitEntry> entries;
+        entries.reserve(static_cast<size_t>(quantity));
+        for (int k = 0; k < quantity; ++k) {
+            BatchReceiveUnitEntry e;
+            e.productId = productId;
+            e.targetStatus = targetStatus;
+            e.serial = (k < static_cast<int>(customSerials.size())) ? customSerials[k] : "";
+            entries.push_back(e);
+        }
+        return receiveUnitsForDeliveryBatch(db, deliveryId, entries);
+    }
+
+    OperationResult createAndReceiveAdjustmentInbound(
+        Database* db,
+        const std::string& checkCode,
+        const std::string& orderDate,
+        const Vector<BatchReceiveUnitEntry>& entries,
+        const std::string& note
+    ) {
+        if (!db) return OperationResult{false, "Cơ sở dữ liệu chưa được khởi tạo.", 0};
+        if (checkCode.empty()) return OperationResult{false, "Mã đợt kiểm kho (source_code) không được để trống.", 0};
+        if (orderDate.empty()) return OperationResult{false, "Ngày lập đơn nhập điều chỉnh không được để trống.", 0};
+        if (entries.empty()) return OperationResult{false, "Danh sách linh kiện cần nhập điều chỉnh không được để trống.", 0};
+
+        const Table* chkTbl = db->getTable("inventory_check");
+        const Table* cqTbl = db->getTable("inventory_check_quantity");
+        const Table* inTxnTable = db->getTable("inbound_transaction");
+        const Table* delTable = db->getTable("delivery");
+        const Table* prodTable = db->getTable("product");
+        if (!chkTbl || !cqTbl || !inTxnTable || !delTable || !prodTable) {
+            return OperationResult{false, "Các bảng dữ liệu liên quan đến nhập điều chỉnh không đầy đủ.", 0};
+        }
+
+        TableView chkRecs = chkTbl->view("check_code", Value(checkCode));
+        if (chkRecs.empty()) {
+            return OperationResult{false, "Mã đợt kiểm kho '" + checkCode + "' không tồn tại trong hệ thống.", 0};
+        }
+        const Record& chkRec = *chkRecs.begin();
+        std::string chkSt = chkRec.has("status") && std::holds_alternative<std::string>(chkRec.get("status"))
+                          ? std::get<std::string>(chkRec.get("status")) : "";
+        if (chkSt != "COMPLETED") {
+            return OperationResult{false, "Chỉ được tạo đơn nhập điều chỉnh sau khi đợt kiểm kho [" + checkCode + "] đã hoàn thành.", 0};
+        }
+        if (!inTxnTable->view("source_code", Value(checkCode)).empty()) {
+            return OperationResult{false, "Đợt kiểm kho [" + checkCode + "] đã được tạo đơn nhập điều chỉnh trước đó.", 0};
+        }
+
+        int chkId = std::get<int>(chkRec.get("check_id"));
+        HashMap<int, bool> allowedPids;
+        for (const auto& cq : cqTbl->view("check_id", Value(chkId))) {
+            if (cq.has("product_id") && std::holds_alternative<int>(cq.get("product_id"))) {
+                allowedPids[std::get<int>(cq.get("product_id"))] = true;
+            }
+        }
+
+        HashMap<int, int> qtyByPid;
+        Vector<int> orderedPids;
+        for (size_t i = 0; i < entries.size(); ++i) {
+            int pid = entries[i].productId;
+            if (pid <= 0 || !prodTable->getRecordById(pid)) {
+                return OperationResult{false, "Sản phẩm ID " + std::to_string(pid) + " không tồn tại trong danh mục.", 0};
+            }
+            if (!allowedPids.contains(pid)) {
+                return OperationResult{false, "Sản phẩm [" + getProductCodeStr(db, pid) + "] không thuộc phạm vi đợt kiểm kho " + checkCode + ".", 0};
+            }
+            if (!qtyByPid.contains(pid)) {
+                orderedPids.push_back(pid);
+                qtyByPid[pid] = 0;
+            }
+            qtyByPid[pid] = qtyByPid[pid] + 1;
+        }
+
+        int conflictPid = 0;
+        std::string activeChk = user_query::find_active_inventory_check_for_products(db, orderedPids, conflictPid);
+        if (!activeChk.empty()) {
+            return OperationResult{false, "Sản phẩm [" + getProductCodeStr(db, conflictPid) + "] đang nằm trong đợt kiểm kê [" + activeChk + "] chưa hoàn tất/hủy.", 0};
+        }
+
+        int maxSeq = extractMaxSequence(inTxnTable, "inbound_code", "IN-ADJ-", 7);
+        int newSeq = maxSeq + 1;
+        std::ostringstream inOss;
+        inOss << "IN-ADJ-" << std::setfill('0') << std::setw(6) << newSeq;
+        std::string inCode = inOss.str();
+        std::string delCode = inCode + "-D01";
+
+        if (!db->beginTransaction()) {
+            return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
+        }
+
+        Record inTxn;
+        inTxn.set("inbound_code", inCode);
+        inTxn.set("customer_id", Value{});
+        inTxn.set("source_code", checkCode);
+        inTxn.set("order_at", orderDate);
+        inTxn.set("type", std::string("ADJUSTMENT_IN"));
+        inTxn.set("status", std::string("PENDING"));
+        inTxn.set("next_delivery_no", 2);
+        inTxn.set("note", note);
+
+        OperationResult r1 = db->insertRecord("inbound_transaction", inTxn);
+        if (!r1) { db->rollback(); return r1; }
+
+        int inTxnId = 0;
+        for (const auto& r : inTxnTable->view("inbound_code", Value(inCode))) {
+            if (r.has("inbound_transaction_id") && std::holds_alternative<int>(r.get("inbound_transaction_id"))) {
+                inTxnId = std::get<int>(r.get("inbound_transaction_id"));
+                break;
+            }
+        }
+        if (inTxnId <= 0) {
+            db->rollback();
+            return OperationResult{false, "Không thể truy xuất ID đơn nhập điều chỉnh vừa tạo.", 0};
+        }
+
+        for (size_t i = 0; i < orderedPids.size(); ++i) {
+            int pid = orderedPids[i];
+            Record inDet;
+            inDet.set("inbound_transaction_id", inTxnId);
+            inDet.set("product_id", pid);
+            inDet.set("ordered_quantity", qtyByPid[pid]);
+            inDet.set("actual_quantity", 0);
+            OperationResult rd = db->insertRecord("inbound_detail", inDet);
+            if (!rd) { db->rollback(); return rd; }
+        }
+
+        Record del;
+        del.set("delivery_code", delCode);
+        del.set("inbound_transaction_id", inTxnId);
+        del.set("expected_at", orderDate);
+        del.set("delivery_at", Value{});
+        del.set("status", std::string("PENDING"));
+
+        OperationResult r2 = db->insertRecord("delivery", del);
+        if (!r2) { db->rollback(); return r2; }
+
+        int delId = 0;
+        for (const auto& r : delTable->view("delivery_code", Value(delCode))) {
+            if (r.has("delivery_id") && std::holds_alternative<int>(r.get("delivery_id"))) {
+                delId = std::get<int>(r.get("delivery_id"));
+                break;
+            }
+        }
+        if (delId <= 0) {
+            db->rollback();
+            return OperationResult{false, "Không thể truy xuất ID đợt nhận hàng vừa tạo.", 0};
+        }
+
+        for (size_t i = 0; i < orderedPids.size(); ++i) {
+            int pid = orderedPids[i];
+            Record delDet;
+            delDet.set("delivery_id", delId);
+            delDet.set("product_id", pid);
+            delDet.set("received_quantity", qtyByPid[pid]);
+            delDet.set("actual_quantity", 0);
+            OperationResult rdd = db->insertRecord("delivery_detail", delDet);
+            if (!rdd) { db->rollback(); return rdd; }
+        }
+
+        OperationResult rRecv = receiveUnitsForDeliveryBatchInternal(db, delId, entries, false);
+        if (!rRecv.success) {
+            db->rollback();
+            return rRecv;
         }
 
         db->commit();
-        return OperationResult{true, "Đã nhận " + std::to_string(quantity) + " unit vào đợt giao " + std::to_string(deliveryId) + " thành công!", totalAffected};
+        return OperationResult{
+            true,
+            "Đã tạo đơn nhập điều chỉnh [" + inCode + "] và tự động nhập kho thành công " + std::to_string(entries.size()) + " linh kiện!",
+            rRecv.affectedCount
+        };
     }
 
     OperationResult receiveUnitForDelivery(
@@ -1820,6 +2028,17 @@ namespace user_create
             if (!prodTbl->getRecordById(pid)) {
                 return OperationResult{false, "Sản phẩm ID " + std::to_string(pid) + " không tồn tại trong danh mục.", 0};
             }
+        }
+
+        int conflictPid = 0;
+        std::string activeCheckCode = user_query::find_active_inventory_check_for_products(db, productIds, conflictPid);
+        if (!activeCheckCode.empty()) {
+            return OperationResult{
+                false,
+                "Sản phẩm [" + getProductCodeStr(db, conflictPid) + "] đang nằm trong đợt kiểm kê [" + activeCheckCode +
+                "] chưa hoàn tất/hủy. Vui lòng hoàn tất hoặc hủy đợt cũ trước khi mở đợt kiểm mới trùng sản phẩm.",
+                0
+            };
         }
 
         if (!db->beginTransaction()) {

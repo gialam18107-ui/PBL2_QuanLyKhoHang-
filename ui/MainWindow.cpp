@@ -13,6 +13,7 @@
 #include "schema/Schema.h"
 #include "schema/UserQuery.h"
 #include "ui/TableClipboardHelper.h"
+#include "ui/UiLocalization.h"
 #include "ui/TransactionHubWidget.h"
 #include "ui/ProductDialog.h"
 #include "ui/CustomerDialog.h"
@@ -555,6 +556,8 @@ void MainWindow::updateCategoryFilterOptions()
     }
     if (outboundTxnWidget) {
         QStringList outTypes = loadColumnOptions("outbound_type", "type");
+        outTypes.removeAll("RETURN_TO_SUPPLIER");
+        outTypes.removeAll("RTS");
         if (outTypes.isEmpty()) outTypes = {"SELLING", "ADJUSTMENT_OUT", "WARRANTY_RETURN", "WARRANTY_REPLACEMENT_TO_CUSTOMER"};
         QStringList outStatuses = loadColumnOptions("outbound_status", "status");
         if (outStatuses.isEmpty()) outStatuses = {"PENDING", "PROCESSING", "COMPLETED", "CANCELLED"};
@@ -1087,7 +1090,7 @@ void MainWindow::setupPages()
             QString st = sel->has("status") && holds_alternative<std::string>(sel->get("status")) ? QString::fromStdString(get<std::string>(sel->get("status"))) : "";
 
             banner->setText(QString("📋 Chi tiết kiểm đếm: Mã [%1] | Loại: %2 | Trạng thái: %3 | Lý do: %4")
-                .arg(code, type, st, note.isEmpty() ? "(Không có)" : note));
+                .arg(code, UiLocalization::localizeCheckType(type), UiLocalization::localizeStatus(st), note.isEmpty() ? "(Không có)" : note));
 
             Vector<Record> qRecs;
             user_query::inventory_check_quantity_query(db, chkId, qRecs);
@@ -1196,11 +1199,14 @@ void MainWindow::setupPages()
                         if (holds_alternative<std::string>(v)) val = QString::fromStdString(get<std::string>(v));
                         else if (holds_alternative<int>(v)) val = QString::number(get<int>(v));
                     }
-                    auto* it = new QTableWidgetItem(val);
+                    QString dispVal = UiLocalization::localizeColumnValue(uKeys[c], val);
+                    auto* it = new QTableWidgetItem(dispVal);
                     if (c == 6) {
                         if (val.contains("Khớp")) it->setForeground(QColor("#16a34a"));
                         else if (val.contains("Lệch") || val.contains("Chênh lệch")) it->setForeground(QColor("#dc2626"));
                         else it->setForeground(QColor("#64748b"));
+                    } else if (UiLocalization::isStatusColumnKey(uKeys[c])) {
+                        it->setForeground(UiLocalization::statusTextColor(val));
                     }
                     table->setItem(static_cast<int>(r), static_cast<int>(c), it);
                 }
@@ -1304,8 +1310,12 @@ void MainWindow::setupPages()
                 table->setItem(r, 0, new QTableWidgetItem(mCode));
                 table->setItem(r, 1, new QTableWidgetItem(pCode));
                 table->setItem(r, 2, new QTableWidgetItem(pName));
-                table->setItem(r, 3, new QTableWidgetItem(fromSt));
-                table->setItem(r, 4, new QTableWidgetItem(toSt));
+                auto* itFrom = new QTableWidgetItem(UiLocalization::localizeStatus(fromSt));
+                itFrom->setForeground(UiLocalization::statusTextColor(fromSt));
+                table->setItem(r, 3, itFrom);
+                auto* itTo = new QTableWidgetItem(UiLocalization::localizeStatus(toSt));
+                itTo->setForeground(UiLocalization::statusTextColor(toSt));
+                table->setItem(r, 4, itTo);
                 auto* planItem = new QTableWidgetItem(QString::number(planQty));
                 planItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
                 table->setItem(r, 5, planItem);
@@ -2782,12 +2792,10 @@ void MainWindow::setupCrudWiring()
                 if (chkId <= 0) return;
                 string code = rec.has("check_code") && holds_alternative<string>(rec.get("check_code")) ? get<string>(rec.get("check_code")) : to_string(chkId);
                 string st = rec.has("status") && holds_alternative<string>(rec.get("status")) ? get<string>(rec.get("status")) : "";
-                if (st == "COMPLETED") {
-                    QMessageBox::warning(this, "Không thể hủy", "Đợt kiểm kê đã hoàn thành (COMPLETED), không thể hủy.");
-                    return;
-                }
-                if (st == "CANCELLED") {
-                    QMessageBox::information(this, "Thông báo", "Đợt kiểm kê này đã ở trạng thái đã hủy.");
+                if (st != "PENDING") {
+                    QMessageBox::warning(this, "Không thể hủy",
+                        QString("Chỉ có thể hủy đợt kiểm kê khi đang ở trạng thái %1 (hiện tại: %2).")
+                            .arg(UiLocalization::localizeStatus("PENDING"), UiLocalization::localizeStatus(QString::fromStdString(st))));
                     return;
                 }
                 auto reply = QMessageBox::question(
@@ -2851,12 +2859,15 @@ void MainWindow::setupCrudWiring()
             if (adjId <= 0 || !db) return;
             std::string st = rec.has("status") && holds_alternative<std::string>(rec.get("status")) ? get<std::string>(rec.get("status")) : "";
             if (st != "PENDING") {
-                QMessageBox::warning(this, "Không thể hủy", "Chỉ có thể hủy phiếu điều chuyển khi phiếu đang ở trạng thái PENDING.");
+                QMessageBox::warning(this, "Không thể hủy",
+                    QString("Chỉ có thể hủy phiếu điều chuyển khi phiếu đang ở trạng thái %1 (hiện tại: %2).")
+                        .arg(UiLocalization::localizeStatus("PENDING"), UiLocalization::localizeStatus(QString::fromStdString(st))));
                 return;
             }
             auto rep = QMessageBox::question(
                 this, "Xác nhận hủy phiếu",
-                "Bạn có chắc chắn muốn HỦY phiếu điều chuyển đang chọn không?\n\nSau khi hủy, phiếu sẽ chuyển sang trạng thái CANCELLED và đóng vĩnh viễn.",
+                QString("Bạn có chắc chắn muốn HỦY phiếu điều chuyển đang chọn không?\n\nSau khi hủy, phiếu sẽ chuyển sang trạng thái %1 và đóng vĩnh viễn.")
+                    .arg(UiLocalization::localizeStatus("CANCELLED")),
                 QMessageBox::Yes | QMessageBox::No
             );
             if (rep != QMessageBox::Yes) return;

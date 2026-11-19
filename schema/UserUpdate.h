@@ -123,6 +123,33 @@ namespace user_update
         const Vector<std::string>& serials
     );
 
+    struct BatchDispatchUnitEntry {
+        int productId = 0;
+        std::string serial;
+    };
+
+    /**
+     * @brief Xuất hàng loạt linh kiện thuộc nhiều sản phẩm cho 1 đợt Shipment trong đúng 01 Transaction duy nhất.
+     * Nếu có bất kỳ lỗi nào ở bất kỳ linh kiện nào, toàn bộ đợt xuất sẽ bị rollback sạch sẽ.
+     */
+    OperationResult dispatchUnitsForShipmentBatch(
+        Database* db,
+        int shipmentId,
+        const Vector<BatchDispatchUnitEntry>& entries
+    );
+
+    /**
+     * @brief Tạo đơn Xuất Điều Chỉnh (ADJUSTMENT_OUT) từ đợt kiểm kho COMPLETED và xuất toàn bộ linh kiện
+     * trong đúng 01 Transaction duy nhất (rollback cả header nếu có lỗi).
+     */
+    OperationResult createAndDispatchAdjustmentOutbound(
+        Database* db,
+        const std::string& checkCode,
+        const std::string& orderDate,
+        const Vector<BatchDispatchUnitEntry>& entries,
+        const std::string& note = ""
+    );
+
     /// Convenience overload for dispatching a single unit
     OperationResult dispatchUnitForShipment(
         Database* db,
@@ -240,6 +267,25 @@ namespace user_update
         Database* db,
         int adjustId,
         const Vector<AdjustUnitEntry>& stagedUnits
+    );
+
+    struct AdjustMovementUnitInput {
+        int productId = 0;
+        std::string fromStatus;
+        std::string toStatus;
+        std::string serial;
+    };
+
+    /**
+     * @brief Tạo phiếu Điều Chuyển Trạng Thái (ADJUSTMENT_MOVEMENT) từ đợt kiểm kho COMPLETED và thực thi
+     * chuyển trạng thái toàn bộ linh kiện trong đúng 01 Transaction duy nhất (rollback cả header nếu có lỗi).
+     */
+    OperationResult createAndExecuteAdjustmentMovement(
+        Database* db,
+        const std::string& checkCode,
+        const std::string& adjustedAt,
+        const Vector<AdjustMovementUnitInput>& entries,
+        const std::string& note = ""
     );
 
     OperationResult updateAdjustmentMovementStatus(

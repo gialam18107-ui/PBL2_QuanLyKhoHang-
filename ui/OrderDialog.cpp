@@ -2,6 +2,7 @@
 #include "CustomerDialog.h"
 #include "InventoryCheckDialog.h"
 #include "TableClipboardHelper.h"
+#include "UiLocalization.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -15,6 +16,8 @@
 #include <QDate>
 #include <QRegularExpression>
 #include <QScrollBar>
+#include <QKeyEvent>
+#include <QAbstractItemView>
 #include <algorithm>
 #include <unordered_set>
 
@@ -31,11 +34,7 @@
 
 static QString translateUnitStatus(const QString& st)
 {
-    if (st == "AVAILABLE") return "Khả dụng";
-    if (st == "WARRANTY") return "Bảo hành";
-    if (st == "SCRAPPED") return "Lỗi/hỏng";
-    if (st == "OUT") return "Đã xuất kho";
-    return st;
+    return UiLocalization::localizeStatus(st);
 }
 
 static QString commonDialogStyleSheet()
@@ -289,6 +288,33 @@ void OrderDialog::setupUI()
     btnLayout->addWidget(saveBtn);
 
     mainLayout->addLayout(btnLayout);
+
+    // Ngăn Enter trong các trường nhập (Step 2) tự kích hoạt nút điều hướng bước trước/sau
+    for (auto* btn : findChildren<QPushButton*>()) {
+        btn->setAutoDefault(false);
+        btn->setDefault(false);
+    }
+}
+
+bool OrderDialog::eventFilter(QObject* watched, QEvent* event)
+{
+    if (event && event->type() == QEvent::KeyPress) {
+        auto* ke = static_cast<QKeyEvent*>(event);
+        if (ke->key() == Qt::Key_Return || ke->key() == Qt::Key_Enter) {
+            QLineEdit* spinEdit = quantitySpin ? quantitySpin->findChild<QLineEdit*>() : nullptr;
+            bool isStep2Input = (productCombo && productCombo->lineEdit() && watched == productCombo->lineEdit())
+                                || (watched == quantitySpin)
+                                || (spinEdit && watched == spinEdit);
+            if (isStep2Input) {
+                if (productCombo && productCombo->view() && productCombo->view()->isVisible()) {
+                    return QDialog::eventFilter(watched, event);
+                }
+                onAddLineItem();
+                return true;
+            }
+        }
+    }
+    return QDialog::eventFilter(watched, event);
 }
 
 QWidget* OrderDialog::createStep1Widget()
@@ -351,7 +377,10 @@ QWidget* OrderDialog::createStep1Widget()
                 std::string type = r.has("check_type") && std::holds_alternative<std::string>(r.get("check_type")) ? std::get<std::string>(r.get("check_type")) : "";
                 std::string status = r.has("status") && std::holds_alternative<std::string>(r.get("status")) ? std::get<std::string>(r.get("status")) : "";
                 if (!code.empty()) {
-                    QString display = QString("%1 [%2 - %3]").arg(QString::fromStdString(code), QString::fromStdString(type), QString::fromStdString(status));
+                    QString display = QString("%1 [%2 - %3]")
+                        .arg(QString::fromStdString(code),
+                             UiLocalization::localizeCheckType(QString::fromStdString(type)),
+                             UiLocalization::localizeStatus(QString::fromStdString(status)));
                     sourceCodeCombo->addItem(display, QString::fromStdString(code));
                 }
             }
@@ -486,9 +515,7 @@ QWidget* OrderDialog::createStep2Widget()
     if (productCombo->lineEdit()) {
         productCombo->lineEdit()->setPlaceholderText("Gõ mã SP, tên SP, Barcode hoặc SKU để tìm kiếm...");
         productCombo->lineEdit()->setClearButtonEnabled(true);
-        connect(productCombo->lineEdit(), &QLineEdit::returnPressed, [this]() {
-            onAddLineItem();
-        });
+        productCombo->lineEdit()->installEventFilter(this);
     }
     addBoxLayout->addWidget(productCombo);
 
@@ -505,6 +532,10 @@ QWidget* OrderDialog::createStep2Widget()
     quantitySpin->setMinimumHeight(34);
     quantitySpin->setAlignment(Qt::AlignCenter);
     quantitySpin->setStyleSheet("font-size: 13px; font-weight: 600; padding: 2px 6px; border: 1.5px solid #94a3b8; border-radius: 6px;");
+    quantitySpin->installEventFilter(this);
+    if (auto* spinEdit = quantitySpin->findChild<QLineEdit*>()) {
+        spinEdit->installEventFilter(this);
+    }
 
     addItemBtn = new QPushButton("➕ Thêm vào danh sách đơn", addBox);
     addItemBtn->setCursor(Qt::PointingHandCursor);
@@ -970,16 +1001,16 @@ void OrderDialog::populateOrderTypes()
 {
     typeCombo->clear();
     if (hubType == HubType::INBOUND) {
-        typeCombo->addItem("PURCHASING — Nhập mua hàng mới từ Nhà cung cấp", "PURCHASING");
-        typeCombo->addItem("CUSTOMER_RETURN — Khách hàng trả lại hàng", "CUSTOMER_RETURN");
-        typeCombo->addItem("WARRANTY_CHECKING — Nhận hàng bảo hành để kiểm tra", "WARRANTY_CHECKING");
-        typeCombo->addItem("WARRANTY_REPLACEMENT — Nhận hàng đổi trả bảo hành từ hãng", "WARRANTY_REPLACEMENT");
-        typeCombo->addItem("ADJUSTMENT_IN — Điều chỉnh tăng kiểm kê kho", "ADJUSTMENT_IN");
+        typeCombo->addItem("Mua mới", "PURCHASING");
+        typeCombo->addItem("Khách trả hàng", "CUSTOMER_RETURN");
+        typeCombo->addItem("Nhận bảo hành", "WARRANTY_CHECKING");
+        typeCombo->addItem("Đổi BH hãng", "WARRANTY_REPLACEMENT");
+        typeCombo->addItem("Nhập điều chỉnh", "ADJUSTMENT_IN");
     } else {
-        typeCombo->addItem("SELLING — Xuất bán hàng thương mại (trừ Tồn khả dụng)", "SELLING");
-        typeCombo->addItem("WARRANTY_RETURN — Xuất trả hàng bảo hành / lỗi cho hãng", "WARRANTY_RETURN");
-        typeCombo->addItem("WARRANTY_REPLACEMENT_TO_CUSTOMER — Xuất đổi bảo hành cho khách", "WARRANTY_REPLACEMENT_TO_CUSTOMER");
-        typeCombo->addItem("ADJUSTMENT_OUT — Điều chỉnh giảm kiểm kê kho", "ADJUSTMENT_OUT");
+        typeCombo->addItem("Bán hàng", "SELLING");
+        typeCombo->addItem("Gửi BH hãng", "WARRANTY_RETURN");
+        typeCombo->addItem("Đổi BH khách", "WARRANTY_REPLACEMENT_TO_CUSTOMER");
+        typeCombo->addItem("Xuất điều chỉnh", "ADJUSTMENT_OUT");
     }
 }
 
@@ -1766,12 +1797,15 @@ TransactionStatusDialog::TransactionStatusDialog(
         statuses = {initialStatus};
     }
 
-    statusCombo->addItems(statuses);
-    int curIdx = statusCombo->findText(initialStatus, Qt::MatchFixedString);
+    statusCombo->setMinimumWidth(160);
+    for (const QString& st : statuses) {
+        statusCombo->addItem(UiLocalization::localizeStatus(st), st);
+    }
+    int curIdx = statusCombo->findData(initialStatus);
     if (curIdx >= 0) {
         statusCombo->setCurrentIndex(curIdx);
     } else if (!initialStatus.isEmpty()) {
-        statusCombo->addItem(initialStatus);
+        statusCombo->addItem(UiLocalization::localizeStatus(initialStatus), initialStatus);
         statusCombo->setCurrentIndex(statusCombo->count() - 1);
     }
 
@@ -1808,8 +1842,8 @@ TransactionStatusDialog::TransactionStatusDialog(
     bool isCompleted = (initialStatus == "COMPLETED" || initialStatus == "CANCELLED");
     if (isCompleted) {
         auto* warnLbl = new QLabel(
-            QString("🔒 <b>Đơn hàng đã ở trạng thái hoàn tất (%1).</b><br>Toàn bộ thông tin đơn và trạng thái đã bị khóa vĩnh viễn.")
-                .arg(initialStatus),
+            QString("🔒 <b>Đơn hàng đã ở trạng thái [%1].</b><br>Toàn bộ thông tin đơn và trạng thái đã bị khóa vĩnh viễn.")
+                .arg(UiLocalization::localizeStatus(initialStatus)),
             this
         );
         warnLbl->setStyleSheet("background-color: #fef2f2; border: 1px solid #fecaca; border-left: 4px solid #ef4444; border-radius: 6px; padding: 8px 12px; font-size: 12px; color: #991b1b;");
@@ -1840,7 +1874,7 @@ TransactionStatusDialog::TransactionStatusDialog(
 void TransactionStatusDialog::onSave()
 {
     std::string tableName = (hubType == HubType::INBOUND) ? "inbound_transaction" : "outbound_transaction";
-    std::string newStatus = statusCombo->currentText().trimmed().toStdString();
+    std::string newStatus = statusCombo->currentData().toString().trimmed().toStdString();
     std::string oldStatus = initialStatus.trimmed().toStdString();
 
     if (newStatus == oldStatus) {
@@ -1886,7 +1920,7 @@ void TransactionStatusDialog::onSave()
 
 std::string TransactionStatusDialog::getSelectedStatus() const
 {
-    return statusCombo ? statusCombo->currentText().trimmed().toStdString() : "";
+    return statusCombo ? statusCombo->currentData().toString().trimmed().toStdString() : "";
 }
 
 // ============================================================================
@@ -2127,8 +2161,11 @@ LogisticsUpdateDialog::LogisticsUpdateDialog(
         statuses.removeAll("CANCELLED");
     }
 
-    statusCombo->addItems(statuses);
-    int sIdx = statusCombo->findText(currentStatus, Qt::MatchFixedString);
+    statusCombo->setMinimumWidth(160);
+    for (const QString& st : statuses) {
+        statusCombo->addItem(UiLocalization::localizeStatus(st), st);
+    }
+    int sIdx = statusCombo->findData(currentStatus);
     if (sIdx >= 0) statusCombo->setCurrentIndex(sIdx);
 
     grid->addWidget(new QLabel("Trạng thái đợt (*):", this), 4, 0);
@@ -2161,7 +2198,8 @@ LogisticsUpdateDialog::LogisticsUpdateDialog(
         actualDateEdit->setEnabled(checked);
     });
 
-    connect(statusCombo, &QComboBox::currentTextChanged, [this](const QString& st) {
+    connect(statusCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), [this](int idx) {
+        QString st = statusCombo->itemData(idx).toString();
         if (st == "COMPLETED" && !hasActualDateCheck->isChecked()) {
             hasActualDateCheck->setChecked(true);
         }
@@ -2175,8 +2213,8 @@ LogisticsUpdateDialog::LogisticsUpdateDialog(
     bool isCompleted = (initialStatusStr == "COMPLETED" || initialStatusStr == "CANCELLED");
     if (isCompleted) {
         auto* warnLbl = new QLabel(
-            QString("🔒 <b>Đợt giao nhận đã ở trạng thái hoàn tất (%1).</b><br>Toàn bộ thông tin và trạng thái đợt này đã bị khóa vĩnh viễn.")
-                .arg(initialStatusStr),
+            QString("🔒 <b>Đợt giao nhận đã ở trạng thái [%1].</b><br>Toàn bộ thông tin và trạng thái đợt này đã bị khóa vĩnh viễn.")
+                .arg(UiLocalization::localizeStatus(initialStatusStr)),
             this
         );
         warnLbl->setStyleSheet("background-color: #fef2f2; border: 1px solid #fecaca; border-left: 4px solid #ef4444; border-radius: 6px; padding: 8px 12px; font-size: 12px; color: #991b1b;");
@@ -2215,7 +2253,7 @@ void LogisticsUpdateDialog::onSave()
 
     std::string tableName = (hubType == HubType::INBOUND) ? "delivery" : "shipment";
     std::string dateCol = (hubType == HubType::INBOUND) ? "delivery_at" : "ship_at";
-    std::string newStatus = statusCombo->currentText().trimmed().toStdString();
+    std::string newStatus = statusCombo->currentData().toString().trimmed().toStdString();
 
     // Rule 4.5: Prompt confirmation popup before transitioning to COMPLETED
     if (newStatus == "COMPLETED") {
@@ -2264,7 +2302,7 @@ void LogisticsUpdateDialog::onSave()
 
 std::string LogisticsUpdateDialog::getSelectedStatus() const
 {
-    return statusCombo ? statusCombo->currentText().trimmed().toStdString() : "";
+    return statusCombo ? statusCombo->currentData().toString().trimmed().toStdString() : "";
 }
 
 std::string LogisticsUpdateDialog::getSelectedActualDate() const
@@ -3955,13 +3993,7 @@ void UnitEntryDialog::setupUI()
     headerLayout->setContentsMargins(6, 2, 6, 2);
     headerLayout->setSpacing(8);
 
-    QString viTxnType = QString::fromStdString(transactionType);
-    if (viTxnType == "PURCHASING" || viTxnType == "PUR") viTxnType = "Nhập mua hàng";
-    else if (viTxnType == "SALES" || viTxnType == "SEL") viTxnType = "Xuất bán hàng";
-    else if (viTxnType == "WARRANTY_SEND" || viTxnType == "WRT") viTxnType = "Xuất gửi bảo hành";
-    else if (viTxnType == "WARRANTY_RECEIVE" || viTxnType == "WRC") viTxnType = "Nhập nhận bảo hành";
-    else if (viTxnType == "RETURN" || viTxnType == "RET") viTxnType = "Trả hàng";
-    else if (viTxnType == "ADJUSTMENT" || viTxnType == "ADJ") viTxnType = "Điều chỉnh kho";
+    QString viTxnType = UiLocalization::localizeOrderType(QString::fromStdString(transactionType));
 
     auto* titleText = new QLabel(
         QString("<b>Đợt:</b> %1 &nbsp;|&nbsp; <b>Mã đơn:</b> %2 &nbsp;|&nbsp; <b>Loại:</b> %3")
@@ -3987,7 +4019,7 @@ void UnitEntryDialog::setupUI()
 
     if (isLogisticsCompleted) {
         QString lockText = (parentOrderStatus == "COMPLETED" || parentOrderStatus == "CANCELLED")
-                         ? QString("🔒 ĐÃ KHÓA THEO ĐƠN (%1)").arg(QString::fromStdString(parentOrderStatus))
+                         ? QString("🔒 ĐÃ KHÓA THEO ĐƠN (%1)").arg(UiLocalization::localizeStatus(QString::fromStdString(parentOrderStatus)))
                          : "🔒 ĐÃ HOÀN THÀNH";
         auto* lockBadge = new QLabel(lockText, headerBox);
         lockBadge->setStyleSheet("background-color: #fee2e2; color: #991b1b; font-weight: bold; border-radius: 4px; padding: 3px 8px; font-size: 11px;");
@@ -3999,7 +4031,7 @@ void UnitEntryDialog::setupUI()
         QString bannerText = (parentOrderStatus == "COMPLETED" || parentOrderStatus == "CANCELLED")
             ? QString("ℹ️ <b>Chế độ chỉ xem:</b> Đơn giao dịch [%1] đã ở trạng thái <code>%2</code>. "
                       "Toàn bộ các đợt vận chuyển liên quan đã bị khóa vĩnh viễn. Bạn có thể xem danh sách và lịch sử nhưng không thể quét thêm hoặc chỉnh sửa linh kiện.")
-                .arg(parentOrderCodeStr, QString::fromStdString(parentOrderStatus))
+                .arg(parentOrderCodeStr, UiLocalization::localizeStatus(QString::fromStdString(parentOrderStatus)))
             : "ℹ️ <b>Chế độ chỉ xem:</b> Đợt giao nhận này đã hoàn thành. "
               "Toàn bộ dữ liệu linh kiện đã bị khóa vĩnh viễn. Bạn có thể xem danh sách và lịch sử nhưng không thể chỉnh sửa.";
 
@@ -6009,36 +6041,19 @@ void UnitEntryDialog::onSaveChanges()
 
     int savedPendingInCount = 0;
     if (pendingInCount > 0) {
-        std::map<std::pair<int, std::string>, Vector<std::string>> groups;
+        Vector<user_create::BatchReceiveUnitEntry> entries;
+        entries.reserve(pendingInboundUnits.size());
         for (const auto& u : pendingInboundUnits) {
-            groups[{u.productId, u.status}].push_back(u.serial);
+            entries.push_back({u.productId, u.status, u.serial});
         }
 
-        bool allSaved = true;
-        std::string firstError;
-
-        for (const auto& kv : groups) {
-            int pid = kv.first.first;
-            const std::string& st = kv.first.second;
-            const Vector<std::string>& serials = kv.second;
-            int qty = static_cast<int>(serials.size());
-
-            OperationResult res = user_create::receiveUnitsForDelivery(
-                db, logId, pid, st, qty, serials
-            );
-            if (!res.success) {
-                allSaved = false;
-                firstError = res.message;
-                break;
-            }
-            savedPendingInCount += qty;
-        }
-
-        if (!allSaved) {
+        OperationResult res = user_create::receiveUnitsForDeliveryBatch(db, logId, entries);
+        if (!res.success) {
             QMessageBox::critical(
                 this, "Lỗi lưu linh kiện mới",
                 QString("Có lỗi xảy ra khi ghi nhận linh kiện vào CSDL:<br><b>%1</b><br><br>"
-                        "Vui lòng kiểm tra lại danh sách chờ lưu.").arg(QString::fromStdString(firstError))
+                        "Toàn bộ thao tác nhập trong đợt lưu này đã được hoàn tác (Rollback). Vui lòng kiểm tra lại danh sách chờ lưu.")
+                    .arg(QString::fromStdString(res.message))
             );
             loadBatchData();
             loadAllUnitsData();
@@ -6046,36 +6061,25 @@ void UnitEntryDialog::onSaveChanges()
             return;
         }
 
+        savedPendingInCount = static_cast<int>(entries.size());
         pendingInboundUnits.clear();
     }
 
     int savedPendingOutCount = 0;
     if (pendingOutCount > 0) {
-        std::map<int, Vector<std::string>> prodSerials;
+        Vector<user_update::BatchDispatchUnitEntry> entries;
+        entries.reserve(pendingOutboundUnits.size());
         for (const auto& u : pendingOutboundUnits) {
-            prodSerials[u.productId].push_back(u.serial);
+            entries.push_back({u.productId, u.serial});
         }
 
-        bool allSaved = true;
-        std::string firstError;
-
-        for (const auto& kv : prodSerials) {
-            int pid = kv.first;
-            const Vector<std::string>& serials = kv.second;
-            OperationResult res = user_update::dispatchUnitsForShipment(db, logId, pid, serials);
-            if (!res.success) {
-                allSaved = false;
-                firstError = res.message;
-                break;
-            }
-            savedPendingOutCount += static_cast<int>(serials.size());
-        }
-
-        if (!allSaved) {
+        OperationResult res = user_update::dispatchUnitsForShipmentBatch(db, logId, entries);
+        if (!res.success) {
             QMessageBox::critical(
                 this, "Lỗi xuất linh kiện",
                 QString("Có lỗi xảy ra khi xuất linh kiện vào CSDL:<br><b>%1</b><br><br>"
-                        "Vui lòng kiểm tra lại danh sách chờ xuất.").arg(QString::fromStdString(firstError))
+                        "Toàn bộ thao tác xuất trong đợt lưu này đã được hoàn tác (Rollback). Vui lòng kiểm tra lại danh sách chờ xuất.")
+                    .arg(QString::fromStdString(res.message))
             );
             loadBatchData();
             loadAllUnitsData();
@@ -6083,6 +6087,7 @@ void UnitEntryDialog::onSaveChanges()
             return;
         }
 
+        savedPendingOutCount = static_cast<int>(entries.size());
         pendingOutboundUnits.clear();
     }
 

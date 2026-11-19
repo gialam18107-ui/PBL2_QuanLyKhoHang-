@@ -4,6 +4,7 @@
 #include "ui/TableClipboardHelper.h"
 #include "ui/OrderDialog.h"
 #include "ui/InventoryCheckDialog.h"
+#include "ui/UiLocalization.h"
 
 #include <QHeaderView>
 #include <QScrollBar>
@@ -573,7 +574,9 @@ void TransactionHubWidget::setupSplitterUI(QVBoxLayout* mainLayout)
     orderDetailTable = new QTableWidget(leftContainer);
     orderDetailTable->setColumnCount(5);
     orderDetailTable->setHorizontalHeaderLabels({
-        "Mã sản phẩm", "Tên sản phẩm", "SL Đặt", "Thực nhận/xuất", "Tiến độ"
+        "Mã sản phẩm", "Tên sản phẩm", "SL Đặt",
+        (hubType == HubType::INBOUND ? "Thực nhận" : "Thực xuất"),
+        "Tiến độ"
     });
     orderDetailTable->setAlternatingRowColors(true);
     orderDetailTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -760,7 +763,8 @@ void TransactionHubWidget::setupSplitterUI(QVBoxLayout* mainLayout)
     logisticsDetailTable = new QTableWidget(rightLowerContainer);
     logisticsDetailTable->setColumnCount(4);
     logisticsDetailTable->setHorizontalHeaderLabels({
-        "Mã sản phẩm", "Tên sản phẩm", "SL Đợt này", "Thực nhận/xuất"
+        "Mã sản phẩm", "Tên sản phẩm", "SL Đợt này",
+        (hubType == HubType::INBOUND ? "Thực nhận" : "Thực xuất")
     });
     logisticsDetailTable->setAlternatingRowColors(true);
     logisticsDetailTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -1120,9 +1124,9 @@ void TransactionHubWidget::onFilterColumnChanged(int index)
         break;
     case FilterType::SELECT_OR_TYPE:
         filterSelectCombo->clear();
-        filterSelectCombo->addItem("-- Tất cả --");
+        filterSelectCombo->addItem("-- Tất cả --", "");
         for (const auto& opt : def.options) {
-            filterSelectCombo->addItem(opt);
+            filterSelectCombo->addItem(UiLocalization::localizeColumnValue(def.columnKey, opt), opt);
         }
         filterSelectCombo->show();
         break;
@@ -1153,10 +1157,14 @@ void TransactionHubWidget::applyFilter()
         QString toDate = toDateEdit->date().toString("yyyy-MM-dd");
         onFilter(def.columnKey, fromDate, toDate, true);
     } else if (def.type == FilterType::SELECT_OR_TYPE) {
-        QString text = filterSelectCombo->currentText().trimmed();
+        QString dataVal = filterSelectCombo->currentData().toString().trimmed();
+        QString text = dataVal.isEmpty() ? filterSelectCombo->currentText().trimmed() : dataVal;
         if (text == "-- Tất cả --" || text.isEmpty()) {
             if (onRefresh) onRefresh();
             return;
+        }
+        if (dataVal.isEmpty()) {
+            text = UiLocalization::unlocalizeFilterValue(def.columnKey, text);
         }
         onFilter(def.columnKey, text, "", false);
     }
@@ -1202,7 +1210,14 @@ void TransactionHubWidget::renderMasterRows()
                     }
                 }
             }
-            auto* item = new QTableWidgetItem(text);
+            QString dispText = UiLocalization::localizeColumnValue(masterKeys[c], text);
+            auto* item = new QTableWidgetItem(dispText);
+            if (UiLocalization::isStatusColumnKey(masterKeys[c])) {
+                item->setForeground(UiLocalization::statusTextColor(text));
+                if (UiLocalization::isCompletedStatus(text)) {
+                    item->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
+                }
+            }
             masterTable->setItem(static_cast<int>(r), static_cast<int>(c), item);
         }
     }
@@ -1211,8 +1226,8 @@ void TransactionHubWidget::renderMasterRows()
     masterTable->setColumnWidth(0, 160); // Code
     masterTable->setColumnWidth(1, 140); // Customer
     masterTable->setColumnWidth(2, 110); // Date
-    masterTable->setColumnWidth(3, 130); // Type
-    masterTable->setColumnWidth(4, 120); // Status
+    masterTable->setColumnWidth(3, 145); // Type
+    masterTable->setColumnWidth(4, 155); // Status
 
     masterTable->blockSignals(false);
     masterTable->setUpdatesEnabled(true);
@@ -1495,15 +1510,11 @@ void TransactionHubWidget::renderLogisticsBatches()
         auto* it0 = new QTableWidgetItem(code);
         auto* it1 = new QTableWidgetItem(expDate);
         auto* it2 = new QTableWidgetItem(actDate);
-        auto* it3 = new QTableWidgetItem(status);
+        auto* it3 = new QTableWidgetItem(UiLocalization::localizeStatus(status));
 
-        if (status == "COMPLETED") {
-            it3->setForeground(QColor(16, 185, 129));
+        it3->setForeground(UiLocalization::statusTextColor(status));
+        if (UiLocalization::isCompletedStatus(status)) {
             it3->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
-        } else if (status == "IN_PROGRESS") {
-            it3->setForeground(QColor(37, 99, 235));
-        } else {
-            it3->setForeground(QColor(234, 88, 12));
         }
 
         logisticsTable->setItem(i, 0, it0);
@@ -1515,7 +1526,7 @@ void TransactionHubWidget::renderLogisticsBatches()
     logisticsTable->setColumnWidth(0, 160);
     logisticsTable->setColumnWidth(1, 130);
     logisticsTable->setColumnWidth(2, 130);
-    logisticsTable->setColumnWidth(3, 110);
+    logisticsTable->setColumnWidth(3, 155);
 
     logisticsTable->blockSignals(false);
     logisticsTable->setUpdatesEnabled(true);
@@ -1695,16 +1706,12 @@ void TransactionHubWidget::updateMasterRowInPlace(int row, const std::string& fi
             QTableWidgetItem* it = masterTable->item(row, static_cast<int>(c));
             if (it) {
                 QString valStr = formatValue(newValue);
-                it->setText(valStr);
-                if (valStr == "COMPLETED") {
-                    it->setForeground(QColor(16, 185, 129));
-                    it->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
-                } else if (valStr == "PROCESSING") {
-                    it->setForeground(QColor(37, 99, 235));
-                } else if (valStr == "CANCELLED") {
-                    it->setForeground(QColor(220, 38, 38));
-                } else {
-                    it->setForeground(QColor(234, 88, 12));
+                it->setText(UiLocalization::localizeColumnValue(masterKeys[c], valStr));
+                if (UiLocalization::isStatusColumnKey(masterKeys[c])) {
+                    it->setForeground(UiLocalization::statusTextColor(valStr));
+                    if (UiLocalization::isCompletedStatus(valStr)) {
+                        it->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
+                    }
                 }
             }
             break;
@@ -1738,15 +1745,11 @@ void TransactionHubWidget::updateLogisticsRowInPlace(int row, const std::string&
         QTableWidgetItem* it = logisticsTable->item(row, targetCol);
         if (it) {
             QString valStr = formatValue(newValue);
-            it->setText(valStr);
+            it->setText(targetCol == 3 ? UiLocalization::localizeStatus(valStr) : valStr);
             if (targetCol == 3) {
-                if (valStr == "COMPLETED") {
-                    it->setForeground(QColor(16, 185, 129));
+                it->setForeground(UiLocalization::statusTextColor(valStr));
+                if (UiLocalization::isCompletedStatus(valStr)) {
                     it->setFont(QFont(font().family(), font().pointSize(), QFont::Bold));
-                } else if (valStr == "IN_PROGRESS" || valStr == "RECEIVING") {
-                    it->setForeground(QColor(37, 99, 235));
-                } else {
-                    it->setForeground(QColor(234, 88, 12));
                 }
             }
         }
@@ -1915,7 +1918,7 @@ void TransactionHubWidget::onUpdateOrderStatusClicked()
             int targetCol = (statusCol >= 0) ? statusCol : 4;
             if (targetCol < masterTable->columnCount()) {
                 auto* itSt = masterTable->item(curRow, targetCol);
-                if (itSt) status = itSt->text().trimmed();
+                if (itSt) status = UiLocalization::unlocalizeFilterValue("status", itSt->text().trimmed());
             }
         }
     }
@@ -1949,7 +1952,8 @@ void TransactionHubWidget::onUpdateOrderStatusClicked()
         detailBanner->setText(QString("📌 Chi tiết đối chiếu theo đơn: %1 | Đối tác: %2 | Ngày đặt: %3")
             .arg(orderCode, custCode, orderDate));
 
-        QString summary = QString("Đã cập nhật trạng thái đơn %1 thành %2").arg(orderCode, QString::fromStdString(newStatus));
+        QString summary = QString("Đã cập nhật trạng thái đơn %1 thành %2")
+            .arg(orderCode, UiLocalization::localizeStatus(QString::fromStdString(newStatus)));
         if (onMarkDirty) {
             onMarkDirty(summary);
         } else if (onDataChanged) {
@@ -2078,7 +2082,8 @@ void TransactionHubWidget::onInspectOrderClicked()
     if (rec->has("customer.customer_code") && holds_alternative<string>(rec->get("customer.customer_code")))
         custCode = QString::fromStdString(get<string>(rec->get("customer.customer_code")));
 
-    QString summary = QString("Đối tác / Khách hàng: %1  |  Ngày đặt: %2  |  Trạng thái: %3").arg(custCode, orderDate, status);
+    QString summary = QString("Đối tác / Khách hàng: %1  |  Ngày đặt: %2  |  Trạng thái: %3")
+        .arg(custCode, orderDate, UiLocalization::localizeStatus(status));
     DetailInspectionDialog dlg(
         hubType == HubType::INBOUND ? DetailInspectionDialog::InspectionMode::INBOUND_ORDER
                                     : DetailInspectionDialog::InspectionMode::OUTBOUND_ORDER,
@@ -2172,7 +2177,7 @@ void TransactionHubWidget::onUpdateLogisticsClicked()
     if (parentOrderStatus == "COMPLETED" || parentOrderStatus == "CANCELLED") {
         QMessageBox::warning(this, "Đợt giao nhận đã bị khóa",
             QString("Đơn hàng %1 đang ở trạng thái [%2]. Toàn bộ các đợt vận chuyển liên quan đã bị khóa.")
-                .arg(parentCode, QString::fromStdString(parentOrderStatus)));
+                .arg(parentCode, UiLocalization::localizeStatus(QString::fromStdString(parentOrderStatus))));
         return;
     }
 

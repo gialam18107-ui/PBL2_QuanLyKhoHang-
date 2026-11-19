@@ -435,12 +435,15 @@ int main()
     assert(rDispatch.success == true);
 
     // Verify unit status transitioned to OUT
+    int dispatchedUnitId = -1;
     for (const auto& u : unitTbl->view()) {
         if (std::get<string>(u.get("serial")) == unitToDispatch) {
             assert(std::get<string>(u.get("status")) == "OUT");
+            dispatchedUnitId = std::get<int>(u.get("unit_id"));
             break;
         }
     }
+    assert(dispatchedUnitId > 0);
     std::cout << "Unit " << unitToDispatch << " status transitioned to 'OUT' (verified)" << std::endl;
 
     // Verify product_quantity available decreased by 1
@@ -452,7 +455,15 @@ int main()
     const Table* histTbl = db.getTable("status_history");
     auto histV = histTbl->view("transaction", Value(latestShipId));
     assert(!histV.empty());
-    const Record* latestHist = &(*histV.begin());
+    const Record* latestHist = nullptr;
+    for (const auto& h : histV) {
+        if (h.has("unit_id") && std::holds_alternative<int>(h.get("unit_id")) &&
+            std::get<int>(h.get("unit_id")) == dispatchedUnitId &&
+            h.has("type") && std::holds_alternative<string>(h.get("type")) &&
+            std::get<string>(h.get("type")) == "OUTBOUND") {
+            latestHist = &h;
+        }
+    }
     assert(latestHist != nullptr);
     assert(std::get<string>(latestHist->get("curr_status")) == "OUT");
     assert(std::get<string>(latestHist->get("old_status")) == "AVAILABLE");
@@ -479,6 +490,7 @@ int main()
     auto chkV1 = chkTbl->view("check_code", Value(chkCode1));
     assert(!chkV1.empty());
     int lastChkId1 = std::get<int>((*chkV1.begin()).get("check_id"));
+    assert(user_update::completeInventoryCheck(&db, lastChkId1).success);
 
     // 8.1 Inbound Adjustment with empty customer code -> defaults to BS-0000000 (customer_id = 0)
     Vector<Pair<int, int>> adjInItems;
@@ -506,6 +518,7 @@ int main()
     auto chkV2 = chkTbl->view("check_code", Value(chkCode2));
     assert(!chkV2.empty());
     int lastChkId2 = std::get<int>((*chkV2.begin()).get("check_id"));
+    assert(user_update::completeInventoryCheck(&db, lastChkId2).success);
 
     // 8.2 Outbound Adjustment with empty customer code -> defaults to BS-0000000 (customer_id = 0)
     Vector<Pair<int, int>> adjOutItems;

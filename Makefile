@@ -62,8 +62,8 @@ main.exe: app.exe
 guiding.exe: $(BUILD_DIR)/guiding.o $(CORE_OBJS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-# Qt6 UI test executable for inventory check
-test_inventory_check_ui.exe test/test_inventory_check_ui.exe: $(BUILD_DIR)/test/test_inventory_check_ui.o $(BUILD_DIR)/ui/InventoryCheckDialog.o $(CORE_OBJS)
+# Qt6 UI test executable for inventory check & related dialogs
+test_inventory_check_ui.exe test/test_inventory_check_ui.exe: $(BUILD_DIR)/test/test_inventory_check_ui.o $(UI_OBJS) $(CORE_OBJS)
 	$(CXX) $(CXXFLAGS) $^ $(QT_LIBS) -o $@
 
 # Pattern to build test executable test/<name>.exe from test/<name>.cpp

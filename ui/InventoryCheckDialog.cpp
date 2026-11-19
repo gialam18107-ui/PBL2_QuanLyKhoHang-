@@ -16,6 +16,7 @@
 #include <QCloseEvent>
 #include <QSignalBlocker>
 #include "ui/TableClipboardHelper.h"
+#include "ui/UiLocalization.h"
 #include <cstdint>
 #include <map>
 #include <tuple>
@@ -269,7 +270,7 @@ void InventoryCheckCreateDialog::setupUI()
 
     infoGrid->addWidget(new QLabel("Hình thức kiểm kê (*):", infoGroup), 0, 0);
     typeCombo = new QComboBox(infoGroup);
-    typeCombo->addItem("UNIT — Kiểm kê chi tiết từng đơn vị", "UNIT");
+    typeCombo->addItem("Theo Serial", "UNIT");
     infoGrid->addWidget(typeCombo, 0, 1);
 
     infoGrid->addWidget(new QLabel("Ngày kiểm kho (*):", infoGroup), 0, 2);
@@ -308,7 +309,7 @@ void InventoryCheckCreateDialog::setupUI()
         "Chọn", "Mã SP", "Tên sản phẩm", "Danh mục", "Khả dụng", "Bảo hành", "Lỗi/hỏng", "Tổng tồn"
     });
     productTable->setColumnWidth(0, 55);
-    productTable->setColumnWidth(1, 110);
+    productTable->setColumnWidth(1, 155);
     productTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
     productTable->setColumnWidth(3, 120);
     productTable->setColumnWidth(4, 95);
@@ -318,7 +319,7 @@ void InventoryCheckCreateDialog::setupUI()
     productTable->verticalHeader()->setDefaultSectionSize(32);
     productTable->verticalHeader()->setVisible(false);
     productTable->setAlternatingRowColors(true);
-    productTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    TableClipboardHelper::setupClipboardForTable(productTable);
     productTable->setStyleSheet(
         "QTableWidget { background-color: #ffffff; alternate-background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 12px; }"
         "QHeaderView::section { background-color: #f1f5f9; color: #334155; font-weight: 600; padding: 6px 8px; border: none; border-bottom: 1px solid #cbd5e1; }"
@@ -620,15 +621,6 @@ void UnrecordedSurplusDialog::onConfirm()
 // 3. InventoryCheckReconciliationDialog (Rule 5.3.2 3-Tier Reconciliation Funnel)
 // ============================================================================
 
-static QString localizeStatus(const QString& st)
-{
-    if (st == "AVAILABLE") return "Khả dụng";
-    if (st == "WARRANTY") return "Bảo hành";
-    if (st == "SCRAPPED") return "Lỗi/hỏng";
-    if (st == "OUT") return "Đã xuất";
-    return st;
-}
-
 InventoryCheckReconciliationDialog::InventoryCheckReconciliationDialog(Database* database, int id, QWidget* parent)
     : QDialog(parent), db(database), checkId(id), orderGenerated(false),
       missingSelectAllBtn(nullptr), missingDeselectAllBtn(nullptr),
@@ -667,9 +659,9 @@ void InventoryCheckReconciliationDialog::setupUI()
     headerTitle->setStyleSheet("font-size: 16px; font-weight: 700; color: #0f172a;");
     titleBox->addWidget(headerTitle);
 
-    QString stColor = (checkStatus == "COMPLETED" ? "#16a34a" : (checkStatus == "PROCESSING" ? "#2563eb" : "#ca8a04"));
+    QString stColor = UiLocalization::statusTextColor(checkStatus).name();
     auto* stBadge = new QLabel(QString("<span style='background-color:%1; color:#ffffff; font-weight:bold; padding:4px 10px; border-radius:4px;'>Trạng thái: %2</span>")
-        .arg(stColor, checkStatus), this);
+        .arg(stColor, UiLocalization::localizeStatus(checkStatus)), this);
     titleBox->addWidget(stBadge);
     titleBox->addStretch();
     mainLayout->addLayout(titleBox);
@@ -732,7 +724,8 @@ void InventoryCheckReconciliationDialog::setupUI()
     matrixSearchEdit = new QLineEdit(tier2Box);
     matrixSearchEdit->setPlaceholderText("🔍 Tìm theo Mã hoặc Tên sản phẩm...");
     matrixSearchEdit->setClearButtonEnabled(true);
-    matrixSearchEdit->setMaximumWidth(280);
+    matrixSearchEdit->setMinimumWidth(260);
+    matrixSearchEdit->setMaximumWidth(360);
     connect(matrixSearchEdit, &QLineEdit::textChanged, [this](const QString& text) {
         QString q = text.trimmed().toLower();
         for (int r = 0; r < matrixTable->rowCount(); ++r) {
@@ -758,14 +751,14 @@ void InventoryCheckReconciliationDialog::setupUI()
     matrixTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Interactive);
     matrixTable->setColumnWidth(0, 48);
     matrixTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Interactive);
-    matrixTable->setColumnWidth(1, 115);
+    matrixTable->setColumnWidth(1, 155);
     matrixTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
     for (int c = 3; c <= 10; ++c) {
         matrixTable->horizontalHeader()->setSectionResizeMode(c, QHeaderView::Interactive);
         matrixTable->setColumnWidth(c, 78);
     }
     matrixTable->setAlternatingRowColors(true);
-    matrixTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    TableClipboardHelper::setupClipboardForTable(matrixTable);
     matrixTable->verticalHeader()->setDefaultSectionSize(32);
     matrixTable->verticalHeader()->setVisible(false);
     matrixTable->setStyleSheet(
@@ -799,7 +792,8 @@ void InventoryCheckReconciliationDialog::setupUI()
     auto* b1SearchEdit = new QLineEdit(b1Widget);
     b1SearchEdit->setPlaceholderText("🔍 Tìm theo Serial, Mã SP...");
     b1SearchEdit->setClearButtonEnabled(true);
-    b1SearchEdit->setMaximumWidth(240);
+    b1SearchEdit->setMinimumWidth(260);
+    b1SearchEdit->setMaximumWidth(360);
     connect(b1SearchEdit, &QLineEdit::textChanged, [this](const QString& text) {
         QString q = text.trimmed().toLower();
         for (int r = 0; r < missingUnitTable->rowCount(); ++r) {
@@ -824,11 +818,12 @@ void InventoryCheckReconciliationDialog::setupUI()
     missingUnitTable->setColumnWidth(0, 55);
     missingUnitTable->setColumnWidth(1, 45);
     missingUnitTable->setColumnWidth(2, 150);
-    missingUnitTable->setColumnWidth(3, 95);
+    missingUnitTable->setColumnWidth(3, 155);
     missingUnitTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Stretch);
-    missingUnitTable->setColumnWidth(5, 140);
-    missingUnitTable->setColumnWidth(6, 140);
+    missingUnitTable->setColumnWidth(5, 145);
+    missingUnitTable->setColumnWidth(6, 175);
     missingUnitTable->setAlternatingRowColors(true);
+    TableClipboardHelper::setupClipboardForTable(missingUnitTable);
     missingUnitTable->verticalHeader()->setDefaultSectionSize(32);
     missingUnitTable->verticalHeader()->setVisible(false);
     b1Layout->addWidget(missingUnitTable, 1);
@@ -861,7 +856,8 @@ void InventoryCheckReconciliationDialog::setupUI()
     auto* b2SearchEdit = new QLineEdit(b2Widget);
     b2SearchEdit->setPlaceholderText("🔍 Tìm theo Serial, Mã SP...");
     b2SearchEdit->setClearButtonEnabled(true);
-    b2SearchEdit->setMaximumWidth(240);
+    b2SearchEdit->setMinimumWidth(260);
+    b2SearchEdit->setMaximumWidth(360);
     connect(b2SearchEdit, &QLineEdit::textChanged, [this](const QString& text) {
         QString q = text.trimmed().toLower();
         for (int r = 0; r < surplusDetailTable->rowCount(); ++r) {
@@ -886,11 +882,12 @@ void InventoryCheckReconciliationDialog::setupUI()
     surplusDetailTable->setColumnWidth(0, 55);
     surplusDetailTable->setColumnWidth(1, 45);
     surplusDetailTable->setColumnWidth(2, 150);
-    surplusDetailTable->setColumnWidth(3, 95);
+    surplusDetailTable->setColumnWidth(3, 155);
     surplusDetailTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Stretch);
-    surplusDetailTable->setColumnWidth(5, 140);
-    surplusDetailTable->setColumnWidth(6, 140);
+    surplusDetailTable->setColumnWidth(5, 145);
+    surplusDetailTable->setColumnWidth(6, 175);
     surplusDetailTable->setAlternatingRowColors(true);
+    TableClipboardHelper::setupClipboardForTable(surplusDetailTable);
     surplusDetailTable->verticalHeader()->setDefaultSectionSize(32);
     surplusDetailTable->verticalHeader()->setVisible(false);
     b2Layout->addWidget(surplusDetailTable, 1);
@@ -923,7 +920,8 @@ void InventoryCheckReconciliationDialog::setupUI()
     auto* b3SearchEdit = new QLineEdit(b3Widget);
     b3SearchEdit->setPlaceholderText("🔍 Tìm theo Serial, Mã SP...");
     b3SearchEdit->setClearButtonEnabled(true);
-    b3SearchEdit->setMaximumWidth(240);
+    b3SearchEdit->setMinimumWidth(260);
+    b3SearchEdit->setMaximumWidth(360);
     connect(b3SearchEdit, &QLineEdit::textChanged, [this](const QString& text) {
         QString q = text.trimmed().toLower();
         for (int r = 0; r < movementDetailTable->rowCount(); ++r) {
@@ -943,16 +941,18 @@ void InventoryCheckReconciliationDialog::setupUI()
     b3Layout->addLayout(b3ToolBar);
 
     movementDetailTable = new QTableWidget(b3Widget);
-    movementDetailTable->setColumnCount(7);
-    movementDetailTable->setHorizontalHeaderLabels({"Chọn", "STT", "Số Serial (SN)", "Mã SP", "Tên sản phẩm", "Từ trạng thái", "Đến trạng thái"});
+    movementDetailTable->setColumnCount(8);
+    movementDetailTable->setHorizontalHeaderLabels({"Chọn", "STT", "Số Serial (SN)", "Mã SP", "Tên sản phẩm", "Từ trạng thái", "Đến trạng thái", "Đối soát live"});
     movementDetailTable->setColumnWidth(0, 55);
     movementDetailTable->setColumnWidth(1, 45);
     movementDetailTable->setColumnWidth(2, 150);
-    movementDetailTable->setColumnWidth(3, 95);
+    movementDetailTable->setColumnWidth(3, 155);
     movementDetailTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Stretch);
-    movementDetailTable->setColumnWidth(5, 140);
-    movementDetailTable->setColumnWidth(6, 140);
+    movementDetailTable->setColumnWidth(5, 130);
+    movementDetailTable->setColumnWidth(6, 130);
+    movementDetailTable->setColumnWidth(7, 165);
     movementDetailTable->setAlternatingRowColors(true);
+    TableClipboardHelper::setupClipboardForTable(movementDetailTable);
     movementDetailTable->verticalHeader()->setDefaultSectionSize(32);
     movementDetailTable->verticalHeader()->setVisible(false);
     b3Layout->addWidget(movementDetailTable, 1);
@@ -1000,7 +1000,8 @@ void InventoryCheckReconciliationDialog::setupUI()
         missingUnitTable->blockSignals(true);
         missingUnitTable->setUpdatesEnabled(false);
         for (int r = 0; r < missingUnitTable->rowCount(); ++r) {
-            if (missingUnitTable->item(r, 0)) missingUnitTable->item(r, 0)->setCheckState(Qt::Checked);
+            auto* it = missingUnitTable->item(r, 0);
+            if (it && (it->flags() & Qt::ItemIsUserCheckable)) it->setCheckState(Qt::Checked);
         }
         missingUnitTable->blockSignals(false);
         missingUnitTable->setUpdatesEnabled(true);
@@ -1019,7 +1020,8 @@ void InventoryCheckReconciliationDialog::setupUI()
         surplusDetailTable->blockSignals(true);
         surplusDetailTable->setUpdatesEnabled(false);
         for (int r = 0; r < surplusDetailTable->rowCount(); ++r) {
-            if (surplusDetailTable->item(r, 0)) surplusDetailTable->item(r, 0)->setCheckState(Qt::Checked);
+            auto* it = surplusDetailTable->item(r, 0);
+            if (it && (it->flags() & Qt::ItemIsUserCheckable)) it->setCheckState(Qt::Checked);
         }
         surplusDetailTable->blockSignals(false);
         surplusDetailTable->setUpdatesEnabled(true);
@@ -1038,7 +1040,8 @@ void InventoryCheckReconciliationDialog::setupUI()
         movementDetailTable->blockSignals(true);
         movementDetailTable->setUpdatesEnabled(false);
         for (int r = 0; r < movementDetailTable->rowCount(); ++r) {
-            if (movementDetailTable->item(r, 0)) movementDetailTable->item(r, 0)->setCheckState(Qt::Checked);
+            auto* it = movementDetailTable->item(r, 0);
+            if (it && (it->flags() & Qt::ItemIsUserCheckable)) it->setCheckState(Qt::Checked);
         }
         movementDetailTable->blockSignals(false);
         movementDetailTable->setUpdatesEnabled(true);
@@ -1126,26 +1129,26 @@ void InventoryCheckReconciliationDialog::loadReconciliationData()
                         // Type 1 Surplus (Rediscovered OUT Unit)
                         if (!scanSt.isEmpty() && scanSt != "OUT") {
                             surplusCount++;
-                            surplusUnitList.push_back({"REDISCOVERED_OUT", pid, sn, pCode, pName, "OUT", scanSt, 1});
+                            surplusUnitList.push_back({"REDISCOVERED_OUT", pid, sn, pCode, pName, "OUT", scanSt, 1, false, ""});
                         }
                     } else if (sysSt.isEmpty()) {
                         // Type 2 Surplus (Brand-new Unrecorded Unit recorded in inventory_check_unit)
                         if (!scanSt.isEmpty() && scanSt != "OUT") {
                             surplusCount++;
-                            surplusUnitList.push_back({"NEW_SURPLUS", pid, sn, pCode, pName, "NULL", scanSt, 1});
+                            surplusUnitList.push_back({"NEW_SURPLUS", pid, sn, pCode, pName, "NULL", scanSt, 1, false, ""});
                         }
                     } else {
                         // Candidate unit in warehouse
                         if (scanSt.isEmpty() || scanSt == "UNCHECKED" || scanSt == "OUT") {
                             // Missing unit
                             missingCount++;
-                            missingUnitList.push_back({cuId, pid, sn, pCode, pName, sysSt});
+                            missingUnitList.push_back({cuId, pid, sn, pCode, pName, sysSt, false, ""});
                         } else if (scanSt == sysSt) {
                             matchedCount++;
                         } else {
                             // Status shift
                             shiftCount++;
-                            statusShiftUnitList.push_back({cuId, pid, sn, pCode, pName, sysSt, scanSt});
+                            statusShiftUnitList.push_back({cuId, pid, sn, pCode, pName, sysSt, scanSt, false, ""});
                         }
                     }
                 }
@@ -1157,9 +1160,9 @@ void InventoryCheckReconciliationDialog::loadReconciliationData()
             int unrecScrap = std::max(0, actScrap - scanScrapCount);
             unrecordedSurplus = unrecAvail + unrecWarr + unrecScrap;
 
-            if (unrecAvail > 0) surplusUnitList.push_back({"UNRECORDED", pid, "(Chưa định danh)", pCode, pName, "NULL", "AVAILABLE", unrecAvail});
-            if (unrecWarr > 0) surplusUnitList.push_back({"UNRECORDED", pid, "(Chưa định danh)", pCode, pName, "NULL", "WARRANTY", unrecWarr});
-            if (unrecScrap > 0) surplusUnitList.push_back({"UNRECORDED", pid, "(Chưa định danh)", pCode, pName, "NULL", "SCRAPPED", unrecScrap});
+            if (unrecAvail > 0) surplusUnitList.push_back({"UNRECORDED", pid, "(Chưa định danh)", pCode, pName, "NULL", "AVAILABLE", unrecAvail, false, ""});
+            if (unrecWarr > 0) surplusUnitList.push_back({"UNRECORDED", pid, "(Chưa định danh)", pCode, pName, "NULL", "WARRANTY", unrecWarr, false, ""});
+            if (unrecScrap > 0) surplusUnitList.push_back({"UNRECORDED", pid, "(Chưa định danh)", pCode, pName, "NULL", "SCRAPPED", unrecScrap, false, ""});
 
             surplusCount += unrecordedSurplus;
         } else {
@@ -1167,10 +1170,10 @@ void InventoryCheckReconciliationDialog::loadReconciliationData()
             int diff = actTotal - sysTotal;
             if (diff > 0) {
                 surplusCount = diff;
-                surplusUnitList.push_back({"UNRECORDED", pid, "(Số lượng thừa)", pCode, pName, "NULL", "AVAILABLE", diff});
+                surplusUnitList.push_back({"UNRECORDED", pid, "(Số lượng thừa)", pCode, pName, "NULL", "AVAILABLE", diff, false, ""});
             } else if (diff < 0) {
                 missingCount = -diff;
-                missingUnitList.push_back({0, pid, "(Số lượng thiếu)", pCode, pName, "AVAILABLE"});
+                missingUnitList.push_back({0, pid, "(Số lượng thiếu)", pCode, pName, "AVAILABLE", false, ""});
             }
             matchedCount = std::min(sysTotal, actTotal);
 
@@ -1181,10 +1184,10 @@ void InventoryCheckReconciliationDialog::loadReconciliationData()
             if (diff == 0 && (diffAvail != 0 || diffWarr != 0 || diffScrap != 0)) {
                 shiftCount = (std::abs(diffAvail) + std::abs(diffWarr) + std::abs(diffScrap)) / 2;
                 if (diffAvail < 0 && diffScrap > 0) {
-                    statusShiftUnitList.push_back({0, pid, "(Điều chuyển số lượng)", pCode, pName, "AVAILABLE", "SCRAPPED"});
+                    statusShiftUnitList.push_back({0, pid, "(Điều chuyển số lượng)", pCode, pName, "AVAILABLE", "SCRAPPED", false, ""});
                 }
                 if (diffAvail < 0 && diffWarr > 0) {
-                    statusShiftUnitList.push_back({0, pid, "(Điều chuyển số lượng)", pCode, pName, "AVAILABLE", "WARRANTY"});
+                    statusShiftUnitList.push_back({0, pid, "(Điều chuyển số lượng)", pCode, pName, "AVAILABLE", "WARRANTY", false, ""});
                 }
             }
         }
@@ -1255,6 +1258,64 @@ void InventoryCheckReconciliationDialog::loadReconciliationData()
     matrixTable->blockSignals(false);
     matrixTable->setUpdatesEnabled(true);
 
+    // Live Re-validation against unit_inventory before rendering Bucket 1..3
+    for (auto& u : surplusUnitList) {
+        u.isConflict = false;
+        u.conflictReason.clear();
+        if (u.type != "UNRECORDED" && !u.serial.startsWith("(")) {
+            int livePid = 0;
+            std::string liveSt;
+            if (user_query::get_unit_live_info_by_serial(db, u.serial.toStdString(), livePid, liveSt)) {
+                if (livePid != u.productId) {
+                    u.isConflict = true;
+                    u.conflictReason = "⚠️ Serial thuộc SP khác";
+                } else if (liveSt != "OUT") {
+                    u.isConflict = true;
+                    u.conflictReason = QString("⚠️ Đã nhập kho (%1)")
+                        .arg(UiLocalization::localizeStatus(QString::fromStdString(liveSt)));
+                }
+            }
+        }
+    }
+
+    for (auto& u : missingUnitList) {
+        u.isConflict = false;
+        u.conflictReason.clear();
+        if (!u.serial.startsWith("(")) {
+            int livePid = 0;
+            std::string liveSt;
+            bool found = user_query::get_unit_live_info_by_serial(db, u.serial.toStdString(), livePid, liveSt);
+            if (!found || livePid != u.productId) {
+                u.isConflict = true;
+                u.conflictReason = "⚠️ Không tồn tại / lệch SP";
+            } else if (liveSt == "OUT") {
+                u.isConflict = true;
+                u.conflictReason = "⚠️ Đã xuất kho trước đó";
+            }
+        }
+    }
+
+    for (auto& u : statusShiftUnitList) {
+        u.isConflict = false;
+        u.conflictReason.clear();
+        if (!u.serial.startsWith("(")) {
+            int livePid = 0;
+            std::string liveSt;
+            bool found = user_query::get_unit_live_info_by_serial(db, u.serial.toStdString(), livePid, liveSt);
+            if (!found || livePid != u.productId) {
+                u.isConflict = true;
+                u.conflictReason = "⚠️ Không tồn tại / lệch SP";
+            } else if (liveSt == "OUT") {
+                u.isConflict = true;
+                u.conflictReason = "⚠️ Đã xuất kho trước đó";
+            } else if (liveSt != u.fromStatus.toStdString()) {
+                u.isConflict = true;
+                u.conflictReason = QString("⚠️ Trạng thái đổi thành %1")
+                    .arg(UiLocalization::localizeStatus(QString::fromStdString(liveSt)));
+            }
+        }
+    }
+
     // Update Bucket 1 (Hàng cần nhập điều chỉnh - surplus/unrecorded items needing ADJUSTMENT_IN)
     missingUnitTable->setUpdatesEnabled(false);
     missingUnitTable->blockSignals(true);
@@ -1262,16 +1323,34 @@ void InventoryCheckReconciliationDialog::loadReconciliationData()
     for (int r = 0; r < static_cast<int>(surplusUnitList.size()); ++r) {
         const auto& u = surplusUnitList[r];
         auto* chkItem = makeItem("");
-        chkItem->setFlags(Qt::ItemIsUserCheckable | Qt::ItemIsEnabled | Qt::ItemIsSelectable);
-        chkItem->setCheckState(Qt::Checked);
+        if (u.isConflict) {
+            chkItem->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
+            chkItem->setCheckState(Qt::Unchecked);
+        } else {
+            chkItem->setFlags(Qt::ItemIsUserCheckable | Qt::ItemIsEnabled | Qt::ItemIsSelectable);
+            chkItem->setCheckState(Qt::Checked);
+        }
         missingUnitTable->setItem(r, 0, chkItem);
         missingUnitTable->setItem(r, 1, makeItem(QString::number(r + 1), Qt::AlignCenter));
         missingUnitTable->setItem(r, 2, makeItem(u.serial));
         missingUnitTable->setItem(r, 3, makeItem(u.productCode));
         missingUnitTable->setItem(r, 4, makeItem(u.productName));
-        missingUnitTable->setItem(r, 5, makeItem(localizeStatus(u.physicalCondition)));
-        QString typeDesc = (u.type == "REDISCOVERED_OUT" ? "Tái phát hiện" : "Hàng thừa thực tế");
+        missingUnitTable->setItem(r, 5, makeItem(UiLocalization::localizeStatus(u.physicalCondition)));
+        QString typeDesc = u.isConflict
+            ? u.conflictReason
+            : (u.type == "REDISCOVERED_OUT" ? "Tái phát hiện"
+               : (u.type == "UNRECORDED" && u.quantity > 1
+                  ? QString("Hàng thừa (%1 cái)").arg(u.quantity)
+                  : QString("Hàng thừa thực tế")));
         missingUnitTable->setItem(r, 6, makeItem(typeDesc));
+        if (u.isConflict) {
+            for (int c = 0; c < missingUnitTable->columnCount(); ++c) {
+                if (auto* it = missingUnitTable->item(r, c)) {
+                    it->setForeground(QColor("#94a3b8"));
+                    if (c == 6) it->setForeground(QColor("#dc2626"));
+                }
+            }
+        }
     }
     missingUnitTable->blockSignals(false);
     missingUnitTable->setUpdatesEnabled(true);
@@ -1283,15 +1362,28 @@ void InventoryCheckReconciliationDialog::loadReconciliationData()
     for (int r = 0; r < static_cast<int>(missingUnitList.size()); ++r) {
         const auto& u = missingUnitList[r];
         auto* chkItem = makeItem("");
-        chkItem->setFlags(Qt::ItemIsUserCheckable | Qt::ItemIsEnabled | Qt::ItemIsSelectable);
-        chkItem->setCheckState(Qt::Checked);
+        if (u.isConflict) {
+            chkItem->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
+            chkItem->setCheckState(Qt::Unchecked);
+        } else {
+            chkItem->setFlags(Qt::ItemIsUserCheckable | Qt::ItemIsEnabled | Qt::ItemIsSelectable);
+            chkItem->setCheckState(Qt::Checked);
+        }
         surplusDetailTable->setItem(r, 0, chkItem);
         surplusDetailTable->setItem(r, 1, makeItem(QString::number(r + 1), Qt::AlignCenter));
         surplusDetailTable->setItem(r, 2, makeItem(u.serial));
         surplusDetailTable->setItem(r, 3, makeItem(u.productCode));
         surplusDetailTable->setItem(r, 4, makeItem(u.productName));
-        surplusDetailTable->setItem(r, 5, makeItem(localizeStatus(u.systemStatus)));
-        surplusDetailTable->setItem(r, 6, makeItem("Hàng thiếu trên thực tế"));
+        surplusDetailTable->setItem(r, 5, makeItem(UiLocalization::localizeStatus(u.systemStatus)));
+        surplusDetailTable->setItem(r, 6, makeItem(u.isConflict ? u.conflictReason : "Hàng thiếu trên thực tế"));
+        if (u.isConflict) {
+            for (int c = 0; c < surplusDetailTable->columnCount(); ++c) {
+                if (auto* it = surplusDetailTable->item(r, c)) {
+                    it->setForeground(QColor("#94a3b8"));
+                    if (c == 6) it->setForeground(QColor("#dc2626"));
+                }
+            }
+        }
     }
     surplusDetailTable->blockSignals(false);
     surplusDetailTable->setUpdatesEnabled(true);
@@ -1303,15 +1395,31 @@ void InventoryCheckReconciliationDialog::loadReconciliationData()
     for (int r = 0; r < static_cast<int>(statusShiftUnitList.size()); ++r) {
         const auto& u = statusShiftUnitList[r];
         auto* chkItem = makeItem("");
-        chkItem->setFlags(Qt::ItemIsUserCheckable | Qt::ItemIsEnabled | Qt::ItemIsSelectable);
-        chkItem->setCheckState(Qt::Checked);
+        if (u.isConflict) {
+            chkItem->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
+            chkItem->setCheckState(Qt::Unchecked);
+        } else {
+            chkItem->setFlags(Qt::ItemIsUserCheckable | Qt::ItemIsEnabled | Qt::ItemIsSelectable);
+            chkItem->setCheckState(Qt::Checked);
+        }
         movementDetailTable->setItem(r, 0, chkItem);
         movementDetailTable->setItem(r, 1, makeItem(QString::number(r + 1), Qt::AlignCenter));
         movementDetailTable->setItem(r, 2, makeItem(u.serial));
         movementDetailTable->setItem(r, 3, makeItem(u.productCode));
         movementDetailTable->setItem(r, 4, makeItem(u.productName));
-        movementDetailTable->setItem(r, 5, makeItem(localizeStatus(u.fromStatus)));
-        movementDetailTable->setItem(r, 6, makeItem(localizeStatus(u.toStatus)));
+        movementDetailTable->setItem(r, 5, makeItem(UiLocalization::localizeStatus(u.fromStatus)));
+        movementDetailTable->setItem(r, 6, makeItem(UiLocalization::localizeStatus(u.toStatus)));
+        movementDetailTable->setItem(r, 7, makeItem(u.isConflict ? u.conflictReason : "✅ Sẵn sàng"));
+        if (u.isConflict) {
+            for (int c = 0; c < movementDetailTable->columnCount(); ++c) {
+                if (auto* it = movementDetailTable->item(r, c)) {
+                    it->setForeground(QColor("#94a3b8"));
+                    if (c == 7) it->setForeground(QColor("#dc2626"));
+                }
+            }
+        } else if (auto* it7 = movementDetailTable->item(r, 7)) {
+            it7->setForeground(QColor("#15803d"));
+        }
     }
     movementDetailTable->blockSignals(false);
     movementDetailTable->setUpdatesEnabled(true);
@@ -1335,14 +1443,65 @@ void InventoryCheckReconciliationDialog::updateLockingState()
     bool hasMovOrder = !movCodeStd.empty();
     QString movCode = QString::fromStdString(movCodeStd);
 
+    int validInCount = 0;
+    for (const auto& u : surplusUnitList) if (!u.isConflict) validInCount++;
+    int validOutCount = 0;
+    for (const auto& u : missingUnitList) if (!u.isConflict) validOutCount++;
+    int validMovCount = 0;
+    for (const auto& u : statusShiftUnitList) if (!u.isConflict) validMovCount++;
+
+    if (hasInOrder) {
+        createInboundBtn->setEnabled(false);
+        createInboundBtn->setText(QString("🔒 Đã tạo đơn nhập: %1").arg(inCode));
+        createInboundBtn->setStyleSheet("background-color: #e2e8f0; color: #475569; font-weight: 600; padding: 8px 16px; border-radius: 6px;");
+        inboundStatusLabel->setText(QString("✅ Đơn nhập điều chỉnh: <b style='color:#15803d;'>%1</b>").arg(inCode));
+    } else if (surplusUnitList.empty() || validInCount == 0) {
+        createInboundBtn->setEnabled(false);
+        createInboundBtn->setText(surplusUnitList.empty()
+            ? "Không có linh kiện cần nhập điều chỉnh"
+            : "Tất cả linh kiện đã nhập kho / trùng");
+        createInboundBtn->setStyleSheet("background-color: #f1f5f9; color: #94a3b8; font-weight: 500; padding: 8px 16px; border-radius: 6px;");
+        inboundStatusLabel->setText("");
+    } else {
+        createInboundBtn->setEnabled(isCompleted);
+        createInboundBtn->setText("📥 Tạo đơn nhập điều chỉnh");
+        createInboundBtn->setStyleSheet(isCompleted
+            ? "background-color: #2563eb; color: #ffffff; font-weight: 600; padding: 8px 16px; border-radius: 6px;"
+            : "background-color: #94a3b8; color: #ffffff; font-weight: 600; padding: 8px 16px; border-radius: 6px;");
+        inboundStatusLabel->setText(isCompleted ? "" : "⚠️ Cần chuyển trạng thái kiểm kê sang Hoàn thành để tạo đơn.");
+    }
+
+    if (hasOutOrder) {
+        createOutboundBtn->setEnabled(false);
+        createOutboundBtn->setText(QString("🔒 Đã tạo đơn xuất: %1").arg(outCode));
+        createOutboundBtn->setStyleSheet("background-color: #e2e8f0; color: #475569; font-weight: 600; padding: 8px 16px; border-radius: 6px;");
+        outboundStatusLabel->setText(QString("✅ Đơn xuất điều chỉnh: <b style='color:#15803d;'>%1</b>").arg(outCode));
+    } else if (missingUnitList.empty() || validOutCount == 0) {
+        createOutboundBtn->setEnabled(false);
+        createOutboundBtn->setText(missingUnitList.empty()
+            ? "Không có linh kiện cần xuất điều chỉnh"
+            : "Tất cả linh kiện đã xuất kho trước đó");
+        createOutboundBtn->setStyleSheet("background-color: #f1f5f9; color: #94a3b8; font-weight: 500; padding: 8px 16px; border-radius: 6px;");
+        outboundStatusLabel->setText("");
+    } else {
+        createOutboundBtn->setEnabled(isCompleted);
+        createOutboundBtn->setText("📤 Tạo đơn xuất điều chỉnh");
+        createOutboundBtn->setStyleSheet(isCompleted
+            ? "background-color: #dc2626; color: #ffffff; font-weight: 600; padding: 8px 16px; border-radius: 6px;"
+            : "background-color: #94a3b8; color: #ffffff; font-weight: 600; padding: 8px 16px; border-radius: 6px;");
+        outboundStatusLabel->setText(isCompleted ? "" : "⚠️ Cần chuyển trạng thái kiểm kê sang Hoàn thành để tạo đơn.");
+    }
+
     if (hasMovOrder) {
         createMovementBtn->setEnabled(false);
         createMovementBtn->setText(QString("🔒 Đã lập phiếu điều chỉnh trạng thái: %1").arg(movCode));
         createMovementBtn->setStyleSheet("background-color: #e2e8f0; color: #475569; font-weight: 600; padding: 8px 16px; border-radius: 6px;");
         movementStatusLabel->setText(QString("✅ Phiếu điều chỉnh trạng thái: <b style='color:#15803d;'>%1</b>").arg(movCode));
-    } else if (statusShiftUnitList.empty()) {
+    } else if (statusShiftUnitList.empty() || validMovCount == 0) {
         createMovementBtn->setEnabled(false);
-        createMovementBtn->setText("Không có linh kiện cần điều chỉnh trạng thái");
+        createMovementBtn->setText(statusShiftUnitList.empty()
+            ? "Không có linh kiện cần điều chỉnh trạng thái"
+            : "Không có linh kiện hợp lệ để điều chỉnh");
         createMovementBtn->setStyleSheet("background-color: #f1f5f9; color: #94a3b8; font-weight: 500; padding: 8px 16px; border-radius: 6px;");
         movementStatusLabel->setText("");
     } else {
@@ -1350,7 +1509,7 @@ void InventoryCheckReconciliationDialog::updateLockingState()
         createMovementBtn->setText("🔄 Tạo phiếu điều chỉnh trạng thái");
         createMovementBtn->setStyleSheet(isCompleted ? "background-color: #7c3aed; color: #ffffff; font-weight: 600; padding: 8px 16px; border-radius: 6px;"
                                                      : "background-color: #94a3b8; color: #ffffff; font-weight: 600; padding: 8px 16px; border-radius: 6px;");
-        movementStatusLabel->setText(isCompleted ? "" : "⚠️ Cần chuyển trạng thái kiểm kê sang COMPLETED để tạo đơn.");
+        movementStatusLabel->setText(isCompleted ? "" : "⚠️ Cần chuyển trạng thái kiểm kê sang Hoàn thành để tạo đơn.");
     }
 }
 
@@ -1358,67 +1517,52 @@ void InventoryCheckReconciliationDialog::onCreateInboundAdj()
 {
     if (!db || checkId <= 0 || checkStatus != "COMPLETED") return;
 
-    // Lọc các linh kiện được tick chọn trong Bucket 1
-    std::map<int, std::vector<std::pair<QString, QString>>> checkedByProduct;
+    Vector<user_create::BatchReceiveUnitEntry> entries;
+    std::map<int, int> prodCounts;
     for (int r = 0; r < missingUnitTable->rowCount(); ++r) {
-        if (missingUnitTable->item(r, 0) && missingUnitTable->item(r, 0)->checkState() == Qt::Checked) {
+        auto* chk = missingUnitTable->item(r, 0);
+        if (chk && (chk->flags() & Qt::ItemIsUserCheckable) && chk->checkState() == Qt::Checked) {
             if (r < static_cast<int>(surplusUnitList.size())) {
                 const auto& u = surplusUnitList[r];
-                checkedByProduct[u.productId].push_back({u.serial, u.physicalCondition});
+                if (u.isConflict) continue;
+                bool isUnrec = (u.type == "UNRECORDED" || u.serial.startsWith("("));
+                int qty = isUnrec ? std::max(1, u.quantity) : 1;
+                std::string sn = isUnrec ? "" : u.serial.toStdString();
+                for (int k = 0; k < qty; ++k) {
+                    entries.push_back({u.productId, u.physicalCondition.toStdString(), sn});
+                    prodCounts[u.productId]++;
+                }
             }
         }
     }
 
-    if (checkedByProduct.empty()) {
-        QMessageBox::warning(this, "Thông báo", "Vui lòng chọn ít nhất một linh kiện cần nhập điều chỉnh.");
+    if (entries.empty()) {
+        QMessageBox::warning(this, "Thông báo", "Vui lòng chọn ít nhất một linh kiện hợp lệ cần nhập điều chỉnh.");
         return;
-    }
-
-    int totalUnits = 0;
-    Vector<Pair<int, int>> inboundItems;
-    for (const auto& entry : checkedByProduct) {
-        inboundItems.push_back({entry.first, static_cast<int>(entry.second.size())});
-        totalUnits += static_cast<int>(entry.second.size());
     }
 
     auto ans = QMessageBox::question(
         this, "Xác nhận tạo đơn nhập điều chỉnh",
-        QString("Bạn có chắc chắn muốn tạo Đơn Nhập Điều Chỉnh (ADJUSTMENT_IN) và tự động nhập kho cho %1 mặt hàng (tổng %2 linh kiện đã chọn)?")
-            .arg(checkedByProduct.size()).arg(totalUnits),
+        QString("Bạn có chắc chắn muốn tạo Đơn Nhập Điều Chỉnh và tự động nhập kho cho %1 mặt hàng (tổng %2 linh kiện đã chọn)?")
+            .arg(prodCounts.size()).arg(entries.size()),
         QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes
     );
     if (ans != QMessageBox::Yes) return;
 
     QString today = QDate::currentDate().toString("yyyy-MM-dd");
-    OperationResult res = user_create::createInboundOrder(
-        db, "ADJUSTMENT_IN", "", inboundItems, today.toStdString(), today.toStdString(),
-        "Điều chỉnh nhập kho chênh lệch từ đợt kiểm kho " + checkCode.toStdString(),
-        checkCode.toStdString()
+    OperationResult res = user_create::createAndReceiveAdjustmentInbound(
+        db, checkCode.toStdString(), today.toStdString(), entries,
+        "Điều chỉnh nhập kho chênh lệch từ đợt kiểm kho " + checkCode.toStdString()
     );
 
     if (!res.success) {
         QMessageBox::critical(this, "Không thể tạo đơn nhập điều chỉnh", QString::fromStdString(res.message));
+        loadReconciliationData();
         return;
     }
 
-    int deliveryId = user_query::get_first_logistics_id_for_check_source(db, checkCode.toStdString(), true);
-    if (deliveryId > 0) {
-        for (const auto& entry : checkedByProduct) {
-            int pid = entry.first;
-            std::map<std::string, std::vector<std::string>> condMap;
-            for (const auto& p : entry.second) {
-                condMap[p.second.toStdString()].push_back(p.first.toStdString());
-            }
-            for (const auto& cEntry : condMap) {
-                Vector<std::string> serials;
-                for (const auto& sn : cEntry.second) serials.push_back(sn);
-                user_create::receiveUnitsForDelivery(db, deliveryId, pid, cEntry.first, static_cast<int>(serials.size()), serials);
-            }
-        }
-    }
-
     orderGenerated = true;
-    QMessageBox::information(this, "Thành công", QString("Đã tạo Đơn Nhập Điều Chỉnh và tự động nhập kho thành công cho %1 linh kiện!").arg(totalUnits));
+    QMessageBox::information(this, "Thành công", QString("Đã tạo Đơn Nhập Điều Chỉnh và tự động nhập kho thành công cho %1 linh kiện!").arg(entries.size()));
     loadReconciliationData();
 }
 
@@ -1426,61 +1570,47 @@ void InventoryCheckReconciliationDialog::onCreateOutboundAdj()
 {
     if (!db || checkId <= 0 || checkStatus != "COMPLETED") return;
 
-    // Lọc các linh kiện được tick chọn trong Bucket 2
-    std::map<int, std::vector<QString>> checkedByProduct;
+    Vector<user_update::BatchDispatchUnitEntry> entries;
+    std::map<int, int> prodCounts;
     for (int r = 0; r < surplusDetailTable->rowCount(); ++r) {
-        if (surplusDetailTable->item(r, 0) && surplusDetailTable->item(r, 0)->checkState() == Qt::Checked) {
+        auto* chk = surplusDetailTable->item(r, 0);
+        if (chk && (chk->flags() & Qt::ItemIsUserCheckable) && chk->checkState() == Qt::Checked) {
             if (r < static_cast<int>(missingUnitList.size())) {
                 const auto& u = missingUnitList[r];
-                checkedByProduct[u.productId].push_back(u.serial);
+                if (u.isConflict) continue;
+                entries.push_back({u.productId, u.serial.toStdString()});
+                prodCounts[u.productId]++;
             }
         }
     }
 
-    if (checkedByProduct.empty()) {
-        QMessageBox::warning(this, "Thông báo", "Vui lòng chọn ít nhất một linh kiện cần xuất điều chỉnh.");
+    if (entries.empty()) {
+        QMessageBox::warning(this, "Thông báo", "Vui lòng chọn ít nhất một linh kiện hợp lệ cần xuất điều chỉnh.");
         return;
-    }
-
-    int totalUnits = 0;
-    Vector<Pair<int, int>> outboundItems;
-    for (const auto& entry : checkedByProduct) {
-        outboundItems.push_back({entry.first, static_cast<int>(entry.second.size())});
-        totalUnits += static_cast<int>(entry.second.size());
     }
 
     auto ans = QMessageBox::question(
         this, "Xác nhận tạo đơn xuất điều chỉnh",
-        QString("Bạn có chắc chắn muốn tạo Đơn Xuất Điều Chỉnh (ADJUSTMENT_OUT) và tự động xuất kho cho %1 mặt hàng (tổng %2 linh kiện đã chọn)?")
-            .arg(checkedByProduct.size()).arg(totalUnits),
+        QString("Bạn có chắc chắn muốn tạo Đơn Xuất Điều Chỉnh và tự động xuất kho cho %1 mặt hàng (tổng %2 linh kiện đã chọn)?")
+            .arg(prodCounts.size()).arg(entries.size()),
         QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes
     );
     if (ans != QMessageBox::Yes) return;
 
     QString today = QDate::currentDate().toString("yyyy-MM-dd");
-    OperationResult res = user_create::createOutboundOrder(
-        db, "ADJUSTMENT_OUT", "", outboundItems, today.toStdString(), today.toStdString(),
-        "Điều chỉnh xuất kho chênh lệch từ đợt kiểm kho " + checkCode.toStdString(),
-        checkCode.toStdString()
+    OperationResult res = user_update::createAndDispatchAdjustmentOutbound(
+        db, checkCode.toStdString(), today.toStdString(), entries,
+        "Điều chỉnh xuất kho chênh lệch từ đợt kiểm kho " + checkCode.toStdString()
     );
 
     if (!res.success) {
         QMessageBox::critical(this, "Không thể tạo đơn xuất điều chỉnh", QString::fromStdString(res.message));
+        loadReconciliationData();
         return;
     }
 
-    int shipmentId = user_query::get_first_logistics_id_for_check_source(db, checkCode.toStdString(), false);
-    if (shipmentId > 0) {
-        for (const auto& entry : checkedByProduct) {
-            int pid = entry.first;
-            Vector<std::string> serials;
-            for (const auto& sn : entry.second) serials.push_back(sn.toStdString());
-            user_update::dispatchUnitsForShipment(db, shipmentId, pid, serials);
-        }
-    }
-
     orderGenerated = true;
-    QMessageBox::information(this, "Thành công", QString("Đã tạo Đơn Xuất Điều Chỉnh và tự động xuất kho thành công cho %1 linh kiện!").arg(totalUnits));
+    QMessageBox::information(this, "Thành công", QString("Đã tạo Đơn Xuất Điều Chỉnh và tự động xuất kho thành công cho %1 linh kiện!").arg(entries.size()));
     loadReconciliationData();
 }
 
@@ -1488,77 +1618,49 @@ void InventoryCheckReconciliationDialog::onCreateMovementAdj()
 {
     if (!db || checkId <= 0 || checkStatus != "COMPLETED") return;
 
-    // Lọc các linh kiện được tick chọn trong Bucket 3
-    std::map<std::tuple<int, std::string, std::string>, std::vector<QString>> checkedByShift;
+    Vector<user_update::AdjustMovementUnitInput> entries;
+    std::map<std::tuple<int, std::string, std::string>, int> groupCounts;
     for (int r = 0; r < movementDetailTable->rowCount(); ++r) {
-        if (movementDetailTable->item(r, 0) && movementDetailTable->item(r, 0)->checkState() == Qt::Checked) {
+        auto* chk = movementDetailTable->item(r, 0);
+        if (chk && (chk->flags() & Qt::ItemIsUserCheckable) && chk->checkState() == Qt::Checked) {
             if (r < static_cast<int>(statusShiftUnitList.size())) {
                 const auto& u = statusShiftUnitList[r];
-                checkedByShift[{u.productId, u.fromStatus.toStdString(), u.toStatus.toStdString()}].push_back(u.serial);
+                if (u.isConflict) continue;
+                std::string fSt = u.fromStatus.toStdString();
+                std::string tSt = u.toStatus.toStdString();
+                entries.push_back({u.productId, fSt, tSt, u.serial.toStdString()});
+                groupCounts[{u.productId, fSt, tSt}]++;
             }
         }
     }
 
-    if (checkedByShift.empty()) {
-        QMessageBox::warning(this, "Thông báo", "Vui lòng chọn ít nhất một linh kiện cần điều chỉnh trạng thái.");
+    if (entries.empty()) {
+        QMessageBox::warning(this, "Thông báo", "Vui lòng chọn ít nhất một linh kiện hợp lệ cần điều chỉnh trạng thái.");
         return;
-    }
-
-    int totalUnits = 0;
-    Vector<user_create::AdjustMovementItem> movements;
-
-    for (const auto& entry : checkedByShift) {
-        int pid = std::get<0>(entry.first);
-        std::string fromSt = std::get<1>(entry.first);
-        std::string toSt = std::get<2>(entry.first);
-        int qty = static_cast<int>(entry.second.size());
-        totalUnits += qty;
-        movements.push_back({pid, fromSt, toSt, qty});
     }
 
     auto ans = QMessageBox::question(
         this, "Xác nhận điều chỉnh trạng thái",
         QString("Bạn có chắc chắn muốn tạo Phiếu Điều Chỉnh Trạng Thái và tự động cập nhật kho cho %1 nhóm trạng thái (tổng %2 linh kiện đã chọn)?")
-            .arg(movements.size()).arg(totalUnits),
+            .arg(groupCounts.size()).arg(entries.size()),
         QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes
     );
     if (ans != QMessageBox::Yes) return;
 
     QString today = QDate::currentDate().toString("yyyy-MM-dd");
-    OperationResult res = user_create::createAdjustmentMovement(
-        db, checkCode.toStdString(), "STOCKTAKE_DIFF", today.toStdString(), movements,
+    OperationResult res = user_update::createAndExecuteAdjustmentMovement(
+        db, checkCode.toStdString(), today.toStdString(), entries,
         "Điều chỉnh trạng thái linh kiện từ đợt kiểm kho " + checkCode.toStdString()
     );
 
     if (!res.success) {
         QMessageBox::critical(this, "Không thể tạo phiếu điều chuyển", QString::fromStdString(res.message));
+        loadReconciliationData();
         return;
     }
 
-    int adjustId = res.affectedCount;
-    Vector<user_update::AdjustUnitEntry> movementUnits;
-    if (adjustId > 0) {
-        Vector<Record> detRecs;
-        user_query::adjust_movement_detail_query(db, adjustId, detRecs);
-        for (const auto& d : detRecs) {
-            int detId = safeGetInt(d, "adjust_detail_id");
-            int dPid = safeGetInt(d, "product_id");
-            std::string fromSt = safeGetQString(d, "from_status").toStdString();
-            std::string toSt = safeGetQString(d, "to_status").toStdString();
-            auto key = std::make_tuple(dPid, fromSt, toSt);
-            if (checkedByShift.count(key)) {
-                for (const auto& sn : checkedByShift[key]) {
-                    movementUnits.push_back({detId, sn.toStdString()});
-                }
-            }
-        }
-    }
-    if (!movementUnits.empty()) {
-        user_update::executeAdjustmentMovementUnits(db, adjustId, movementUnits);
-    }
-
     orderGenerated = true;
-    QMessageBox::information(this, "Thành công", QString("Đã tạo Phiếu Điều Chỉnh Trạng Thái và tự động cập nhật kho thành công cho %1 linh kiện!").arg(totalUnits));
+    QMessageBox::information(this, "Thành công", QString("Đã tạo Phiếu Điều Chỉnh Trạng Thái và tự động cập nhật kho thành công cho %1 linh kiện!").arg(entries.size()));
     loadReconciliationData();
 }
 
@@ -1598,6 +1700,65 @@ InventoryCheckDetailDialog::InventoryCheckDetailDialog(Database* database, int i
     }
 }
 
+void InventoryCheckDetailDialog::rebuildStatusComboOptions()
+{
+    if (!statusCombo) return;
+    QSignalBlocker blocker(statusCombo);
+    statusCombo->clear();
+
+    bool hasAnyProgress = false;
+    if (checkType == "UNIT") {
+        for (const auto& u : stagedUnits) {
+            if (!u.currentScannedStatus.isEmpty() && u.currentScannedStatus != "UNCHECKED") {
+                hasAnyProgress = true;
+                break;
+            }
+        }
+    } else {
+        for (const auto& itm : checkProductItems) {
+            if (itm.actAvail > 0 || itm.actWarr > 0 || itm.actScrap > 0) {
+                hasAnyProgress = true;
+                break;
+            }
+        }
+    }
+
+    if (checkStatus == "PENDING") {
+        statusCombo->addItem(UiLocalization::localizeStatus("PENDING"), "PENDING");
+        statusCombo->addItem(UiLocalization::localizeStatus("PROCESSING"), "PROCESSING");
+        statusCombo->addItem(UiLocalization::localizeStatus("COMPLETED"), "COMPLETED");
+        if (!hasAnyProgress) {
+            statusCombo->addItem(UiLocalization::localizeStatus("CANCELLED"), "CANCELLED");
+        }
+        statusCombo->setEnabled(true);
+    } else if (checkStatus == "PROCESSING") {
+        statusCombo->addItem(UiLocalization::localizeStatus("PROCESSING"), "PROCESSING");
+        statusCombo->addItem(UiLocalization::localizeStatus("COMPLETED"), "COMPLETED");
+        statusCombo->setEnabled(true);
+    } else {
+        statusCombo->addItem(UiLocalization::localizeStatus(checkStatus), checkStatus);
+        statusCombo->setEnabled(false);
+    }
+
+    int curIdx = statusCombo->findData(checkStatus);
+    if (curIdx >= 0) statusCombo->setCurrentIndex(curIdx);
+}
+
+void InventoryCheckDetailDialog::applyLockStateToControls()
+{
+    bool isLocked = (checkStatus == "COMPLETED" || checkStatus == "CANCELLED");
+    if (saveQuantityBtn) saveQuantityBtn->setEnabled(!isLocked);
+    if (editRowNoteBtn) editRowNoteBtn->setEnabled(!isLocked);
+    if (editCheckNoteBtn) editCheckNoteBtn->setEnabled(!isLocked);
+    if (addUnrecordedSurplusBtn) addUnrecordedSurplusBtn->setEnabled(!isLocked);
+    if (serialSearchInput) serialSearchInput->setEnabled(!isLocked);
+    if (unitStatusCombo) unitStatusCombo->setEnabled(!isLocked);
+    if (applyUnitStatusBtn) applyUnitStatusBtn->setEnabled(!isLocked);
+    if (batchTestBtn) batchTestBtn->setEnabled(!isLocked);
+    if (completeCheckBtn) completeCheckBtn->setEnabled(!isLocked);
+    updateSaveButtonState();
+}
+
 void InventoryCheckDetailDialog::loadCheckInfo()
 {
     if (!db || checkId <= 0) return;
@@ -1615,15 +1776,12 @@ void InventoryCheckDetailDialog::loadCheckInfo()
     checkNote = safeGetQString(*r, "note");
 
     if (statusLabel) {
-        QString col = (checkStatus == "COMPLETED" ? "#16a34a" : (checkStatus == "PROCESSING" ? "#2563eb" : (checkStatus == "CANCELLED" ? "#dc2626" : "#ca8a04")));
-        statusLabel->setText(QString("<b>Trạng thái:</b> <span style='color:%1; font-weight:bold;'>%2</span>").arg(col, checkStatus));
+        QString col = UiLocalization::statusTextColor(checkStatus).name();
+        statusLabel->setText(QString("<b>Trạng thái:</b> <span style='color:%1; font-weight:bold;'>%2</span>")
+            .arg(col, UiLocalization::localizeStatus(checkStatus)));
     }
-    if (statusCombo) {
-        statusCombo->blockSignals(true);
-        int idx = statusCombo->findData(checkStatus);
-        if (idx >= 0) statusCombo->setCurrentIndex(idx);
-        statusCombo->blockSignals(false);
-    }
+    rebuildStatusComboOptions();
+    applyLockStateToControls();
 }
 
 void InventoryCheckDetailDialog::setupUI()
@@ -1641,22 +1799,19 @@ void InventoryCheckDetailDialog::setupUI()
     hGrid->setVerticalSpacing(6);
 
     codeLabel = new QLabel(QString("<b>Mã đợt:</b> %1").arg(checkCode), headerCard);
-    typeLabel = new QLabel(QString("<b>Loại kiểm:</b> %1 (%2)")
-        .arg(checkType, checkType == "QUAN" ? "Kiểm kê Số lượng" : "Kiểm kê Chi tiết Từng Linh Kiện/Serial"), headerCard);
+    typeLabel = new QLabel(QString("<b>Loại kiểm:</b> %1")
+        .arg(UiLocalization::localizeCheckType(checkType)), headerCard);
 
     auto* statusBox = new QHBoxLayout();
     statusBox->setContentsMargins(0, 0, 0, 0);
     statusBox->setSpacing(6);
     auto* stTitle = new QLabel("<b>Trạng thái:</b>", headerCard);
     statusCombo = new QComboBox(headerCard);
-    statusCombo->addItem("Chờ xử lý (PENDING)", "PENDING");
-    statusCombo->addItem("Đang kiểm kê (PROCESSING)", "PROCESSING");
-    statusCombo->addItem("Hoàn thành (COMPLETED)", "COMPLETED");
-    statusCombo->addItem("Đã hủy (CANCELLED)", "CANCELLED");
-    int curIdx = statusCombo->findData(checkStatus);
-    if (curIdx >= 0) statusCombo->setCurrentIndex(curIdx);
+    statusCombo->setMinimumWidth(160);
+    rebuildStatusComboOptions();
     statusCombo->setStyleSheet(
         "QComboBox { font-weight: bold; padding: 2px 8px; background-color: #ffffff; color: #0f172a; border: 1px solid #cbd5e1; border-radius: 4px; }"
+        "QComboBox:disabled { background-color: #f1f5f9; color: #64748b; }"
         "QComboBox QAbstractItemView { background-color: #ffffff; color: #0f172a; selection-background-color: #2563eb; selection-color: #ffffff; }"
         "QComboBox QAbstractItemView::item { color: #0f172a; background-color: #ffffff; padding: 5px 10px; }"
         "QComboBox QAbstractItemView::item:hover { background-color: #eff6ff; color: #1e40af; }"
@@ -1705,7 +1860,8 @@ void InventoryCheckDetailDialog::setupUI()
     quantitySearchEdit = new QLineEdit(masterWidget);
     quantitySearchEdit->setPlaceholderText("🔍 Tìm theo Mã SP hoặc Tên sản phẩm...");
     quantitySearchEdit->setClearButtonEnabled(true);
-    quantitySearchEdit->setMaximumWidth(260);
+    quantitySearchEdit->setMinimumWidth(260);
+    quantitySearchEdit->setMaximumWidth(380);
     connect(quantitySearchEdit, &QLineEdit::textChanged, [this](const QString& text) {
         QString q = text.trimmed().toLower();
         for (int r = 0; r < quantityTable->rowCount(); ++r) {
@@ -1762,7 +1918,7 @@ void InventoryCheckDetailDialog::setupUI()
     quantityTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Interactive);
     quantityTable->setColumnWidth(0, 48);
     quantityTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Interactive);
-    quantityTable->setColumnWidth(1, 115);
+    quantityTable->setColumnWidth(1, 155);
     quantityTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
     for (int c = 3; c <= 10; ++c) {
         quantityTable->horizontalHeader()->setSectionResizeMode(c, QHeaderView::Interactive);
@@ -1773,7 +1929,7 @@ void InventoryCheckDetailDialog::setupUI()
     quantityTable->setColumnHidden(13, true);
 
     quantityTable->setAlternatingRowColors(true);
-    quantityTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    TableClipboardHelper::setupClipboardForTable(quantityTable);
     quantityTable->setSelectionMode(QAbstractItemView::SingleSelection);
     quantityTable->verticalHeader()->setDefaultSectionSize(32);
     quantityTable->verticalHeader()->setVisible(false);
@@ -1804,15 +1960,16 @@ void InventoryCheckDetailDialog::setupUI()
         sRow1->setSpacing(8);
 
         serialSearchInput = new QLineEdit(scanGroup);
+        serialSearchInput->setMinimumWidth(360);
         serialSearchInput->setPlaceholderText("⚡ Nhập hoặc dùng máy quét mã Serial (SN) rồi nhấn Enter...");
         serialSearchInput->setEnabled(!isLocked);
 
         unitStatusCombo = new QComboBox(scanGroup);
         unitStatusCombo->addItem("⚡ Tự nhận diện & Khớp hệ thống", "AUTO_MATCH");
-        unitStatusCombo->addItem("Khả dụng (Tốt)", "AVAILABLE");
-        unitStatusCombo->addItem("Đang bảo hành", "WARRANTY");
+        unitStatusCombo->addItem("Khả dụng", "AVAILABLE");
+        unitStatusCombo->addItem("Bảo hành", "WARRANTY");
         unitStatusCombo->addItem("Lỗi/hỏng", "SCRAPPED");
-        unitStatusCombo->addItem("Đánh dấu Không tìm thấy", "OUT");
+        unitStatusCombo->addItem("Đã xuất / Không thấy", "OUT");
         unitStatusCombo->setEnabled(!isLocked);
 
         applyUnitStatusBtn = new QPushButton("✅ Ghi nhận (Enter)", scanGroup);
@@ -1824,7 +1981,7 @@ void InventoryCheckDetailDialog::setupUI()
         batchTestBtn->setEnabled(!isLocked);
 
         sRow1->addWidget(new QLabel("Số Serial:"));
-        sRow1->addWidget(serialSearchInput, 1);
+        sRow1->addWidget(serialSearchInput, 2);
         sRow1->addWidget(new QLabel("Trạng thái quét:"));
         sRow1->addWidget(unitStatusCombo);
         sRow1->addWidget(applyUnitStatusBtn);
@@ -1855,9 +2012,10 @@ void InventoryCheckDetailDialog::setupUI()
 
         dFilterBar->addSpacing(12);
         unitSearchEdit = new QLineEdit(detailWidget);
-        unitSearchEdit->setPlaceholderText("🔍 Tìm Serial / Tên SP...");
+        unitSearchEdit->setPlaceholderText("🔍 Tìm Serial / Mã SP / Tên SP...");
         unitSearchEdit->setClearButtonEnabled(true);
-        unitSearchEdit->setMaximumWidth(180);
+        unitSearchEdit->setMinimumWidth(260);
+        unitSearchEdit->setMaximumWidth(380);
         dFilterBar->addWidget(unitSearchEdit);
 
         unitStatusFilterCombo = new QComboBox(detailWidget);
@@ -1886,18 +2044,17 @@ void InventoryCheckDetailDialog::setupUI()
         });
         unitTable->setColumnWidth(0, 45);   // STT
         unitTable->setColumnWidth(1, 150);  // Serial
-        unitTable->setColumnWidth(2, 95);   // Mã SP
+        unitTable->setColumnWidth(2, 155);  // Mã SP
         unitTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Stretch); // Tên SP
         unitTable->setColumnWidth(4, 110);  // Trạng thái sổ
         unitTable->setColumnWidth(5, 130);  // Trạng thái thực tế
-        unitTable->setColumnWidth(6, 140);  // Kết quả đối soát
+        unitTable->setColumnWidth(6, 105);  // Kết quả đối soát
         unitTable->setColumnWidth(7, 95);   // Thao tác
         unitTable->setColumnWidth(8, 120);  // Phân loại
         unitTable->setAlternatingRowColors(true);
         unitTable->verticalHeader()->setDefaultSectionSize(32);
         unitTable->verticalHeader()->setVisible(false);
         TableClipboardHelper::setupClipboardForTable(unitTable);
-        unitTable->setSelectionBehavior(QAbstractItemView::SelectRows);
         detailLayout->addWidget(unitTable, 1);
 
         // Fast actions when clicking column 7 (Thao tác) or column 5 (Trạng thái thực tế)
@@ -1929,10 +2086,10 @@ void InventoryCheckDetailDialog::setupUI()
                 "QMenu::item { background-color: transparent; color: #0f172a; padding: 6px 20px; border-radius: 4px; } "
                 "QMenu::item:selected { background-color: #eff6ff; color: #1d4ed8; font-weight: 600; }"
             );
-            auto* aAvail = menu.addAction("🟢 Khả dụng (AVAILABLE)");
-            auto* aWarr = menu.addAction("🟡 Bảo hành (WARRANTY)");
-            auto* aScrap = menu.addAction("🔴 Lỗi/hỏng (SCRAPPED)");
-            auto* aOut = menu.addAction("⚫ Đã xuất / Thất thoát (OUT)");
+            auto* aAvail = menu.addAction("🟢 Khả dụng");
+            auto* aWarr = menu.addAction("🟡 Bảo hành");
+            auto* aScrap = menu.addAction("🔴 Lỗi/hỏng");
+            auto* aOut = menu.addAction("⚫ Đã xuất / Thất thoát");
 
             QPoint cellPos = unitTable->viewport()->mapToGlobal(unitTable->visualItemRect(unitTable->item(row, col)).bottomLeft());
             QAction* chosen = menu.exec(cellPos);
@@ -1959,7 +2116,7 @@ void InventoryCheckDetailDialog::setupUI()
                 refreshQuantityTablePreview();
                 updateSaveButtonState();
                 updateSummaryLabelsOnly();
-                showToast(QString("⚡ Đã cập nhật SN [%1] -> %2").arg(sn, localizeStatus(newSt)), true);
+                showToast(QString("⚡ Đã cập nhật SN [%1] -> %2").arg(sn, UiLocalization::localizeStatus(newSt)), true);
             }
         });
 
@@ -1989,9 +2146,12 @@ void InventoryCheckDetailDialog::setupUI()
             int idx = serialToIndexMap.value(sn, -1);
             if (idx >= 0 && idx < static_cast<int>(stagedUnits.size())) {
                 const auto& u = stagedUnits[idx];
-                QString statusNote = u.currentScannedStatus.isEmpty() ? "(Chưa quét)" : ("(Đã quét: " + u.currentScannedStatus + ")");
+                QString statusNote = u.currentScannedStatus.isEmpty()
+                    ? "(Chưa quét)"
+                    : ("(Đã quét: " + UiLocalization::localizeStatus(u.currentScannedStatus) + ")");
+                QString sysDisp = u.systemStatus.isEmpty() ? "(Mới tinh)" : UiLocalization::localizeStatus(u.systemStatus);
                 serialFeedbackLabel->setText(QString("🟢 Nhận diện thành công: [%1] %2 | Trạng thái HT: %3 %4")
-                    .arg(u.productCode, u.productName, u.systemStatus.isEmpty() ? "(Mới tinh)" : u.systemStatus, statusNote));
+                    .arg(u.productCode, u.productName, sysDisp, statusNote));
                 serialFeedbackLabel->setStyleSheet("font-size: 12px; color: #16a34a; font-weight: 600;");
             } else {
                 serialFeedbackLabel->setText(QString("🟡 Serial [%1] chưa khớp với danh mục đợt kiểm kê này... (Enter để thêm)").arg(sn));
@@ -2107,6 +2267,8 @@ void InventoryCheckDetailDialog::loadQuantityData()
     }
 
     refreshQuantityTablePreview();
+    rebuildStatusComboOptions();
+    applyLockStateToControls();
 }
 
 void InventoryCheckDetailDialog::refreshQuantityTablePreview()
@@ -2278,6 +2440,8 @@ void InventoryCheckDetailDialog::loadUnitData()
 
     refreshUnitTable();
     refreshQuantityTablePreview();
+    rebuildStatusComboOptions();
+    applyLockStateToControls();
     if (simulationDialog) {
         simulationDialog->refreshCandidateList();
     }
@@ -2374,7 +2538,7 @@ void InventoryCheckDetailDialog::updateTableRowInPlace(int row, int idx)
         scanItem = makeItem("", Qt::AlignCenter);
         unitTable->setItem(row, 5, scanItem);
     }
-    QString scanDisp = isUnchecked ? "(Chưa quét) ▾" : (localizeStatus(u.currentScannedStatus) + " ▾");
+    QString scanDisp = isUnchecked ? "(Chưa quét) ▾" : (UiLocalization::localizeStatus(u.currentScannedStatus) + " ▾");
     scanItem->setText(scanDisp);
     if (u.currentScannedStatus == "AVAILABLE") scanItem->setForeground(QColor("#16a34a"));
     else if (u.currentScannedStatus == "WARRANTY") scanItem->setForeground(QColor("#d97706"));
@@ -2391,22 +2555,22 @@ void InventoryCheckDetailDialog::updateTableRowInPlace(int row, int idx)
     QString badgeText;
     QColor badgeCol;
     if (isUnrecorded) {
-        badgeText = "⭐ Thừa - Hàng mới";
+        badgeText = "⭐ Thừa mới";
         badgeCol = QColor("#d97706");
     } else if (isRediscovered) {
-        badgeText = "🔵 Thừa - Tái phát hiện";
+        badgeText = "🔵 Tái PH";
         badgeCol = QColor("#2563eb");
     } else if (isMatched) {
         badgeText = "🟢 Khớp";
         badgeCol = QColor("#16a34a");
     } else if (isShift) {
-        badgeText = "🟣 Lệch trạng thái";
+        badgeText = "🟣 Lệch";
         badgeCol = QColor("#7c3aed");
     } else if (isMissing) {
         badgeText = "🔴 Thiếu";
         badgeCol = QColor("#dc2626");
     } else {
-        badgeText = "⚪ Chờ kiểm đếm";
+        badgeText = "⚪ Chờ đếm";
         badgeCol = QColor("#64748b");
     }
     badgeItem->setText(badgeText);
@@ -2497,7 +2661,7 @@ void InventoryCheckDetailDialog::populateTableRow(int row, int idx)
     // 3: Tên sản phẩm
     setOrCreateCell(row, 3, u.productName);
     // 4: TT Sổ
-    QString sysDisp = isUnrecorded ? "(Chưa từng có)" : localizeStatus(u.systemStatus);
+    QString sysDisp = isUnrecorded ? "(Chưa từng có)" : UiLocalization::localizeStatus(u.systemStatus);
     auto* sysItem = setOrCreateCell(row, 4, sysDisp);
     if (isUnrecorded) sysItem->setForeground(QColor("#d97706"));
     else if (isRediscovered) sysItem->setForeground(QColor("#dc2626"));
@@ -2769,7 +2933,8 @@ bool InventoryCheckDetailDialog::processUnitScan(const QString& sn, const QStrin
             }
         }
 
-        QString succMsg = QString("✅ Đã ghi nhận SN [%1] -> Trạng thái: %2 (%3) (Chưa lưu DB)").arg(cleanSn, finalStatus, u.productName);
+        QString succMsg = QString("✅ Đã ghi nhận SN [%1] -> Trạng thái: %2 (%3) (Chưa lưu DB)")
+            .arg(cleanSn, UiLocalization::localizeStatus(finalStatus), u.productName);
         if (feedbackLabel) {
             feedbackLabel->setText(succMsg);
             feedbackLabel->setStyleSheet("font-size: 12px; color: #16a34a; font-weight: 600;");
@@ -2782,7 +2947,7 @@ bool InventoryCheckDetailDialog::processUnitScan(const QString& sn, const QStrin
 
         refreshQuantityTablePreview();
         updateSummaryLabelsOnly();
-        showToast(QString("⚡ Đã cập nhật SN [%1] -> %2 (Chờ lưu)").arg(cleanSn, finalStatus), true);
+        showToast(QString("⚡ Đã cập nhật SN [%1] -> %2 (Chờ lưu)").arg(cleanSn, UiLocalization::localizeStatus(finalStatus)), true);
         return true;
     }
 
@@ -2981,7 +3146,8 @@ bool InventoryCheckDetailDialog::processUnitScan(const QString& sn, const QStrin
         serialToIndexMap.insert(nu.serial.toUpper(), newIdx);
 
         if (feedbackLabel) {
-            feedbackLabel->setText(QString("🔵 Đã ghi nhận tái phát hiện [SN: %1] -> %2 (Chờ lưu)").arg(cleanSn, selectedCond));
+            feedbackLabel->setText(QString("🔵 Đã ghi nhận tái phát hiện [SN: %1] -> %2 (Chờ lưu)")
+                .arg(cleanSn, UiLocalization::localizeStatus(selectedCond)));
             feedbackLabel->setStyleSheet("font-size: 12px; color: #2563eb; font-weight: 600;");
         }
         if (inputLine) { inputLine->clear(); inputLine->setFocus(); }
@@ -3015,7 +3181,7 @@ bool InventoryCheckDetailDialog::processUnitScan(const QString& sn, const QStrin
         insertUnitRowAtTop(newIdx);
         refreshQuantityTablePreview();
         updateSaveButtonState();
-        showToast(QString("✅ Đã ghi nhận SN [%1] -> %2 (Chờ lưu)").arg(cleanSn, finalStatus), true);
+        showToast(QString("✅ Đã ghi nhận SN [%1] -> %2 (Chờ lưu)").arg(cleanSn, UiLocalization::localizeStatus(finalStatus)), true);
         return true;
     }
 }
@@ -3162,7 +3328,7 @@ bool InventoryCheckDetailDialog::recordSingleSerialFromSim(const QString& sn, in
 
         refreshQuantityTablePreview();
         updateSummaryLabelsOnly();
-        showToast(QString("⚡ [Mô phỏng] Đã ghi nhận [%1] -> %2 (Chờ lưu)").arg(cleanSn, status), true);
+        showToast(QString("⚡ [Mô phỏng] Đã ghi nhận [%1] -> %2 (Chờ lưu)").arg(cleanSn, UiLocalization::localizeStatus(status)), true);
         return true;
     }
 
@@ -3662,14 +3828,18 @@ void InventoryCheckDetailDialog::onStatusComboChanged(int index)
 
     if (newSt == "COMPLETED") {
         onCompleteCheck();
-        statusCombo->blockSignals(true);
-        int curIdx = statusCombo->findData(checkStatus);
-        if (curIdx >= 0) statusCombo->setCurrentIndex(curIdx);
-        statusCombo->blockSignals(false);
+        rebuildStatusComboOptions();
+        applyLockStateToControls();
         return;
     }
 
     if (newSt == "CANCELLED") {
+        if (hasPendingChanges()) {
+            QMessageBox::warning(this, "Không thể hủy đợt kiểm kê",
+                "Đang có dữ liệu kiểm đếm chưa lưu hoặc đã quét.\nKhông thể hủy đợt kiểm kê đã có tiến độ ghi nhận.");
+            rebuildStatusComboOptions();
+            return;
+        }
         auto ans = QMessageBox::question(
             this,
             "Xác nhận hủy đợt kiểm kê",
@@ -3678,53 +3848,34 @@ void InventoryCheckDetailDialog::onStatusComboChanged(int index)
             QMessageBox::No
         );
         if (ans != QMessageBox::Yes) {
-            statusCombo->blockSignals(true);
-            int curIdx = statusCombo->findData(checkStatus);
-            if (curIdx >= 0) statusCombo->setCurrentIndex(curIdx);
-            statusCombo->blockSignals(false);
+            rebuildStatusComboOptions();
             return;
         }
 
         OperationResult res = user_update::cancelInventoryCheck(db, checkId);
         if (!res.success) {
             QMessageBox::warning(this, "Lỗi hủy đợt kiểm kê", QString("Không thể hủy đợt kiểm kê:\n%1").arg(QString::fromStdString(res.message)));
-            statusCombo->blockSignals(true);
-            int curIdx = statusCombo->findData(checkStatus);
-            if (curIdx >= 0) statusCombo->setCurrentIndex(curIdx);
-            statusCombo->blockSignals(false);
+            rebuildStatusComboOptions();
             return;
         }
 
         checkStatus = "CANCELLED";
         dataModified = true;
-        showToast("Đã chuyển trạng thái đợt kiểm kê sang [ĐÃ HỦY]!", true);
+        loadCheckInfo();
+        showToast(QString("Đã chuyển trạng thái đợt kiểm kê sang [%1]!").arg(UiLocalization::localizeStatus("CANCELLED")), true);
     } else {
         OperationResult res = user_update::updateInventoryCheckStatus(db, checkId, newSt.toStdString());
         if (!res.success) {
             QMessageBox::warning(this, "Lỗi cập nhật trạng thái", QString("Không thể đổi trạng thái:\n%1").arg(QString::fromStdString(res.message)));
-            statusCombo->blockSignals(true);
-            int curIdx = statusCombo->findData(checkStatus);
-            if (curIdx >= 0) statusCombo->setCurrentIndex(curIdx);
-            statusCombo->blockSignals(false);
+            rebuildStatusComboOptions();
             return;
         }
 
         checkStatus = newSt;
         dataModified = true;
-        showToast(QString("Đã chuyển trạng thái đợt kiểm kê sang: %1").arg(statusCombo->currentText()), true);
+        loadCheckInfo();
+        showToast(QString("Đã chuyển trạng thái đợt kiểm kê sang: %1").arg(UiLocalization::localizeStatus(newSt)), true);
     }
-
-    bool isLocked = (checkStatus == "COMPLETED" || checkStatus == "CANCELLED");
-    if (saveChangesBtn) saveChangesBtn->setEnabled(!isLocked && hasPendingChanges());
-    if (saveQuantityBtn) saveQuantityBtn->setEnabled(!isLocked);
-    if (editRowNoteBtn) editRowNoteBtn->setEnabled(!isLocked);
-    if (editCheckNoteBtn) editCheckNoteBtn->setEnabled(!isLocked);
-    if (addUnrecordedSurplusBtn) addUnrecordedSurplusBtn->setEnabled(!isLocked);
-    if (serialSearchInput) serialSearchInput->setEnabled(!isLocked);
-    if (unitStatusCombo) unitStatusCombo->setEnabled(!isLocked);
-    if (applyUnitStatusBtn) applyUnitStatusBtn->setEnabled(!isLocked);
-    if (batchTestBtn) batchTestBtn->setEnabled(!isLocked);
-    if (completeCheckBtn) completeCheckBtn->setEnabled(!isLocked);
 }
 
 void InventoryCheckDetailDialog::onCompleteCheck()
@@ -3813,12 +3964,12 @@ void InventoryCheckDetailDialog::onCompleteCheck()
 
     if (checkType == "UNIT") {
         QMessageBox::information(this, "Hoàn tất kiểm kho",
-            "Đợt kiểm kho chi tiết đã được chuyển sang trạng thái HOÀN THÀNH thành công!\n\n"
+            "Đợt kiểm kho chi tiết đã được chuyển sang trạng thái Hoàn thành!\n\n"
             "Bây giờ hệ thống sẽ hiển thị Báo Cáo Đối Soát 3 Rổ để bạn kiểm tra và tạo các chứng từ điều chỉnh tương ứng.");
         onOpenReconciliationDialog();
     } else {
         QMessageBox::information(this, "Hoàn tất kiểm kho",
-            "Đợt kiểm kho SỐ LƯỢNG đã được chuyển sang trạng thái HOÀN THÀNH (COMPLETED) thành công!\n\n"
+            "Đợt kiểm kho SỐ LƯỢNG đã được chuyển sang trạng thái Hoàn thành!\n\n"
             "Biên bản kiểm kê đã được lưu lại. Bạn có thể tham chiếu mã đợt kiểm kê này khi tạo các đơn Nhập / Xuất / Điều chuyển kho.");
     }
 }
@@ -3994,6 +4145,7 @@ void InventoryCheckSimulationDialog::setupUI()
     searchEdit = new QLineEdit(tab1);
     searchEdit->setPlaceholderText("🔍 Tìm theo Serial, mã SP hoặc tên SP...");
     searchEdit->setClearButtonEnabled(true);
+    searchEdit->setMinimumWidth(260);
 
     selectAllBtn = new QPushButton("Chọn tất cả", tab1);
     deselectAllBtn = new QPushButton("Bỏ chọn", tab1);
@@ -4015,17 +4167,15 @@ void InventoryCheckSimulationDialog::setupUI()
         "Số Serial (SN)", "Mã SP", "Tên sản phẩm", "Trạng thái Hệ thống", "Trạng thái Quét hiện tại"
     });
     candidateTable->setColumnWidth(0, 150); // Serial
-    candidateTable->setColumnWidth(1, 95);  // Mã SP
+    candidateTable->setColumnWidth(1, 155); // Mã SP
     candidateTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch); // Tên SP
-    candidateTable->setColumnWidth(3, 140); // TT Hệ thống
+    candidateTable->setColumnWidth(3, 145); // TT Hệ thống
     candidateTable->setColumnWidth(4, 150); // TT Quét hiện tại
     candidateTable->setAlternatingRowColors(true);
     candidateTable->verticalHeader()->setDefaultSectionSize(32);
     candidateTable->verticalHeader()->setVisible(false);
-    candidateTable->setSelectionMode(QAbstractItemView::ExtendedSelection);
     candidateTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
     TableClipboardHelper::setupClipboardForTable(candidateTable);
-    candidateTable->setSelectionBehavior(QAbstractItemView::SelectRows);
     t1Layout->addWidget(candidateTable, 1);
 
     selectionSummaryLabel = new QLabel("Đã chọn: 0 linh kiện (Kéo chuột hoặc nhấn Shift/Ctrl để chọn nhiều dòng).", tab1);
@@ -4262,9 +4412,15 @@ void InventoryCheckSimulationDialog::filterTable()
             setCandCell(r, 0, itm->serial);
             setCandCell(r, 1, itm->productCode);
             setCandCell(r, 2, itm->productName);
-            setCandCell(r, 3, itm->systemStatus);
+            QString sysDisp = (itm->systemStatus == "(Mới lạ)" || itm->systemStatus.isEmpty())
+                ? "(Mới lạ)" : UiLocalization::localizeStatus(itm->systemStatus);
+            auto* sysItem = setCandCell(r, 3, sysDisp);
+            sysItem->setData(Qt::UserRole, itm->systemStatus);
 
-            auto* scanItem = setCandCell(r, 4, itm->currentStatus);
+            QString curDisp = (itm->currentStatus == "(Chưa quét)" || itm->currentStatus.isEmpty())
+                ? "(Chưa quét)" : UiLocalization::localizeStatus(itm->currentStatus);
+            auto* scanItem = setCandCell(r, 4, curDisp);
+            scanItem->setData(Qt::UserRole, itm->currentStatus);
             if (itm->currentStatus == "AVAILABLE") scanItem->setForeground(QColor("#16a34a"));
             else if (itm->currentStatus == "WARRANTY") scanItem->setForeground(QColor("#d97706"));
             else if (itm->currentStatus == "SCRAPPED" || itm->currentStatus == "OUT") scanItem->setForeground(QColor("#dc2626"));
@@ -4309,7 +4465,9 @@ void InventoryCheckSimulationDialog::onSelectUncheckedOnly()
     auto* mdl = candidateTable->model();
 
     for (int r = 0; r < rowCount; ++r) {
-        QString st = candidateTable->item(r, 4) ? candidateTable->item(r, 4)->text() : "";
+        QTableWidgetItem* stCell = candidateTable->item(r, 4);
+        QString st = stCell ? stCell->data(Qt::UserRole).toString() : "";
+        if (st.isEmpty() && stCell) st = stCell->text();
         bool isUnchecked = (st.isEmpty() || st == "(Chưa quét)" || st == "UNCHECKED");
         if (isUnchecked) {
             if (rangeStart < 0) rangeStart = r;
@@ -4362,7 +4520,9 @@ void InventoryCheckSimulationDialog::onApplyBatchCandidates()
     for (size_t i = 0; i < selectedRowIndices.size(); ++i) {
         int r = selectedRowIndices[i];
         QString sn = candidateTable->item(r, 0) ? candidateTable->item(r, 0)->text() : "";
-        QString sysSt = candidateTable->item(r, 3) ? candidateTable->item(r, 3)->text() : "AVAILABLE";
+        QTableWidgetItem* sysCell = candidateTable->item(r, 3);
+        QString sysSt = sysCell ? sysCell->data(Qt::UserRole).toString() : "AVAILABLE";
+        if (sysSt.isEmpty() && sysCell) sysSt = sysCell->text();
         if (sysSt == "(Mới lạ)") sysSt = "AVAILABLE";
 
         QString finalSt;
@@ -4566,10 +4726,10 @@ void InventoryCheckInspectDialog::setupUI()
 
     summaryTable = new QTableWidget(tabSummary);
     summaryTable->setAlternatingRowColors(true);
-    summaryTable->setSelectionBehavior(QAbstractItemView::SelectRows);
     summaryTable->setSelectionMode(QAbstractItemView::SingleSelection);
     summaryTable->verticalHeader()->setDefaultSectionSize(32);
     summaryTable->verticalHeader()->setVisible(false);
+    TableClipboardHelper::setupClipboardForTable(summaryTable);
     tSumLayout->addWidget(summaryTable, 1);
     tabWidget->addTab(tabSummary, "📦 Tổng Hợp Xử Lý Theo Sản Phẩm");
 
@@ -4589,7 +4749,8 @@ void InventoryCheckInspectDialog::setupUI()
     matrixSearchEdit = new QLineEdit(tab1);
     matrixSearchEdit->setPlaceholderText("🔍 Tìm theo Mã SP hoặc Tên sản phẩm...");
     matrixSearchEdit->setClearButtonEnabled(true);
-    matrixSearchEdit->setMaximumWidth(280);
+    matrixSearchEdit->setMinimumWidth(260);
+    matrixSearchEdit->setMaximumWidth(360);
     connect(matrixSearchEdit, &QLineEdit::textChanged, [this](const QString& text) {
         QString q = text.trimmed().toLower();
         for (int r = 0; r < matrixTable->rowCount(); ++r) {
@@ -4622,8 +4783,8 @@ void InventoryCheckInspectDialog::setupUI()
     }
     matrixTable->horizontalHeader()->setSectionResizeMode(14, QHeaderView::Stretch);
     matrixTable->setAlternatingRowColors(true);
-    matrixTable->setSelectionBehavior(QAbstractItemView::SelectRows);
     matrixTable->setSelectionMode(QAbstractItemView::SingleSelection);
+    TableClipboardHelper::setupClipboardForTable(matrixTable);
     matrixTable->verticalHeader()->setDefaultSectionSize(32);
     matrixTable->verticalHeader()->setVisible(false);
     t1Layout->addWidget(matrixTable);
@@ -4646,13 +4807,14 @@ void InventoryCheckInspectDialog::setupUI()
         "Mã Serial", "Mã SP", "Tên sản phẩm", "Trạng thái HT", "Trạng thái Quét", "Phân loại", "Ghi chú"
     });
     unitTable->setColumnWidth(0, 150);
-    unitTable->setColumnWidth(1, 95);
+    unitTable->setColumnWidth(1, 155);
     unitTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
     unitTable->setColumnWidth(3, 130);
     unitTable->setColumnWidth(4, 130);
     unitTable->setColumnWidth(5, 140);
     unitTable->setColumnWidth(6, 150);
     unitTable->setAlternatingRowColors(true);
+    TableClipboardHelper::setupClipboardForTable(unitTable);
     unitTable->verticalHeader()->setDefaultSectionSize(32);
     unitTable->verticalHeader()->setVisible(false);
     t2Layout->addWidget(unitTable);
@@ -4764,9 +4926,9 @@ void InventoryCheckInspectDialog::loadCheckData()
             ? QString::fromStdString(std::get<std::string>(cRec->get("checked_at"))) : "");
     note = cRec->has("note") && std::holds_alternative<std::string>(cRec->get("note")) ? QString::fromStdString(std::get<std::string>(cRec->get("note"))) : "";
 
-    QString stColor = (checkStatus == "COMPLETED") ? "#16a34a" : "#ca8a04";
+    QString stColor = UiLocalization::statusTextColor(checkStatus).name();
     infoLabel->setText(QString("<b>Mã đợt:</b> %1 &nbsp;&nbsp;|&nbsp;&nbsp; <b>Loại kiểm:</b> %2 &nbsp;&nbsp;|&nbsp;&nbsp; <b>Trạng thái:</b> <span style='color:%3; font-weight:bold;'>%4</span> &nbsp;&nbsp;|&nbsp;&nbsp; <b>Ngày kiểm:</b> %5 &nbsp;&nbsp;|&nbsp;&nbsp; <b>Ghi chú:</b> %6")
-        .arg(checkCode, checkType, stColor, checkStatus, checkedAt, note.isEmpty() ? "(Không)" : note));
+        .arg(checkCode, UiLocalization::localizeCheckType(checkType), stColor, UiLocalization::localizeStatus(checkStatus), checkedAt, note.isEmpty() ? "(Không)" : note));
 
     // Tab visibility & custom layout per check type
     if (tabWidget) {
@@ -4836,7 +4998,8 @@ void InventoryCheckInspectDialog::loadCheckData()
                 } else if (ui.actStatus.startsWith("(Chưa") || ui.actStatus == "MISSING" || ui.actStatus == "OUT" || ui.actStatus == "UNCHECKED") {
                     ui.eval = "Hàng thiếu (Mất)";
                 } else if (ui.sysStatus != ui.actStatus) {
-                    ui.eval = QString("Lệch TT (%1 -> %2)").arg(ui.sysStatus, ui.actStatus);
+                    ui.eval = QString("Lệch (%1 -> %2)")
+                        .arg(UiLocalization::localizeStatus(ui.sysStatus), UiLocalization::localizeStatus(ui.actStatus));
                 } else {
                     ui.eval = "Khớp";
                 }
@@ -4938,8 +5101,8 @@ void InventoryCheckInspectDialog::renderUnitTable()
         unitTable->setItem(r, 0, new QTableWidgetItem(u.serial));
         unitTable->setItem(r, 1, new QTableWidgetItem(u.pCode));
         unitTable->setItem(r, 2, new QTableWidgetItem(u.pName));
-        unitTable->setItem(r, 3, new QTableWidgetItem(u.sysStatus));
-        unitTable->setItem(r, 4, new QTableWidgetItem(u.actStatus));
+        unitTable->setItem(r, 3, new QTableWidgetItem(u.sysStatus == "(Không có)" ? u.sysStatus : UiLocalization::localizeStatus(u.sysStatus)));
+        unitTable->setItem(r, 4, new QTableWidgetItem(u.actStatus.startsWith("(") ? u.actStatus : UiLocalization::localizeStatus(u.actStatus)));
 
         auto* evalItem = new QTableWidgetItem(u.eval);
         if (u.eval.contains("thừa")) evalItem->setForeground(QBrush(QColor("#2563eb")));
@@ -5178,7 +5341,8 @@ void InventoryCheckInspectDialog::renderSummaryTable()
             }
             for (auto& pair : shiftMap) {
                 auto& row = pair.second;
-                row.detailNote = QString("Chuyển trạng thái %1 -> %2").arg(row.fromStatus, row.toStatus);
+                row.detailNote = QString("Chuyển trạng thái %1 -> %2")
+                    .arg(UiLocalization::localizeStatus(row.fromStatus), UiLocalization::localizeStatus(row.toStatus));
                 if (row.fromStatus == "AVAILABLE" && row.toStatus == "WARRANTY") { row.qtyAvail = -row.totalQty; row.qtyWarr = row.totalQty; }
                 else if (row.fromStatus == "AVAILABLE" && row.toStatus == "SCRAPPED") { row.qtyAvail = -row.totalQty; row.qtyScrap = row.totalQty; }
                 else if (row.fromStatus == "WARRANTY" && row.toStatus == "AVAILABLE") { row.qtyWarr = -row.totalQty; row.qtyAvail = row.totalQty; }
@@ -5199,7 +5363,7 @@ void InventoryCheckInspectDialog::renderSummaryTable()
                     row.totalQty = std::min(-m.diffAvail, m.diffWarr);
                     row.qtyAvail = -row.totalQty;
                     row.qtyWarr = row.totalQty;
-                    row.detailNote = "Bù trừ lệch: AVAILABLE -> WARRANTY";
+                    row.detailNote = "Bù trừ lệch: Khả dụng -> Bảo hành";
                     summaryList.push_back(row);
                 }
                 if (m.diffAvail < 0 && m.diffScrap > 0) {
@@ -5212,7 +5376,7 @@ void InventoryCheckInspectDialog::renderSummaryTable()
                     row.totalQty = std::min(-m.diffAvail, m.diffScrap);
                     row.qtyAvail = -row.totalQty;
                     row.qtyScrap = row.totalQty;
-                    row.detailNote = "Bù trừ lệch: AVAILABLE -> SCRAPPED";
+                    row.detailNote = "Bù trừ lệch: Khả dụng -> Lỗi/hỏng";
                     summaryList.push_back(row);
                 }
                 if (m.diffWarr < 0 && m.diffAvail > 0) {
@@ -5225,7 +5389,7 @@ void InventoryCheckInspectDialog::renderSummaryTable()
                     row.totalQty = std::min(-m.diffWarr, m.diffAvail);
                     row.qtyWarr = -row.totalQty;
                     row.qtyAvail = row.totalQty;
-                    row.detailNote = "Bù trừ lệch: WARRANTY -> AVAILABLE";
+                    row.detailNote = "Bù trừ lệch: Bảo hành -> Khả dụng";
                     summaryList.push_back(row);
                 }
                 if (m.diffWarr < 0 && m.diffScrap > 0) {
@@ -5238,7 +5402,7 @@ void InventoryCheckInspectDialog::renderSummaryTable()
                     row.totalQty = std::min(-m.diffWarr, m.diffScrap);
                     row.qtyWarr = -row.totalQty;
                     row.qtyScrap = row.totalQty;
-                    row.detailNote = "Bù trừ lệch: WARRANTY -> SCRAPPED";
+                    row.detailNote = "Bù trừ lệch: Bảo hành -> Lỗi/hỏng";
                     summaryList.push_back(row);
                 }
                 if (m.diffScrap < 0 && m.diffAvail > 0) {
@@ -5251,7 +5415,7 @@ void InventoryCheckInspectDialog::renderSummaryTable()
                     row.totalQty = std::min(-m.diffScrap, m.diffAvail);
                     row.qtyScrap = -row.totalQty;
                     row.qtyAvail = row.totalQty;
-                    row.detailNote = "Bù trừ lệch: SCRAPPED -> AVAILABLE";
+                    row.detailNote = "Bù trừ lệch: Lỗi/hỏng -> Khả dụng";
                     summaryList.push_back(row);
                 }
             }
@@ -5268,13 +5432,13 @@ void InventoryCheckInspectDialog::renderSummaryTable()
             summaryTable->setItem(r, 1, new QTableWidgetItem(row.pCode));
             summaryTable->setItem(r, 2, new QTableWidgetItem(row.pName));
 
-            auto* itFrom = new QTableWidgetItem(row.fromStatus);
+            auto* itFrom = new QTableWidgetItem(UiLocalization::localizeStatus(row.fromStatus));
             itFrom->setTextAlignment(Qt::AlignCenter);
             itFrom->setForeground(QBrush(QColor("#7c3aed")));
             itFrom->setFont(boldCellFont());
             summaryTable->setItem(r, 3, itFrom);
 
-            auto* itTo = new QTableWidgetItem(row.toStatus);
+            auto* itTo = new QTableWidgetItem(UiLocalization::localizeStatus(row.toStatus));
             itTo->setTextAlignment(Qt::AlignCenter);
             itTo->setForeground(QBrush(QColor("#059669")));
             itTo->setFont(boldCellFont());
