@@ -74,20 +74,20 @@ private:
     void onSelectAll(bool select);
     void onCreateCheck();
 
-    Database* db;
-    QComboBox* typeCombo;
-    QDateEdit* dateEdit;
-    QLineEdit* noteEdit;
-    QLineEdit* searchEdit;
-    QTableWidget* productTable;
-    QPushButton* selectAllBtn;
-    QPushButton* deselectAllBtn;
-    QLabel* countSelectedLabel;
-    QPushButton* createBtn;
-    QPushButton* cancelBtn;
+    Database* db = nullptr;
+    QComboBox* typeCombo = nullptr;
+    QDateEdit* dateEdit = nullptr;
+    QLineEdit* noteEdit = nullptr;
+    QLineEdit* searchEdit = nullptr;
+    QTableWidget* productTable = nullptr;
+    QPushButton* selectAllBtn = nullptr;
+    QPushButton* deselectAllBtn = nullptr;
+    QLabel* countSelectedLabel = nullptr;
+    QPushButton* createBtn = nullptr;
+    QPushButton* cancelBtn = nullptr;
 
     QString createdCode;
-    int createdId;
+    int createdId = 0;
 
     struct ProductItem {
         int productId;
@@ -132,13 +132,13 @@ private:
     QString selectedCondition;
     std::vector<QString> enteredSerials;
 
-    QComboBox* productCombo;
-    QComboBox* conditionCombo;
-    QLineEdit* serialEdit;
-    QPushButton* genSerialBtn;
-    QLineEdit* noteEdit;
-    QPushButton* confirmBtn;
-    QPushButton* cancelBtn;
+    QComboBox* productCombo = nullptr;
+    QComboBox* conditionCombo = nullptr;
+    QLineEdit* serialEdit = nullptr;
+    QPushButton* genSerialBtn = nullptr;
+    QLineEdit* noteEdit = nullptr;
+    QPushButton* confirmBtn = nullptr;
+    QPushButton* cancelBtn = nullptr;
 };
 
 /**
@@ -164,49 +164,49 @@ private:
     void onCreateInboundAdj();
     void onCreateMovementAdj();
 
-    Database* db;
-    int checkId;
+    Database* db = nullptr;
+    int checkId = 0;
     QString checkCode;
     QString checkType;
     QString checkStatus;
-    bool orderGenerated;
+    bool orderGenerated = false;
 
     // Tier 1: KPI Summary Cards & Filter
-    QLabel* kpiSystemStockLabel;
-    QLabel* kpiActualStockLabel;
-    QLabel* kpiMatchedLabel;
-    QLabel* kpiMissingLabel;
-    QLabel* kpiSurplusLabel;
-    QLabel* kpiStatusShiftLabel;
-    QCheckBox* abnormalFilterCheck;
+    QLabel* kpiSystemStockLabel = nullptr;
+    QLabel* kpiActualStockLabel = nullptr;
+    QLabel* kpiMatchedLabel = nullptr;
+    QLabel* kpiMissingLabel = nullptr;
+    QLabel* kpiSurplusLabel = nullptr;
+    QLabel* kpiStatusShiftLabel = nullptr;
+    QCheckBox* abnormalFilterCheck = nullptr;
 
     // Tier 2: Product Matrix Table (Bảng đối soát sản phẩm - 11 columns)
-    QTableWidget* matrixTable;
+    QTableWidget* matrixTable = nullptr;
     QLineEdit* matrixSearchEdit = nullptr;
 
     // Tier 3: 3 Action Buckets (Tabs)
-    QTabWidget* bucketTabWidget;
+    QTabWidget* bucketTabWidget = nullptr;
 
     // Bucket 1: Hàng cần nhập điều chỉnh
-    QTableWidget* missingUnitTable;
-    QPushButton* missingSelectAllBtn;
-    QPushButton* missingDeselectAllBtn;
-    QPushButton* createInboundBtn;
-    QLabel* inboundStatusLabel;
+    QTableWidget* missingUnitTable = nullptr;
+    QPushButton* missingSelectAllBtn = nullptr;
+    QPushButton* missingDeselectAllBtn = nullptr;
+    QPushButton* createInboundBtn = nullptr;
+    QLabel* inboundStatusLabel = nullptr;
 
     // Bucket 2: Hàng cần xuất điều chỉnh
-    QTableWidget* surplusDetailTable;
-    QPushButton* surplusSelectAllBtn;
-    QPushButton* surplusDeselectAllBtn;
-    QPushButton* createOutboundBtn;
-    QLabel* outboundStatusLabel;
+    QTableWidget* surplusDetailTable = nullptr;
+    QPushButton* surplusSelectAllBtn = nullptr;
+    QPushButton* surplusDeselectAllBtn = nullptr;
+    QPushButton* createOutboundBtn = nullptr;
+    QLabel* outboundStatusLabel = nullptr;
 
     // Bucket 3: Điều chỉnh trạng thái
-    QTableWidget* movementDetailTable;
-    QPushButton* movementSelectAllBtn;
-    QPushButton* movementDeselectAllBtn;
-    QPushButton* createMovementBtn;
-    QLabel* movementStatusLabel;
+    QTableWidget* movementDetailTable = nullptr;
+    QPushButton* movementSelectAllBtn = nullptr;
+    QPushButton* movementDeselectAllBtn = nullptr;
+    QPushButton* createMovementBtn = nullptr;
+    QLabel* movementStatusLabel = nullptr;
 
     struct ProductReconcileItem {
         int productId;
@@ -489,36 +489,36 @@ private:
     void onDirectRecordGeneratedSerial();
     void onRunFullAutoSimulation();
 
-    Database* db;
-    int checkId;
+    Database* db = nullptr;
+    int checkId = 0;
     std::vector<std::pair<int, QString>> products;
-    InventoryCheckDetailDialog* checkDialog;
+    InventoryCheckDetailDialog* checkDialog = nullptr;
 
     // Tab 1 controls
-    QComboBox* productFilterCombo;
-    QComboBox* statusFilterCombo;
-    QLineEdit* searchEdit;
-    QPushButton* selectAllBtn;
-    QPushButton* deselectAllBtn;
-    QPushButton* selectUncheckedBtn;
-    QTableWidget* candidateTable;
-    QLabel* selectionSummaryLabel;
-    QComboBox* targetModeCombo;
-    QPushButton* applyBatchBtn;
+    QComboBox* productFilterCombo = nullptr;
+    QComboBox* statusFilterCombo = nullptr;
+    QLineEdit* searchEdit = nullptr;
+    QPushButton* selectAllBtn = nullptr;
+    QPushButton* deselectAllBtn = nullptr;
+    QPushButton* selectUncheckedBtn = nullptr;
+    QTableWidget* candidateTable = nullptr;
+    QLabel* selectionSummaryLabel = nullptr;
+    QComboBox* targetModeCombo = nullptr;
+    QPushButton* applyBatchBtn = nullptr;
 
     // Tab 2 controls
-    QLineEdit* generatedSerialDisplay;
-    QComboBox* genProductCombo;
-    QComboBox* genStatusCombo;
-    QPushButton* genSingleBtn;
-    QPushButton* fillToEntryBtn;
-    QPushButton* recordNowBtn;
+    QLineEdit* generatedSerialDisplay = nullptr;
+    QComboBox* genProductCombo = nullptr;
+    QComboBox* genStatusCombo = nullptr;
+    QPushButton* genSingleBtn = nullptr;
+    QPushButton* fillToEntryBtn = nullptr;
+    QPushButton* recordNowBtn = nullptr;
 
-    QLabel* autoSimSummaryLabel;
+    QLabel* autoSimSummaryLabel = nullptr;
     class QRadioButton* presetMatchedRadio = nullptr;
     class QRadioButton* presetRealisticRadio = nullptr;
     class QRadioButton* presetStrangeRadio = nullptr;
-    QPushButton* runAutoSimBtn;
+    QPushButton* runAutoSimBtn = nullptr;
 
     std::vector<SimCandidateItem> candidateList;
 };

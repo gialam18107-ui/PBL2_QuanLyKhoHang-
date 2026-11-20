@@ -537,13 +537,19 @@ namespace user_update
                 if (modifiedColumns[i] == "is_sold") {
                     bool newSold = std::holds_alternative<bool>(modifyingValues[i]) ? std::get<bool>(modifyingValues[i]) : true;
                     bool oldSold = (oldRecord.has("is_sold") && std::holds_alternative<bool>(oldRecord.get("is_sold"))) ? std::get<bool>(oldRecord.get("is_sold")) : true;
-                    if (oldSold != newSold && !newSold) {
-                        int avail = (oldRecord.has("available_quantity") && std::holds_alternative<int>(oldRecord.get("available_quantity"))) ? std::get<int>(oldRecord.get("available_quantity")) : 0;
-                        int warr = (oldRecord.has("warranty_quantity") && std::holds_alternative<int>(oldRecord.get("warranty_quantity"))) ? std::get<int>(oldRecord.get("warranty_quantity")) : 0;
-                        int scrap = (oldRecord.has("scrapped_quantity") && std::holds_alternative<int>(oldRecord.get("scrapped_quantity"))) ? std::get<int>(oldRecord.get("scrapped_quantity")) : 0;
-                        int total = avail + warr + scrap;
-                        if (total > 0) {
-                            return OperationResult{false, "Không thể chuyển trạng thái sang Ngừng kinh doanh: Sản phẩm vẫn còn tồn kho (" + std::to_string(total) + " cái).", 0};
+                    if (oldSold != newSold) {
+                        std::string activeChk = user_query::find_active_inventory_check_for_product(db, recordId);
+                        if (!activeChk.empty()) {
+                            return OperationResult{false, "Sản phẩm [" + getProductCodeStr(db, recordId) + "] đang nằm trong đợt kiểm kê [" + activeChk + "] chưa hoàn tất/hủy. Tạm khóa thay đổi trạng thái kinh doanh.", 0};
+                        }
+                        if (!newSold) {
+                            int avail = (oldRecord.has("available_quantity") && std::holds_alternative<int>(oldRecord.get("available_quantity"))) ? std::get<int>(oldRecord.get("available_quantity")) : 0;
+                            int warr = (oldRecord.has("warranty_quantity") && std::holds_alternative<int>(oldRecord.get("warranty_quantity"))) ? std::get<int>(oldRecord.get("warranty_quantity")) : 0;
+                            int scrap = (oldRecord.has("scrapped_quantity") && std::holds_alternative<int>(oldRecord.get("scrapped_quantity"))) ? std::get<int>(oldRecord.get("scrapped_quantity")) : 0;
+                            int total = avail + warr + scrap;
+                            if (total > 0) {
+                                return OperationResult{false, "Không thể chuyển trạng thái sang Ngừng kinh doanh: Sản phẩm vẫn còn tồn kho (" + std::to_string(total) + " cái).", 0};
+                            }
                         }
                     }
                 }
@@ -739,6 +745,11 @@ namespace user_update
 
         if (oldIsSold == isSold) {
             return OperationResult{true, "Trạng thái kinh doanh không thay đổi.", 0};
+        }
+
+        std::string activeChk = user_query::find_active_inventory_check_for_product(db, productId);
+        if (!activeChk.empty()) {
+            return OperationResult{false, "Sản phẩm [" + getProductCodeStr(db, productId) + "] đang nằm trong đợt kiểm kê [" + activeChk + "] chưa hoàn tất/hủy. Tạm khóa thay đổi trạng thái kinh doanh.", 0};
         }
 
         // Rule: is_sold chỉ có thể đổi sang FALSE nếu tổng số lượng sản phẩm là 0

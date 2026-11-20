@@ -204,8 +204,8 @@ void OrderDialog::setupUI()
     // 1. Header Title & Description
     auto* titleLbl = new QLabel(
         hubType == HubType::INBOUND
-            ? "📥 Tạo Đơn Nhập Kho Kèm Đợt Giao Nhận (Inbound + Delivery)"
-            : "📤 Tạo Đơn Xuất Kho Kèm Đợt Xuất Hàng (Outbound + Shipment)",
+            ? "📥 Tạo Đơn Nhập Kho Kèm Đợt Giao Nhận"
+            : "📤 Tạo Đơn Xuất Kho Kèm Đợt Xuất Hàng",
         this
     );
     titleLbl->setStyleSheet("font-size: 18px; font-weight: 700; color: #0f172a;");
@@ -232,7 +232,7 @@ void OrderDialog::setupUI()
     step2Btn->setCursor(Qt::PointingHandCursor);
     connect(step2Btn, &QPushButton::clicked, [this]() { goToStep(1); });
 
-    step3Btn = new QPushButton("3. Lịch giao nhận (Logistics)", this);
+    step3Btn = new QPushButton("3. Lịch giao nhận hàng", this);
     step3Btn->setCursor(Qt::PointingHandCursor);
     connect(step3Btn, &QPushButton::clicked, [this]() { goToStep(2); });
 
@@ -361,7 +361,7 @@ QWidget* OrderDialog::createStep1Widget()
     grid->addWidget(customerLabel, 1, 0);
     grid->addWidget(customerContainer, 1, 1, 1, 3);
 
-    sourceCodeLabel = new QLabel("Đợt kiểm kho gốc (source_code *):", headerGroup);
+    sourceCodeLabel = new QLabel("Đợt kiểm kho gốc (*):", headerGroup);
     sourceCodeCombo = new QComboBox(headerGroup);
     sourceCodeCombo->setEditable(true);
     sourceCodeCombo->setInsertPolicy(QComboBox::NoInsert);
@@ -437,7 +437,7 @@ QWidget* OrderDialog::createStep1Widget()
     orderDateEdit->setCalendarPopup(true);
     orderDateEdit->setDisplayFormat("yyyy-MM-dd");
 
-    grid->addWidget(new QLabel("Ngày đặt đơn (order_at *):", headerGroup), 3, 0);
+    grid->addWidget(new QLabel("Ngày đặt đơn (*):", headerGroup), 3, 0);
     grid->addWidget(orderDateEdit, 3, 1, 1, 3);
 
     noteEdit = new QLineEdit(headerGroup);
@@ -450,8 +450,8 @@ QWidget* OrderDialog::createStep1Widget()
     // Helpful rule banner
     auto* noteBox = new QLabel(
         hubType == HubType::INBOUND
-            ? "ℹ️ <b>Lưu ý nhập kho:</b> Đơn nhập kho sẽ được tạo ở trạng thái <code>PENDING</code>. Đợt giao nhận đầu tiên sẽ được thiết lập tự động hoặc chia nhiều đợt ở Bước 3."
-            : "ℹ️ <b>Lưu ý xuất kho:</b> Đơn xuất kho sẽ được tạo ở trạng thái <code>PENDING</code>. Hệ thống sẽ tự động kiểm tra tồn kho khả dụng của từng sản phẩm ở Bước 2.",
+            ? "ℹ️ <b>Lưu ý nhập kho:</b> Đơn nhập kho sẽ được tạo ở trạng thái <code>Chờ xử lí</code>. Đợt giao nhận đầu tiên sẽ được thiết lập tự động hoặc chia nhiều đợt ở Bước 3."
+            : "ℹ️ <b>Lưu ý xuất kho:</b> Đơn xuất kho sẽ được tạo ở trạng thái <code>Chờ xử lí</code>. Hệ thống sẽ tự động kiểm tra tồn kho khả dụng của từng sản phẩm ở Bước 2.",
         page
     );
     noteBox->setStyleSheet(
@@ -661,7 +661,7 @@ QWidget* OrderDialog::createStep3Widget()
 
     auto* dateRow = new QHBoxLayout();
     dateRow->setSpacing(10);
-    dateRow->addWidget(new QLabel(hubType == HubType::INBOUND ? "Ngày dự kiến nhận hàng (expected_at *):" : "Ngày dự kiến xuất hàng (expected_at *):", singleBatchContainer));
+    dateRow->addWidget(new QLabel(hubType == HubType::INBOUND ? "Ngày dự kiến nhận hàng *:" : "Ngày dự kiến xuất hàng *:", singleBatchContainer));
 
     expectedDateEdit = new QDateEdit(QDate::currentDate().addDays(2), singleBatchContainer);
     expectedDateEdit->setCalendarPopup(true);
@@ -1538,7 +1538,7 @@ void OrderDialog::onSaveOrder()
             }
         }
         if (sourceCode.isEmpty()) {
-            QMessageBox::critical(this, "Thiếu đợt kiểm kho gốc", "Đơn điều chỉnh kiểm kê bắt buộc phải có mã đợt kiểm kho (source_code).");
+            QMessageBox::critical(this, "Thiếu đợt kiểm kho gốc", "Đơn điều chỉnh kiểm kê bắt buộc phải có mã đợt kiểm kho gốc.");
             goToStep(0);
             if (sourceCodeCombo) sourceCodeCombo->setFocus();
             return;
@@ -1818,18 +1818,18 @@ TransactionStatusDialog::TransactionStatusDialog(
     if (initialStatus == "PENDING") {
         if (!hasProgress) {
             tipText = isAdj
-                ? "ℹ️ <b>Lưu ý đơn điều chỉnh:</b> Đơn đang ở trạng thái PENDING và chưa phát sinh giao nhận nên được phép chuyển sang <b>CANCELLED</b> (Hủy đơn) hoặc bắt đầu <b>PROCESSING</b>."
-                : "ℹ️ <b>Quy trình chuyển trạng thái:</b> Đơn đang ở trạng thái PENDING và chưa phát sinh giao nhận/vận chuyển thực tế. Có thể chọn <b>PROCESSING</b> để bắt đầu xử lý hoặc chọn <b>CANCELLED</b> để hủy bỏ đơn hàng.";
+                ? "ℹ️ <b>Lưu ý đơn điều chỉnh:</b> Đơn đang ở trạng thái Chờ xử lí và chưa phát sinh giao nhận nên được phép chuyển sang <b>Đã hủy</b> hoặc bắt đầu <b>Đang xử lí</b>."
+                : "ℹ️ <b>Quy trình chuyển trạng thái:</b> Đơn đang ở trạng thái Chờ xử lí và chưa phát sinh giao nhận/vận chuyển thực tế. Có thể chọn <b>Đang xử lí</b> để bắt đầu xử lý hoặc chọn <b>Đã hủy</b> để hủy bỏ đơn hàng.";
         } else {
             tipText = isAdj
-                ? "ℹ️ <b>Lưu ý đơn điều chỉnh:</b> Đơn đã phát sinh ghi nhận linh kiện, không thể hủy sang CANCELLED."
-                : "ℹ️ <b>Quy trình chuyển trạng thái:</b> Đơn đã phát sinh ghi nhận linh kiện/vận chuyển thực tế, không thể hủy sang CANCELLED. Chỉ có thể chọn <b>PROCESSING</b>.";
+                ? "ℹ️ <b>Lưu ý đơn điều chỉnh:</b> Đơn đã phát sinh ghi nhận linh kiện, không thể chuyển sang Đã hủy."
+                : "ℹ️ <b>Quy trình chuyển trạng thái:</b> Đơn đã phát sinh ghi nhận linh kiện/vận chuyển thực tế, không thể chuyển sang Đã hủy. Chỉ có thể chọn <b>Đang xử lí</b>.";
         }
     } else if (initialStatus == "PROCESSING") {
         if (totalPlanQty > 0 && totalActQty >= totalPlanQty) {
-            tipText = QString("✅ <b>Quy trình chuyển trạng thái:</b> Đã xử lý đủ 100% số lượng (%1/%2 cái). Có thể xác nhận <b>COMPLETED</b>.").arg(totalActQty).arg(totalPlanQty);
+            tipText = QString("✅ <b>Quy trình chuyển trạng thái:</b> Đã xử lý đủ 100% số lượng (%1/%2 cái). Có thể xác nhận <b>Hoàn thành</b>.").arg(totalActQty).arg(totalPlanQty);
         } else {
-            tipText = QString("⏳ <b>Quy trình chuyển trạng thái:</b> Đang xử lý (%1/%2 cái). Có thể chọn <b>COMPLETED</b> để đóng hoàn tất đơn (yêu cầu xác nhận qua hộp thoại cảnh báo và dấu tick).").arg(totalActQty).arg(totalPlanQty);
+            tipText = QString("⏳ <b>Quy trình chuyển trạng thái:</b> Đang xử lý (%1/%2 cái). Có thể chọn <b>Hoàn thành</b> để đóng hoàn tất đơn (yêu cầu xác nhận qua hộp thoại cảnh báo và dấu tick).").arg(totalActQty).arg(totalPlanQty);
         }
     }
     if (!tipText.isEmpty()) {
@@ -1951,13 +1951,13 @@ CompletionConfirmationDialog::CompletionConfirmationDialog(
 
         int missingQuantity = std::max(0, plannedQuantity - actualQuantity);
         auto* msgLabel = new QLabel(
-            QString("Bạn đang yêu cầu chuyển %1 <b>[%2]</b> sang trạng thái <b>HOÀN THÀNH (COMPLETED)</b> khi chưa xử lý đủ 100% số lượng:<br><br>"
+            QString("Bạn đang yêu cầu chuyển %1 <b>[%2]</b> sang trạng thái <b>HOÀN THÀNH</b> khi chưa xử lý đủ 100% số lượng:<br><br>"
                     "• <b>Số lượng đã thực tế xử lý:</b> <span style='color:#16a34a; font-weight:bold;'>%3</span> cái<br>"
                     "• <b>Số lượng kế hoạch đặt ra:</b> <span style='color:#2563eb; font-weight:bold;'>%4</span> cái<br>"
                     "• <b>Số lượng còn thiếu:</b> <span style='color:#dc2626; font-weight:bold;'>%5</span> cái<br><br>"
                     "<b>Lưu ý quan trọng:</b><br>"
                     "• Sau khi xác nhận hoàn thành, đơn hàng sẽ được đóng lại vĩnh viễn.<br>"
-                    "• Toàn bộ các đợt vận chuyển (delivery / shipment) liên quan sẽ <b>BỊ KHÓA VĨNH VIỄN</b>: không thể nhận/xuất thêm hoặc chỉnh sửa trạng thái linh kiện nữa.")
+                    "• Toàn bộ các đợt giao nhận / xuất kho liên quan sẽ <b>BỊ KHÓA VĨNH VIỄN</b>: không thể nhận/xuất thêm hoặc chỉnh sửa trạng thái linh kiện nữa.")
                 .arg(itemDescription, itemCode)
                 .arg(actualQuantity)
                 .arg(plannedQuantity)
@@ -1977,7 +1977,7 @@ CompletionConfirmationDialog::CompletionConfirmationDialog(
         layout->addWidget(warnIconLabel);
 
         auto* msgLabel = new QLabel(
-            QString("Bạn có chắc chắn muốn chuyển %1 <b>[%2]</b> sang trạng thái <b>HOÀN THÀNH (COMPLETED)</b>?<br><br>"
+            QString("Bạn có chắc chắn muốn chuyển %1 <b>[%2]</b> sang trạng thái <b>HOÀN THÀNH</b>?<br><br>"
                     "<b>Lưu ý quan trọng:</b><br>"
                     "• Sau khi hoàn thành, toàn bộ các đợt vận chuyển liên quan sẽ bị <b>KHÓA VĨNH VIỄN</b>.<br>"
                     "• Bạn sẽ <b>KHÔNG THỂ</b> nhận thêm, xuất thêm hoặc thay đổi trạng thái bất kỳ linh kiện nào nữa.")
@@ -2032,15 +2032,15 @@ CancellationConfirmationDialog::CancellationConfirmationDialog(
     layout->setContentsMargins(20, 20, 20, 20);
     layout->setSpacing(14);
 
-    auto* warnIconLabel = new QLabel("⚠️ CẢNH BÁO: HỦY ĐƠN HÀNG VĨNH VIỄN (CANCELLED)", this);
+    auto* warnIconLabel = new QLabel("⚠️ CẢNH BÁO: HỦY ĐƠN HÀNG VĨNH VIỄN", this);
     warnIconLabel->setStyleSheet("font-size: 15px; font-weight: bold; color: #dc2626;");
     layout->addWidget(warnIconLabel);
 
     auto* msgLabel = new QLabel(
-        QString("Bạn đang yêu cầu chuyển %1 <b>[%2]</b> sang trạng thái <b>HỦY (CANCELLED)</b>.<br><br>"
+        QString("Bạn đang yêu cầu chuyển %1 <b>[%2]</b> sang trạng thái <b>ĐÃ HỦY</b>.<br><br>"
                 "<b>Lưu ý quan trọng:</b><br>"
                 "• Đơn hàng sau khi hủy sẽ bị <b>KHÓA VĨNH VIỄN</b>, không thể mở lại hay chuyển ngược trạng thái.<br>"
-                "• Toàn bộ các đợt giao nhận / xuất hàng (delivery / shipment) chưa hoàn tất thuộc đơn này cũng sẽ tự động chuyển sang trạng thái <b>CANCELLED</b>.<br>"
+                "• Toàn bộ các đợt giao nhận / xuất hàng chưa hoàn tất thuộc đơn này cũng sẽ tự động chuyển sang trạng thái <b>ĐÃ HỦY</b>.<br>"
                 "• Thao tác này chỉ được phép thực hiện khi đơn chưa có bất kỳ đợt giao nhận hoặc xuất hàng thực tế nào.")
             .arg(itemDescription, itemCode),
         this
@@ -2092,8 +2092,8 @@ LogisticsUpdateDialog::LogisticsUpdateDialog(
       saveBtn(nullptr)
 {
     setWindowTitle(hubType == HubType::INBOUND
-        ? "Cập Nhật Đợt Giao Nhận Hàng (Delivery)"
-        : "Cập Nhật Đợt Xuất Hàng (Shipment)");
+        ? "Cập Nhật Đợt Giao Nhận Hàng"
+        : "Cập Nhật Đợt Xuất Hàng");
     setMinimumWidth(480);
     setStyleSheet(commonDialogStyleSheet());
 
@@ -2111,8 +2111,8 @@ LogisticsUpdateDialog::LogisticsUpdateDialog(
 
     auto* titleLbl = new QLabel(
         hubType == HubType::INBOUND
-            ? "🚚 Cập Nhật Tiến Độ Đợt Giao Nhận (Delivery)"
-            : "🚚 Cập Nhật Tiến Độ Đợt Xuất Hàng (Shipment)",
+            ? "🚚 Cập Nhật Tiến Độ Đợt Giao Nhận"
+            : "🚚 Cập Nhật Tiến Độ Đợt Xuất Hàng",
         this
     );
     titleLbl->setStyleSheet("font-size: 16px; font-weight: 700; color: #0f172a;");
@@ -2135,10 +2135,10 @@ LogisticsUpdateDialog::LogisticsUpdateDialog(
     grid->addWidget(new QLabel("Thuộc mã đơn:", this), 1, 0);
     grid->addWidget(makeBoldLbl(parentOrderCode), 1, 1);
 
-    grid->addWidget(new QLabel("Ngày đặt đơn gốc (order_at):", this), 2, 0);
+    grid->addWidget(new QLabel("Ngày đặt đơn gốc:", this), 2, 0);
     grid->addWidget(makeBoldLbl(orderDateStr.isEmpty() ? "(Không rõ)" : orderDateStr), 2, 1);
 
-    grid->addWidget(new QLabel("Ngày dự kiến (expected_at):", this), 3, 0);
+    grid->addWidget(new QLabel("Ngày dự kiến:", this), 3, 0);
     grid->addWidget(makeBoldLbl(expectedDate), 3, 1);
 
     statusCombo = new QComboBox(this);
@@ -2174,8 +2174,8 @@ LogisticsUpdateDialog::LogisticsUpdateDialog(
     QString cleanActual = (currentActualDate == "-" ? "" : currentActualDate.trimmed());
     hasActualDateCheck = new QCheckBox(
         hubType == HubType::INBOUND
-            ? "Đã ghi nhận ngày nhận thực tế (delivery_at)"
-            : "Đã ghi nhận ngày xuất thực tế (ship_at)",
+            ? "Đã ghi nhận ngày nhận thực tế"
+            : "Đã ghi nhận ngày xuất thực tế",
         this
     );
     hasActualDateCheck->setChecked(!cleanActual.isEmpty());
@@ -2259,7 +2259,7 @@ void LogisticsUpdateDialog::onSave()
     if (newStatus == "COMPLETED") {
         CompletionConfirmationDialog confirmDlg(
             batchCodeStr,
-            (hubType == HubType::INBOUND ? "đợt giao nhận (Delivery)" : "đợt xuất hàng (Shipment)"),
+            (hubType == HubType::INBOUND ? "đợt giao nhận" : "đợt xuất hàng"),
             this
         );
         if (confirmDlg.exec() != QDialog::Accepted) {
@@ -2270,7 +2270,7 @@ void LogisticsUpdateDialog::onSave()
     if (newStatus == "CANCELLED") {
         CancellationConfirmationDialog cancelDlg(
             batchCodeStr,
-            (hubType == HubType::INBOUND ? "đợt giao nhận (Delivery)" : "đợt xuất hàng (Shipment)"),
+            (hubType == HubType::INBOUND ? "đợt giao nhận" : "đợt xuất hàng"),
             this
         );
         if (cancelDlg.exec() != QDialog::Accepted) {
@@ -2502,7 +2502,7 @@ DetailInspectionDialog::DetailInspectionDialog(
     case InspectionMode::INBOUND_ORDER:
         winTitle = "Chi Tiết Mặt Hàng Đơn Nhập Kho - " + targetCode;
         headerTitle = "📋 Chi Tiết Các Mặt Hàng Trong Đơn Nhập: " + targetCode;
-        colHeaders = {"Mã đơn nhập", "Mã sản phẩm", "Tên sản phẩm", "SL Đặt (ordered)", "SL Thực nhận (actual)"};
+        colHeaders = {"Mã đơn nhập", "Mã sản phẩm", "Tên sản phẩm", "SL Đặt", "SL Thực nhận"};
         colKeys = {"inbound_transaction.inbound_code", "product.product_code", "product.product_name", "inbound_detail.ordered_quantity", "inbound_detail.actual_quantity"};
         if (database) user_query::inbound_detail_query(database, records, "inbound_code", Value(codeStd));
         break;
@@ -2510,23 +2510,23 @@ DetailInspectionDialog::DetailInspectionDialog(
     case InspectionMode::OUTBOUND_ORDER:
         winTitle = "Chi Tiết Mặt Hàng Đơn Xuất Kho - " + targetCode;
         headerTitle = "📋 Chi Tiết Các Mặt Hàng Trong Đơn Xuất: " + targetCode;
-        colHeaders = {"Mã đơn xuất", "Mã sản phẩm", "Tên sản phẩm", "SL Yêu cầu (ordered)", "SL Thực xuất (actual)"};
+        colHeaders = {"Mã đơn xuất", "Mã sản phẩm", "Tên sản phẩm", "SL Yêu cầu", "SL Thực xuất"};
         colKeys = {"outbound_transaction.outbound_code", "product.product_code", "product.product_name", "outbound_detail.ordered_quantity", "outbound_detail.actual_quantity"};
         if (database) user_query::outbound_detail_query(database, records, "outbound_code", Value(codeStd));
         break;
 
     case InspectionMode::DELIVERY_BATCH:
         winTitle = "Chi Tiết Mặt Hàng Đợt Nhận - " + targetCode;
-        headerTitle = "📦 Chi Tiết Mặt Hàng Đợt Nhận Hàng (Delivery): " + targetCode;
-        colHeaders = {"Mã đợt nhận", "Mã sản phẩm", "Tên sản phẩm", "SL Chứng từ (received)", "SL Thực tế (actual)"};
+        headerTitle = "📦 Chi Tiết Mặt Hàng Đợt Nhận Hàng: " + targetCode;
+        colHeaders = {"Mã đợt nhận", "Mã sản phẩm", "Tên sản phẩm", "SL Chứng từ", "SL Thực tế"};
         colKeys = {"delivery.delivery_code", "product.product_code", "product.product_name", "delivery_detail.received_quantity", "delivery_detail.actual_quantity"};
         if (database) user_query::delivery_detail_query(database, records, "delivery_code", Value(codeStd));
         break;
 
     case InspectionMode::SHIPMENT_BATCH:
         winTitle = "Chi Tiết Mặt Hàng Đợt Xuất - " + targetCode;
-        headerTitle = "📦 Chi Tiết Mặt Hàng Đợt Xuất Kiện (Shipment): " + targetCode;
-        colHeaders = {"Mã kiện xuất", "Mã sản phẩm", "Tên sản phẩm", "SL Kế hoạch (received)", "SL Thực tế (actual)"};
+        headerTitle = "📦 Chi Tiết Mặt Hàng Đợt Xuất Kiện: " + targetCode;
+        colHeaders = {"Mã kiện xuất", "Mã sản phẩm", "Tên sản phẩm", "SL Kế hoạch", "SL Thực tế"};
         colKeys = {"shipment.shipment_code", "product.product_code", "product.product_name", "shipment_detail.received_quantity", "shipment_detail.actual_quantity"};
         if (database) user_query::shipment_detail_query(database, records, "shipment_code", Value(codeStd));
         break;
@@ -3457,7 +3457,7 @@ void SimulationToolDialog::setupUI()
 
     tab2Layout->addWidget(batchBox);
     tab2Layout->addStretch();
-    tabWidget->addTab(tab2, "⚡ Sinh Mã & Tạo Hàng Loạt (Testing Tools)");
+    tabWidget->addTab(tab2, "⚡ Sinh Mã & Tạo Hàng Loạt (Công cụ kiểm thử)");
 
     mainLayout->addWidget(tabWidget, 1);
 
@@ -4150,10 +4150,10 @@ void UnitEntryDialog::setupUI()
         }
     }
     if (auto* it5 = batchOverviewTable->horizontalHeaderItem(5)) {
-        it5->setToolTip("Số lượng theo trạng thái: Khả dụng (AVAILABLE) / Bảo hành (WARRANTY) / Lỗi/hỏng (SCRAPPED)");
+        it5->setToolTip("Số lượng theo trạng thái: Khả dụng / Bảo hành / Lỗi/hỏng");
     }
     if (auto* it6 = batchOverviewTable->horizontalHeaderItem(6)) {
-        it6->setToolTip("Tồn kho chung trong hệ thống: Khả dụng (AVAILABLE) / Bảo hành (WARRANTY) / Lỗi/hỏng (SCRAPPED)");
+        it6->setToolTip("Tồn kho chung trong hệ thống: Khả dụng / Bảo hành / Lỗi/hỏng");
     }
 
     batchOverviewTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Interactive);
@@ -4837,19 +4837,27 @@ bool UnitEntryDialog::recordPendingInboundSerial(int productId, const QString& s
 
     if (!user_create::isSerialUnique(db, snStd)) {
         if (allowExistingOutUnit) {
-            std::string curStatus = user_query::get_unit_status_by_serial(db, snStd);
-            if (!curStatus.empty()) {
+            int existUid = 0;
+            int existPid = 0;
+            std::string curStatus;
+            bool existSold = false;
+            if (user_query::get_unit_details_by_serial(db, snStd, existUid, existPid, curStatus, existSold) && !curStatus.empty()) {
+                if (existPid != productId) {
+                    outErrMsg = QString("Mã serial '%1' đã tồn tại nhưng thuộc về sản phẩm khác.")
+                                .arg(sn);
+                    return false;
+                }
                 if (curStatus != "OUT") {
-                    outErrMsg = QString("Mã serial '%1' đã tồn tại trong kho với trạng thái '%2' (chỉ chấp nhận mã có trạng thái 'OUT' khi nhập trả/điều chỉnh).")
-                                .arg(sn, QString::fromStdString(curStatus));
+                    outErrMsg = QString("Mã serial '%1' đã tồn tại trong kho với trạng thái '%2' (chỉ chấp nhận linh kiện 'Đã xuất' khi nhập trả/điều chỉnh).")
+                                .arg(sn, translateUnitStatus(QString::fromStdString(curStatus)));
                     return false;
                 }
             } else {
-                outErrMsg = QString("Mã serial '%1' đã tồn tại trong CSDL kho hàng.").arg(sn);
+                outErrMsg = QString("Mã serial '%1' đã tồn tại trong hệ thống kho hàng.").arg(sn);
                 return false;
             }
         } else {
-            outErrMsg = QString("Mã serial '%1' đã tồn tại trong CSDL kho hàng.").arg(sn);
+            outErrMsg = QString("Mã serial '%1' đã tồn tại trong hệ thống kho hàng.").arg(sn);
             return false;
         }
     }
@@ -4994,28 +5002,28 @@ bool UnitEntryDialog::recordPendingOutboundSerial(int productId, const QString& 
     }
 
     if (isSold || curStatus == "OUT") {
-        outErrMsg = QString("Linh kiện [%1] đã xuất kho hoặc đã bán (status = OUT / is_sold = true).").arg(snClean);
+        outErrMsg = QString("Linh kiện [%1] đã xuất kho hoặc đã bán.").arg(snClean);
         return false;
     }
 
     if (transactionType == "SELLING" || transactionType == "SEL") {
         if (curStatus != "AVAILABLE") {
-            outErrMsg = QString("Đơn bán hàng chỉ cho phép xuất linh kiện AVAILABLE (Hiện tại: %1).").arg(QString::fromStdString(curStatus));
+            outErrMsg = QString("Đơn bán hàng chỉ cho phép xuất linh kiện Khả dụng (Hiện tại: %1).").arg(translateUnitStatus(QString::fromStdString(curStatus)));
             return false;
         }
     } else if (transactionType == "WARRANTY_RETURN" || transactionType == "WRT") {
         if (curStatus != "WARRANTY" && curStatus != "SCRAPPED") {
-            outErrMsg = QString("Đơn xuất trả bảo hành yêu cầu linh kiện Bảo hành (WARRANTY) hoặc Lỗi/hỏng (SCRAPPED) (Hiện tại: %1).").arg(translateUnitStatus(QString::fromStdString(curStatus)));
+            outErrMsg = QString("Đơn xuất trả bảo hành yêu cầu linh kiện Bảo hành hoặc Lỗi/hỏng (Hiện tại: %1).").arg(translateUnitStatus(QString::fromStdString(curStatus)));
             return false;
         }
     } else if (transactionType == "WARRANTY_REPLACEMENT_TO_CUSTOMER" || transactionType == "WRC") {
         if (curStatus != "AVAILABLE" && curStatus != "WARRANTY") {
-            outErrMsg = QString("Đơn đổi trả bảo hành cho khách yêu cầu linh kiện AVAILABLE hoặc WARRANTY (Hiện tại: %1).").arg(QString::fromStdString(curStatus));
+            outErrMsg = QString("Đơn đổi trả bảo hành cho khách yêu cầu linh kiện Khả dụng hoặc Bảo hành (Hiện tại: %1).").arg(translateUnitStatus(QString::fromStdString(curStatus)));
             return false;
         }
     } else if (transactionType == "ADJUSTMENT_OUT" || transactionType == "ADJ") {
         if (curStatus == "OUT") {
-            outErrMsg = "Linh kiện đã ở trạng thái OUT, không thể điều chỉnh giảm.";
+            outErrMsg = "Linh kiện đã ở trạng thái Đã xuất, không thể điều chỉnh giảm.";
             return false;
         }
     }
@@ -6139,7 +6147,7 @@ void UnitEntryDialog::onDirectSerialEntered()
 {
     if (!db) return;
     if (isLogisticsCompleted) {
-        showToast("⚠️ Đợt giao nhận này đã hoàn thành (COMPLETED). Thao tác đã bị khóa.", false);
+        showToast("⚠️ Đợt giao nhận này đã hoàn thành. Thao tác đã bị khóa.", false);
         return;
     }
 
@@ -6495,7 +6503,7 @@ void UnitEntryDialog::onCandidateSerialsSelected(const Vector<std::string>& seri
 {
     if (!db || serials.empty()) return;
     if (isLogisticsCompleted) {
-        showToast("⚠️ Đợt giao nhận này đã hoàn thành (COMPLETED). Thao tác đã bị khóa.", false);
+        showToast("⚠️ Đợt giao nhận này đã hoàn thành. Thao tác đã bị khóa.", false);
         return;
     }
 
@@ -6567,7 +6575,7 @@ void UnitEntryDialog::onBatchAutoGenerateUnits()
 {
     if (!db) return;
     if (isLogisticsCompleted) {
-        showToast("⚠️ Đợt giao nhận này đã hoàn thành (COMPLETED). Thao tác đã bị khóa.", false);
+        showToast("⚠️ Đợt giao nhận này đã hoàn thành. Thao tác đã bị khóa.", false);
         return;
     }
 

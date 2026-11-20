@@ -2242,7 +2242,7 @@ void TransactionHubWidget::onInspectLogisticsClicked()
     if (actDate.isEmpty()) actDate = "-";
 
     QString summary = QString("Thuộc đơn: %1  |  Dự kiến: %2  |  Thực tế: %3  |  Trạng thái: %4")
-                          .arg(parentCode, expDate, actDate, status);
+                          .arg(parentCode, expDate, actDate, UiLocalization::localizeStatus(status));
     DetailInspectionDialog dlg(
         hubType == HubType::INBOUND ? DetailInspectionDialog::InspectionMode::DELIVERY_BATCH
                                     : DetailInspectionDialog::InspectionMode::SHIPMENT_BATCH,
@@ -2327,7 +2327,7 @@ void TransactionHubWidget::onAddLogisticsBatchClicked()
     if (ordStatus == "COMPLETED" || ordStatus == "CANCELLED") {
         QMessageBox::warning(this, "Đơn hàng đã khóa",
             QString("Đơn hàng %1 đang ở trạng thái [%2]. Không thể tạo thêm đợt giao nhận mới.")
-                .arg(orderCode, QString::fromStdString(ordStatus)));
+                .arg(orderCode, UiLocalization::localizeStatus(QString::fromStdString(ordStatus))));
         return;
     }
 

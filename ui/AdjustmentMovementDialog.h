@@ -51,23 +51,23 @@ private:
     void renderItemsTable();
     void onSaveMovement();
 
-    Database* db;
-    QComboBox* reasonCombo;
-    QComboBox* sourceCheckCombo;
-    QPushButton* viewCheckBtn;
-    QDateEdit* dateEdit;
-    QLineEdit* noteEdit;
+    Database* db = nullptr;
+    QComboBox* reasonCombo = nullptr;
+    QComboBox* sourceCheckCombo = nullptr;
+    QPushButton* viewCheckBtn = nullptr;
+    QDateEdit* dateEdit = nullptr;
+    QLineEdit* noteEdit = nullptr;
 
     // Item line inputs
-    QComboBox* productCombo;
-    QComboBox* fromStatusCombo;
-    QComboBox* toStatusCombo;
-    QSpinBox* quantitySpin;
-    QPushButton* addItemBtn;
-    QTableWidget* itemsTable;
+    QComboBox* productCombo = nullptr;
+    QComboBox* fromStatusCombo = nullptr;
+    QComboBox* toStatusCombo = nullptr;
+    QSpinBox* quantitySpin = nullptr;
+    QPushButton* addItemBtn = nullptr;
+    QTableWidget* itemsTable = nullptr;
 
-    QPushButton* saveBtn;
-    QPushButton* cancelBtn;
+    QPushButton* saveBtn = nullptr;
+    QPushButton* cancelBtn = nullptr;
 
     struct StagedItem {
         int productId;
@@ -118,24 +118,24 @@ private:
     void filterTable();
     void updateSelectionCount();
 
-    Database* db;
-    int prodId;
+    Database* db = nullptr;
+    int prodId = 0;
     QString prodCode;
     QString prodName;
     QString fromSt;
     QString toSt;
-    int targetQty;
+    int targetQty = 0;
     std::vector<std::string> excludeList;
     std::string srcCode;
 
-    QLineEdit* searchInput;
-    QPushButton* quickSelectBtn;
-    QPushButton* selectAllBtn;
-    QPushButton* deselectAllBtn;
-    QTableWidget* unitsTable;
-    QLabel* selectionCountLabel;
-    QPushButton* confirmBtn;
-    QPushButton* cancelBtn;
+    QLineEdit* searchInput = nullptr;
+    QPushButton* quickSelectBtn = nullptr;
+    QPushButton* selectAllBtn = nullptr;
+    QPushButton* deselectAllBtn = nullptr;
+    QTableWidget* unitsTable = nullptr;
+    QLabel* selectionCountLabel = nullptr;
+    QPushButton* confirmBtn = nullptr;
+    QPushButton* cancelBtn = nullptr;
 
     std::vector<CandidateRow> candidateList;
     std::vector<std::string> selectedSerials;
@@ -178,24 +178,24 @@ private:
     void onConfirmCandidates();
     void onExecuteAutoPickAll();
 
-    Database* db;
-    int adjId;
+    Database* db = nullptr;
+    int adjId = 0;
     QString adjCode;
     std::string srcCode;
-    AdjustmentMovementDetailDialog* mainDlg;
+    AdjustmentMovementDetailDialog* mainDlg = nullptr;
 
     // Tab 1 controls
-    QComboBox* lineFilterCombo;
-    QLineEdit* searchSerialInput;
-    QPushButton* selectAllBtn;
-    QPushButton* deselectAllBtn;
-    QTableWidget* candidatesTable;
-    QLabel* selectionCountLabel;
-    QPushButton* confirmCandidatesBtn;
+    QComboBox* lineFilterCombo = nullptr;
+    QLineEdit* searchSerialInput = nullptr;
+    QPushButton* selectAllBtn = nullptr;
+    QPushButton* deselectAllBtn = nullptr;
+    QTableWidget* candidatesTable = nullptr;
+    QLabel* selectionCountLabel = nullptr;
+    QPushButton* confirmCandidatesBtn = nullptr;
 
     // Tab 2 controls
-    QLabel* autoPickSummaryLabel;
-    QPushButton* autoPickAllBtn;
+    QLabel* autoPickSummaryLabel = nullptr;
+    QPushButton* autoPickAllBtn = nullptr;
 
     std::vector<LineCandidate> currentCandidates;
 };
@@ -283,29 +283,28 @@ private:
     QString note;
     bool isExecuted;
 
-    QLabel* codeLabel;
-    QLabel* statusLabel;
+    QLabel* codeLabel = nullptr;
     QComboBox* statusCombo = nullptr;
-    QLabel* reasonLabel;
-    QLabel* dateLabel;
-    QLabel* sourceCodeLabel;
-    QLabel* noteLabel;
+    QLabel* reasonLabel = nullptr;
+    QLabel* dateLabel = nullptr;
+    QLabel* sourceCodeLabel = nullptr;
+    QLabel* noteLabel = nullptr;
 
-    QTableWidget* detailTable;
+    QTableWidget* detailTable = nullptr;
     QLineEdit* detailSearchEdit = nullptr;
-    QLabel* unitsCountLabel;
-    QTableWidget* unitsTable;
+    QLabel* unitsCountLabel = nullptr;
+    QTableWidget* unitsTable = nullptr;
     QLineEdit* unitsSearchEdit = nullptr;
 
     // Smart scan bar controls
-    QLabel* selectedPlanLabel;
-    QLineEdit* scanSerialEdit;
-    QPushButton* addSerialBtn;
-    QPushButton* openSimulationBtn;
+    QLabel* selectedPlanLabel = nullptr;
+    QLineEdit* scanSerialEdit = nullptr;
+    QPushButton* addSerialBtn = nullptr;
+    QPushButton* openSimulationBtn = nullptr;
 
-    QPushButton* confirmSaveUnitsBtn;
-    QPushButton* finalizeMovementBtn;
-    QPushButton* closeBtn;
+    QPushButton* confirmSaveUnitsBtn = nullptr;
+    QPushButton* finalizeMovementBtn = nullptr;
+    QPushButton* closeBtn = nullptr;
 
     AdjustmentSimulationDialog* simulationDialog = nullptr;
 

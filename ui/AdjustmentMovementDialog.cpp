@@ -15,6 +15,7 @@
 #include <QInputDialog>
 #include <QCompleter>
 #include <QAbstractItemView>
+#include <QCoreApplication>
 #include <algorithm>
 
 static QString commonDialogStyleSheet() {
@@ -380,7 +381,7 @@ void AdjustmentMovementCreateDialog::populateChecks()
         if (r.has("check_code") && std::holds_alternative<std::string>(r.get("check_code"))) {
             QString code = QString::fromStdString(std::get<std::string>(r.get("check_code")));
             QString type = r.has("check_type") && std::holds_alternative<std::string>(r.get("check_type")) ? QString::fromStdString(std::get<std::string>(r.get("check_type"))) : "";
-            sourceCheckCombo->addItem(QString("%1 [%2]").arg(code, type), code);
+            sourceCheckCombo->addItem(QString("%1 [%2]").arg(code, UiLocalization::localizeCheckType(type)), code);
         }
     }
 }
@@ -398,7 +399,7 @@ void AdjustmentMovementCreateDialog::onAddItem()
 
     QString reason = reasonCombo ? reasonCombo->currentData().toString() : "";
     if (reason == "DAMAGED" && toSt != "SCRAPPED") {
-        QMessageBox::warning(this, "Không hợp lệ", "Khi lý do là DAMAGED (Hư hỏng), trạng thái đích chỉ được phép là SCRAPPED (Lỗi/hỏng).");
+        QMessageBox::warning(this, "Không hợp lệ", "Khi lý do là Hư hỏng, trạng thái đích chỉ được phép là Lỗi/hỏng.");
         return;
     }
 
@@ -494,7 +495,7 @@ void AdjustmentMovementCreateDialog::onSaveMovement()
     }
 
     if ((reason == "STOCKTAKE_DIFF" || reason == "STOCK_DIFF") && srcCode.isEmpty()) {
-        QMessageBox::warning(this, "Thiếu đợt kiểm kho", "Lý do điều chuyển do lệch kiểm kê (STOCKTAKE_DIFF) bắt buộc phải có mã đợt kiểm kho gốc (source_code).");
+        QMessageBox::warning(this, "Thiếu đợt kiểm kho", "Lý do điều chuyển do lệch kiểm kê bắt buộc phải có mã đợt kiểm kho gốc.");
         sourceCheckCombo->setFocus();
         return;
     }
@@ -950,7 +951,7 @@ void AdjustmentSimulationDialog::setupUI()
     icLayout->addWidget(autoPickSummaryLabel);
     t2Layout->addWidget(infoCard, 1);
 
-    autoPickAllBtn = new QPushButton("🚀 TỰ ĐỘNG CHỌN ĐỦ LINH KIỆN CHO TOÀN BỘ PHIẾU (AUTO-PICK ALL)", tab2);
+    autoPickAllBtn = new QPushButton("🚀 TỰ ĐỘNG CHỌN ĐỦ LINH KIỆN CHO TOÀN BỘ PHIẾU", tab2);
     autoPickAllBtn->setMinimumHeight(45);
     autoPickAllBtn->setStyleSheet(
         "QPushButton { background-color: #059669; color: #ffffff; font-weight: bold; font-size: 13px; border-radius: 6px; padding: 10px 20px; }"
@@ -959,7 +960,7 @@ void AdjustmentSimulationDialog::setupUI()
     );
     t2Layout->addWidget(autoPickAllBtn);
 
-    tabs->addTab(tab2, "⚡ 2. Tự động lấp đầy toàn bộ (Auto-Pick All)");
+    tabs->addTab(tab2, "⚡ 2. Tự động lấp đầy toàn bộ phiếu");
 
     mainLayout->addWidget(tabs, 1);
 
@@ -1019,13 +1020,15 @@ void AdjustmentSimulationDialog::refreshData()
         }
         totalCandidatesAvailable += availInStock;
 
+        QString dispFrom = translateStatus(dl.fromStatus);
+        QString dispTo = translateStatus(dl.toStatus);
         QString itemText = QString("[%1] %2: %3 ➔ %4 (Cần thêm: %5 | Kho có: %6)")
-            .arg(dl.productCode, dl.productName, dl.fromStatus, dl.toStatus).arg(rem).arg(availInStock);
+            .arg(dl.productCode, dl.productName, dispFrom, dispTo).arg(rem).arg(availInStock);
         if (rem == 0) itemText += "  ✅ ĐÃ ĐỦ";
         lineFilterCombo->addItem(itemText, dl.adjustDetailId);
 
         summaryHtml += QString("<li><b>[%1] %2:</b> %3 ➔ %4 &nbsp;|&nbsp; Kế hoạch: <b>%5</b> &nbsp;|&nbsp; Đã chuyển: <b>%6</b> &nbsp;|&nbsp; Chờ chuyển: <b>%7</b> &nbsp;|&nbsp; Còn thiếu: <b style='color:%8;'>%9</b> &nbsp;|&nbsp; Kho hiện có: <b style='color:#2563eb;'>%10</b> cái hợp lệ.</li>")
-            .arg(dl.productCode, dl.productName, dl.fromStatus, dl.toStatus)
+            .arg(dl.productCode, dl.productName, dispFrom, dispTo)
             .arg(dl.adjustQuantity).arg(dl.actualQuantity).arg(stagedCount)
             .arg(rem == 0 ? "#16a34a" : "#dc2626").arg(rem).arg(availInStock);
     }
@@ -1992,7 +1995,7 @@ void AdjustmentMovementDetailDialog::onDirectSerialEntered()
     }
 
     if (isSold) {
-        QMessageBox::warning(this, "Đã bán", QString("Linh kiện [%1] đã được đánh dấu là đã bán (is_sold = true).").arg(sn));
+        QMessageBox::warning(this, "Đã bán", QString("Linh kiện [%1] đã được đánh dấu là đã bán, không thể điều chuyển trạng thái.").arg(sn));
         return;
     }
 
@@ -2007,6 +2010,8 @@ void AdjustmentMovementDetailDialog::onDirectSerialEntered()
         }
     }
 
+    QString dispUSt = translateStatus(QString::fromStdString(uSt));
+
     if (candidateDetailIndices.empty()) {
         QString uProdCode = QString("ID %1").arg(uPid);
         if (const Table* pTbl = db->getTable("product")) {
@@ -2017,15 +2022,16 @@ void AdjustmentMovementDetailDialog::onDirectSerialEntered()
             }
         }
         QString reasonMsg = QString("Không có dòng kế hoạch nào phù hợp cho linh kiện [%1] (Mã SP: %2, trạng thái hiện tại '%3').")
-                            .arg(sn, uProdCode, QString::fromStdString(uSt));
+                            .arg(sn, uProdCode, dispUSt);
         for (const auto& dl : detailLines) {
             if (dl.productId == uPid) {
                 int rem = dl.adjustQuantity - dl.actualQuantity - getStagedCountForDetail(dl.adjustDetailId);
                 if (dl.fromStatus.toStdString() != uSt) {
                     reasonMsg += QString("\n• Dòng kế hoạch yêu cầu trạng thái nguồn '%1' (nhưng linh kiện đang là '%2').")
-                                 .arg(dl.fromStatus, QString::fromStdString(uSt));
+                                 .arg(translateStatus(dl.fromStatus), dispUSt);
                 } else if (rem <= 0) {
-                    reasonMsg += QString("\n• Dòng kế hoạch [%1 ➔ %2] đã đủ số lượng.").arg(dl.fromStatus, dl.toStatus);
+                    reasonMsg += QString("\n• Dòng kế hoạch [%1 ➔ %2] đã đủ số lượng.")
+                                 .arg(translateStatus(dl.fromStatus), translateStatus(dl.toStatus));
                 }
             }
         }
@@ -2044,7 +2050,7 @@ void AdjustmentMovementDetailDialog::onDirectSerialEntered()
             } else {
                 QMessageBox::warning(this, "Dòng kế hoạch đã đủ số lượng",
                     QString("Dòng kế hoạch đang chọn ([%1] %2 ➔ %3) đã đủ số lượng.\nVui lòng chọn dòng kế hoạch khác trên bảng.")
-                    .arg(selDl.productCode, selDl.fromStatus, selDl.toStatus));
+                    .arg(selDl.productCode, translateStatus(selDl.fromStatus), translateStatus(selDl.toStatus)));
                 return;
             }
         } else {
@@ -2058,8 +2064,8 @@ void AdjustmentMovementDetailDialog::onDirectSerialEntered()
             }
             QMessageBox::warning(this, "Không khớp dòng đang chọn",
                 QString("Linh kiện [%1] (SP: %2, trạng thái hiện tại: '%3') không khớp với dòng kế hoạch đang chọn trên bảng ([%4]: %5 ➔ %6).\n\nVui lòng nhấp chọn dòng kế hoạch tương ứng trên bảng trước khi quét/nhập mã.")
-                .arg(sn, uProdCode, QString::fromStdString(uSt),
-                     selDl.productCode, selDl.fromStatus, selDl.toStatus));
+                .arg(sn, uProdCode, dispUSt,
+                     selDl.productCode, translateStatus(selDl.fromStatus), translateStatus(selDl.toStatus)));
             return;
         }
     }
@@ -2073,7 +2079,7 @@ void AdjustmentMovementDetailDialog::onDirectSerialEntered()
             for (int idx : candidateDetailIndices) {
                 const auto& dl = detailLines[idx];
                 int rem = dl.adjustQuantity - dl.actualQuantity - getStagedCountForDetail(dl.adjustDetailId);
-                opts << QString("Chuyển sang '%1' (Còn thiếu: %2)").arg(dl.toStatus).arg(rem);
+                opts << QString("Chuyển sang '%1' (Còn thiếu: %2)").arg(translateStatus(dl.toStatus)).arg(rem);
             }
             bool ok = false;
             QString chosen = QInputDialog::getItem(
@@ -2157,6 +2163,7 @@ void AdjustmentMovementDetailDialog::onStatusComboChanged(int index)
     QMessageBox::information(this, "Thành công", QString("Đã chuyển trạng thái phiếu điều chỉnh sang: %1").arg(statusCombo->currentText()));
 
     bool isCompleted = (adjustStatus == "COMPLETED" || adjustStatus == "CANCELLED");
+    statusCombo->setEnabled(!isCompleted);
     if (confirmSaveUnitsBtn) confirmSaveUnitsBtn->setEnabled(!isCompleted && !stagedUnits.empty());
     if (finalizeMovementBtn) finalizeMovementBtn->setEnabled(!isCompleted);
     if (scanSerialEdit) scanSerialEdit->setEnabled(!isCompleted);
@@ -2169,7 +2176,7 @@ void AdjustmentMovementDetailDialog::onCancelMovement()
 {
     if (!db || adjustId <= 0) return;
     if (adjustStatus != "PENDING") {
-        QMessageBox::warning(this, "Không thể hủy", "Chỉ có thể hủy phiếu điều chỉnh khi phiếu đang ở trạng thái PENDING.");
+        QMessageBox::warning(this, "Không thể hủy", "Chỉ có thể hủy phiếu điều chỉnh khi phiếu đang ở trạng thái Chờ xử lý.");
         return;
     }
     if (!executedUnits.empty() || !stagedUnits.empty()) {
@@ -2179,7 +2186,7 @@ void AdjustmentMovementDetailDialog::onCancelMovement()
 
     auto rep = QMessageBox::question(
         this, "Xác nhận hủy phiếu điều chỉnh",
-        QString("Bạn có chắc chắn muốn HỦY phiếu điều chỉnh [%1] không?\n\nSau khi hủy, trạng thái của phiếu sẽ chuyển thành CANCELLED và bị khóa vĩnh viễn.")
+        QString("Bạn có chắc chắn muốn HỦY phiếu điều chỉnh [%1] không?\n\nSau khi hủy, trạng thái của phiếu sẽ chuyển thành Đã hủy và bị khóa vĩnh viễn.")
             .arg(adjustCode),
         QMessageBox::Yes | QMessageBox::No
     );
@@ -2194,10 +2201,15 @@ void AdjustmentMovementDetailDialog::onCancelMovement()
     QMessageBox::information(this, "Thành công", "Đã hủy phiếu điều chuyển thành công.");
     adjustStatus = "CANCELLED";
     isExecuted = true;
-    if (statusLabel) {
-        statusLabel->setText(QString("<b>Trạng thái:</b> <span style='color:%1; font-weight:bold;'>%2</span>")
-            .arg("#dc2626", adjustStatus));
+    if (statusCombo) {
+        statusCombo->blockSignals(true);
+        int idx = statusCombo->findData(adjustStatus);
+        if (idx >= 0) statusCombo->setCurrentIndex(idx);
+        statusCombo->setEnabled(false);
+        statusCombo->blockSignals(false);
     }
+    if (confirmSaveUnitsBtn) confirmSaveUnitsBtn->setEnabled(false);
+    if (finalizeMovementBtn) finalizeMovementBtn->setEnabled(false);
     if (scanSerialEdit) scanSerialEdit->setEnabled(false);
     if (addSerialBtn) addSerialBtn->setEnabled(false);
     if (openSimulationBtn) openSimulationBtn->setEnabled(false);
@@ -2471,12 +2483,14 @@ void AdjustmentMovementDetailDialog::onConfirmSaveUnits()
     }
 
     // Persist changes to CSV files according to canonical business domains (Rule 2.2)
-    DataIO::DatabaseIO dbIO = Schema::createDatabaseIO("data", false);
-    dbIO.writeTable(*db, "unit_inventory");
-    dbIO.writeTable(*db, "product");
-    dbIO.writeTable(*db, "status_history");
-    dbIO.writeTable(*db, "adjustment_movement");
-    dbIO.writeTable(*db, "adjust_movement_detail");
+    if (!QCoreApplication::instance() || !QCoreApplication::instance()->property("skipCsvDiskPersistence").toBool()) {
+        DataIO::DatabaseIO dbIO = Schema::createDatabaseIO("data", false);
+        dbIO.writeTable(*db, "unit_inventory");
+        dbIO.writeTable(*db, "product");
+        dbIO.writeTable(*db, "status_history");
+        dbIO.writeTable(*db, "adjustment_movement");
+        dbIO.writeTable(*db, "adjust_movement_detail");
+    }
 
     isExecuted = true;
     stagedUnits.clear();
@@ -2484,12 +2498,14 @@ void AdjustmentMovementDetailDialog::onConfirmSaveUnits()
 
     QMessageBox::information(this, "Thành công", QString::fromStdString(res.message));
     loadMovementInfo();
-    if (statusLabel) {
-        QString disp = translateStatus(adjustStatus);
-        QString col = (adjustStatus == "COMPLETED" ? "#16a34a" : (adjustStatus == "PROCESSING" ? "#0284c7" : (adjustStatus == "CANCELLED" ? "#dc2626" : "#ca8a04")));
-        statusLabel->setText(QString("<b>Trạng thái:</b> <span style='color:%1; font-weight:bold;'>%2</span>").arg(col, disp));
-    }
     bool isCompleted = (adjustStatus == "COMPLETED" || adjustStatus == "CANCELLED");
+    if (statusCombo) {
+        statusCombo->blockSignals(true);
+        int idx = statusCombo->findData(adjustStatus);
+        if (idx >= 0) statusCombo->setCurrentIndex(idx);
+        statusCombo->setEnabled(!isCompleted);
+        statusCombo->blockSignals(false);
+    }
     if (confirmSaveUnitsBtn) confirmSaveUnitsBtn->setEnabled(!isCompleted);
     if (finalizeMovementBtn) finalizeMovementBtn->setEnabled(!isCompleted);
     if (scanSerialEdit) scanSerialEdit->setEnabled(!isCompleted);
@@ -2536,17 +2552,22 @@ void AdjustmentMovementDetailDialog::onFinalizeMovement()
         return;
     }
 
-    DataIO::DatabaseIO dbIO = Schema::createDatabaseIO("data", false);
-    dbIO.writeTable(*db, "adjustment_movement");
+    if (!QCoreApplication::instance() || !QCoreApplication::instance()->property("skipCsvDiskPersistence").toBool()) {
+        DataIO::DatabaseIO dbIO = Schema::createDatabaseIO("data", false);
+        dbIO.writeTable(*db, "adjustment_movement");
+    }
 
+    isExecuted = true;
     QMessageBox::information(this, "Thành công", "Phiếu điều chỉnh trạng thái đã được hoàn tất thành công. Toàn bộ thao tác đã bị khóa vĩnh viễn.");
     loadMovementInfo();
-    if (statusLabel) {
-        QString disp = translateStatus(adjustStatus);
-        QString col = (adjustStatus == "COMPLETED" ? "#16a34a" : (adjustStatus == "PROCESSING" ? "#0284c7" : (adjustStatus == "CANCELLED" ? "#dc2626" : "#ca8a04")));
-        statusLabel->setText(QString("<b>Trạng thái:</b> <span style='color:%1; font-weight:bold;'>%2</span>").arg(col, disp));
-    }
     bool isCompleted = (adjustStatus == "COMPLETED" || adjustStatus == "CANCELLED");
+    if (statusCombo) {
+        statusCombo->blockSignals(true);
+        int idx = statusCombo->findData(adjustStatus);
+        if (idx >= 0) statusCombo->setCurrentIndex(idx);
+        statusCombo->setEnabled(!isCompleted);
+        statusCombo->blockSignals(false);
+    }
     if (confirmSaveUnitsBtn) confirmSaveUnitsBtn->setEnabled(!isCompleted);
     if (finalizeMovementBtn) finalizeMovementBtn->setEnabled(!isCompleted);
     if (scanSerialEdit) scanSerialEdit->setEnabled(!isCompleted);

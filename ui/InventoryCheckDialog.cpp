@@ -1681,7 +1681,7 @@ InventoryCheckDetailDialog::InventoryCheckDetailDialog(Database* database, int i
       pendingStatusSummaryLabel(nullptr), saveChangesBtn(nullptr), refreshBtn(nullptr), reconciliationBtn(nullptr), completeCheckBtn(nullptr),
       closeBtn(nullptr), currentFilterProductId(0)
 {
-    setWindowTitle("Chi Tiết và Thực Hiện Đợt Kiểm Kê Kho (Master-Detail Split View)");
+    setWindowTitle("Chi Tiết và Thực Hiện Đợt Kiểm Kê Kho");
     setWindowFlags(windowFlags() | Qt::WindowMaximizeButtonHint | Qt::WindowMinimizeButtonHint);
     setWindowState(Qt::WindowMaximized);
     if (parent) {
@@ -1853,7 +1853,7 @@ void InventoryCheckDetailDialog::setupUI()
     masterLayout->setSpacing(6);
 
     auto* masterToolbar = new QHBoxLayout();
-    quantitySummaryLabel = new QLabel("📊 <b>BẢNG TỔNG HỢP TIẾN ĐỘ SẢN PHẨM (MASTER)</b> (Click vào dòng sản phẩm để lọc danh sách linh kiện bên dưới):", masterWidget);
+    quantitySummaryLabel = new QLabel("📊 <b>BẢNG TỔNG HỢP TIẾN ĐỘ SẢN PHẨM</b> (Click vào dòng sản phẩm để lọc danh sách linh kiện bên dưới):", masterWidget);
     quantitySummaryLabel->setStyleSheet("color: #1e293b; font-size: 13px;");
     masterToolbar->addWidget(quantitySummaryLabel, 1);
 
@@ -2188,7 +2188,7 @@ void InventoryCheckDetailDialog::setupUI()
 
     refreshBtn = new QPushButton("🔄 Làm mới", this);
 
-    reconciliationBtn = new QPushButton("⚖️ Báo Cáo Đối Soát (ADJ)", this);
+    reconciliationBtn = new QPushButton("⚖️ Báo Cáo Đối Soát", this);
     reconciliationBtn->setStyleSheet("background-color: #d97706; color: #ffffff; font-weight: 600; padding: 8px 16px; border-radius: 6px;");
     reconciliationBtn->setVisible(checkType == "UNIT");
 
@@ -3895,7 +3895,7 @@ void InventoryCheckDetailDialog::onCompleteCheck()
             "⚠️ Lưu ý quan trọng:\n"
             "- Sau khi hoàn thành, toàn bộ dữ liệu kiểm đếm sẽ bị KHÓA BẤT BIẾN, không thể quét hay sửa đổi thêm.\n").arg(checkCode);
     if (uncheckCount > 0) {
-        msg += QString("- Phát hiện %1 linh kiện chưa được kiểm đếm. Hệ thống sẽ tự động chuyển các linh kiện này thành VẮNG MẶT / THẤT THOÁT (OUT) và đưa vào danh sách xuất điều chỉnh.\n").arg(uncheckCount);
+        msg += QString("- Phát hiện %1 linh kiện chưa được kiểm đếm. Hệ thống sẽ tự động chuyển các linh kiện này thành VẮNG MẶT / THẤT THOÁT và đưa vào danh sách xuất điều chỉnh.\n").arg(uncheckCount);
     }
     msg += "- Khi đó, hệ thống sẽ mở Báo Cáo Đối Soát 3 Tầng để bạn xem và tạo các đơn điều chỉnh chênh lệch kho.";
 
@@ -4182,7 +4182,7 @@ void InventoryCheckSimulationDialog::setupUI()
     selectionSummaryLabel->setStyleSheet("font-weight: 600; color: #1e40af;");
     t1Layout->addWidget(selectionSummaryLabel);
 
-    auto* actionGroup = new QGroupBox("Cấu hình ghi nhận hàng loạt vào hàng đợi kiểm kê (Soft-staging):", tab1);
+    auto* actionGroup = new QGroupBox("Cấu hình ghi nhận hàng loạt vào hàng đợi kiểm kê (Chưa lưu CSDL):", tab1);
     auto* agLayout = new QHBoxLayout(actionGroup);
     agLayout->setContentsMargins(12, 10, 12, 10);
     agLayout->setSpacing(10);
@@ -4278,7 +4278,7 @@ void InventoryCheckSimulationDialog::setupUI()
     simActionLayout->addStretch();
     pgLayout->addLayout(simActionLayout);
 
-    autoSimSummaryLabel = new QLabel("Lưu ý: Mô phỏng sẽ cập nhật vào hàng đợi tạm trên giao diện (Soft-staging). Dữ liệu chỉ được ghi vào CSDL khi bạn bấm 'Lưu kết quả kiểm kê'!", presetGroup);
+    autoSimSummaryLabel = new QLabel("Lưu ý: Mô phỏng sẽ cập nhật vào hàng đợi tạm trên giao diện (Chưa lưu CSDL). Dữ liệu chỉ được ghi vào CSDL khi bạn bấm 'Lưu kết quả kiểm kê'!", presetGroup);
     autoSimSummaryLabel->setWordWrap(true);
     autoSimSummaryLabel->setStyleSheet("color: #64748b; font-style: italic;");
     pgLayout->addWidget(autoSimSummaryLabel);
@@ -4706,9 +4706,9 @@ void InventoryCheckInspectDialog::setupUI()
     filterRow->addWidget(filterLbl);
 
     purposeModeCombo = new QComboBox(tabSummary);
-    purposeModeCombo->addItem("📥 Đơn Nhập Kho (INBOUND) — Tổng hợp hàng thừa / Tái phát hiện", "INBOUND");
-    purposeModeCombo->addItem("📤 Đơn Xuất Kho (OUTBOUND) — Tổng hợp hàng thiếu / Thất thoát", "OUTBOUND");
-    purposeModeCombo->addItem("🔄 Phiếu Điều Chuyển (ADJUSTMENT) — Tổng hợp lệch trạng thái (Từ ➔ Sang)", "ADJUSTMENT");
+    purposeModeCombo->addItem("📥 Đơn Nhập Kho — Tổng hợp hàng thừa / Tái phát hiện", "INBOUND");
+    purposeModeCombo->addItem("📤 Đơn Xuất Kho — Tổng hợp hàng thiếu / Thất thoát", "OUTBOUND");
+    purposeModeCombo->addItem("🔄 Phiếu Điều Chuyển — Tổng hợp lệch trạng thái (Từ ➔ Sang)", "ADJUSTMENT");
     purposeModeCombo->setMinimumWidth(380);
     purposeModeCombo->setStyleSheet("font-weight: 600; padding: 4px 10px; font-size: 12px;");
 
@@ -5088,7 +5088,7 @@ void InventoryCheckInspectDialog::renderUnitTable()
 
     std::vector<UnitItem> displayList;
     for (const auto& u : unitList) {
-        if (!abnormalOnly || u.eval != "Khớp") {
+        if (!abnormalOnly || !u.eval.startsWith("Khớp")) {
             displayList.push_back(u);
         }
     }
@@ -5105,9 +5105,9 @@ void InventoryCheckInspectDialog::renderUnitTable()
         unitTable->setItem(r, 4, new QTableWidgetItem(u.actStatus.startsWith("(") ? u.actStatus : UiLocalization::localizeStatus(u.actStatus)));
 
         auto* evalItem = new QTableWidgetItem(u.eval);
-        if (u.eval.contains("thừa")) evalItem->setForeground(QBrush(QColor("#2563eb")));
-        else if (u.eval.contains("thiếu")) evalItem->setForeground(QBrush(QColor("#dc2626")));
-        else if (u.eval.contains("Lệch")) evalItem->setForeground(QBrush(QColor("#d97706")));
+        if (u.eval.contains("thừa", Qt::CaseInsensitive) || u.eval.contains("Tái phát hiện", Qt::CaseInsensitive)) evalItem->setForeground(QBrush(QColor("#2563eb")));
+        else if (u.eval.contains("thiếu", Qt::CaseInsensitive) || u.eval.contains("Mất", Qt::CaseInsensitive)) evalItem->setForeground(QBrush(QColor("#dc2626")));
+        else if (u.eval.contains("Lệch", Qt::CaseInsensitive)) evalItem->setForeground(QBrush(QColor("#d97706")));
         else evalItem->setForeground(QBrush(QColor("#16a34a")));
         unitTable->setItem(r, 5, evalItem);
         unitTable->setItem(r, 6, new QTableWidgetItem(""));

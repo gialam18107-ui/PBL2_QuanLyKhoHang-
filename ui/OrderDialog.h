@@ -95,48 +95,48 @@ private:
     bool auxCustomerCreated;
 
     // Wizard navigation controls
-    QStackedWidget* stepStack;
-    QPushButton* step1Btn;
-    QPushButton* step2Btn;
-    QPushButton* step3Btn;
-    QPushButton* prevBtn;
-    QPushButton* nextBtn;
-    QPushButton* saveBtn;
-    QPushButton* cancelBtn;
+    QStackedWidget* stepStack = nullptr;
+    QPushButton* step1Btn = nullptr;
+    QPushButton* step2Btn = nullptr;
+    QPushButton* step3Btn = nullptr;
+    QPushButton* prevBtn = nullptr;
+    QPushButton* nextBtn = nullptr;
+    QPushButton* saveBtn = nullptr;
+    QPushButton* cancelBtn = nullptr;
 
-    QComboBox* typeCombo;
-    QLabel* customerLabel;
-    QWidget* customerContainer;
-    QComboBox* customerCombo;
-    QPushButton* addCustomerBtn;
-    QLabel* sourceCodeLabel;
-    QComboBox* sourceCodeCombo;
-    QPushButton* viewCheckBtn;
-    QDateEdit* orderDateEdit;
-    QDateEdit* expectedDateEdit;
-    QLineEdit* noteEdit;
+    QComboBox* typeCombo = nullptr;
+    QLabel* customerLabel = nullptr;
+    QWidget* customerContainer = nullptr;
+    QComboBox* customerCombo = nullptr;
+    QPushButton* addCustomerBtn = nullptr;
+    QLabel* sourceCodeLabel = nullptr;
+    QComboBox* sourceCodeCombo = nullptr;
+    QPushButton* viewCheckBtn = nullptr;
+    QDateEdit* orderDateEdit = nullptr;
+    QDateEdit* expectedDateEdit = nullptr;
+    QLineEdit* noteEdit = nullptr;
 
-    QComboBox* productCombo;
-    QSpinBox* quantitySpin;
-    QPushButton* addItemBtn;
-    QPushButton* pickUnitsBtn;
-    QLabel* productStockHintLabel;
-    QTableWidget* itemsTable;
-    QLabel* itemsSummaryLabel;
+    QComboBox* productCombo = nullptr;
+    QSpinBox* quantitySpin = nullptr;
+    QPushButton* addItemBtn = nullptr;
+    QPushButton* pickUnitsBtn = nullptr;
+    QLabel* productStockHintLabel = nullptr;
+    QTableWidget* itemsTable = nullptr;
+    QLabel* itemsSummaryLabel = nullptr;
 
     void updateProductStockHint(int idx);
 
 
     // Logistics allocation controls (Rule 4.3)
-    QRadioButton* singleBatchRadio;
-    QRadioButton* multiBatchRadio;
-    QWidget* singleBatchContainer;
-    QLabel* singleBatchSummaryLabel;
-    QWidget* multiBatchContainer;
-    QTableWidget* multiBatchTable;
-    QPushButton* addBatchBtn;
-    QPushButton* removeBatchBtn;
-    QLabel* multiBatchStatusLabel;
+    QRadioButton* singleBatchRadio = nullptr;
+    QRadioButton* multiBatchRadio = nullptr;
+    QWidget* singleBatchContainer = nullptr;
+    QLabel* singleBatchSummaryLabel = nullptr;
+    QWidget* multiBatchContainer = nullptr;
+    QTableWidget* multiBatchTable = nullptr;
+    QPushButton* addBatchBtn = nullptr;
+    QPushButton* removeBatchBtn = nullptr;
+    QLabel* multiBatchStatusLabel = nullptr;
 
     std::vector<OrderLineItem> lineItems;
     std::vector<MultiBatchDef> scheduleBatches;
@@ -167,11 +167,11 @@ private:
     void onSave();
 
     HubType hubType;
-    Database* db;
-    int txnId;
+    Database* db = nullptr;
+    int txnId = 0;
     QString orderCodeStr;
     QString initialStatus;
-    QComboBox* statusCombo;
+    QComboBox* statusCombo = nullptr;
     int totalActQty = 0;
     int totalPlanQty = 0;
 };
@@ -194,9 +194,9 @@ public:
     ~CompletionConfirmationDialog() override = default;
 
 private:
-    QCheckBox* confirmCheck;
-    QPushButton* confirmBtn;
-    QPushButton* cancelBtn;
+    QCheckBox* confirmCheck = nullptr;
+    QPushButton* confirmBtn = nullptr;
+    QPushButton* cancelBtn = nullptr;
 };
 
 /**
@@ -214,9 +214,9 @@ public:
     ~CancellationConfirmationDialog() override = default;
 
 private:
-    QCheckBox* confirmCheck;
-    QPushButton* confirmBtn;
-    QPushButton* cancelBtn;
+    QCheckBox* confirmCheck = nullptr;
+    QPushButton* confirmBtn = nullptr;
+    QPushButton* cancelBtn = nullptr;
 };
 
 /**
@@ -245,15 +245,15 @@ private:
     void onSave();
 
     HubType hubType;
-    Database* db;
-    int logId;
+    Database* db = nullptr;
+    int logId = 0;
     QString batchCodeStr;
     QString orderDateStr;
     QString initialStatusStr;
-    QComboBox* statusCombo;
-    QCheckBox* hasActualDateCheck;
-    QDateEdit* actualDateEdit;
-    QPushButton* saveBtn;
+    QComboBox* statusCombo = nullptr;
+    QCheckBox* hasActualDateCheck = nullptr;
+    QDateEdit* actualDateEdit = nullptr;
+    QPushButton* saveBtn = nullptr;
 };
 
 /**
@@ -275,10 +275,10 @@ private:
     void loadData();
 
     HubType hubType;
-    Database* db;
+    Database* db = nullptr;
     QString batchCodeStr;
-    QTableWidget* summaryTable;
-    QLabel* totalCountLabel;
+    QTableWidget* summaryTable = nullptr;
+    QLabel* totalCountLabel = nullptr;
 };
 
 /**
@@ -348,8 +348,8 @@ private:
     QString orderDateStr;
     std::string transactionType;
 
-    QDateEdit* expectedDateEdit;
-    QTableWidget* itemsTable;
+    QDateEdit* expectedDateEdit = nullptr;
+    QTableWidget* itemsTable = nullptr;
     std::vector<BatchLineItem> lineItems;
     QString createdBatchCode;
 };
@@ -413,14 +413,14 @@ private:
     std::vector<std::string> excludeList;
     std::string sourceCode;
 
-    QLineEdit* searchInput;
-    QPushButton* quickSelectBtn;
-    QPushButton* selectAllBtn;
-    QPushButton* deselectAllBtn;
-    QTableWidget* unitsTable;
-    QLabel* selectionCountLabel;
-    QPushButton* confirmBtn;
-    QPushButton* cancelBtn;
+    QLineEdit* searchInput = nullptr;
+    QPushButton* quickSelectBtn = nullptr;
+    QPushButton* selectAllBtn = nullptr;
+    QPushButton* deselectAllBtn = nullptr;
+    QTableWidget* unitsTable = nullptr;
+    QLabel* selectionCountLabel = nullptr;
+    QPushButton* confirmBtn = nullptr;
+    QPushButton* cancelBtn = nullptr;
 
     std::vector<CandidateRow> candidateList;
     std::vector<std::string> selectedSerials;
@@ -488,22 +488,22 @@ private:
     UnitEntryDialog* entryDlg;
 
     // Tab 1 controls (Warehouse candidates)
-    QComboBox* productFilterCombo;
-    QCheckBox* onlyEligibleCheck;
-    QLineEdit* searchSerialInput;
-    QPushButton* selectAllBtn;
-    QPushButton* deselectAllBtn;
-    QTableWidget* unitsTable;
-    QLabel* selectionSummaryLabel;
-    QPushButton* confirmBtn;
+    QComboBox* productFilterCombo = nullptr;
+    QCheckBox* onlyEligibleCheck = nullptr;
+    QLineEdit* searchSerialInput = nullptr;
+    QPushButton* selectAllBtn = nullptr;
+    QPushButton* deselectAllBtn = nullptr;
+    QTableWidget* unitsTable = nullptr;
+    QLabel* selectionSummaryLabel = nullptr;
+    QPushButton* confirmBtn = nullptr;
 
     // Tab 2 controls (Generators)
-    QLineEdit* generatedSerialDisplay;
-    QPushButton* genSingleSerialBtn;
-    QPushButton* fillToEntryBtn;
-    QPushButton* recordNowBtn;
-    QLabel* batchMissingSummaryLabel;
-    QPushButton* batchAutoReceiveBtn;
+    QLineEdit* generatedSerialDisplay = nullptr;
+    QPushButton* genSingleSerialBtn = nullptr;
+    QPushButton* fillToEntryBtn = nullptr;
+    QPushButton* recordNowBtn = nullptr;
+    QLabel* batchMissingSummaryLabel = nullptr;
+    QPushButton* batchAutoReceiveBtn = nullptr;
 
     std::vector<CandidateUnit> candidates;
 };
@@ -622,8 +622,8 @@ private:
     QTimer* toastTimer = nullptr;
 
     // Structure
-    QTabWidget* mainTabWidget;
-    QWidget* tabBatchOverview;
+    QTabWidget* mainTabWidget = nullptr;
+    QWidget* tabBatchOverview = nullptr;
     QWidget* tabProductEntry = nullptr;
 
     // Inbound Product Entry Tab controls
@@ -647,17 +647,17 @@ private:
     QLabel* prodUnitsCountLabel = nullptr;
 
     // Tab 2 controls
-    QLineEdit* unifiedSerialInput;
-    QPushButton* recordDirectSerialBtn;
-    QPushButton* openSimulationToolsBtn;
-    QTableWidget* batchOverviewTable;
-    QTableWidget* batchUnitsTable;
-    QLabel* batchUnitsCountLabel;
+    QLineEdit* unifiedSerialInput = nullptr;
+    QPushButton* recordDirectSerialBtn = nullptr;
+    QPushButton* openSimulationToolsBtn = nullptr;
+    QTableWidget* batchOverviewTable = nullptr;
+    QTableWidget* batchUnitsTable = nullptr;
+    QLabel* batchUnitsCountLabel = nullptr;
 
     // Bottom action controls
-    QLabel* statusSummaryLabel;
-    QPushButton* saveChangesBtn;
-    QPushButton* closeBtn;
+    QLabel* statusSummaryLabel = nullptr;
+    QPushButton* saveChangesBtn = nullptr;
+    QPushButton* closeBtn = nullptr;
 
     SimulationToolDialog* simulationDialog = nullptr;
 

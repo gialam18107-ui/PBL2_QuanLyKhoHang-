@@ -88,7 +88,7 @@ MainWindow::MainWindow(Database* database, QWidget* parent)
 {
     qApp->installEventFilter(new WheelEventBlocker(this));
     Schema::configureDatabaseIO(dbIO, "data", true);
-    setWindowTitle("Hệ thống Quản lý Kho Hàng - PBL2 (Query for Interface)");
+    setWindowTitle("Hệ thống Quản lý Kho Hàng - PBL2");
     resize(1300, 850);
     setMinimumSize(1020, 680);
 
@@ -204,11 +204,11 @@ void MainWindow::setupMenuBar()
 
     // 3. Menu Khách hàng (Rule 9.4: Tách riêng khách hàng cá nhân và doanh nghiệp)
     customerMenu = mBar->addMenu("👥 Khách hàng");
-    auto* actInd = customerMenu->addAction("👤 1. Khách hàng Cá nhân (Individual)");
+    auto* actInd = customerMenu->addAction("👤 1. Khách hàng Cá nhân");
     connect(actInd, &QAction::triggered, [this]() {
         selectCustomerQuery(0);
     });
-    auto* actBus = customerMenu->addAction("🏢 2. Khách hàng Doanh nghiệp (Business)");
+    auto* actBus = customerMenu->addAction("🏢 2. Khách hàng Doanh nghiệp");
     connect(actBus, &QAction::triggered, [this]() {
         selectCustomerQuery(1);
     });
@@ -686,7 +686,7 @@ void MainWindow::setupPages()
             user_query::product_quantity_query(db, results, col, Value(v1.toStdString()));
         }
         productQuantityWidget->setData(results);
-        statusLabel->setText(QString("Lọc dữ liệu trên PRODUCT_QUANTITY [%1 = %2]: %3 bản ghi (%4 ms)")
+        statusLabel->setText(QString("Lọc dữ liệu tồn kho sản phẩm [%1 = %2]: %3 bản ghi (%4 ms)")
             .arg(QString::fromStdString(col)).arg(UiLocalization::localizeColumnValue(col, v1)).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(productQuantityWidget);
@@ -715,8 +715,8 @@ void MainWindow::setupPages()
         Vector<Record> results;
         user_query::unit_inventory_query(db, results, col, Value(v1.toStdString()));
         unitInventoryWidget->setData(results);
-        statusLabel->setText(QString("Lọc dữ liệu trên UNIT_INVENTORY [%1 = %2]: %3 bản ghi (%4 ms)")
-            .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
+        statusLabel->setText(QString("Lọc dữ liệu linh kiện [%1 = %2]: %3 bản ghi (%4 ms)")
+            .arg(QString::fromStdString(col)).arg(UiLocalization::localizeColumnValue(col, v1)).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(unitInventoryWidget);
 
@@ -729,14 +729,14 @@ void MainWindow::setupPages()
         this
     );
     statusHistoryWidget->setColumns(
-        {"Số Serial", "Trạng thái trước", "Trạng thái hiện tại", "Mã Giao dịch (Delivery / Shipment)", "Loại giao dịch", "Ngày thực hiện"},
+        {"Số Serial", "Trạng thái trước", "Trạng thái hiện tại", "Mã Giao dịch", "Loại giao dịch", "Ngày thực hiện"},
         {"unit_inventory.serial", "status_history.old_status", "status_history.curr_status", "status_history.transaction", "status_history.type", "status_history.date"}
     );
     statusHistoryWidget->setFilterColumns({
-        {"Mã Giao dịch (Delivery/Shipment Code)", "transaction", FilterType::EXACT_TEXT, {}},
-        {"Ngày thực hiện (date)", "date", FilterType::DATE_RANGE, {}},
-        {"Loại giao dịch (type)", "type", FilterType::SELECT_OR_TYPE, {"INBOUND", "OUTBOUND"}},
-        {"Số Serial (serial)", "serial", FilterType::EXACT_TEXT, {}}
+        {"Mã Giao dịch", "transaction", FilterType::EXACT_TEXT, {}},
+        {"Ngày thực hiện", "date", FilterType::DATE_RANGE, {}},
+        {"Loại giao dịch", "type", FilterType::SELECT_OR_TYPE, {"INBOUND", "OUTBOUND"}},
+        {"Số Serial", "serial", FilterType::EXACT_TEXT, {}}
     });
     statusHistoryWidget->setRefreshCallback([this]() { refreshQuery(2); });
     statusHistoryWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& v2, bool isRange) {
@@ -746,12 +746,12 @@ void MainWindow::setupPages()
         Vector<Record> results;
         if (isRange) {
             user_query::status_history_query(db, results, col, Value(v1.toStdString()), Value(v2.toStdString()));
-            statusLabel->setText(QString("Lọc dữ liệu trên STATUS_HISTORY [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
+            statusLabel->setText(QString("Lọc dữ liệu lịch sử trạng thái [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
                 .arg(QString::fromStdString(col)).arg(v1).arg(v2).arg(results.size()).arg(timer.elapsed()));
         } else {
             user_query::status_history_query(db, results, col, Value(v1.toStdString()));
-            statusLabel->setText(QString("Lọc dữ liệu trên STATUS_HISTORY [%1 = %2]: %3 bản ghi (%4 ms)")
-                .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
+            statusLabel->setText(QString("Lọc dữ liệu lịch sử trạng thái [%1 = %2]: %3 bản ghi (%4 ms)")
+                .arg(QString::fromStdString(col)).arg(UiLocalization::localizeColumnValue(col, v1)).arg(results.size()).arg(timer.elapsed()));
         }
         statusHistoryWidget->setData(results);
     });
@@ -786,12 +786,12 @@ void MainWindow::setupPages()
         Vector<Record> results;
         if (isRange) {
             user_query::inbound_transaction_query(db, results, col, Value(v1.toStdString()), Value(v2.toStdString()));
-            statusLabel->setText(QString("Lọc dữ liệu trên INBOUND_TRANSACTION [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
+            statusLabel->setText(QString("Lọc dữ liệu đơn nhập [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
                 .arg(QString::fromStdString(col)).arg(v1).arg(v2).arg(results.size()).arg(timer.elapsed()));
         } else {
             user_query::inbound_transaction_query(db, results, col, Value(v1.toStdString()));
-            statusLabel->setText(QString("Lọc dữ liệu trên INBOUND_TRANSACTION [%1 = %2]: %3 bản ghi (%4 ms)")
-                .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
+            statusLabel->setText(QString("Lọc dữ liệu đơn nhập [%1 = %2]: %3 bản ghi (%4 ms)")
+                .arg(QString::fromStdString(col)).arg(UiLocalization::localizeColumnValue(col, v1)).arg(results.size()).arg(timer.elapsed()));
         }
         inboundTxnWidget->setData(results);
     });
@@ -806,13 +806,13 @@ void MainWindow::setupPages()
         this
     );
     inboundDetailWidget->setColumns(
-        {"Mã đơn nhập", "Mã sản phẩm", "Tên sản phẩm", "Số lượng đặt", "Số lượng thực tế (actual_quantity)"},
+        {"Mã đơn nhập", "Mã sản phẩm", "Tên sản phẩm", "Số lượng đặt", "Số lượng thực tế"},
         {"inbound_transaction.inbound_code", "product.product_code", "product.product_name", "inbound_detail.ordered_quantity", "inbound_detail.actual_quantity"}
     );
     inboundDetailWidget->setFilterColumns({
-        {"Mã đơn nhập (inbound_code)", "inbound_code", FilterType::EXACT_TEXT, {}},
-        {"Mã sản phẩm (product_code)", "product_code", FilterType::EXACT_TEXT, {}},
-        {"Ngày đặt hàng (order_at)", "order_at", FilterType::DATE_RANGE, {}}
+        {"Mã đơn nhập", "inbound_code", FilterType::EXACT_TEXT, {}},
+        {"Mã sản phẩm", "product_code", FilterType::EXACT_TEXT, {}},
+        {"Ngày đặt hàng", "order_at", FilterType::DATE_RANGE, {}}
     });
     inboundDetailWidget->setRefreshCallback([this]() { refreshQuery(4); });
     inboundDetailWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
@@ -822,7 +822,7 @@ void MainWindow::setupPages()
         Vector<Record> results;
         user_query::inbound_detail_query(db, results, col, Value(v1.toStdString()));
         inboundDetailWidget->setData(results);
-        statusLabel->setText(QString("Lọc dữ liệu trên INBOUND_DETAIL [%1 = %2]: %3 bản ghi (%4 ms)")
+        statusLabel->setText(QString("Lọc dữ liệu chi tiết đơn nhập [%1 = %2]: %3 bản ghi (%4 ms)")
             .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(inboundDetailWidget);
@@ -836,15 +836,15 @@ void MainWindow::setupPages()
         this
     );
     deliveryWidget->setColumns(
-        {"Mã đợt nhận (Delivery)", "Mã đơn nhập tương ứng", "Ngày nhận thực tế", "Ngày dự kiến", "Trạng thái"},
+        {"Mã đợt nhận", "Mã đơn nhập tương ứng", "Ngày nhận thực tế", "Ngày dự kiến", "Trạng thái"},
         {"delivery.delivery_code", "inbound_transaction.inbound_code", "delivery.delivery_at", "delivery.expected_at", "delivery.status"}
     );
     deliveryWidget->setFilterColumns({
-        {"Mã giao nhận (delivery_code)", "delivery_code", FilterType::EXACT_TEXT, {}},
-        {"Mã đơn nhập (inbound_code)", "inbound_code", FilterType::EXACT_TEXT, {}},
-        {"Ngày nhận hàng (delivery_at)", "delivery_at", FilterType::DATE_RANGE, {}},
-        {"Ngày dự kiến (expected_at)", "expected_at", FilterType::DATE_RANGE, {}},
-        {"Trạng thái nhận (status)", "status", FilterType::SELECT_OR_TYPE, {"PENDING", "RECEIVING", "COMPLETED", "CANCELLED"}}
+        {"Mã giao nhận", "delivery_code", FilterType::EXACT_TEXT, {}},
+        {"Mã đơn nhập", "inbound_code", FilterType::EXACT_TEXT, {}},
+        {"Ngày nhận hàng", "delivery_at", FilterType::DATE_RANGE, {}},
+        {"Ngày dự kiến", "expected_at", FilterType::DATE_RANGE, {}},
+        {"Trạng thái nhận", "status", FilterType::SELECT_OR_TYPE, {"PENDING", "RECEIVING", "COMPLETED", "CANCELLED"}}
     });
     deliveryWidget->setRefreshCallback([this]() { refreshQuery(5); });
     deliveryWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& v2, bool isRange) {
@@ -854,12 +854,12 @@ void MainWindow::setupPages()
         Vector<Record> results;
         if (isRange) {
             user_query::delivery_query(db, results, col, Value(v1.toStdString()), Value(v2.toStdString()));
-            statusLabel->setText(QString("Lọc dữ liệu trên DELIVERY [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
+            statusLabel->setText(QString("Lọc dữ liệu đợt nhận hàng [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
                 .arg(QString::fromStdString(col)).arg(v1).arg(v2).arg(results.size()).arg(timer.elapsed()));
         } else {
             user_query::delivery_query(db, results, col, Value(v1.toStdString()));
-            statusLabel->setText(QString("Lọc dữ liệu trên DELIVERY [%1 = %2]: %3 bản ghi (%4 ms)")
-                .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
+            statusLabel->setText(QString("Lọc dữ liệu đợt nhận hàng [%1 = %2]: %3 bản ghi (%4 ms)")
+                .arg(QString::fromStdString(col)).arg(UiLocalization::localizeColumnValue(col, v1)).arg(results.size()).arg(timer.elapsed()));
         }
         deliveryWidget->setData(results);
     });
@@ -874,14 +874,14 @@ void MainWindow::setupPages()
         this
     );
     deliveryDetailWidget->setColumns(
-        {"Mã đợt nhận", "Mã sản phẩm", "Tên sản phẩm", "Số lượng theo chứng từ", "Số lượng thực tế (actual_quantity)"},
+        {"Mã đợt nhận", "Mã sản phẩm", "Tên sản phẩm", "Số lượng theo chứng từ", "Số lượng thực tế"},
         {"delivery.delivery_code", "product.product_code", "product.product_name", "delivery_detail.received_quantity", "delivery_detail.actual_quantity"}
     );
     deliveryDetailWidget->setFilterColumns({
-        {"Mã giao nhận (delivery_code)", "delivery_code", FilterType::EXACT_TEXT, {}},
-        {"Mã sản phẩm (product_code)", "product_code", FilterType::EXACT_TEXT, {}},
-        {"Ngày nhận hàng (delivery_at)", "delivery_at", FilterType::DATE_RANGE, {}},
-        {"Ngày dự kiến (expected_at)", "expected_at", FilterType::DATE_RANGE, {}}
+        {"Mã giao nhận", "delivery_code", FilterType::EXACT_TEXT, {}},
+        {"Mã sản phẩm", "product_code", FilterType::EXACT_TEXT, {}},
+        {"Ngày nhận hàng", "delivery_at", FilterType::DATE_RANGE, {}},
+        {"Ngày dự kiến", "expected_at", FilterType::DATE_RANGE, {}}
     });
     deliveryDetailWidget->setRefreshCallback([this]() { refreshQuery(6); });
     deliveryDetailWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& v2, bool isRange) {
@@ -891,11 +891,11 @@ void MainWindow::setupPages()
         Vector<Record> results;
         if (isRange) {
             user_query::delivery_detail_query(db, results, col, Value(v1.toStdString()), Value(v2.toStdString()));
-            statusLabel->setText(QString("Lọc dữ liệu trên DELIVERY_DETAIL [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
+            statusLabel->setText(QString("Lọc dữ liệu chi tiết nhận hàng [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
                 .arg(QString::fromStdString(col)).arg(v1).arg(v2).arg(results.size()).arg(timer.elapsed()));
         } else {
             user_query::delivery_detail_query(db, results, col, Value(v1.toStdString()));
-            statusLabel->setText(QString("Lọc dữ liệu trên DELIVERY_DETAIL [%1 = %2]: %3 bản ghi (%4 ms)")
+            statusLabel->setText(QString("Lọc dữ liệu chi tiết nhận hàng [%1 = %2]: %3 bản ghi (%4 ms)")
                 .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
         }
         deliveryDetailWidget->setData(results);
@@ -908,7 +908,7 @@ void MainWindow::setupPages()
     outboundTxnWidget = new TransactionHubWidget(
         HubType::OUTBOUND, db,
         "Quản lý đơn xuất kho",
-        "Khung hiển thị đối chiếu Kế hoạch đặt hàng và Tiến độ thực tế các đợt xuất hàng (Format A)",
+        "Khung hiển thị đối chiếu Kế hoạch đặt hàng và Tiến độ thực tế các đợt xuất hàng",
         this
     );
     outboundTxnWidget->setMasterColumns(
@@ -931,12 +931,12 @@ void MainWindow::setupPages()
         Vector<Record> results;
         if (isRange) {
             user_query::outbound_transaction_query(db, results, col, Value(v1.toStdString()), Value(v2.toStdString()));
-            statusLabel->setText(QString("Lọc dữ liệu trên OUTBOUND_TRANSACTION [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
+            statusLabel->setText(QString("Lọc dữ liệu đơn xuất [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
                 .arg(QString::fromStdString(col)).arg(v1).arg(v2).arg(results.size()).arg(timer.elapsed()));
         } else {
             user_query::outbound_transaction_query(db, results, col, Value(v1.toStdString()));
-            statusLabel->setText(QString("Lọc dữ liệu trên OUTBOUND_TRANSACTION [%1 = %2]: %3 bản ghi (%4 ms)")
-                .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
+            statusLabel->setText(QString("Lọc dữ liệu đơn xuất [%1 = %2]: %3 bản ghi (%4 ms)")
+                .arg(QString::fromStdString(col)).arg(UiLocalization::localizeColumnValue(col, v1)).arg(results.size()).arg(timer.elapsed()));
         }
         outboundTxnWidget->setData(results);
     });
@@ -951,13 +951,13 @@ void MainWindow::setupPages()
         this
     );
     outboundDetailWidget->setColumns(
-        {"Mã đơn xuất", "Mã sản phẩm", "Tên sản phẩm", "Số lượng yêu cầu", "Số lượng thực xuất (actual_quantity)"},
+        {"Mã đơn xuất", "Mã sản phẩm", "Tên sản phẩm", "Số lượng yêu cầu", "Số lượng thực xuất"},
         {"outbound_transaction.outbound_code", "product.product_code", "product.product_name", "outbound_detail.ordered_quantity", "outbound_detail.actual_quantity"}
     );
     outboundDetailWidget->setFilterColumns({
-        {"Mã đơn xuất (outbound_code)", "outbound_code", FilterType::EXACT_TEXT, {}},
-        {"Mã sản phẩm (product_code)", "product_code", FilterType::EXACT_TEXT, {}},
-        {"Ngày đặt hàng (order_at)", "order_at", FilterType::DATE_RANGE, {}}
+        {"Mã đơn xuất", "outbound_code", FilterType::EXACT_TEXT, {}},
+        {"Mã sản phẩm", "product_code", FilterType::EXACT_TEXT, {}},
+        {"Ngày đặt hàng", "order_at", FilterType::DATE_RANGE, {}}
     });
     outboundDetailWidget->setRefreshCallback([this]() { refreshQuery(8); });
     outboundDetailWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
@@ -967,7 +967,7 @@ void MainWindow::setupPages()
         Vector<Record> results;
         user_query::outbound_detail_query(db, results, col, Value(v1.toStdString()));
         outboundDetailWidget->setData(results);
-        statusLabel->setText(QString("Lọc dữ liệu trên OUTBOUND_DETAIL [%1 = %2]: %3 bản ghi (%4 ms)")
+        statusLabel->setText(QString("Lọc dữ liệu chi tiết đơn xuất [%1 = %2]: %3 bản ghi (%4 ms)")
             .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(outboundDetailWidget);
@@ -981,15 +981,15 @@ void MainWindow::setupPages()
         this
     );
     shipmentWidget->setColumns(
-        {"Mã kiện (Shipment)", "Mã đơn xuất tương ứng", "Ngày xuất thực tế", "Ngày dự kiến", "Trạng thái"},
+        {"Mã đợt xuất", "Mã đơn xuất tương ứng", "Ngày xuất thực tế", "Ngày dự kiến", "Trạng thái"},
         {"shipment.shipment_code", "outbound_transaction.outbound_code", "shipment.ship_at", "shipment.expected_at", "shipment.status"}
     );
     shipmentWidget->setFilterColumns({
-        {"Mã xuất hàng (shipment_code)", "shipment_code", FilterType::EXACT_TEXT, {}},
-        {"Mã đơn xuất (outbound_code)", "outbound_code", FilterType::EXACT_TEXT, {}},
-        {"Ngày xuất hàng (ship_at)", "ship_at", FilterType::DATE_RANGE, {}},
-        {"Ngày dự kiến (expected_at)", "expected_at", FilterType::DATE_RANGE, {}},
-        {"Trạng thái xuất (status)", "status", FilterType::SELECT_OR_TYPE, {"PENDING", "PICKING", "COMPLETED", "CANCELLED"}}
+        {"Mã xuất hàng", "shipment_code", FilterType::EXACT_TEXT, {}},
+        {"Mã đơn xuất", "outbound_code", FilterType::EXACT_TEXT, {}},
+        {"Ngày xuất hàng", "ship_at", FilterType::DATE_RANGE, {}},
+        {"Ngày dự kiến", "expected_at", FilterType::DATE_RANGE, {}},
+        {"Trạng thái xuất", "status", FilterType::SELECT_OR_TYPE, {"PENDING", "PICKING", "COMPLETED", "CANCELLED"}}
     });
     shipmentWidget->setRefreshCallback([this]() { refreshQuery(9); });
     shipmentWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& v2, bool isRange) {
@@ -999,12 +999,12 @@ void MainWindow::setupPages()
         Vector<Record> results;
         if (isRange) {
             user_query::shipment_query(db, results, col, Value(v1.toStdString()), Value(v2.toStdString()));
-            statusLabel->setText(QString("Lọc dữ liệu trên SHIPMENT [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
+            statusLabel->setText(QString("Lọc dữ liệu đợt xuất hàng [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
                 .arg(QString::fromStdString(col)).arg(v1).arg(v2).arg(results.size()).arg(timer.elapsed()));
         } else {
             user_query::shipment_query(db, results, col, Value(v1.toStdString()));
-            statusLabel->setText(QString("Lọc dữ liệu trên SHIPMENT [%1 = %2]: %3 bản ghi (%4 ms)")
-                .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
+            statusLabel->setText(QString("Lọc dữ liệu đợt xuất hàng [%1 = %2]: %3 bản ghi (%4 ms)")
+                .arg(QString::fromStdString(col)).arg(UiLocalization::localizeColumnValue(col, v1)).arg(results.size()).arg(timer.elapsed()));
         }
         shipmentWidget->setData(results);
     });
@@ -1015,18 +1015,18 @@ void MainWindow::setupPages()
     // ========================================================
     shipmentDetailWidget = new QueryTableWidget(
         "Chi tiết xuất hàng",
-        "Chi tiết các lô xuất kiện hàng (Shipment) thực tế được gửi đi",
+        "Chi tiết các lô xuất kiện hàng thực tế được gửi đi",
         this
     );
     shipmentDetailWidget->setColumns(
-        {"Mã kiện (Shipment)", "Mã sản phẩm", "Tên sản phẩm", "Số lượng kế hoạch", "Số lượng thực tế (actual_quantity)"},
+        {"Mã đợt xuất", "Mã sản phẩm", "Tên sản phẩm", "Số lượng kế hoạch", "Số lượng thực tế"},
         {"shipment.shipment_code", "product.product_code", "product.product_name", "shipment_detail.received_quantity", "shipment_detail.actual_quantity"}
     );
     shipmentDetailWidget->setFilterColumns({
-        {"Mã xuất hàng (shipment_code)", "shipment_code", FilterType::EXACT_TEXT, {}},
-        {"Mã sản phẩm (product_code)", "product_code", FilterType::EXACT_TEXT, {}},
-        {"Ngày xuất hàng (ship_at)", "ship_at", FilterType::DATE_RANGE, {}},
-        {"Ngày dự kiến (expected_at)", "expected_at", FilterType::DATE_RANGE, {}}
+        {"Mã xuất hàng", "shipment_code", FilterType::EXACT_TEXT, {}},
+        {"Mã sản phẩm", "product_code", FilterType::EXACT_TEXT, {}},
+        {"Ngày xuất hàng", "ship_at", FilterType::DATE_RANGE, {}},
+        {"Ngày dự kiến", "expected_at", FilterType::DATE_RANGE, {}}
     });
     shipmentDetailWidget->setRefreshCallback([this]() { refreshQuery(10); });
     shipmentDetailWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& v2, bool isRange) {
@@ -1036,11 +1036,11 @@ void MainWindow::setupPages()
         Vector<Record> results;
         if (isRange) {
             user_query::shipment_detail_query(db, results, col, Value(v1.toStdString()), Value(v2.toStdString()));
-            statusLabel->setText(QString("Lọc dữ liệu trên SHIPMENT_DETAIL [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
+            statusLabel->setText(QString("Lọc dữ liệu chi tiết xuất hàng [%1 từ %2 đến %3]: %4 bản ghi (%5 ms)")
                 .arg(QString::fromStdString(col)).arg(v1).arg(v2).arg(results.size()).arg(timer.elapsed()));
         } else {
             user_query::shipment_detail_query(db, results, col, Value(v1.toStdString()));
-            statusLabel->setText(QString("Lọc dữ liệu trên SHIPMENT_DETAIL [%1 = %2]: %3 bản ghi (%4 ms)")
+            statusLabel->setText(QString("Lọc dữ liệu chi tiết xuất hàng [%1 = %2]: %3 bản ghi (%4 ms)")
                 .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
         }
         shipmentDetailWidget->setData(results);
@@ -1134,7 +1134,7 @@ void MainWindow::setupPages()
         {"check_code", "product_code", "product_name", "total_system_quan", "total_actual_quan", "total_diff_quan", "system_available_quan", "actual_available_quan", "diff_available", "system_warranty_quan", "actual_warranty_quan", "diff_warranty", "system_scrapped_quan", "actual_scrapped_quan", "diff_scrapped", "note"}
     );
     inventoryCheckQuantityWidget->setFilterColumns({
-        {"Mã đợt kiểm (check_code)", "check_code", FilterType::EXACT_TEXT, {}},
+        {"Mã đợt kiểm", "check_code", FilterType::EXACT_TEXT, {}},
         {"Mã sản phẩm", "product_code", FilterType::EXACT_TEXT, {}}
     });
     inventoryCheckQuantityWidget->setRefreshCallback([this]() { refreshQuery(12); });
@@ -1339,7 +1339,7 @@ void MainWindow::setupPages()
         {"adjust_code", "product_code", "product_name", "from_status", "to_status", "adjust_quantity", "actual_quantity"}
     );
     adjustMovementDetailWidget->setFilterColumns({
-        {"Mã phiếu (adjust_code)", "adjust_code", FilterType::EXACT_TEXT, {}},
+        {"Mã phiếu", "adjust_code", FilterType::EXACT_TEXT, {}},
         {"Mã sản phẩm", "product_code", FilterType::EXACT_TEXT, {}},
         {"Từ trạng thái", "from_status", FilterType::SELECT_OR_TYPE, {"AVAILABLE", "WARRANTY", "SCRAPPED"}},
         {"Sang trạng thái", "to_status", FilterType::SELECT_OR_TYPE, {"AVAILABLE", "WARRANTY", "SCRAPPED"}}
@@ -1416,7 +1416,7 @@ void MainWindow::setupPages()
         Vector<Record> results;
         user_query::cpu_query(db, results, col, Value(v1.toStdString()));
         cpuWidget->setData(results);
-        statusLabel->setText(QString("Lọc dữ liệu trên CPU_QUERY [%1 = %2]: %3 bản ghi (%4 ms)")
+        statusLabel->setText(QString("Lọc dữ liệu CPU [%1 = %2]: %3 bản ghi (%4 ms)")
             .arg(QString::fromStdString(col)).arg(UiLocalization::localizeColumnValue(col, v1)).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(cpuWidget);
@@ -1449,7 +1449,7 @@ void MainWindow::setupPages()
         }
         user_query::gpu_query(db, results, col, val);
         gpuWidget->setData(results);
-        statusLabel->setText(QString("Lọc dữ liệu trên GPU_QUERY [%1 = %2]: %3 bản ghi (%4 ms)")
+        statusLabel->setText(QString("Lọc dữ liệu GPU [%1 = %2]: %3 bản ghi (%4 ms)")
             .arg(QString::fromStdString(col)).arg(UiLocalization::localizeColumnValue(col, v1)).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(gpuWidget);
@@ -1474,7 +1474,7 @@ void MainWindow::setupPages()
         Vector<Record> results;
         user_query::mainboard_query(db, results, col, Value(v1.toStdString()));
         mainboardWidget->setData(results);
-        statusLabel->setText(QString("Lọc dữ liệu trên MAINBOARD_QUERY [%1 = %2]: %3 bản ghi (%4 ms)")
+        statusLabel->setText(QString("Lọc dữ liệu Mainboard [%1 = %2]: %3 bản ghi (%4 ms)")
             .arg(QString::fromStdString(col)).arg(UiLocalization::localizeColumnValue(col, v1)).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(mainboardWidget);
@@ -1499,7 +1499,7 @@ void MainWindow::setupPages()
         Vector<Record> results;
         user_query::ram_query(db, results, col, Value(v1.toStdString()));
         ramWidget->setData(results);
-        statusLabel->setText(QString("Lọc dữ liệu trên RAM_QUERY [%1 = %2]: %3 bản ghi (%4 ms)")
+        statusLabel->setText(QString("Lọc dữ liệu RAM [%1 = %2]: %3 bản ghi (%4 ms)")
             .arg(QString::fromStdString(col)).arg(UiLocalization::localizeColumnValue(col, v1)).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(ramWidget);
@@ -1524,7 +1524,7 @@ void MainWindow::setupPages()
         Vector<Record> results;
         user_query::ssd_query(db, results, col, Value(v1.toStdString()));
         ssdWidget->setData(results);
-        statusLabel->setText(QString("Lọc dữ liệu trên SSD_QUERY [%1 = %2]: %3 bản ghi (%4 ms)")
+        statusLabel->setText(QString("Lọc dữ liệu SSD [%1 = %2]: %3 bản ghi (%4 ms)")
             .arg(QString::fromStdString(col)).arg(UiLocalization::localizeColumnValue(col, v1)).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(ssdWidget);
@@ -1557,7 +1557,7 @@ void MainWindow::setupPages()
         }
         user_query::psu_query(db, results, col, val);
         psuWidget->setData(results);
-        statusLabel->setText(QString("Lọc dữ liệu trên PSU_QUERY [%1 = %2]: %3 bản ghi (%4 ms)")
+        statusLabel->setText(QString("Lọc dữ liệu PSU [%1 = %2]: %3 bản ghi (%4 ms)")
             .arg(QString::fromStdString(col)).arg(UiLocalization::localizeColumnValue(col, v1)).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(psuWidget);
@@ -1582,7 +1582,7 @@ void MainWindow::setupPages()
         Vector<Record> results;
         user_query::cooling_query(db, results, col, Value(v1.toStdString()));
         coolingWidget->setData(results);
-        statusLabel->setText(QString("Lọc dữ liệu trên COOLING_QUERY [%1 = %2]: %3 bản ghi (%4 ms)")
+        statusLabel->setText(QString("Lọc dữ liệu Cooling [%1 = %2]: %3 bản ghi (%4 ms)")
             .arg(QString::fromStdString(col)).arg(UiLocalization::localizeColumnValue(col, v1)).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(coolingWidget);
@@ -1607,7 +1607,7 @@ void MainWindow::setupPages()
         Vector<Record> results;
         user_query::case_query(db, results, col, Value(v1.toStdString()));
         caseWidget->setData(results);
-        statusLabel->setText(QString("Lọc dữ liệu trên CASE_QUERY [%1 = %2]: %3 bản ghi (%4 ms)")
+        statusLabel->setText(QString("Lọc dữ liệu Case [%1 = %2]: %3 bản ghi (%4 ms)")
             .arg(QString::fromStdString(col)).arg(UiLocalization::localizeColumnValue(col, v1)).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(caseWidget);
@@ -3071,7 +3071,7 @@ void MainWindow::setupCrudWiring()
             DetailInspectionDialog dlg(
                 DetailInspectionDialog::InspectionMode::DELIVERY_BATCH,
                 db, dCode,
-                QString("Thuộc đơn nhập: %1  |  Trạng thái đợt nhận: %2").arg(inCode, st),
+                QString("Thuộc đơn nhập: %1  |  Trạng thái đợt nhận: %2").arg(inCode, UiLocalization::localizeStatus(st)),
                 this
             );
             dlg.exec();
@@ -3160,7 +3160,7 @@ void MainWindow::setupCrudWiring()
             DetailInspectionDialog dlg(
                 DetailInspectionDialog::InspectionMode::SHIPMENT_BATCH,
                 db, sCode,
-                QString("Thuộc đơn xuất: %1  |  Trạng thái đợt xuất: %2").arg(outCode, st),
+                QString("Thuộc đơn xuất: %1  |  Trạng thái đợt xuất: %2").arg(outCode, UiLocalization::localizeStatus(st)),
                 this
             );
             dlg.exec();
@@ -3264,7 +3264,7 @@ void MainWindow::onAddAuxSpecOrBrand()
     }
 
     if (!isEditableSpecSubTable(tbl)) {
-        QMessageBox::warning(this, "Bảng dữ liệu chuẩn (Read-Only)", "Bảng danh mục chính / trạng thái hệ thống không cho phép chỉnh sửa.");
+        QMessageBox::warning(this, "Bảng dữ liệu chuẩn (Chỉ đọc)", "Bảng danh mục chính / trạng thái hệ thống không cho phép chỉnh sửa.");
         return;
     }
 

@@ -48,7 +48,10 @@ inline int safeGetInt(const Record &r, const string &col, int defaultVal = 0) {
 inline string safeGetString(const Record &r, const string &col, const string &defaultVal = "") {
 	if (!r.has(col))
 		return defaultVal;
-	return valueToString(r.get(col));
+	const auto &v = r.get(col);
+	if (holds_alternative<monostate>(v))
+		return defaultVal;
+	return valueToString(v);
 }
 
 inline string safeGetStr(const Record &r, const string &col, const string &defaultVal = "") {
@@ -2321,18 +2324,28 @@ void inventory_check_unit_query(Database *db, int checkId, Vector<Record> &resul
 		std::string scanSt = cu.has("scanned_status") && std::holds_alternative<std::string>(cu.get("scanned_status"))
 			? std::get<std::string>(cu.get("scanned_status")) : "";
 
+		auto localizeUnitStatusVi = [](const std::string& st) -> std::string {
+			if (st == "AVAILABLE") return "Khả dụng";
+			if (st == "WARRANTY") return "Bảo hành";
+			if (st == "SCRAPPED") return "Lỗi/hỏng";
+			if (st == "OUT") return "Đã xuất";
+			if (st == "MISSING") return "Thất thoát";
+			if (st == "UNCHECKED") return "Chưa kiểm";
+			return st;
+		};
+
 		if (sysSt.empty()) {
-			r.set("match_result", std::string("Thừa mới (" + scanSt + ")"));
+			r.set("match_result", std::string("Thừa mới (" + localizeUnitStatusVi(scanSt) + ")"));
 		} else if (sysSt == "OUT") {
-			r.set("match_result", std::string("Tái phát hiện (" + scanSt + ")"));
+			r.set("match_result", std::string("Tái phát hiện (" + localizeUnitStatusVi(scanSt) + ")"));
 		} else if (scanSt.empty() || scanSt == "UNCHECKED") {
 			r.set("match_result", std::string("Chưa quét"));
 		} else if (scanSt == "OUT") {
 			r.set("match_result", std::string("Mất/Thiếu"));
 		} else if (scanSt == sysSt) {
-			r.set("match_result", std::string("Khớp (" + sysSt + ")"));
+			r.set("match_result", std::string("Khớp (" + localizeUnitStatusVi(sysSt) + ")"));
 		} else {
-			r.set("match_result", std::string("Lệch (" + sysSt + " -> " + scanSt + ")"));
+			r.set("match_result", std::string("Lệch (" + localizeUnitStatusVi(sysSt) + " -> " + localizeUnitStatusVi(scanSt) + ")"));
 		}
 
 		results.push_back(std::move(r));
@@ -2797,6 +2810,11 @@ void get_candidate_units_for_adjustment(
 	const Table* unitTable = db->getTable("unit_inventory");
 	if (!unitTable) return;
 
+	HashMap<string, bool> exMap;
+	for (size_t i = 0; i < excludeList.size(); ++i) {
+		exMap[excludeList[i]] = true;
+	}
+
 	bool hasChkFilter = (!sourceCheckCode.empty() && sourceCheckCode.rfind("CHK-", 0) == 0);
 	HashMap<string, bool> chkDiscrepancySerials;
 
@@ -2828,17 +2846,20 @@ void get_candidate_units_for_adjustment(
 					string scanSt = safeGetStr(cu, "scanned_status");
 					string sn = safeGetStr(cu, "serial");
 
-					if (pid == productId && sysSt == fromStatus && scanSt == toStatus && !sn.empty()) {
-						chkDiscrepancySerials[sn] = true;
+					if (pid == productId && sysSt == fromStatus && scanSt == toStatus && !sn.empty() && !exMap.has(sn)) {
+						for (const auto& uRec : unitTable->view("serial", Value(sn))) {
+							int uPid = safeGetInt(uRec, "product_id");
+							string uSt = safeGetStr(uRec, "status");
+							bool uSold = uRec.has("is_sold") && holds_alternative<bool>(uRec.get("is_sold")) ? get<bool>(uRec.get("is_sold")) : false;
+							if (!uSold && uPid == productId && uSt == fromStatus) {
+								chkDiscrepancySerials[sn] = true;
+							}
+							break;
+						}
 					}
 				}
 			}
 		}
-	}
-
-	HashMap<string, bool> exMap;
-	for (size_t i = 0; i < excludeList.size(); ++i) {
-		exMap[excludeList[i]] = true;
 	}
 
 	for (const auto& r : unitTable->view("product_id", Value(productId))) {
@@ -2937,6 +2958,11 @@ void get_candidate_units_for_order_dispatch(
 	const Table* unitTable = db->getTable("unit_inventory");
 	if (!unitTable) return;
 
+	HashMap<string, bool> exMap;
+	for (size_t i = 0; i < excludeList.size(); ++i) {
+		exMap[excludeList[i]] = true;
+	}
+
 	bool hasChkFilter = (!sourceCheckCode.empty() && sourceCheckCode.rfind("CHK-", 0) == 0);
 	HashMap<string, bool> chkMissingSerials;
 
@@ -2968,19 +2994,22 @@ void get_candidate_units_for_order_dispatch(
 					string scanSt = safeGetStr(cu, "scanned_status");
 					string sn = safeGetStr(cu, "serial");
 
-					bool isMissing = (!sysSt.empty() && sysSt != "OUT") &&
-					                 (scanSt.empty() || scanSt == "OUT" || scanSt == "MISSING" || scanSt == "UNCHECKED");
-					if (isMissing && pid == productId && !sn.empty()) {
-						chkMissingSerials[sn] = true;
+					bool isMissing = (!sysSt.empty() && sysSt != "NULL" && sysSt != "OUT") &&
+					                 (scanSt.empty() || scanSt == "NULL" || scanSt == "OUT" || scanSt == "MISSING" || scanSt == "UNCHECKED");
+					if (isMissing && pid == productId && !sn.empty() && !exMap.has(sn)) {
+						for (const auto& uRec : unitTable->view("serial", Value(sn))) {
+							int uPid = safeGetInt(uRec, "product_id");
+							string uSt = safeGetStr(uRec, "status");
+							bool uSold = uRec.has("is_sold") && holds_alternative<bool>(uRec.get("is_sold")) ? get<bool>(uRec.get("is_sold")) : false;
+							if (!uSold && uPid == productId && uSt != "OUT") {
+								chkMissingSerials[sn] = true;
+							}
+							break;
+						}
 					}
 				}
 			}
 		}
-	}
-
-	HashMap<string, bool> exMap;
-	for (size_t i = 0; i < excludeList.size(); ++i) {
-		exMap[excludeList[i]] = true;
 	}
 
 	for (const auto& r : unitTable->view("product_id", Value(productId))) {

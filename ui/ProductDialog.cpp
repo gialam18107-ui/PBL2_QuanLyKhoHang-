@@ -41,7 +41,7 @@ ProductDialog::ProductDialog(Database* database, const QString& initialCategory,
       psuQualityCombo(nullptr), psuCapacitySpin(nullptr), psuSizeCombo(nullptr),
       coolTypeCombo(nullptr), caseNameEdit(nullptr), caseSizeCombo(nullptr)
 {
-    setWindowTitle("Thêm Sản Phẩm Mới (Product Creation)");
+    setWindowTitle("Thêm Sản Phẩm Mới");
     resize(740, 680);
     setMinimumSize(660, 600);
 
@@ -73,7 +73,7 @@ ProductDialog::ProductDialog(Database* database, int productIdToEdit, QWidget* p
       psuQualityCombo(nullptr), psuCapacitySpin(nullptr), psuSizeCombo(nullptr),
       coolTypeCombo(nullptr), caseNameEdit(nullptr), caseSizeCombo(nullptr)
 {
-    setWindowTitle("Chỉnh Sửa Sản Phẩm & Thông Số (Edit Product)");
+    setWindowTitle("Chỉnh Sửa Sản Phẩm & Thông Số");
     resize(740, 680);
     setMinimumSize(660, 600);
 
