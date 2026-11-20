@@ -7,24 +7,18 @@ Column::Column(
     const string& name,
     DataType type,
     int size,
-    bool primaryKey,
-    bool unique,
-    bool notNull,
     bool autoIncrement,
-    const string& defaultValue
+    const Value& defaultValue
 )
+    : name(name),
+      type(type),
+      size(size),
+      autoIncrement(autoIncrement),
+      defaultValue(defaultValue)
 {
-    this->name = name;
-    this->type = type;
-    this->size = size;
-    this->primaryKey = primaryKey;
-    this->unique = unique;
-    this->notNull = notNull;
-    this->autoIncrement = autoIncrement;
-    this->defaultValue = defaultValue;
 }
 
-string Column::getName() const
+const string& Column::getName() const
 {
     return name;
 }
@@ -39,27 +33,12 @@ int Column::getSize() const
     return size;
 }
 
-bool Column::isPrimaryKey() const
-{
-    return primaryKey;
-}
-
-bool Column::isUnique() const
-{
-    return unique;
-}
-
-bool Column::isNotNull() const
-{
-    return notNull;
-}
-
 bool Column::isAutoIncrement() const
 {
     return autoIncrement;
 }
 
-string Column::getDefaultValue() const
+const Value& Column::getDefaultValue() const
 {
     return defaultValue;
 }
@@ -79,27 +58,12 @@ void Column::setSize(int size)
     this->size = size;
 }
 
-void Column::setPrimaryKey(bool value)
-{
-    this->primaryKey = value;
-}
-
-void Column::setUnique(bool value)
-{
-    this->unique = value;
-}
-
-void Column::setNotNull(bool value)
-{
-    this->notNull = value;
-}
-
 void Column::setAutoIncrement(bool value)
 {
     this->autoIncrement = value;
 }
 
-void Column::setDefaultValue(const string& value)
+void Column::setDefaultValue(const Value& value)
 {
     this->defaultValue = value;
 }
@@ -132,28 +96,11 @@ string Column::getTypeName() const
 
 void Column::print() const
 {
-    cout << name << " ";
-
-    cout << getTypeName();
+    cout << name << " " << getTypeName();
 
     if (size > 0)
     {
         cout << "(" << size << ")";
-    }
-
-    if (primaryKey)
-    {
-        cout << " PRIMARY KEY";
-    }
-
-    if (unique)
-    {
-        cout << " UNIQUE";
-    }
-
-    if (notNull)
-    {
-        cout << " NOT NULL";
     }
 
     if (autoIncrement)
@@ -161,9 +108,9 @@ void Column::print() const
         cout << " AUTO_INCREMENT";
     }
 
-    if (!defaultValue.empty())
+    if (!isNull(defaultValue))
     {
-        cout << " DEFAULT " << defaultValue;
+        cout << " DEFAULT " << valueToString(defaultValue);
     }
 
     cout << endl;

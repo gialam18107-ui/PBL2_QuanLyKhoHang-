@@ -48,13 +48,6 @@ private:
     // Internal mutable table accessor for Database operations and friends
     Table* getMutableTable(const string& tableName);
 
-    static bool validateForeignKeyUpdates(
-        Database& database,
-        Table& table,
-        const Record& current,
-        const Record& newValues
-    );
-
     static bool isReferenced(Database& database, const string& tableName, const Record& parent);
 
 public:

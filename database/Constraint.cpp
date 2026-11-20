@@ -1,115 +1,81 @@
 #include "Constraint.h"
+#include "Table.h"
+#include "Database.h"
 
 Constraint::Constraint(
     const string& name,
+    const string& columnName,
     ConstraintType type
 )
-    : name(name), type(type)
+    : name(name), columnName(columnName), type(type)
 {
 }
 
-string Constraint::getName() const { return name; }
+const string& Constraint::getName() const { return name; }
+const string& Constraint::getColumnName() const { return columnName; }
 ConstraintType Constraint::getType() const { return type; }
 
-bool Constraint::validateUpdate(
-    const Record&,
-    const Record& newRecord,
-    const Vector<Record>& existingRecords,
-    const Vector<Record>& referencedRecords
-) const
-{
-    return validate(newRecord, existingRecords, referencedRecords);
-}
+// ============================================================
+// PRIMARY KEY CONSTRAINT
+// ============================================================
 
 PrimaryKeyConstraint::PrimaryKeyConstraint(
     const string& name,
     const string& columnName
 )
-    : Constraint(name, ConstraintType::PRIMARY_KEY), columnName(columnName)
+    : Constraint(name, columnName, ConstraintType::PRIMARY_KEY)
 {
 }
 
 Constraint* PrimaryKeyConstraint::clone() const { return new PrimaryKeyConstraint(*this); }
-string PrimaryKeyConstraint::getColumnName() const { return columnName; }
 
 bool PrimaryKeyConstraint::validate(
-    const Record& record,
-    const Vector<Record>& existingRecords,
-    const Vector<Record>&
+    const Value& value,
+    const Table& table,
+    int ignoreRowIndex
 ) const
 {
-    if (!record.has(columnName) || isNull(record.get(columnName))) return false;
-    Value value = record.get(columnName);
-    for (size_t index = 0; index < existingRecords.size(); ++index)
+    if (isNull(value))
     {
-        const Record& existing = existingRecords[index];
-        if (existing.has(columnName) && existing.get(columnName) == value) return false;
+        return false;
     }
-    return true;
+    return !table.contains(columnName, value, ignoreRowIndex);
 }
 
-bool PrimaryKeyConstraint::validateUpdate(
-    const Record& oldRecord,
-    const Record& newRecord,
-    const Vector<Record>& existingRecords,
-    const Vector<Record>&
-) const
-{
-    if (!newRecord.has(columnName) || isNull(newRecord.get(columnName))) return false;
-    Value value = newRecord.get(columnName);
-    for (size_t index = 0; index < existingRecords.size(); ++index)
-    {
-        const Record& existing = existingRecords[index];
-        if (existing != oldRecord && existing.has(columnName) && existing.get(columnName) == value) return false;
-    }
-    return true;
-}
+// ============================================================
+// UNIQUE CONSTRAINT
+// ============================================================
 
 UniqueConstraint::UniqueConstraint(
     const string& name,
     const string& columnName
 )
-    : Constraint(name, ConstraintType::UNIQUE), columnName(columnName)
+    : Constraint(name, columnName, ConstraintType::UNIQUE)
 {
 }
 
 Constraint* UniqueConstraint::clone() const { return new UniqueConstraint(*this); }
-string UniqueConstraint::getColumnName() const { return columnName; }
 
 bool UniqueConstraint::validate(
-    const Record& record,
-    const Vector<Record>& existingRecords,
-    const Vector<Record>&
+    const Value& value,
+    const Table& table,
+    int ignoreRowIndex
 ) const
 {
-    if (!record.has(columnName) || isNull(record.get(columnName))) return true;
-    Value value = record.get(columnName);
-    if (holds_alternative<string>(value) && get<string>(value).empty()) return true;
-    for (size_t index = 0; index < existingRecords.size(); ++index)
+    if (isNull(value))
     {
-        const Record& existing = existingRecords[index];
-        if (existing.has(columnName) && existing.get(columnName) == value) return false;
+        return true;
     }
-    return true;
+    if (holds_alternative<string>(value) && get<string>(value).empty() && !table.isColumnNotNull(columnName))
+    {
+        return true;
+    }
+    return !table.contains(columnName, value, ignoreRowIndex);
 }
 
-bool UniqueConstraint::validateUpdate(
-    const Record& oldRecord,
-    const Record& newRecord,
-    const Vector<Record>& existingRecords,
-    const Vector<Record>&
-) const
-{
-    if (!newRecord.has(columnName) || isNull(newRecord.get(columnName))) return true;
-    Value value = newRecord.get(columnName);
-    if (holds_alternative<string>(value) && get<string>(value).empty()) return true;
-    for (size_t index = 0; index < existingRecords.size(); ++index)
-    {
-        const Record& existing = existingRecords[index];
-        if (existing != oldRecord && existing.has(columnName) && existing.get(columnName) == value) return false;
-    }
-    return true;
-}
+// ============================================================
+// FOREIGN KEY CONSTRAINT
+// ============================================================
 
 ForeignKeyConstraint::ForeignKeyConstraint(
     const string& name,
@@ -117,78 +83,58 @@ ForeignKeyConstraint::ForeignKeyConstraint(
     const string& referenceTable,
     const string& referenceColumn
 )
-    : Constraint(name, ConstraintType::FOREIGN_KEY),
-      columnName(columnName),
+    : Constraint(name, columnName, ConstraintType::FOREIGN_KEY),
       referenceTable(referenceTable),
       referenceColumn(referenceColumn)
 {
 }
 
 Constraint* ForeignKeyConstraint::clone() const { return new ForeignKeyConstraint(*this); }
-string ForeignKeyConstraint::getColumnName() const { return columnName; }
-string ForeignKeyConstraint::getReferenceTable() const { return referenceTable; }
-string ForeignKeyConstraint::getReferenceColumn() const { return referenceColumn; }
+const string& ForeignKeyConstraint::getReferenceTable() const { return referenceTable; }
+const string& ForeignKeyConstraint::getReferenceColumn() const { return referenceColumn; }
 
 bool ForeignKeyConstraint::validate(
-    const Record& record,
-    const Vector<Record>&,
-    const Vector<Record>& referencedRecords
+    const Value& value,
+    const Table& table,
+    int /*ignoreRowIndex*/
 ) const
 {
-    if (!record.has(columnName) || isNull(record.get(columnName))) return true;
-    Value value = record.get(columnName);
-    for (size_t index = 0; index < referencedRecords.size(); ++index)
+    if (isNull(value))
     {
-        const Record& referenced = referencedRecords[index];
-        if (referenced.has(referenceColumn) && referenced.get(referenceColumn) == value) return true;
+        return true;
     }
-    return false;
+    const Database* db = table.getDatabase();
+    if (db == nullptr)
+    {
+        return false;
+    }
+    const Table* refTable = db->getTable(referenceTable);
+    if (refTable == nullptr)
+    {
+        return false;
+    }
+    return refTable->contains(referenceColumn, value);
 }
 
-bool ForeignKeyConstraint::validateUpdate(
-    const Record&,
-    const Record& newRecord,
-    const Vector<Record>&,
-    const Vector<Record>& referencedRecords
-) const
-{
-    return validate(newRecord, Vector<Record>(), referencedRecords);
-}
+// ============================================================
+// NOT NULL CONSTRAINT
+// ============================================================
 
 NotNullConstraint::NotNullConstraint(
     const string& name,
     const string& columnName
 )
-    : Constraint(name, ConstraintType::NOT_NULL), columnName(columnName)
+    : Constraint(name, columnName, ConstraintType::NOT_NULL)
 {
 }
 
 Constraint* NotNullConstraint::clone() const { return new NotNullConstraint(*this); }
-string NotNullConstraint::getColumnName() const { return columnName; }
 
 bool NotNullConstraint::validate(
-    const Record& record,
-    const Vector<Record>&,
-    const Vector<Record>&
+    const Value& value,
+    const Table& /*table*/,
+    int /*ignoreRowIndex*/
 ) const
 {
-    return record.has(columnName) && !isNull(record.get(columnName));
-}
-
-DefaultConstraint::DefaultConstraint(
-    const string& name,
-    const string& columnName,
-    const Value& defaultValue
-)
-    : Constraint(name, ConstraintType::DEFAULT), columnName(columnName), defaultValue(defaultValue)
-{
-}
-
-Constraint* DefaultConstraint::clone() const { return new DefaultConstraint(*this); }
-string DefaultConstraint::getColumnName() const { return columnName; }
-const Value& DefaultConstraint::getDefaultValue() const { return defaultValue; }
-
-bool DefaultConstraint::validate(const Record&, const Vector<Record>&, const Vector<Record>&) const
-{
-    return true;
+    return !isNull(value);
 }

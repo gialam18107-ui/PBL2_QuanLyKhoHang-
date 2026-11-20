@@ -12,11 +12,9 @@ int main()
 
     Database db("test_transaction_db");
     Table* itemTable = db.createTable("item");
-    itemTable->addColumn(Column("id", DataType::INTEGER, 0, true, true, true, true)); // PK + AutoIncrement
-    itemTable->addColumn(Column("code", DataType::VARCHAR, 50, false, true, true));
-    itemTable->addColumn(Column("qty", DataType::INTEGER, 0, false, false, true));
-    itemTable->addConstraint(new PrimaryKeyConstraint("pk_item_id", "id"));
-    itemTable->addConstraint(new UniqueConstraint("uq_item_code", "code"));
+    itemTable->addColumn(Column("id", DataType::INTEGER, 0, true), true, true, true); // PK + AutoIncrement
+    itemTable->addColumn(Column("code", DataType::VARCHAR, 50), false, true, true);
+    itemTable->addColumn(Column("qty", DataType::INTEGER, 0), false, false, true);
 
     // 1. Seed initial records outside transaction
     Record r1;

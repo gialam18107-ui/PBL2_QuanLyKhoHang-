@@ -13,13 +13,9 @@ namespace Schema
     Table* createCategoryTable()
     {
         auto table = new Table("category");
-        table->addColumn(Column("category_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("category_name", DataType::VARCHAR, 50, false, true, true));
-        table->addColumn(Column("code", DataType::VARCHAR, 20, false, true, true));
-
-        table->addConstraint(new PrimaryKeyConstraint("pk_category", "category_id"));
-        table->addConstraint(new UniqueConstraint("uq_category_name", "category_name"));
-        table->addConstraint(new UniqueConstraint("uq_category_code", "code"));
+        table->addColumn(Column("category_id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("category_name", DataType::VARCHAR, 50), false, true, true);
+        table->addColumn(Column("code", DataType::VARCHAR, 20), false, true, true);
         return table;
     }
 
@@ -29,13 +25,9 @@ namespace Schema
     Table* createBrandTable()
     {
         auto table = new Table("brand");
-        table->addColumn(Column("brand_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("brand", DataType::VARCHAR, 50, false, true, true));
-        table->addColumn(Column("code", DataType::VARCHAR, 20, false, true, true));
-
-        table->addConstraint(new PrimaryKeyConstraint("pk_brand", "brand_id"));
-        table->addConstraint(new UniqueConstraint("uq_brand_name", "brand"));
-        table->addConstraint(new UniqueConstraint("uq_brand_code", "code"));
+        table->addColumn(Column("brand_id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("brand", DataType::VARCHAR, 50), false, true, true);
+        table->addColumn(Column("code", DataType::VARCHAR, 20), false, true, true);
         return table;
     }
 
@@ -45,11 +37,8 @@ namespace Schema
     Table* createUnitStatusTable()
     {
         auto table = new Table("unit_status");
-        table->addColumn(Column("status_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("status", DataType::VARCHAR, 50, false, true, true));
-
-        table->addConstraint(new PrimaryKeyConstraint("pk_unit_status", "status_id"));
-        table->addConstraint(new UniqueConstraint("uq_unit_status", "status"));
+        table->addColumn(Column("status_id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("status", DataType::VARCHAR, 50), false, true, true);
         return table;
     }
 
@@ -59,14 +48,10 @@ namespace Schema
     Table* createInboundTypeTable()
     {
         auto table = new Table("inbound_type");
-        table->addColumn(Column("id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("type", DataType::VARCHAR, 50, false, true, true));
-        table->addColumn(Column("code", DataType::VARCHAR, 20, false, true, true));
-        table->addColumn(Column("next_code_no", DataType::INTEGER, 0, false, false, true));
-
-        table->addConstraint(new PrimaryKeyConstraint("pk_inbound_type", "id"));
-        table->addConstraint(new UniqueConstraint("uq_inbound_type", "type"));
-        table->addConstraint(new UniqueConstraint("uq_inbound_type_code", "code"));
+        table->addColumn(Column("id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("type", DataType::VARCHAR, 50), false, true, true);
+        table->addColumn(Column("code", DataType::VARCHAR, 20), false, true, true);
+        table->addColumn(Column("next_code_no", DataType::INTEGER, 0), false, false, true);
         return table;
     }
 
@@ -76,11 +61,8 @@ namespace Schema
     Table* createInboundStatusTable()
     {
         auto table = new Table("inbound_status");
-        table->addColumn(Column("status_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("status", DataType::VARCHAR, 50, false, true, true));
-
-        table->addConstraint(new PrimaryKeyConstraint("pk_inbound_status", "status_id"));
-        table->addConstraint(new UniqueConstraint("uq_inbound_status", "status"));
+        table->addColumn(Column("status_id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("status", DataType::VARCHAR, 50), false, true, true);
         return table;
     }
 
@@ -90,11 +72,8 @@ namespace Schema
     Table* createDeliveryStatusTable()
     {
         auto table = new Table("delivery_status");
-        table->addColumn(Column("status_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("status", DataType::VARCHAR, 50, false, true, true));
-
-        table->addConstraint(new PrimaryKeyConstraint("pk_delivery_status", "status_id"));
-        table->addConstraint(new UniqueConstraint("uq_delivery_status", "status"));
+        table->addColumn(Column("status_id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("status", DataType::VARCHAR, 50), false, true, true);
         return table;
     }
 
@@ -104,14 +83,10 @@ namespace Schema
     Table* createOutboundTypeTable()
     {
         auto table = new Table("outbound_type");
-        table->addColumn(Column("id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("type", DataType::VARCHAR, 50, false, true, true));
-        table->addColumn(Column("code", DataType::VARCHAR, 20, false, true, true));
-        table->addColumn(Column("next_code_no", DataType::INTEGER, 0, false, false, true));
-
-        table->addConstraint(new PrimaryKeyConstraint("pk_outbound_type", "id"));
-        table->addConstraint(new UniqueConstraint("uq_outbound_type", "type"));
-        table->addConstraint(new UniqueConstraint("uq_outbound_type_code", "code"));
+        table->addColumn(Column("id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("type", DataType::VARCHAR, 50), false, true, true);
+        table->addColumn(Column("code", DataType::VARCHAR, 20), false, true, true);
+        table->addColumn(Column("next_code_no", DataType::INTEGER, 0), false, false, true);
         return table;
     }
 
@@ -121,11 +96,8 @@ namespace Schema
     Table* createOutboundStatusTable()
     {
         auto table = new Table("outbound_status");
-        table->addColumn(Column("status_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("status", DataType::VARCHAR, 50, false, true, true));
-
-        table->addConstraint(new PrimaryKeyConstraint("pk_outbound_status", "status_id"));
-        table->addConstraint(new UniqueConstraint("uq_outbound_status", "status"));
+        table->addColumn(Column("status_id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("status", DataType::VARCHAR, 50), false, true, true);
         return table;
     }
 
@@ -135,11 +107,8 @@ namespace Schema
     Table* createShipmentStatusTable()
     {
         auto table = new Table("shipment_status");
-        table->addColumn(Column("status_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("status", DataType::VARCHAR, 50, false, true, true));
-
-        table->addConstraint(new PrimaryKeyConstraint("pk_shipment_status", "status_id"));
-        table->addConstraint(new UniqueConstraint("uq_shipment_status", "status"));
+        table->addColumn(Column("status_id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("status", DataType::VARCHAR, 50), false, true, true);
         return table;
     }
 
@@ -149,14 +118,12 @@ namespace Schema
     Table* createCustomerTable()
     {
         auto table = new Table("customer");
-        table->addColumn(Column("customer_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("customer_code", DataType::VARCHAR, 50, false, true, true));
-        table->addColumn(Column("name", DataType::VARCHAR, 100, false, false, true));
-        table->addColumn(Column("type", DataType::VARCHAR, 50, false, false, true));
+        table->addColumn(Column("customer_id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("customer_code", DataType::VARCHAR, 50), false, true, true);
+        table->addColumn(Column("name", DataType::VARCHAR, 100), false, false, true);
+        table->addColumn(Column("type", DataType::VARCHAR, 50), false, false, true);
 
-        table->addConstraint(new PrimaryKeyConstraint("pk_customer", "customer_id"));
-        table->addConstraint(new UniqueConstraint("uq_customer_code", "customer_code"));
-        table->createIndex("hash_tree_type", "type", IndexType::HASH_TREE);
+        table->createIndex("type", IndexType::HASH_TREE);
         return table;
     }
 
@@ -166,12 +133,9 @@ namespace Schema
     Table* createCheckTypeTable()
     {
         auto table = new Table("check_type");
-        table->addColumn(Column("type_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("check_type", DataType::VARCHAR, 10, false, true, true));
-        table->addColumn(Column("next_code_no", DataType::INTEGER, 0, false, false, true, false, "0"));
-
-        table->addConstraint(new PrimaryKeyConstraint("pk_check_type", "type_id"));
-        table->addConstraint(new UniqueConstraint("uq_check_type", "check_type"));
+        table->addColumn(Column("type_id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("check_type", DataType::VARCHAR, 10), false, true, true);
+        table->addColumn(Column("next_code_no", DataType::INTEGER, 0, false, Value(0)), false, false, true);
         return table;
     }
 
@@ -181,11 +145,8 @@ namespace Schema
     Table* createInventoryCheckStatusTable()
     {
         auto table = new Table("inventory_check_status");
-        table->addColumn(Column("status_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("status", DataType::VARCHAR, 50, false, true, true));
-
-        table->addConstraint(new PrimaryKeyConstraint("pk_inventory_check_status", "status_id"));
-        table->addConstraint(new UniqueConstraint("uq_inventory_check_status", "status"));
+        table->addColumn(Column("status_id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("status", DataType::VARCHAR, 50), false, true, true);
         return table;
     }
 
@@ -195,14 +156,10 @@ namespace Schema
     Table* createReasonTable()
     {
         auto table = new Table("reason");
-        table->addColumn(Column("reason_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("reason", DataType::VARCHAR, 50, false, true, true));
-        table->addColumn(Column("code", DataType::VARCHAR, 10, false, true, true));
-        table->addColumn(Column("next_code_no", DataType::INTEGER, 0, false, false, false, false, "0"));
-
-        table->addConstraint(new PrimaryKeyConstraint("pk_reason", "reason_id"));
-        table->addConstraint(new UniqueConstraint("uq_reason", "reason"));
-        table->addConstraint(new UniqueConstraint("uq_reason_code", "code"));
+        table->addColumn(Column("reason_id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("reason", DataType::VARCHAR, 50), false, true, true);
+        table->addColumn(Column("code", DataType::VARCHAR, 10), false, true, true);
+        table->addColumn(Column("next_code_no", DataType::INTEGER, 0, false, Value(0)), false, false, false);
         return table;
     }
 
@@ -212,11 +169,8 @@ namespace Schema
     Table* createAdjustmentStatusTable()
     {
         auto table = new Table("adjustment_status");
-        table->addColumn(Column("status_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("status", DataType::VARCHAR, 50, false, true, true));
-
-        table->addConstraint(new PrimaryKeyConstraint("pk_adjustment_status", "status_id"));
-        table->addConstraint(new UniqueConstraint("uq_adjustment_status", "status"));
+        table->addColumn(Column("status_id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("status", DataType::VARCHAR, 50), false, true, true);
         return table;
     }
 
@@ -226,14 +180,11 @@ namespace Schema
     Table* createIndividualInfoTable()
     {
         auto table = new Table("individual_info");
-        table->addColumn(Column("customer_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("phone_number", DataType::VARCHAR, 50, false, true, true));
-        table->addColumn(Column("email", DataType::VARCHAR, 100, false, true, false));
-        table->addColumn(Column("next_code_no", DataType::INTEGER, 0, false, false, true, true));
+        table->addColumn(Column("customer_id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("phone_number", DataType::VARCHAR, 50), false, true, true);
+        table->addColumn(Column("email", DataType::VARCHAR, 100), false, true, false);
+        table->addColumn(Column("next_code_no", DataType::INTEGER, 0, true), false, false, true);
 
-        table->addConstraint(new PrimaryKeyConstraint("pk_individual_info", "customer_id"));
-        table->addConstraint(new UniqueConstraint("uq_individual_phone", "phone_number"));
-        table->addConstraint(new UniqueConstraint("uq_individual_email", "email"));
         table->addConstraint(new ForeignKeyConstraint("fk_individual_customer", "customer_id", "customer", "customer_id"));
         return table;
     }
@@ -244,17 +195,13 @@ namespace Schema
     Table* createBusinessInfoTable()
     {
         auto table = new Table("business_info");
-        table->addColumn(Column("customer_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("phone_number", DataType::VARCHAR, 50, false, true, false));
-        table->addColumn(Column("email", DataType::VARCHAR, 100, false, true, false));
-        table->addColumn(Column("tax_code", DataType::VARCHAR, 50, false, true, true));
-        table->addColumn(Column("address", DataType::TEXT, 0, false, false, true));
-        table->addColumn(Column("next_code_no", DataType::INTEGER, 0, false, false, true, true));
+        table->addColumn(Column("customer_id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("phone_number", DataType::VARCHAR, 50), false, true, false);
+        table->addColumn(Column("email", DataType::VARCHAR, 100), false, true, false);
+        table->addColumn(Column("tax_code", DataType::VARCHAR, 50), false, true, true);
+        table->addColumn(Column("address", DataType::TEXT, 0), false, false, true);
+        table->addColumn(Column("next_code_no", DataType::INTEGER, 0, true), false, false, true);
 
-        table->addConstraint(new PrimaryKeyConstraint("pk_business_info", "customer_id"));
-        table->addConstraint(new UniqueConstraint("uq_business_phone", "phone_number"));
-        table->addConstraint(new UniqueConstraint("uq_business_email", "email"));
-        table->addConstraint(new UniqueConstraint("uq_business_tax_code", "tax_code"));
         table->addConstraint(new ForeignKeyConstraint("fk_business_customer", "customer_id", "customer", "customer_id"));
         return table;
     }
@@ -265,25 +212,21 @@ namespace Schema
     Table* createProductTable()
     {
         auto table = new Table("product");
-        table->addColumn(Column("product_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("product_name", DataType::VARCHAR, 255, false, false, true));
-        table->addColumn(Column("product_code", DataType::VARCHAR, 20, false, true, true));
-        table->addColumn(Column("barcode", DataType::VARCHAR, 13, false, true, true));
-        table->addColumn(Column("sku", DataType::VARCHAR, 20, false, true, true));
-        table->addColumn(Column("brand", DataType::VARCHAR, 255, false, false, true));
-        table->addColumn(Column("category", DataType::VARCHAR, 255, false, false, true));
-        table->addColumn(Column("available_quantity", DataType::INTEGER, 0, false, false, true, false, "0"));
-        table->addColumn(Column("warranty_quantity", DataType::INTEGER, 0, false, false, true, false, "0"));
-        table->addColumn(Column("scrapped_quantity", DataType::INTEGER, 0, false, false, true, false, "0"));
-        table->addColumn(Column("is_sold", DataType::BOOLEAN, 0, false, false, true, false, "1"));
+        table->addColumn(Column("product_id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("product_name", DataType::VARCHAR, 255), false, false, true);
+        table->addColumn(Column("product_code", DataType::VARCHAR, 20), false, true, true);
+        table->addColumn(Column("barcode", DataType::VARCHAR, 13), false, true, true);
+        table->addColumn(Column("sku", DataType::VARCHAR, 20), false, true, true);
+        table->addColumn(Column("brand", DataType::VARCHAR, 255), false, false, true);
+        table->addColumn(Column("category", DataType::VARCHAR, 255), false, false, true);
+        table->addColumn(Column("available_quantity", DataType::INTEGER, 0, false, Value(0)), false, false, true);
+        table->addColumn(Column("warranty_quantity", DataType::INTEGER, 0, false, Value(0)), false, false, true);
+        table->addColumn(Column("scrapped_quantity", DataType::INTEGER, 0, false, Value(0)), false, false, true);
+        table->addColumn(Column("is_sold", DataType::BOOLEAN, 0, false, Value(true)), false, false, true);
 
-        table->addConstraint(new PrimaryKeyConstraint("pk_product", "product_id"));
-        table->addConstraint(new UniqueConstraint("uq_product_code", "product_code"));
-        table->addConstraint(new UniqueConstraint("uq_product_barcode", "barcode"));
-        table->addConstraint(new UniqueConstraint("uq_product_sku", "sku"));
         table->addConstraint(new ForeignKeyConstraint("fk_product_brand", "brand", "brand", "brand"));
         table->addConstraint(new ForeignKeyConstraint("fk_product_category", "category", "category", "category_name"));
-        table->createIndex("hash_tree_is_sold", "is_sold", IndexType::HASH_TREE);
+        table->createIndex("is_sold", IndexType::HASH_TREE);
         return table;
     }
 
@@ -293,15 +236,14 @@ namespace Schema
     Table* createIsSoldChangingTable()
     {
         auto table = new Table("is_sold_changing");
-        table->addColumn(Column("history_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("date", DataType::DATE, 0, false, false, true));
-        table->addColumn(Column("old_status", DataType::BOOLEAN, 0, false, false, true));
-        table->addColumn(Column("new_status", DataType::BOOLEAN, 0, false, false, true));
+        table->addColumn(Column("history_id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("product_id", DataType::INTEGER, 0), false, false, true);
+        table->addColumn(Column("date", DataType::DATE, 0), false, false, true);
+        table->addColumn(Column("old_status", DataType::BOOLEAN, 0), false, false, true);
+        table->addColumn(Column("new_status", DataType::BOOLEAN, 0), false, false, true);
 
-        table->addConstraint(new PrimaryKeyConstraint("pk_is_sold_changing", "history_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_is_sold_changing_product", "product_id", "product", "product_id"));
-        table->createIndex("avl_tree_date", "date", IndexType::AVL);
+        table->createIndex("date", IndexType::AVL);
         return table;
     }
 
@@ -311,17 +253,16 @@ namespace Schema
     Table* createCpuTable()
     {
         auto table = new Table("cpu");
-        table->addColumn(Column("cpu_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("socket", DataType::VARCHAR, 50, false, false, true));
-        table->addColumn(Column("tier", DataType::VARCHAR, 50, false, false, true));
-        table->addColumn(Column("series", DataType::VARCHAR, 100, false, false, true));
+        table->addColumn(Column("cpu_id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("product_id", DataType::INTEGER, 0), false, false, true);
+        table->addColumn(Column("socket", DataType::VARCHAR, 50), false, false, true);
+        table->addColumn(Column("tier", DataType::VARCHAR, 50), false, false, true);
+        table->addColumn(Column("series", DataType::VARCHAR, 100), false, false, true);
 
-        table->addConstraint(new PrimaryKeyConstraint("pk_cpu", "cpu_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_cpu_product", "product_id", "product", "product_id"));
-        table->createIndex("hash_tree_socket", "socket", IndexType::HASH_TREE);
-        table->createIndex("hash_tree_tier", "tier", IndexType::HASH_TREE);
-        table->createIndex("hash_tree_series", "series", IndexType::HASH_TREE);
+        table->createIndex("socket", IndexType::HASH_TREE);
+        table->createIndex("tier", IndexType::HASH_TREE);
+        table->createIndex("series", IndexType::HASH_TREE);
         return table;
     }
 
@@ -331,17 +272,16 @@ namespace Schema
     Table* createGpuTable()
     {
         auto table = new Table("gpu");
-        table->addColumn(Column("gpu_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("series", DataType::VARCHAR, 100, false, false, true));
-        table->addColumn(Column("producer", DataType::VARCHAR, 50, false, false, true));
-        table->addColumn(Column("vram", DataType::INTEGER, 0, false, false, true));
+        table->addColumn(Column("gpu_id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("product_id", DataType::INTEGER, 0), false, false, true);
+        table->addColumn(Column("series", DataType::VARCHAR, 100), false, false, true);
+        table->addColumn(Column("producer", DataType::VARCHAR, 50), false, false, true);
+        table->addColumn(Column("vram", DataType::INTEGER, 0), false, false, true);
 
-        table->addConstraint(new PrimaryKeyConstraint("pk_gpu", "gpu_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_gpu_product", "product_id", "product", "product_id"));
-        table->createIndex("hash_tree_series", "series", IndexType::HASH_TREE);
-        table->createIndex("hash_tree_producer", "producer", IndexType::HASH_TREE);
-        table->createIndex("hash_tree_vram", "vram", IndexType::HASH_TREE);
+        table->createIndex("series", IndexType::HASH_TREE);
+        table->createIndex("producer", IndexType::HASH_TREE);
+        table->createIndex("vram", IndexType::HASH_TREE);
         return table;
     }
 
@@ -351,21 +291,20 @@ namespace Schema
     Table* createMainboardTable()
     {
         auto table = new Table("mainboard");
-        table->addColumn(Column("mainboard_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("cpu_support", DataType::VARCHAR, 50, false, false, true));
-        table->addColumn(Column("socket", DataType::VARCHAR, 50, false, false, true));
-        table->addColumn(Column("size", DataType::VARCHAR, 50, false, false, true));
-        table->addColumn(Column("chipset", DataType::VARCHAR, 50, false, false, true));
-        table->addColumn(Column("ram_support", DataType::VARCHAR, 50, false, false, true));
+        table->addColumn(Column("mainboard_id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("product_id", DataType::INTEGER, 0), false, false, true);
+        table->addColumn(Column("cpu_support", DataType::VARCHAR, 50), false, false, true);
+        table->addColumn(Column("socket", DataType::VARCHAR, 50), false, false, true);
+        table->addColumn(Column("size", DataType::VARCHAR, 50), false, false, true);
+        table->addColumn(Column("chipset", DataType::VARCHAR, 50), false, false, true);
+        table->addColumn(Column("ram_support", DataType::VARCHAR, 50), false, false, true);
 
-        table->addConstraint(new PrimaryKeyConstraint("pk_mainboard", "mainboard_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_mainboard_product", "product_id", "product", "product_id"));
-        table->createIndex("hash_tree_cpu_support", "cpu_support", IndexType::HASH_TREE);
-        table->createIndex("hash_tree_socket", "socket", IndexType::HASH_TREE);
-        table->createIndex("hash_tree_size", "size", IndexType::HASH_TREE);
-        table->createIndex("hash_tree_chipset", "chipset", IndexType::HASH_TREE);
-        table->createIndex("hash_tree_ram_support", "ram_support", IndexType::HASH_TREE);
+        table->createIndex("cpu_support", IndexType::HASH_TREE);
+        table->createIndex("socket", IndexType::HASH_TREE);
+        table->createIndex("size", IndexType::HASH_TREE);
+        table->createIndex("chipset", IndexType::HASH_TREE);
+        table->createIndex("ram_support", IndexType::HASH_TREE);
         return table;
     }
 
@@ -375,18 +314,17 @@ namespace Schema
     Table* createRamTable()
     {
         auto table = new Table("ram");
-        table->addColumn(Column("ram_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("generation", DataType::VARCHAR, 50, false, false, true));
-        table->addColumn(Column("quantity", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("capacity", DataType::VARCHAR, 50, false, false, true));
-        table->addColumn(Column("bus", DataType::VARCHAR, 50, false, false, true));
+        table->addColumn(Column("ram_id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("product_id", DataType::INTEGER, 0), false, false, true);
+        table->addColumn(Column("generation", DataType::VARCHAR, 50), false, false, true);
+        table->addColumn(Column("quantity", DataType::INTEGER, 0), false, false, true);
+        table->addColumn(Column("capacity", DataType::VARCHAR, 50), false, false, true);
+        table->addColumn(Column("bus", DataType::VARCHAR, 50), false, false, true);
 
-        table->addConstraint(new PrimaryKeyConstraint("pk_ram", "ram_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_ram_product", "product_id", "product", "product_id"));
-        table->createIndex("hash_tree_generation", "generation", IndexType::HASH_TREE);
-        table->createIndex("hash_tree_capacity", "capacity", IndexType::HASH_TREE);
-        table->createIndex("hash_tree_bus", "bus", IndexType::HASH_TREE);
+        table->createIndex("generation", IndexType::HASH_TREE);
+        table->createIndex("capacity", IndexType::HASH_TREE);
+        table->createIndex("bus", IndexType::HASH_TREE);
         return table;
     }
 
@@ -396,17 +334,16 @@ namespace Schema
     Table* createSsdTable()
     {
         auto table = new Table("ssd");
-        table->addColumn(Column("ssd_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("type", DataType::VARCHAR, 50, false, false, true));
-        table->addColumn(Column("gen", DataType::VARCHAR, 50, false, false, true));
-        table->addColumn(Column("capacity", DataType::VARCHAR, 50, false, false, true));
+        table->addColumn(Column("ssd_id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("product_id", DataType::INTEGER, 0), false, false, true);
+        table->addColumn(Column("type", DataType::VARCHAR, 50), false, false, true);
+        table->addColumn(Column("gen", DataType::VARCHAR, 50), false, false, true);
+        table->addColumn(Column("capacity", DataType::VARCHAR, 50), false, false, true);
 
-        table->addConstraint(new PrimaryKeyConstraint("pk_ssd", "ssd_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_ssd_product", "product_id", "product", "product_id"));
-        table->createIndex("hash_tree_type", "type", IndexType::HASH_TREE);
-        table->createIndex("hash_tree_gen", "gen", IndexType::HASH_TREE);
-        table->createIndex("hash_tree_capacity", "capacity", IndexType::HASH_TREE);
+        table->createIndex("type", IndexType::HASH_TREE);
+        table->createIndex("gen", IndexType::HASH_TREE);
+        table->createIndex("capacity", IndexType::HASH_TREE);
         return table;
     }
 
@@ -416,17 +353,16 @@ namespace Schema
     Table* createPsuTable()
     {
         auto table = new Table("psu");
-        table->addColumn(Column("psu_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("quality", DataType::VARCHAR, 50, false, false, true));
-        table->addColumn(Column("capacity", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("size", DataType::VARCHAR, 50, false, false, false));
+        table->addColumn(Column("psu_id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("product_id", DataType::INTEGER, 0), false, false, true);
+        table->addColumn(Column("quality", DataType::VARCHAR, 50), false, false, true);
+        table->addColumn(Column("capacity", DataType::INTEGER, 0), false, false, true);
+        table->addColumn(Column("size", DataType::VARCHAR, 50), false, false, false);
 
-        table->addConstraint(new PrimaryKeyConstraint("pk_psu", "psu_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_psu_product", "product_id", "product", "product_id"));
-        table->createIndex("hash_tree_quality", "quality", IndexType::HASH_TREE);
-        table->createIndex("hash_tree_capacity", "capacity", IndexType::HASH_TREE);
-        table->createIndex("hash_tree_size", "size", IndexType::HASH_TREE);
+        table->createIndex("quality", IndexType::HASH_TREE);
+        table->createIndex("capacity", IndexType::HASH_TREE);
+        table->createIndex("size", IndexType::HASH_TREE);
         return table;
     }
 
@@ -436,13 +372,12 @@ namespace Schema
     Table* createCoolingTable()
     {
         auto table = new Table("cooling");
-        table->addColumn(Column("cooling_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("type", DataType::VARCHAR, 100, false, false, true));
+        table->addColumn(Column("cooling_id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("product_id", DataType::INTEGER, 0), false, false, true);
+        table->addColumn(Column("type", DataType::VARCHAR, 100), false, false, true);
 
-        table->addConstraint(new PrimaryKeyConstraint("pk_cooling", "cooling_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_cooling_product", "product_id", "product", "product_id"));
-        table->createIndex("hash_tree_type", "type", IndexType::HASH_TREE);
+        table->createIndex("type", IndexType::HASH_TREE);
         return table;
     }
 
@@ -452,14 +387,13 @@ namespace Schema
     Table* createCaseTable()
     {
         auto table = new Table("case");
-        table->addColumn(Column("case_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("product_name", DataType::VARCHAR, 150, false, false, true));
-        table->addColumn(Column("size", DataType::VARCHAR, 50, false, false, true));
+        table->addColumn(Column("case_id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("product_id", DataType::INTEGER, 0), false, false, true);
+        table->addColumn(Column("product_name", DataType::VARCHAR, 150), false, false, true);
+        table->addColumn(Column("size", DataType::VARCHAR, 50), false, false, true);
 
-        table->addConstraint(new PrimaryKeyConstraint("pk_case", "case_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_case_product", "product_id", "product", "product_id"));
-        table->createIndex("hash_tree_size", "size", IndexType::HASH_TREE);
+        table->createIndex("size", IndexType::HASH_TREE);
         return table;
     }
 
@@ -469,16 +403,14 @@ namespace Schema
     Table* createUnitInventoryTable()
     {
         auto table = new Table("unit_inventory");
-        table->addColumn(Column("unit_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("serial", DataType::VARCHAR, 100, false, true, true));
-        table->addColumn(Column("status", DataType::VARCHAR, 50, false, false, true));
+        table->addColumn(Column("unit_id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("product_id", DataType::INTEGER, 0), false, false, true);
+        table->addColumn(Column("serial", DataType::VARCHAR, 100), false, true, true);
+        table->addColumn(Column("status", DataType::VARCHAR, 50), false, false, true);
 
-        table->addConstraint(new PrimaryKeyConstraint("pk_unit_inventory", "unit_id"));
-        table->addConstraint(new UniqueConstraint("uq_unit_inventory_serial", "serial"));
         table->addConstraint(new ForeignKeyConstraint("fk_unit_inventory_product", "product_id", "product", "product_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_unit_inventory_status", "status", "unit_status", "status"));
-        table->createIndex("hash_tree_status", "status", IndexType::HASH_TREE);
+        table->createIndex("status", IndexType::HASH_TREE);
         return table;
     }
 
@@ -488,19 +420,17 @@ namespace Schema
     Table* createInventoryCheckTable()
     {
         auto table = new Table("inventory_check");
-        table->addColumn(Column("check_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("check_code", DataType::VARCHAR, 20, false, true, true));
-        table->addColumn(Column("check_type", DataType::VARCHAR, 10, false, false, true));
-        table->addColumn(Column("check_at", DataType::DATE, 0, false, false, true));
-        table->addColumn(Column("status", DataType::VARCHAR, 50, false, false, true));
-        table->addColumn(Column("note", DataType::TEXT, 65535, false, false, false));
+        table->addColumn(Column("check_id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("check_code", DataType::VARCHAR, 20), false, true, true);
+        table->addColumn(Column("check_type", DataType::VARCHAR, 10), false, false, true);
+        table->addColumn(Column("check_at", DataType::DATE, 0), false, false, true);
+        table->addColumn(Column("status", DataType::VARCHAR, 50), false, false, true);
+        table->addColumn(Column("note", DataType::TEXT, 65535), false, false, false);
 
-        table->addConstraint(new PrimaryKeyConstraint("pk_inventory_check", "check_id"));
-        table->addConstraint(new UniqueConstraint("uq_inventory_check_code", "check_code"));
         table->addConstraint(new ForeignKeyConstraint("fk_inventory_check_type", "check_type", "check_type", "check_type"));
         table->addConstraint(new ForeignKeyConstraint("fk_inventory_check_status", "status", "inventory_check_status", "status"));
-        table->createIndex("avl_tree_check_at", "check_at", IndexType::AVL);
-        table->createIndex("hash_tree_status", "status", IndexType::HASH_TREE);
+        table->createIndex("check_at", IndexType::AVL);
+        table->createIndex("status", IndexType::HASH_TREE);
         return table;
     }
 
@@ -510,25 +440,22 @@ namespace Schema
     Table* createInboundTransactionTable()
     {
         auto table = new Table("inbound_transaction");
-        table->addColumn(Column("inbound_transaction_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("inbound_code", DataType::VARCHAR, 20, false, true, true));
-        table->addColumn(Column("source_code", DataType::VARCHAR, 50, false, true, false)); // nullable, unique
-        table->addColumn(Column("customer_id", DataType::INTEGER, 0, false, false, false)); // nullable for ADJ
-        table->addColumn(Column("order_at", DataType::DATE, 0, false, false, true));
-        table->addColumn(Column("type", DataType::VARCHAR, 255, false, false, true));
-        table->addColumn(Column("status", DataType::VARCHAR, 255, false, false, true));
-        table->addColumn(Column("next_delivery_no", DataType::INTEGER, 0, false, false, true, false, "0"));
-        table->addColumn(Column("note", DataType::TEXT, 65535, false, false, false));
+        table->addColumn(Column("inbound_transaction_id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("inbound_code", DataType::VARCHAR, 20), false, true, true);
+        table->addColumn(Column("source_code", DataType::VARCHAR, 50), false, true, false); // nullable, unique
+        table->addColumn(Column("customer_id", DataType::INTEGER, 0), false, false, false); // nullable for ADJ
+        table->addColumn(Column("order_at", DataType::DATE, 0), false, false, true);
+        table->addColumn(Column("type", DataType::VARCHAR, 255), false, false, true);
+        table->addColumn(Column("status", DataType::VARCHAR, 255), false, false, true);
+        table->addColumn(Column("next_delivery_no", DataType::INTEGER, 0, false, Value(0)), false, false, true);
+        table->addColumn(Column("note", DataType::TEXT, 65535), false, false, false);
 
-        table->addConstraint(new PrimaryKeyConstraint("pk_inbound_transaction", "inbound_transaction_id"));
-        table->addConstraint(new UniqueConstraint("uq_inbound_transaction_code", "inbound_code"));
-        table->addConstraint(new UniqueConstraint("uq_inbound_source_code", "source_code"));
         table->addConstraint(new ForeignKeyConstraint("fk_inbound_transaction_customer", "customer_id", "customer", "customer_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_inbound_transaction_type", "type", "inbound_type", "type"));
         table->addConstraint(new ForeignKeyConstraint("fk_inbound_transaction_status", "status", "inbound_status", "status"));
-        table->createIndex("avl_tree_order_at", "order_at", IndexType::AVL);
-        table->createIndex("hash_tree_type", "type", IndexType::HASH_TREE);
-        table->createIndex("hash_tree_status", "status", IndexType::HASH_TREE);
+        table->createIndex("order_at", IndexType::AVL);
+        table->createIndex("type", IndexType::HASH_TREE);
+        table->createIndex("status", IndexType::HASH_TREE);
         return table;
     }
 
@@ -538,13 +465,12 @@ namespace Schema
     Table* createInboundDetailTable()
     {
         auto table = new Table("inbound_detail");
-        table->addColumn(Column("inbound_detail_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("inbound_transaction_id", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("ordered_quantity", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("actual_quantity", DataType::INTEGER, 0, false, false, true, false, "0"));
+        table->addColumn(Column("inbound_detail_id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("inbound_transaction_id", DataType::INTEGER, 0), false, false, true);
+        table->addColumn(Column("product_id", DataType::INTEGER, 0), false, false, true);
+        table->addColumn(Column("ordered_quantity", DataType::INTEGER, 0), false, false, true);
+        table->addColumn(Column("actual_quantity", DataType::INTEGER, 0, false, Value(0)), false, false, true);
 
-        table->addConstraint(new PrimaryKeyConstraint("pk_inbound_detail", "inbound_detail_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_inbound_detail_txn", "inbound_transaction_id", "inbound_transaction", "inbound_transaction_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_inbound_detail_product", "product_id", "product", "product_id"));
         return table;
@@ -556,20 +482,18 @@ namespace Schema
     Table* createDeliveryTable()
     {
         auto table = new Table("delivery");
-        table->addColumn(Column("delivery_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("delivery_code", DataType::VARCHAR, 20, false, true, true));
-        table->addColumn(Column("inbound_transaction_id", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("expected_at", DataType::DATE, 0, false, false, true));
-        table->addColumn(Column("delivery_at", DataType::DATE, 0, false, false, false));
-        table->addColumn(Column("status", DataType::VARCHAR, 20, false, false, true));
+        table->addColumn(Column("delivery_id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("delivery_code", DataType::VARCHAR, 20), false, true, true);
+        table->addColumn(Column("inbound_transaction_id", DataType::INTEGER, 0), false, false, true);
+        table->addColumn(Column("expected_at", DataType::DATE, 0), false, false, true);
+        table->addColumn(Column("delivery_at", DataType::DATE, 0), false, false, false);
+        table->addColumn(Column("status", DataType::VARCHAR, 20), false, false, true);
 
-        table->addConstraint(new PrimaryKeyConstraint("pk_delivery", "delivery_id"));
-        table->addConstraint(new UniqueConstraint("uq_delivery_code", "delivery_code"));
         table->addConstraint(new ForeignKeyConstraint("fk_delivery_inbound_txn", "inbound_transaction_id", "inbound_transaction", "inbound_transaction_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_delivery_status", "status", "delivery_status", "status"));
-        table->createIndex("avl_tree_delivery_at", "delivery_at", IndexType::AVL);
-        table->createIndex("avl_tree_expected_at", "expected_at", IndexType::AVL);
-        table->createIndex("hash_tree_status", "status", IndexType::HASH_TREE);
+        table->createIndex("delivery_at", IndexType::AVL);
+        table->createIndex("expected_at", IndexType::AVL);
+        table->createIndex("status", IndexType::HASH_TREE);
         return table;
     }
 
@@ -579,13 +503,12 @@ namespace Schema
     Table* createDeliveryDetailTable()
     {
         auto table = new Table("delivery_detail");
-        table->addColumn(Column("delivery_detail_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("delivery_id", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("received_quantity", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("actual_quantity", DataType::INTEGER, 0, false, false, true, false, "0"));
+        table->addColumn(Column("delivery_detail_id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("delivery_id", DataType::INTEGER, 0), false, false, true);
+        table->addColumn(Column("product_id", DataType::INTEGER, 0), false, false, true);
+        table->addColumn(Column("received_quantity", DataType::INTEGER, 0), false, false, true);
+        table->addColumn(Column("actual_quantity", DataType::INTEGER, 0, false, Value(0)), false, false, true);
 
-        table->addConstraint(new PrimaryKeyConstraint("pk_delivery_detail", "delivery_detail_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_delivery_detail_delivery", "delivery_id", "delivery", "delivery_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_delivery_detail_product", "product_id", "product", "product_id"));
         return table;
@@ -597,25 +520,22 @@ namespace Schema
     Table* createOutboundTransactionTable()
     {
         auto table = new Table("outbound_transaction");
-        table->addColumn(Column("outbound_trainsaction_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("outbound_code", DataType::VARCHAR, 20, false, true, true));
-        table->addColumn(Column("source_code", DataType::VARCHAR, 50, false, true, false)); // nullable, unique
-        table->addColumn(Column("customer_id", DataType::INTEGER, 0, false, false, false)); // nullable for ADJ
-        table->addColumn(Column("order_at", DataType::DATE, 0, false, false, true));
-        table->addColumn(Column("type", DataType::VARCHAR, 255, false, false, true));
-        table->addColumn(Column("status", DataType::VARCHAR, 255, false, false, true));
-        table->addColumn(Column("next_ship_no", DataType::INTEGER, 0, false, false, true, false, "0"));
-        table->addColumn(Column("note", DataType::TEXT, 65535, false, false, false));
+        table->addColumn(Column("outbound_trainsaction_id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("outbound_code", DataType::VARCHAR, 20), false, true, true);
+        table->addColumn(Column("source_code", DataType::VARCHAR, 50), false, true, false); // nullable, unique
+        table->addColumn(Column("customer_id", DataType::INTEGER, 0), false, false, false); // nullable for ADJ
+        table->addColumn(Column("order_at", DataType::DATE, 0), false, false, true);
+        table->addColumn(Column("type", DataType::VARCHAR, 255), false, false, true);
+        table->addColumn(Column("status", DataType::VARCHAR, 255), false, false, true);
+        table->addColumn(Column("next_ship_no", DataType::INTEGER, 0, false, Value(0)), false, false, true);
+        table->addColumn(Column("note", DataType::TEXT, 65535), false, false, false);
 
-        table->addConstraint(new PrimaryKeyConstraint("pk_outbound_transaction", "outbound_trainsaction_id"));
-        table->addConstraint(new UniqueConstraint("uq_outbound_transaction_code", "outbound_code"));
-        table->addConstraint(new UniqueConstraint("uq_outbound_source_code", "source_code"));
         table->addConstraint(new ForeignKeyConstraint("fk_outbound_transaction_customer", "customer_id", "customer", "customer_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_outbound_transaction_type", "type", "outbound_type", "type"));
         table->addConstraint(new ForeignKeyConstraint("fk_outbound_transaction_status", "status", "outbound_status", "status"));
-        table->createIndex("avl_tree_order_at", "order_at", IndexType::AVL);
-        table->createIndex("hash_tree_type", "type", IndexType::HASH_TREE);
-        table->createIndex("hash_tree_status", "status", IndexType::HASH_TREE);
+        table->createIndex("order_at", IndexType::AVL);
+        table->createIndex("type", IndexType::HASH_TREE);
+        table->createIndex("status", IndexType::HASH_TREE);
         return table;
     }
 
@@ -625,13 +545,12 @@ namespace Schema
     Table* createOutboundDetailTable()
     {
         auto table = new Table("outbound_detail");
-        table->addColumn(Column("outbound_detail_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("outbound_transaction_id", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("ordered_quantity", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("actual_quantity", DataType::INTEGER, 0, false, false, true, false, "0"));
+        table->addColumn(Column("outbound_detail_id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("outbound_transaction_id", DataType::INTEGER, 0), false, false, true);
+        table->addColumn(Column("product_id", DataType::INTEGER, 0), false, false, true);
+        table->addColumn(Column("ordered_quantity", DataType::INTEGER, 0), false, false, true);
+        table->addColumn(Column("actual_quantity", DataType::INTEGER, 0, false, Value(0)), false, false, true);
 
-        table->addConstraint(new PrimaryKeyConstraint("pk_outbound_detail", "outbound_detail_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_outbound_detail_txn", "outbound_transaction_id", "outbound_transaction", "outbound_trainsaction_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_outbound_detail_product", "product_id", "product", "product_id"));
         return table;
@@ -643,20 +562,18 @@ namespace Schema
     Table* createShipmentTable()
     {
         auto table = new Table("shipment");
-        table->addColumn(Column("shipment_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("shipment_code", DataType::VARCHAR, 20, false, true, true));
-        table->addColumn(Column("outbound_transaction_id", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("expected_at", DataType::DATE, 0, false, false, true));
-        table->addColumn(Column("ship_at", DataType::DATE, 0, false, false, false));
-        table->addColumn(Column("status", DataType::VARCHAR, 255, false, false, true));
+        table->addColumn(Column("shipment_id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("shipment_code", DataType::VARCHAR, 20), false, true, true);
+        table->addColumn(Column("outbound_transaction_id", DataType::INTEGER, 0), false, false, true);
+        table->addColumn(Column("expected_at", DataType::DATE, 0), false, false, true);
+        table->addColumn(Column("ship_at", DataType::DATE, 0), false, false, false);
+        table->addColumn(Column("status", DataType::VARCHAR, 255), false, false, true);
 
-        table->addConstraint(new PrimaryKeyConstraint("pk_shipment", "shipment_id"));
-        table->addConstraint(new UniqueConstraint("uq_shipment_code", "shipment_code"));
         table->addConstraint(new ForeignKeyConstraint("fk_shipment_outbound_txn", "outbound_transaction_id", "outbound_transaction", "outbound_trainsaction_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_shipment_status", "status", "shipment_status", "status"));
-        table->createIndex("avl_tree_ship_at", "ship_at", IndexType::AVL);
-        table->createIndex("avl_tree_expected_at", "expected_at", IndexType::AVL);
-        table->createIndex("hash_tree_status", "status", IndexType::HASH_TREE);
+        table->createIndex("ship_at", IndexType::AVL);
+        table->createIndex("expected_at", IndexType::AVL);
+        table->createIndex("status", IndexType::HASH_TREE);
         return table;
     }
 
@@ -666,13 +583,12 @@ namespace Schema
     Table* createShipmentDetailTable()
     {
         auto table = new Table("shipment_detail");
-        table->addColumn(Column("shipment_detail_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("shipment_id", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("received_quantity", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("actual_quantity", DataType::INTEGER, 0, false, false, true, false, "0"));
+        table->addColumn(Column("shipment_detail_id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("shipment_id", DataType::INTEGER, 0), false, false, true);
+        table->addColumn(Column("product_id", DataType::INTEGER, 0), false, false, true);
+        table->addColumn(Column("received_quantity", DataType::INTEGER, 0), false, false, true);
+        table->addColumn(Column("actual_quantity", DataType::INTEGER, 0, false, Value(0)), false, false, true);
 
-        table->addConstraint(new PrimaryKeyConstraint("pk_shipment_detail", "shipment_detail_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_shipment_detail_shipment", "shipment_id", "shipment", "shipment_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_shipment_detail_product", "product_id", "product", "product_id"));
         return table;
@@ -684,18 +600,17 @@ namespace Schema
     Table* createStatusHistoryTable()
     {
         auto table = new Table("status_history");
-        table->addColumn(Column("history_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("unit_id", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("old_status", DataType::VARCHAR, 255, false, false, false)); // Nullable on first appearance
-        table->addColumn(Column("curr_status", DataType::VARCHAR, 255, false, false, true));
-        table->addColumn(Column("transaction", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("type", DataType::VARCHAR, 255, false, false, true)); // INBOUND / OUTBOUND
+        table->addColumn(Column("history_id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("unit_id", DataType::INTEGER, 0), false, false, true);
+        table->addColumn(Column("old_status", DataType::VARCHAR, 255), false, false, false); // Nullable on first appearance
+        table->addColumn(Column("curr_status", DataType::VARCHAR, 255), false, false, true);
+        table->addColumn(Column("transaction", DataType::INTEGER, 0), false, false, true);
+        table->addColumn(Column("type", DataType::VARCHAR, 255), false, false, true); // INBOUND / OUTBOUND
 
-        table->addConstraint(new PrimaryKeyConstraint("pk_status_history", "history_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_status_history_unit", "unit_id", "unit_inventory", "unit_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_status_history_curr_status", "curr_status", "unit_status", "status"));
-        table->createIndex("hash_tree_transaction", "transaction", IndexType::HASH_TREE);
-        table->createIndex("hash_tree_type", "type", IndexType::HASH_TREE);
+        table->createIndex("transaction", IndexType::HASH_TREE);
+        table->createIndex("type", IndexType::HASH_TREE);
         return table;
     }
 
@@ -705,18 +620,17 @@ namespace Schema
     Table* createInventoryCheckQuantityTable()
     {
         auto table = new Table("inventory_check_quantity");
-        table->addColumn(Column("check_quantity_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("check_id", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("system_available_quan", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("system_warranty_quan", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("system_scrapped_quan", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("actual_available_quan", DataType::INTEGER, 0, false, false, true, false, "0"));
-        table->addColumn(Column("actual_warranty_quan", DataType::INTEGER, 0, false, false, true, false, "0"));
-        table->addColumn(Column("actual_scrapped_quan", DataType::INTEGER, 0, false, false, true, false, "0"));
-        table->addColumn(Column("note", DataType::TEXT, 65535, false, false, false));
+        table->addColumn(Column("check_quantity_id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("check_id", DataType::INTEGER, 0), false, false, true);
+        table->addColumn(Column("product_id", DataType::INTEGER, 0), false, false, true);
+        table->addColumn(Column("system_available_quan", DataType::INTEGER, 0), false, false, true);
+        table->addColumn(Column("system_warranty_quan", DataType::INTEGER, 0), false, false, true);
+        table->addColumn(Column("system_scrapped_quan", DataType::INTEGER, 0), false, false, true);
+        table->addColumn(Column("actual_available_quan", DataType::INTEGER, 0, false, Value(0)), false, false, true);
+        table->addColumn(Column("actual_warranty_quan", DataType::INTEGER, 0, false, Value(0)), false, false, true);
+        table->addColumn(Column("actual_scrapped_quan", DataType::INTEGER, 0, false, Value(0)), false, false, true);
+        table->addColumn(Column("note", DataType::TEXT, 65535), false, false, false);
 
-        table->addConstraint(new PrimaryKeyConstraint("pk_inv_check_quantity", "check_quantity_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_inv_check_quan_check", "check_id", "inventory_check", "check_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_inv_check_quan_product", "product_id", "product", "product_id"));
         return table;
@@ -728,19 +642,18 @@ namespace Schema
     Table* createInventoryCheckUnitTable()
     {
         auto table = new Table("inventory_check_unit");
-        table->addColumn(Column("check_unit_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("check_id", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("check_quantity_id", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("serial", DataType::VARCHAR, 100, false, false, true));
-        table->addColumn(Column("system_status", DataType::VARCHAR, 50, false, false, false));
-        table->addColumn(Column("scanned_status", DataType::VARCHAR, 50, false, false, false));
+        table->addColumn(Column("check_unit_id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("check_id", DataType::INTEGER, 0), false, false, true);
+        table->addColumn(Column("check_quantity_id", DataType::INTEGER, 0), false, false, true);
+        table->addColumn(Column("serial", DataType::VARCHAR, 100), false, false, true);
+        table->addColumn(Column("system_status", DataType::VARCHAR, 50), false, false, false);
+        table->addColumn(Column("scanned_status", DataType::VARCHAR, 50), false, false, false);
 
-        table->addConstraint(new PrimaryKeyConstraint("pk_inv_check_unit", "check_unit_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_inv_check_unit_check", "check_id", "inventory_check", "check_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_inv_check_unit_quan", "check_quantity_id", "inventory_check_quantity", "check_quantity_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_inv_check_unit_sys_st", "system_status", "unit_status", "status"));
         table->addConstraint(new ForeignKeyConstraint("fk_inv_check_unit_scan_st", "scanned_status", "unit_status", "status"));
-        table->createIndex("hash_tree_inv_check_unit_serial", "serial", IndexType::HASH_TREE);
+        table->createIndex("serial", IndexType::HASH_TREE);
         return table;
     }
 
@@ -750,21 +663,18 @@ namespace Schema
     Table* createAdjustmentMovementTable()
     {
         auto table = new Table("adjustment_movement");
-        table->addColumn(Column("adjust_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("adjust_code", DataType::VARCHAR, 20, false, true, true));
-        table->addColumn(Column("source_code", DataType::VARCHAR, 50, false, true, false)); // nullable, unique
-        table->addColumn(Column("reason", DataType::VARCHAR, 50, false, false, true));
-        table->addColumn(Column("adjusted_at", DataType::DATE, 0, false, false, true));
-        table->addColumn(Column("status", DataType::VARCHAR, 255, false, false, true));
-        table->addColumn(Column("note", DataType::TEXT, 65535, false, false, false));
+        table->addColumn(Column("adjust_id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("adjust_code", DataType::VARCHAR, 20), false, true, true);
+        table->addColumn(Column("source_code", DataType::VARCHAR, 50), false, true, false); // nullable, unique
+        table->addColumn(Column("reason", DataType::VARCHAR, 50), false, false, true);
+        table->addColumn(Column("adjusted_at", DataType::DATE, 0), false, false, true);
+        table->addColumn(Column("status", DataType::VARCHAR, 255), false, false, true);
+        table->addColumn(Column("note", DataType::TEXT, 65535), false, false, false);
 
-        table->addConstraint(new PrimaryKeyConstraint("pk_adjustment_movement", "adjust_id"));
-        table->addConstraint(new UniqueConstraint("uq_adjustment_code", "adjust_code"));
-        table->addConstraint(new UniqueConstraint("uq_adjustment_source_code", "source_code"));
         table->addConstraint(new ForeignKeyConstraint("fk_adj_movement_reason", "reason", "reason", "reason"));
         table->addConstraint(new ForeignKeyConstraint("fk_adj_movement_status", "status", "adjustment_status", "status"));
-        table->createIndex("avl_tree_adjusted_at", "adjusted_at", IndexType::AVL);
-        table->createIndex("hash_tree_status", "status", IndexType::HASH_TREE);
+        table->createIndex("adjusted_at", IndexType::AVL);
+        table->createIndex("status", IndexType::HASH_TREE);
         return table;
     }
 
@@ -774,15 +684,14 @@ namespace Schema
     Table* createAdjustMovementDetailTable()
     {
         auto table = new Table("adjust_movement_detail");
-        table->addColumn(Column("adjust_detail_id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("adjust_id", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("product_id", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("from_status", DataType::VARCHAR, 255, false, false, true));
-        table->addColumn(Column("to_status", DataType::VARCHAR, 255, false, false, true));
-        table->addColumn(Column("adjust_quantity", DataType::INTEGER, 0, false, false, true));
-        table->addColumn(Column("actual_quantity", DataType::INTEGER, 0, false, false, true, false, "0"));
+        table->addColumn(Column("adjust_detail_id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("adjust_id", DataType::INTEGER, 0), false, false, true);
+        table->addColumn(Column("product_id", DataType::INTEGER, 0), false, false, true);
+        table->addColumn(Column("from_status", DataType::VARCHAR, 255), false, false, true);
+        table->addColumn(Column("to_status", DataType::VARCHAR, 255), false, false, true);
+        table->addColumn(Column("adjust_quantity", DataType::INTEGER, 0), false, false, true);
+        table->addColumn(Column("actual_quantity", DataType::INTEGER, 0, false, Value(0)), false, false, true);
 
-        table->addConstraint(new PrimaryKeyConstraint("pk_adjust_movement_detail", "adjust_detail_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_adj_mov_det_parent", "adjust_id", "adjustment_movement", "adjust_id"));
         table->addConstraint(new ForeignKeyConstraint("fk_adj_mov_det_product", "product_id", "product", "product_id"));
         return table;
@@ -794,10 +703,9 @@ namespace Schema
     Table* createSpecTable(const string& specName)
     {
         auto table = new Table(specName);
-        table->addColumn(Column("id", DataType::INTEGER, 0, true, true, true, true));
-        table->addColumn(Column("spec", DataType::VARCHAR, 255, false, false, true));
-        table->addConstraint(new PrimaryKeyConstraint("pk_" + specName, "id"));
-        table->createIndex("hash_tree_spec", "spec", IndexType::HASH_TREE);
+        table->addColumn(Column("id", DataType::INTEGER, 0, true), true, true, true);
+        table->addColumn(Column("spec", DataType::VARCHAR, 255), false, false, true);
+        table->createIndex("spec", IndexType::HASH_TREE);
         return table;
     }
 

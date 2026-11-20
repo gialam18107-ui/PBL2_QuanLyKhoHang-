@@ -17,6 +17,13 @@ Database::Database(Database&& other) noexcept
       undoLog(std::move(other.undoLog))
 {
     other.inTransaction = false;
+    for (const auto& item : tables)
+    {
+        if (item.second != nullptr)
+        {
+            item.second->setDatabase(this);
+        }
+    }
 }
 
 Database& Database::operator=(Database&& other) noexcept
@@ -32,6 +39,13 @@ Database& Database::operator=(Database&& other) noexcept
         undoLog = std::move(other.undoLog);
 
         other.inTransaction = false;
+        for (const auto& item : tables)
+        {
+            if (item.second != nullptr)
+            {
+                item.second->setDatabase(this);
+            }
+        }
     }
     return *this;
 }
@@ -49,6 +63,7 @@ Table* Database::createTable(const string& tableName)
 {
     if (hasTable(tableName)) return getMutableTable(tableName);
     Table* table = new Table(tableName);
+    table->setDatabase(this);
     tables[tableName] = table;
     return table;
 }
@@ -70,6 +85,7 @@ bool Database::dropTable(const string& tableName)
 bool Database::addTable(Table* table)
 {
     if (table == nullptr || hasTable(table->getName())) return false;
+    table->setDatabase(this);
     tables[table->getName()] = table;
     return true;
 }
@@ -111,31 +127,10 @@ void Database::printTables() const
     for (const auto& item : tables) cout << "- " << item.first << endl;
 }
 
-static bool containsColumnValue(const Table& table, const string& columnName, const Value& value)
-{
-    return table.contains(columnName, value);
-}
-
 bool Database::insert(const string& tableName, const Record& record)
 {
     Table* table = getMutableTable(tableName);
     if (table == nullptr) return false;
-
-    for (size_t index = 0; index < table->getConstraints().size(); ++index)
-    {
-        Constraint* constraint = table->getConstraints()[index];
-        if (constraint->getType() != ConstraintType::FOREIGN_KEY) continue;
-        auto* foreignKey = dynamic_cast<ForeignKeyConstraint*>(constraint);
-        if (foreignKey == nullptr || !record.has(foreignKey->getColumnName())
-            || isNull(record.get(foreignKey->getColumnName()))) continue;
-        const Table* referenced = getTable(foreignKey->getReferenceTable());
-        if (referenced == nullptr
-            || !containsColumnValue(*referenced, foreignKey->getReferenceColumn(), record.get(foreignKey->getColumnName())))
-        {
-            cout << "Foreign key constraint failed: " << constraint->getName() << endl;
-            return false;
-        }
-    }
 
     size_t newRowIndex = table->rawRowCount();
     HashMap<string, int> oldAutoInc;
@@ -161,49 +156,15 @@ bool Database::insert(const string& tableName, const Record& record)
     return true;
 }
 
-bool Database::validateForeignKeyUpdates(
-    Database& database,
-    Table& table,
-    const Record& current,
-    const Record& newValues
-)
-{
-    Record updated = current;
-    for (const auto& item : newValues.getValues()) updated.set(item.first, item.second);
-
-    for (size_t index = 0; index < table.getConstraints().size(); ++index)
-    {
-        Constraint* constraint = table.getConstraints()[index];
-        if (constraint->getType() != ConstraintType::FOREIGN_KEY) continue;
-        auto* foreignKey = dynamic_cast<ForeignKeyConstraint*>(constraint);
-        if (foreignKey == nullptr || !newValues.has(foreignKey->getColumnName())) continue;
-        const Table* referenced = database.getTable(foreignKey->getReferenceTable());
-        if (referenced == nullptr) return false;
-        if (!updated.has(foreignKey->getColumnName()) || isNull(updated.get(foreignKey->getColumnName())))
-        {
-            continue;
-        }
-        if (!containsColumnValue(*referenced, foreignKey->getReferenceColumn(), updated.get(foreignKey->getColumnName())))
-        {
-            return false;
-        }
-    }
-    return true;
-}
-
 bool Database::isReferenced(Database& database, const string& tableName, const Record& parent)
 {
     for (const auto& item : database.tables)
     {
         const Table* childTable = item.second;
         if (childTable == nullptr || childTable->getName() == tableName) continue;
-        for (size_t constraintIndex = 0; constraintIndex < childTable->getConstraints().size(); ++constraintIndex)
+        if (childTable->isReferencingRecord(tableName, parent))
         {
-            auto* foreignKey = dynamic_cast<ForeignKeyConstraint*>(childTable->getConstraints()[constraintIndex]);
-            if (foreignKey == nullptr || foreignKey->getReferenceTable() != tableName) continue;
-            if (!parent.has(foreignKey->getReferenceColumn())) continue;
-            Value parentValue = parent.get(foreignKey->getReferenceColumn());
-            if (containsColumnValue(*childTable, foreignKey->getColumnName(), parentValue)) return true;
+            return true;
         }
     }
     return false;
@@ -235,19 +196,14 @@ OperationResult Database::update(const string& tableName, int recordId, const Re
     {
         return OperationResult(false, "Không tìm thấy bản ghi với ID " + to_string(recordId) + " trong bảng '" + tableName + "'.", 0);
     }
-    const Record& current = table->getRawRow(static_cast<size_t>(rowIndex));
-    if (!validateForeignKeyUpdates(*this, *table, current, newValues))
-    {
-        return OperationResult(false, "Vi phạm ràng buộc khóa ngoại khi cập nhật bảng '" + tableName + "'.", 0);
-    }
     Record oldRecord;
     if (inTransaction)
     {
-        oldRecord = current;
+        oldRecord = table->getRawRow(static_cast<size_t>(rowIndex));
     }
     if (!table->updateById(recordId, newValues))
     {
-        return OperationResult(false, "Cập nhật dữ liệu thất bại do vi phạm ràng buộc bảng.", 0);
+        return OperationResult(false, "Cập nhật dữ liệu thất bại do vi phạm ràng buộc bảng hoặc khóa ngoại.", 0);
     }
     if (inTransaction)
     {
@@ -268,7 +224,7 @@ OperationResult Database::remove(const string& tableName, int recordId)
     {
         return OperationResult(false, "Bảng '" + tableName + "' không tồn tại trong cơ sở dữ liệu.", 0);
     }
-    string pkCol = table->getPrimaryKeyColumn();
+    const string& pkCol = table->getPrimaryKeyColumn();
     if (pkCol.empty())
     {
         return OperationResult(false, "Không tìm thấy khóa chính của bảng '" + tableName + "'.", 0);

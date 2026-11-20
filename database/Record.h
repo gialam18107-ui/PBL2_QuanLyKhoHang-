@@ -45,7 +45,7 @@ inline string valueToString(const Value& v)
     }
     if (holds_alternative<bool>(v))
     {
-        return get<bool>(v) ? "TRUE" : "FALSE";
+        return get<bool>(v) ? "1" : "0";
     }
     return "";
 }

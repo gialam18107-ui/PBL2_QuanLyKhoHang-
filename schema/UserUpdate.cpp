@@ -124,12 +124,12 @@ namespace user_update
             }
 
             // NOT NULL check
-            if (col->isNotNull() && isNull(val)) {
+            if (table->isColumnNotNull(colName) && isNull(val)) {
                 return OperationResult{false, "Cột '" + colName + "' có thuộc tính NOT NULL, không thể nhận giá trị rỗng.", 0};
             }
 
             // UNIQUE check
-            if (col->isUnique()) {
+            if (table->isColumnUnique(colName)) {
                 if (!isNull(val) && !(std::holds_alternative<std::string>(val) && std::get<std::string>(val).empty())) {
                     for (const auto& mRec : table->view(colName, val)) {
                         if (mRec.has(pkCol) && std::holds_alternative<int>(mRec.get(pkCol)) &&

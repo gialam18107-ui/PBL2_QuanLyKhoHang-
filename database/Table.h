@@ -27,22 +27,27 @@ class Table
 
 private:
     string name;
+    string primaryKeyColumn;
+    const Database* database = nullptr;
     Vector<Column> columns;
+    HashMap<string, size_t> columnIndexMap;
     Vector<Record> rows;
     Vector<unsigned char> deletedRows;
     size_t deletedRowCount = 0;
     mutable size_t activeViewCount = 0;
-    Vector<Constraint*> constraints;
-    Vector<Index*> indexes;
+    HashMap<string, Vector<Constraint*>> constraints;
+    HashMap<string, Index*> indexes;
     HashMap<string, int> autoIncrementCounters;
 
     void pinView() const { ++activeViewCount; }
     void unpinView() const { if (activeViewCount > 0) --activeViewCount; }
     size_t getActiveViewCount() const { return activeViewCount; }
 
+    void setDatabase(const Database* db) { database = db; }
+
     bool checkDataType(const Column& column, const Value& value) const;
+    bool checkColumnConstraints(const string& columnName, const Value& value, int ignoreRowIndex = -1) const;
     bool checkConstraints(const Record& record, int ignoreRowIndex = -1) const;
-    void compactRows();
     void rebuildIndexes();
 
     // Internal physical access for TableView and internal friends
@@ -51,8 +56,9 @@ private:
     Record& getRawRow(size_t rowIndex);
     bool isRowDeleted(size_t rowIndex) const;
 
-    // Internal row lookup for Database
+    // Internal row lookup and referential integrity check for Database
     int findRowIndexById(int id) const;
+    bool isReferencingRecord(const string& parentTableName, const Record& parentRecord) const;
 
     // Transaction & compaction management (Database only)
     void compactIfNeeded();
@@ -61,13 +67,13 @@ private:
     void undoUpdate(size_t rowIndex, const Record& oldRecord);
     void undoRemove(size_t rowIndex);
 
-    // Index & Constraint internal management
-    bool hasIndex(const string& indexName) const;
-    bool dropIndex(const string& indexName);
-    Index* getIndex(const string& indexName);
-    const Index* getIndex(const string& indexName) const;
-    const Vector<Index*>& getIndexes() const;
-    const Vector<Constraint*>& getConstraints() const;
+    // Index & Constraint internal management (keyed by columnName)
+    bool hasIndex(const string& columnName) const;
+    bool dropIndex(const string& columnName);
+    Index* getIndex(const string& columnName);
+    const Index* getIndex(const string& columnName) const;
+    const HashMap<string, Index*>& getIndexes() const;
+    const HashMap<string, Vector<Constraint*>>& getConstraints() const;
 
     // Mutable column pointer (internal use)
     Column* getColumn(const string& columnName);
@@ -80,6 +86,9 @@ public:
     Table& operator=(Table&& other) noexcept;
     ~Table();
 
+    /// Get owning database (nullptr if standalone).
+    const Database* getDatabase() const { return database; }
+
     /// Get the table name.
     string getName() const;
 
@@ -87,10 +96,13 @@ public:
     void setName(const string& name);
 
     /**
-     * @brief Add a column definition to the table schema.
-     * @param column Column descriptor with name, type, and attributes.
+     * @brief Add a column definition to the table schema and auto-create column constraints.
+     * @param column Column descriptor (name, type, size, autoIncrement, defaultValue).
+     * @param primaryKey Auto-create PrimaryKeyConstraint and NotNullConstraint.
+     * @param unique Auto-create UniqueConstraint (when not primaryKey).
+     * @param notNull Auto-create NotNullConstraint.
      */
-    void addColumn(const Column& column);
+    void addColumn(const Column& column, bool primaryKey = false, bool unique = false, bool notNull = false);
 
     /// Check if a column exists in the table by name.
     bool hasColumn(const string& columnName) const;
@@ -104,37 +116,46 @@ public:
     /// Get reference to vector of all column definitions.
     const Vector<Column>& getColumns() const;
 
+    /// Check whether a column has a constraint of the given type.
+    bool hasConstraint(const string& columnName, ConstraintType type) const;
+
+    /// Check whether a column enforces NOT NULL (via NotNullConstraint or PrimaryKeyConstraint).
+    bool isColumnNotNull(const string& columnName) const;
+
+    /// Check whether a column enforces UNIQUE (via UniqueConstraint or PrimaryKeyConstraint).
+    bool isColumnUnique(const string& columnName) const;
+
     /**
-     * @brief Add a table constraint (PK, Unique, FK, Check, etc.). Table takes ownership.
+     * @brief Add a constraint (PK, Unique, FK, NotNull, Check). Table takes ownership.
+     * If rejected (null, unknown column, duplicate name, or conflicting PK), Table deletes it and returns false.
      * @param constraint Pointer to Constraint subclass allocated with new.
      * @return true if successfully added.
      */
     bool addConstraint(Constraint* constraint);
 
     /**
-     * @brief Create an index on a specific column.
-     * @param indexName Unique identifier for the index.
+     * @brief Create an index on a specific column (columnName is the index key).
      * @param columnName Target column to index.
      * @param type Index type (IndexType::HASH, IndexType::AVL for range, IndexType::HASH_TREE).
      * @return true if index was created and built.
      */
-    bool createIndex(const string& indexName, const string& columnName, IndexType type = IndexType::HASH);
+    bool createIndex(const string& columnName, IndexType type = IndexType::HASH);
 
     /**
-     * @brief Insert a record into the table, checking data types and table constraints.
+     * @brief Insert a record into the table, checking data types and all constraints.
      * @param record Record containing column values to insert.
      * @return true if inserted, false if validation failed.
      */
     bool insert(const Record& record);
 
-    /// Get the primary key column name of this table.
-    string getPrimaryKeyColumn() const;
+    /// Get the primary key column name of this table (O(1)).
+    const string& getPrimaryKeyColumn() const;
 
     /// Get pointer to record by record ID in the primary key column (nullptr if not found or deleted).
     const Record* getRecordById(int id) const;
 
     /**
-     * @brief Update a record directly by its primary key ID (Rule 6.3).
+     * @brief Update a record directly by its primary key ID (validates only changed columns).
      * @param id Value of the primary key.
      * @param newValues Column-value updates.
      * @return true if updated, false if not found or constraint failed.
@@ -142,8 +163,9 @@ public:
     bool updateById(int id, const Record& newValues);
 
     /**
-     * @brief Remove a record directly by its primary key ID (Rule 6.3).
+     * @brief Remove a record directly by its primary key ID.
      * @param id Value of the primary key.
+     * @param allowCompact Compact deleted rows immediately if threshold met and no active views.
      * @return true if found and removed.
      */
     bool removeById(int id, bool allowCompact = true);
@@ -151,8 +173,8 @@ public:
     /// Get total number of active rows in the table.
     int getRowCount() const;
 
-    /// Check if table contains a specific value in a column (using index if available).
-    bool contains(const string& columnName, const Value& value) const;
+    /// Check if table contains a specific value in a column (optionally ignoring a physical row index).
+    bool contains(const string& columnName, const Value& value, int ignoreRowIndex = -1) const;
 
     // ========================================================
     // TABLE VIEW: UNIFIED ITERATION (ZERO-COPY & DELETED-SAFE)
@@ -167,9 +189,7 @@ public:
     /// Return a view filtering by indexed column range match (minVal <= col <= maxVal).
     TableView view(const string& columnName, const Value& minVal, const Value& maxVal) const;
 
-
-
-    /// Print table schema structure (columns, types, constraints, indexes).
+    /// Print table schema structure (columns, constraints, indexes).
     void printStructure() const;
 
     /// Print all row contents in formatted table style.

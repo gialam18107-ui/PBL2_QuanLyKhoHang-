@@ -1035,7 +1035,7 @@ QString QueryTableWidget::formatValue(const Value& val)
         return QString::fromStdString(get<string>(val));
     }
     if (holds_alternative<bool>(val)) {
-        return get<bool>(val) ? "True" : "False";
+        return get<bool>(val) ? "1" : "0";
     }
     return "-";
 }

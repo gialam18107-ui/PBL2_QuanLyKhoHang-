@@ -2,10 +2,11 @@
 #define CONSTRAINT_H
 
 #include <string>
-#include "datastructure/vector/Vector.h"
 #include "Record.h"
 
 using namespace std;
+
+class Table;
 
 enum class ConstraintType
 {
@@ -13,23 +14,24 @@ enum class ConstraintType
     UNIQUE,
     FOREIGN_KEY,
     NOT_NULL,
-    DEFAULT,
     CHECK
 };
 
 /**
- * @brief Abstract base class for all table constraints.
+ * @brief Abstract base class for all column/table constraints.
  * Implements clone() for deep copying and virtual destructor for safe manual memory management.
  */
 class Constraint
 {
 protected:
     string name;
+    string columnName;
     ConstraintType type;
 
 public:
     Constraint(
         const string& name,
+        const string& columnName,
         ConstraintType type
     );
 
@@ -37,30 +39,22 @@ public:
 
     virtual Constraint* clone() const = 0;
 
-    string getName() const;
+    const string& getName() const;
+    const string& getColumnName() const;
     ConstraintType getType() const;
 
-    /*
-        existingRecords:
-        Các record hiện có trong chính bảng đang kiểm tra.
-
-        referencedRecords:
-        Các record của bảng được tham chiếu.
-        PRIMARY KEY và UNIQUE không cần dùng tham số này.
-        FOREIGN KEY sẽ dùng nó.
-    */
+    /**
+     * @brief Validate a single column value against this constraint on the given table.
+     * @param value Value of target column being inserted or updated.
+     * @param table Owning Table (for index lookup and Database access).
+     * @param ignoreRowIndex Physical row index to ignore on update (-1 for insert).
+     * @return true if constraint is satisfied.
+     */
     virtual bool validate(
-        const Record& record,
-        const Vector<Record>& existingRecords,
-        const Vector<Record>& referencedRecords
+        const Value& value,
+        const Table& table,
+        int ignoreRowIndex = -1
     ) const = 0;
-
-    virtual bool validateUpdate(
-        const Record& oldRecord,
-        const Record& newRecord,
-        const Vector<Record>& existingRecords,
-        const Vector<Record>& referencedRecords
-    ) const;
 };
 
 
@@ -73,15 +67,7 @@ public:
  */
 class PrimaryKeyConstraint : public Constraint
 {
-private:
-    string columnName;
-
 public:
-    /**
-     * @brief Construct a PrimaryKeyConstraint.
-     * @param name Constraint identifier (e.g. "pk_product").
-     * @param columnName Primary key column name.
-     */
     PrimaryKeyConstraint(
         const string& name,
         const string& columnName
@@ -89,20 +75,10 @@ public:
 
     Constraint* clone() const override;
 
-    /// Get targeted primary key column name.
-    string getColumnName() const;
-
     bool validate(
-        const Record& record,
-        const Vector<Record>& existingRecords,
-        const Vector<Record>& referencedRecords
-    ) const override;
-
-    bool validateUpdate(
-        const Record& oldRecord,
-        const Record& newRecord,
-        const Vector<Record>& existingRecords,
-        const Vector<Record>& referencedRecords
+        const Value& value,
+        const Table& table,
+        int ignoreRowIndex = -1
     ) const override;
 };
 
@@ -116,15 +92,7 @@ public:
  */
 class UniqueConstraint : public Constraint
 {
-private:
-    string columnName;
-
 public:
-    /**
-     * @brief Construct a UniqueConstraint.
-     * @param name Constraint identifier (e.g. "uq_product_code").
-     * @param columnName Target column name.
-     */
     UniqueConstraint(
         const string& name,
         const string& columnName
@@ -132,20 +100,10 @@ public:
 
     Constraint* clone() const override;
 
-    /// Get targeted unique column name.
-    string getColumnName() const;
-
     bool validate(
-        const Record& record,
-        const Vector<Record>& existingRecords,
-        const Vector<Record>& referencedRecords
-    ) const override;
-
-    bool validateUpdate(
-        const Record& oldRecord,
-        const Record& newRecord,
-        const Vector<Record>& existingRecords,
-        const Vector<Record>& referencedRecords
+        const Value& value,
+        const Table& table,
+        int ignoreRowIndex = -1
     ) const override;
 };
 
@@ -155,23 +113,15 @@ public:
 // ============================================================
 
 /**
- * @brief Enforces referential integrity by requiring column values to exist in referenced parent table.
+ * @brief Enforces referential integrity by requiring non-null column values to exist in referenced parent table.
  */
 class ForeignKeyConstraint : public Constraint
 {
 private:
-    string columnName;
     string referenceTable;
     string referenceColumn;
 
 public:
-    /**
-     * @brief Construct a ForeignKeyConstraint.
-     * @param name Constraint identifier (e.g. "fk_product_category").
-     * @param columnName Child table column name.
-     * @param referenceTable Parent table name.
-     * @param referenceColumn Parent referenced column name.
-     */
     ForeignKeyConstraint(
         const string& name,
         const string& columnName,
@@ -181,26 +131,16 @@ public:
 
     Constraint* clone() const override;
 
-    /// Get child column name.
-    string getColumnName() const;
-
     /// Get referenced parent table name.
-    string getReferenceTable() const;
+    const string& getReferenceTable() const;
 
     /// Get referenced parent column name.
-    string getReferenceColumn() const;
+    const string& getReferenceColumn() const;
 
     bool validate(
-        const Record& record,
-        const Vector<Record>& existingRecords,
-        const Vector<Record>& referencedRecords
-    ) const override;
-
-    bool validateUpdate(
-        const Record& oldRecord,
-        const Record& newRecord,
-        const Vector<Record>& existingRecords,
-        const Vector<Record>& referencedRecords
+        const Value& value,
+        const Table& table,
+        int ignoreRowIndex = -1
     ) const override;
 };
 
@@ -213,13 +153,7 @@ public:
  */
 class NotNullConstraint : public Constraint
 {
-private:
-    string columnName;
-
 public:
-    /**
-     * @brief Construct a NotNullConstraint.
-     */
     NotNullConstraint(
         const string& name,
         const string& columnName
@@ -227,51 +161,10 @@ public:
 
     Constraint* clone() const override;
 
-    /// Get targeted column name.
-    string getColumnName() const;
-
     bool validate(
-        const Record& record,
-        const Vector<Record>& existingRecords,
-        const Vector<Record>& referencedRecords
-    ) const override;
-};
-
-// ============================================================
-// DEFAULT CONSTRAINT
-// ============================================================
-
-/**
- * @brief Specifies a default value when a column is omitted during insertion.
- */
-class DefaultConstraint : public Constraint
-{
-private:
-    string columnName;
-    Value defaultValue;
-
-public:
-    /**
-     * @brief Construct a DefaultConstraint.
-     */
-    DefaultConstraint(
-        const string& name,
-        const string& columnName,
-        const Value& defaultValue
-    );
-
-    Constraint* clone() const override;
-
-    /// Get targeted column name.
-    string getColumnName() const;
-
-    /// Get specified default value.
-    const Value& getDefaultValue() const;
-
-    bool validate(
-        const Record& record,
-        const Vector<Record>& existingRecords,
-        const Vector<Record>& referencedRecords
+        const Value& value,
+        const Table& table,
+        int ignoreRowIndex = -1
     ) const override;
 };
 

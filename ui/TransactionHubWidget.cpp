@@ -2257,7 +2257,7 @@ QString TransactionHubWidget::formatValue(const Value& val)
     if (holds_alternative<int>(val)) return QString::number(get<int>(val));
     if (holds_alternative<double>(val)) return QString::number(get<double>(val), 'f', 2);
     if (holds_alternative<string>(val)) return QString::fromStdString(get<string>(val));
-    if (holds_alternative<bool>(val)) return get<bool>(val) ? "TRUE" : "FALSE";
+    if (holds_alternative<bool>(val)) return get<bool>(val) ? "1" : "0";
     return "-";
 }
 

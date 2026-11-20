@@ -1,20 +1,14 @@
 #include "Index.h"
 
 Index::Index(
-    const string& name,
     const string& columnName,
     IndexType type
 )
-    : name(name), columnName(columnName), type(type)
+    : columnName(columnName), type(type)
 {
 }
 
-string Index::getName() const
-{
-    return name;
-}
-
-string Index::getColumnName() const
+const string& Index::getColumnName() const
 {
     return columnName;
 }
@@ -28,29 +22,14 @@ IndexType Index::getType() const
 // HASH INDEX
 // ============================================================
 
-HashIndex::HashIndex(
-    const string& name,
-    const string& columnName
-)
-    : Index(name, columnName, IndexType::HASH)
+HashIndex::HashIndex(const string& columnName)
+    : Index(columnName, IndexType::HASH)
 {
 }
 
 Index* HashIndex::clone() const
 {
     return new HashIndex(*this);
-}
-
-void HashIndex::build(const Vector<Record>& records)
-{
-    clear();
-    for (size_t i = 0; i < records.size(); i++)
-    {
-        if (records[i].has(columnName))
-        {
-            insert(records[i].get(columnName), i);
-        }
-    }
 }
 
 void HashIndex::insert(const Value& value, size_t rowIndex)
@@ -74,6 +53,29 @@ void HashIndex::clear()
     indexMap.clear();
 }
 
+bool HashIndex::contains(const Value& value, int ignoreRowIndex) const
+{
+    string key = valueToHashKey(value);
+    auto it = indexMap.find(key);
+    if (it == indexMap.end())
+    {
+        return false;
+    }
+    return static_cast<int>(it->second) != ignoreRowIndex;
+}
+
+bool HashIndex::findFirst(const Value& value, size_t& outRowIndex) const
+{
+    string key = valueToHashKey(value);
+    auto it = indexMap.find(key);
+    if (it == indexMap.end())
+    {
+        return false;
+    }
+    outRowIndex = it->second;
+    return true;
+}
+
 Vector<size_t> HashIndex::find(const Value& value) const
 {
     Vector<size_t> result;
@@ -95,29 +97,14 @@ Vector<size_t> HashIndex::findRange(const Value& /*minVal*/, const Value& /*maxV
 // AVL TREE INDEX
 // ============================================================
 
-AVLTreeIndex::AVLTreeIndex(
-    const string& name,
-    const string& columnName
-)
-    : Index(name, columnName, IndexType::AVL)
+AVLTreeIndex::AVLTreeIndex(const string& columnName)
+    : Index(columnName, IndexType::AVL)
 {
 }
 
 Index* AVLTreeIndex::clone() const
 {
     return new AVLTreeIndex(*this);
-}
-
-void AVLTreeIndex::build(const Vector<Record>& records)
-{
-    clear();
-    for (size_t i = 0; i < records.size(); i++)
-    {
-        if (records[i].has(columnName))
-        {
-            insert(records[i].get(columnName), i);
-        }
-    }
 }
 
 void AVLTreeIndex::insert(const Value& value, size_t rowIndex)
@@ -135,15 +122,29 @@ void AVLTreeIndex::clear()
     tree.clear();
 }
 
-/*
-Nguyên lý hoạt động:
-- Vẫn tuân theo nguyên tắc từ nhỏ đến lớn
-- Nếu back() là node có key == value thì bên trái của nó sẽ nhỏ hơn node này
-=> Không cần quan tâm đến bên trái
-- Nếu như back() ko phải là node có key == value thì chứng tỏ các node trong vector
-đều có key > value. Mà theo ý số 1 thì ko sẽ có cách nào lấy được phần tử tiếp theo key <= value
------- Đừng cố gắng chứng minh lại ------
-*/
+bool AVLTreeIndex::contains(const Value& value, int ignoreRowIndex) const
+{
+    for (auto it = tree.lower_bound(value); it != tree.end() && it->key == value; ++it)
+    {
+        if (static_cast<int>(it->key.second) != ignoreRowIndex)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool AVLTreeIndex::findFirst(const Value& value, size_t& outRowIndex) const
+{
+    auto it = tree.lower_bound(value);
+    if (it != tree.end() && it->key == value)
+    {
+        outRowIndex = it->key.second;
+        return true;
+    }
+    return false;
+}
+
 Vector<size_t> AVLTreeIndex::find(const Value& value) const
 {
     Vector<size_t> result;
@@ -170,29 +171,14 @@ Vector<size_t> AVLTreeIndex::findRange(const Value& minVal, const Value& maxVal)
 // HASH TREE INDEX
 // ============================================================
 
-HashTreeIndex::HashTreeIndex(
-    const string& name,
-    const string& columnName
-)
-    : Index(name, columnName, IndexType::HASH_TREE)
+HashTreeIndex::HashTreeIndex(const string& columnName)
+    : Index(columnName, IndexType::HASH_TREE)
 {
 }
 
 Index* HashTreeIndex::clone() const
 {
     return new HashTreeIndex(*this);
-}
-
-void HashTreeIndex::build(const Vector<Record>& records)
-{
-    clear();
-    for (size_t i = 0; i < records.size(); i++)
-    {
-        if (records[i].has(columnName))
-        {
-            insert(records[i].get(columnName), i);
-        }
-    }
 }
 
 void HashTreeIndex::insert(const Value& value, size_t rowIndex)
@@ -218,6 +204,45 @@ void HashTreeIndex::remove(const Value& value, size_t rowIndex)
 void HashTreeIndex::clear()
 {
     indexMap.clear();
+}
+
+bool HashTreeIndex::contains(const Value& value, int ignoreRowIndex) const
+{
+    string key = valueToHashKey(value);
+    auto it = indexMap.find(key);
+    if (it == indexMap.end() || it->second.empty())
+    {
+        return false;
+    }
+    if (ignoreRowIndex < 0)
+    {
+        return true;
+    }
+    for (const auto& node : it->second)
+    {
+        if (static_cast<int>(node.key) != ignoreRowIndex)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool HashTreeIndex::findFirst(const Value& value, size_t& outRowIndex) const
+{
+    string key = valueToHashKey(value);
+    auto it = indexMap.find(key);
+    if (it == indexMap.end() || it->second.empty())
+    {
+        return false;
+    }
+    auto treeIt = it->second.begin();
+    if (treeIt == it->second.end())
+    {
+        return false;
+    }
+    outRowIndex = treeIt->key;
+    return true;
 }
 
 Vector<size_t> HashTreeIndex::find(const Value& value) const

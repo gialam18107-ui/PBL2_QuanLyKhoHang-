@@ -221,7 +221,7 @@ class DataCrawler:
                 "available_quantity": initial_qty,
                 "warranty_quantity": 0,
                 "scrapped_quantity": 0,
-                "is_sold": "TRUE",
+                "is_sold": "1",
             }
             self.products.append(product_record)
 

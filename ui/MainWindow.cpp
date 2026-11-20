@@ -56,7 +56,7 @@ inline QString getRecordStringValue(const Record& rec, const std::string& col) {
     const auto& v = rec.get(col);
     if (std::holds_alternative<std::string>(v)) return QString::fromStdString(std::get<std::string>(v));
     if (std::holds_alternative<int>(v)) return QString::number(std::get<int>(v));
-    if (std::holds_alternative<bool>(v)) return std::get<bool>(v) ? "TRUE" : "FALSE";
+    if (std::holds_alternative<bool>(v)) return std::get<bool>(v) ? "1" : "0";
     return "";
 }
 }
@@ -592,7 +592,7 @@ void MainWindow::updateCategoryFilterOptions()
     // Cập nhật danh mục sản phẩm (8 danh mục)
     if (cpuWidget) {
         cpuWidget->setFilterColumns({
-            {"Trạng thái bán", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
+            {"Trạng thái bán", "is_sold", FilterType::SELECT_OR_TYPE, {"1", "0"}},
             {"Socket CPU", "socket", FilterType::SELECT_OR_TYPE, loadSpecOptions("cpu_socket")},
             {"Phân khúc CPU", "tier", FilterType::SELECT_OR_TYPE, loadSpecOptions("cpu_tier")},
             {"Dòng CPU", "series", FilterType::SELECT_OR_TYPE, loadSpecOptions("cpu_series")}
@@ -600,7 +600,7 @@ void MainWindow::updateCategoryFilterOptions()
     }
     if (gpuWidget) {
         gpuWidget->setFilterColumns({
-            {"Trạng thái bán", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
+            {"Trạng thái bán", "is_sold", FilterType::SELECT_OR_TYPE, {"1", "0"}},
             {"Dòng GPU", "series", FilterType::SELECT_OR_TYPE, loadSpecOptions("gpu_series")},
             {"Hãng chip", "producer", FilterType::SELECT_OR_TYPE, loadSpecOptions("gpu_producer")},
             {"Dung lượng VRAM", "vram", FilterType::SELECT_OR_TYPE, loadSpecOptions("gpu_vram")}
@@ -608,7 +608,7 @@ void MainWindow::updateCategoryFilterOptions()
     }
     if (mainboardWidget) {
         mainboardWidget->setFilterColumns({
-            {"Trạng thái bán", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
+            {"Trạng thái bán", "is_sold", FilterType::SELECT_OR_TYPE, {"1", "0"}},
             {"Hỗ trợ CPU", "cpu_support", FilterType::SELECT_OR_TYPE, loadSpecOptions("mainboard_cpu_support")},
             {"Socket Mainboard", "socket", FilterType::SELECT_OR_TYPE, loadSpecOptions("mainboard_socket")},
             {"Kích cỡ bo mạch", "size", FilterType::SELECT_OR_TYPE, loadSpecOptions("mainboard_size")},
@@ -618,7 +618,7 @@ void MainWindow::updateCategoryFilterOptions()
     }
     if (ramWidget) {
         ramWidget->setFilterColumns({
-            {"Trạng thái bán", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
+            {"Trạng thái bán", "is_sold", FilterType::SELECT_OR_TYPE, {"1", "0"}},
             {"Thế hệ RAM", "generation", FilterType::SELECT_OR_TYPE, loadSpecOptions("ram_generation")},
             {"Dung lượng RAM", "capacity", FilterType::SELECT_OR_TYPE, loadSpecOptions("ram_capacity")},
             {"Tốc độ Bus", "bus", FilterType::SELECT_OR_TYPE, loadSpecOptions("ram_bus")}
@@ -626,7 +626,7 @@ void MainWindow::updateCategoryFilterOptions()
     }
     if (ssdWidget) {
         ssdWidget->setFilterColumns({
-            {"Trạng thái bán", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
+            {"Trạng thái bán", "is_sold", FilterType::SELECT_OR_TYPE, {"1", "0"}},
             {"Loại SSD", "type", FilterType::SELECT_OR_TYPE, loadSpecOptions("ssd_type")},
             {"Thế hệ giao tiếp", "gen", FilterType::SELECT_OR_TYPE, loadSpecOptions("ssd_gen")},
             {"Dung lượng SSD", "capacity", FilterType::SELECT_OR_TYPE, loadSpecOptions("ssd_capacity")}
@@ -634,7 +634,7 @@ void MainWindow::updateCategoryFilterOptions()
     }
     if (psuWidget) {
         psuWidget->setFilterColumns({
-            {"Trạng thái bán", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
+            {"Trạng thái bán", "is_sold", FilterType::SELECT_OR_TYPE, {"1", "0"}},
             {"Chuẩn hiệu suất", "quality", FilterType::SELECT_OR_TYPE, loadSpecOptions("psu_quality")},
             {"Công suất nguồn", "capacity", FilterType::SELECT_OR_TYPE, loadSpecOptions("psu_capacity")},
             {"Kích cỡ nguồn", "size", FilterType::SELECT_OR_TYPE, loadSpecOptions("psu_size")}
@@ -642,13 +642,13 @@ void MainWindow::updateCategoryFilterOptions()
     }
     if (coolingWidget) {
         coolingWidget->setFilterColumns({
-            {"Trạng thái bán", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
+            {"Trạng thái bán", "is_sold", FilterType::SELECT_OR_TYPE, {"1", "0"}},
             {"Loại tản nhiệt", "type", FilterType::SELECT_OR_TYPE, loadSpecOptions("cooling_type")}
         });
     }
     if (caseWidget) {
         caseWidget->setFilterColumns({
-            {"Trạng thái bán", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}},
+            {"Trạng thái bán", "is_sold", FilterType::SELECT_OR_TYPE, {"1", "0"}},
             {"Kích cỡ vỏ case", "size", FilterType::SELECT_OR_TYPE, loadSpecOptions("case_size")}
         });
     }
@@ -672,7 +672,7 @@ void MainWindow::setupPages()
         {"Mã sản phẩm", "product_code", FilterType::EXACT_TEXT, {}},
         {"Mã SKU", "sku", FilterType::EXACT_TEXT, {}},
         {"Mã vạch (Barcode)", "barcode", FilterType::EXACT_TEXT, {}},
-        {"Trạng thái bán", "is_sold", FilterType::SELECT_OR_TYPE, {"TRUE", "FALSE"}}
+        {"Trạng thái bán", "is_sold", FilterType::SELECT_OR_TYPE, {"1", "0"}}
     });
     productQuantityWidget->setRefreshCallback([this]() { refreshQuery(0); });
     productQuantityWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
@@ -2911,7 +2911,7 @@ void MainWindow::setupCrudWiring()
                 widget->updateRecordInPlace(curRow, "is_sold", Value(nextSold));
                 widget->updateRecordInPlace(curRow, "product.is_sold", Value(nextSold));
             }
-            markDirty(QString("Đã đổi trạng thái bán [%1] -> %2").arg(pCode, nextSold ? "TRUE" : "FALSE"));
+            markDirty(QString("Đã đổi trạng thái bán [%1] -> %2").arg(pCode, nextSold ? "1" : "0"));
         });
     };
 

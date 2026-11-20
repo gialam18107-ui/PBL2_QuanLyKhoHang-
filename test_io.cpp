@@ -59,9 +59,9 @@ int main() {
 
   // 2.3 Custom standalone table unrelated to warehouse schema
   Table customTable("custom_items");
-  customTable.addColumn(Column("item_id", DataType::INTEGER, 0, true, true, true, true));
-  customTable.addColumn(Column("item_name", DataType::VARCHAR, 100, false, false, true));
-  customTable.addColumn(Column("active", DataType::BOOLEAN, 0, false, false, true, false, "1"));
+  customTable.addColumn(Column("item_id", DataType::INTEGER, 0, true), true, true, true);
+  customTable.addColumn(Column("item_name", DataType::VARCHAR, 100), false, false, true);
+  customTable.addColumn(Column("active", DataType::BOOLEAN, 0, false, Value(true)), false, false, true);
   Record r1; r1.set("item_id", 1); r1.set("item_name", string("Sensor A")); r1.set("active", true);
   Record r2; r2.set("item_id", 2); r2.set("item_name", string("Sensor B")); r2.set("active", false);
   assert(customTable.insert(r1));
@@ -71,9 +71,9 @@ int main() {
   assert(TableIO::writeToFile(customTable, customCsvPath));
 
   Table customReloaded("custom_items");
-  customReloaded.addColumn(Column("item_id", DataType::INTEGER, 0, true, true, true, true));
-  customReloaded.addColumn(Column("item_name", DataType::VARCHAR, 100, false, false, true));
-  customReloaded.addColumn(Column("active", DataType::BOOLEAN, 0, false, false, true, false, "1"));
+  customReloaded.addColumn(Column("item_id", DataType::INTEGER, 0, true), true, true, true);
+  customReloaded.addColumn(Column("item_name", DataType::VARCHAR, 100), false, false, true);
+  customReloaded.addColumn(Column("active", DataType::BOOLEAN, 0, false, Value(true)), false, false, true);
   assert(TableIO::readFromFile(customReloaded, customCsvPath));
   assert(customReloaded.getRowCount() == 2);
   cout << "[+] Custom schema-less table round-trip via TableIO passed.\n";
@@ -105,9 +105,9 @@ int main() {
   printBanner("TEST 4: DatabaseIO - Custom HashMap Path Mapping (Schema-Independent)");
   Database customDb("custom_db");
   auto* tblCustom = new Table("custom_items");
-  tblCustom->addColumn(Column("item_id", DataType::INTEGER, 0, true, true, true, true));
-  tblCustom->addColumn(Column("item_name", DataType::VARCHAR, 100, false, false, true));
-  tblCustom->addColumn(Column("active", DataType::BOOLEAN, 0, false, false, true, false, "1"));
+  tblCustom->addColumn(Column("item_id", DataType::INTEGER, 0, true), true, true, true);
+  tblCustom->addColumn(Column("item_name", DataType::VARCHAR, 100), false, false, true);
+  tblCustom->addColumn(Column("active", DataType::BOOLEAN, 0, false, Value(true)), false, false, true);
   assert(customDb.addTable(tblCustom));
 
   DatabaseIO customIO;

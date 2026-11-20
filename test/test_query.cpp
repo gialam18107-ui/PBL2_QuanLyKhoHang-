@@ -207,9 +207,7 @@ void test_query_filter_records_real_data(Database& db)
     {
         // 4.1.1 Gọi bằng tên cột (selectedColumn = "is_sold")
         Vector<Record> filteredByCol = Query::filterRecords(*productTable, "is_sold", Value(soldStatus));
-
-        // 4.1.2 Gọi bằng tên index (selectedColumn = "hash_tree_is_sold")
-        Vector<Record> filteredByIdx = Query::filterRecords(*productTable, "hash_tree_is_sold", Value(soldStatus));
+        Vector<Record> filteredByIdx = Query::filterRecords(*productTable, "is_sold", Value(soldStatus));
 
         assert(filteredByCol.size() == filteredByIdx.size());
 

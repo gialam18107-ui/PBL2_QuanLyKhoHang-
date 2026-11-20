@@ -49,6 +49,14 @@ namespace DataIO
             return false;
         }
 
+        // Resolve column descriptors once per file for O(1) lookup per cell
+        Vector<const Column*> headerColumns;
+        headerColumns.reserve(headers.size());
+        for (size_t i = 0; i < headers.size(); ++i)
+        {
+            headerColumns.push_back(table.getColumn(headers[i]));
+        }
+
         string line;
         while (getline(file, line))
         {
@@ -60,22 +68,23 @@ namespace DataIO
             Record record;
             for (size_t i = 0; i < headers.size() && i < fields.size(); i++)
             {
-                const string& colName = headers[i];
-                const string& valStr = fields[i];
-
-                const Column* col = table.getColumn(colName);
+                const Column* col = headerColumns[i];
                 if (col == nullptr)
                 {
                     continue;
                 }
 
+                const string& colName = col->getName();
+                const string& valStr = fields[i];
+                bool isNullToken = (valStr.empty() || valStr == "NULL");
+
                 if (col->getType() == DataType::INTEGER)
                 {
-                    if (valStr.empty())
+                    if (isNullToken)
                     {
-                        if (!col->getDefaultValue().empty())
+                        if (!isNull(col->getDefaultValue()))
                         {
-                            record.set(colName, stoi(col->getDefaultValue()));
+                            record.set(colName, col->getDefaultValue());
                         }
                     }
                     else
@@ -92,34 +101,36 @@ namespace DataIO
                 }
                 else if (col->getType() == DataType::BOOLEAN)
                 {
-                    if (valStr.empty())
+                    if (isNullToken)
                     {
-                        if (!col->getDefaultValue().empty())
+                        if (!isNull(col->getDefaultValue()))
                         {
-                            bool b = (col->getDefaultValue() == "1" || col->getDefaultValue() == "true" || col->getDefaultValue() == "TRUE");
-                            record.set(colName, b);
+                            record.set(colName, col->getDefaultValue());
                         }
                     }
                     else
                     {
-                        bool b = (valStr == "1" || valStr == "true" || valStr == "TRUE" || valStr == "True");
-                        record.set(colName, b);
+                        if (valStr == "1")
+                        {
+                            record.set(colName, true);
+                        }
+                        else if (valStr == "0")
+                        {
+                            record.set(colName, false);
+                        }
+                        else
+                        {
+                            cerr << "[TableIO Warning] Invalid boolean literal for column " << colName << ": " << valStr << " (expected 0 or 1)" << endl;
+                        }
                     }
                 }
                 else
                 {
-                    if (valStr.empty())
+                    if (isNullToken)
                     {
-                        if (col->isNotNull())
+                        if (!isNull(col->getDefaultValue()))
                         {
-                            if (!col->getDefaultValue().empty())
-                            {
-                                record.set(colName, col->getDefaultValue());
-                            }
-                            else
-                            {
-                                record.set(colName, string(""));
-                            }
+                            record.set(colName, col->getDefaultValue());
                         }
                     }
                     else

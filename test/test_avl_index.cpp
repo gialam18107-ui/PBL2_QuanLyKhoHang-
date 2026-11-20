@@ -4,7 +4,7 @@
 
 int main()
 {
-    AVLTreeIndex avl("idx_price", "price");
+    AVLTreeIndex avl("price");
     avl.insert(Value(100), 10);
     avl.insert(Value(50), 5);
     avl.insert(Value(100), 11);

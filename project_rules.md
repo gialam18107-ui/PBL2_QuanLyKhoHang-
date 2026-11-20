@@ -92,8 +92,8 @@ The main program uses a **single normal user role** (no account management or co
 
 ### 4.2 Product Selling Status (`product.is_sold`), Stock Discontinuance Rule & `IS_SOLD_CHANGING`
 - **Product Status Definition**:
-  - `TRUE`: Product is actively on sale.
-  - `FALSE`: Product is discontinued / stopped selling.
+  - `1` (`true`): Product is actively on sale.
+  - `0` (`false`): Product is discontinued / stopped selling.
 - **Strict Stock Discontinuance Precondition (Chỉ đổi sang FALSE khi tồn kho bằng 0)**:
   - A product's `is_sold` flag can **ONLY** be changed to `FALSE` if the total warehouse quantity of that product is strictly **zero (0)**:
     $$\text{total\_quantity} = \text{available\_quantity} + \text{warranty\_quantity} + \text{scrapped\_quantity} == 0$$
@@ -399,13 +399,15 @@ All auto-generated codes and user inputs must strictly conform to `QuanLyKhoHang
 8. **NULL Representation in Database**:
    - `NULL` is represented by `std::monostate` in the `Value` variant (`variant<monostate, int, double, string, bool>`).
    - In code, check for `NULL` using `isNull(val)` and assign `NULL` using `Value{}` or `monostate{}`. String representation in CSV is `"NULL"`.
+9. **BOOLEAN Representation in Database & CSV**:
+   - All `BOOLEAN` values must be uniformly represented as `"1"` (`true`) and `"0"` (`false`) in `valueToString`, CSV files, default values, crawler exports, and UI boolean filters.
 
 ---
 
 ## 7. Indexing, Query, and CRUD Architecture
 
 ### 7.1 Index Naming and Selection
-- Index naming convention: `index_type + index_column` (where `index_type` is `hash`, `hash_tree`, or `avl_tree`).
+- Index naming convention: Each column has at most one index, keyed directly by `columnName`.
   - `hash`: For columns with unique values (primary keys, unique codes, serial numbers).
   - `hash_tree`: For columns with a fixed set of values and many duplicates (e.g., category specs, `product.is_sold`, status, type, reason).
   - `avl_tree`: For date columns (supports range lookups: `order_at`, `delivery_at`, `ship_at`, `check_at`, `adjusted_at`).

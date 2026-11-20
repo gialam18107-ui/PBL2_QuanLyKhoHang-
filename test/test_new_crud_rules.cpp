@@ -86,7 +86,6 @@ int main() {
     specRec.set("socket", string("LGA1700"));
     specRec.set("tier", string("Core i5"));
     specRec.set("series", string("14th Gen"));
-    specRec.set("core_threads", string("14 Cores 20 Threads"));
 
     OperationResult rCreateProd = user_create::createProduct(&db, newProd, "CPU", specRec);
     cout << "rCreateProd: " << rCreateProd.success << " | " << rCreateProd.message << endl;
@@ -109,7 +108,7 @@ int main() {
     user_query::is_sold_changing_query(&db, histRecs, zeroStockProdId);
     assert(!histRecs.empty());
     cout << "[+] is_sold_changing logged: " << histRecs.size() << " record(s). New status: "
-         << (get<bool>(histRecs[0].get("new_status")) ? "TRUE" : "FALSE") << endl;
+         << (get<bool>(histRecs[0].get("new_status")) ? "1" : "0") << endl;
     assert(get<bool>(histRecs[0].get("new_status")) == false);
     assert(get<bool>(histRecs[0].get("old_status")) == true);
 
