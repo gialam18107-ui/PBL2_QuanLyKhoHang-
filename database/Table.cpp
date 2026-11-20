@@ -5,24 +5,6 @@
 
 using namespace std;
 
-namespace {
-
-string indexTypeToString(IndexType type)
-{
-    switch (type)
-    {
-    case IndexType::HASH:
-        return "HASH";
-    case IndexType::AVL:
-        return "AVL";
-    case IndexType::HASH_TREE:
-        return "HASH_TREE";
-    }
-    return "UNKNOWN";
-}
-
-} // anonymous namespace
-
 // ============================================================
 // CONSTRUCTORS & DESTRUCTOR (RULE OF 5)
 // ============================================================
@@ -1050,7 +1032,7 @@ void Table::printStructure() const
         cout << "\nINDEXES:" << endl;
         for (const auto& entry : indexes)
         {
-            cout << "- " << entry.first << " [" << indexTypeToString(entry.second->getType()) << "]" << endl;
+            cout << "- " << entry.first << endl;
         }
     }
     cout << endl;

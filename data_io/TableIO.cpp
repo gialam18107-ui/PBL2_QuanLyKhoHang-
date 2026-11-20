@@ -192,19 +192,4 @@ namespace DataIO
 
         return true;
     }
-
-    string TableIO::formatLine(const Record& record, const Vector<string>& columns)
-    {
-        return CSVHelper::formatLine(record, columns);
-    }
-
-    string TableIO::formatLine(const Record& record, const Vector<Column>& columns)
-    {
-        return CSVHelper::formatLine(record, columns);
-    }
-
-    string TableIO::formatLine(const Record& record)
-    {
-        return CSVHelper::formatLine(record);
-    }
 }
