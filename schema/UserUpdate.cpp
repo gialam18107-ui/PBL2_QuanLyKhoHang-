@@ -543,7 +543,7 @@ namespace user_update
                         int scrap = (oldRecord.has("scrapped_quantity") && std::holds_alternative<int>(oldRecord.get("scrapped_quantity"))) ? std::get<int>(oldRecord.get("scrapped_quantity")) : 0;
                         int total = avail + warr + scrap;
                         if (total > 0) {
-                            return OperationResult{false, "Không thể chuyển trạng thái ngừng bán (is_sold = FALSE): Sản phẩm vẫn còn tồn kho (" + std::to_string(total) + " cái).", 0};
+                            return OperationResult{false, "Không thể chuyển trạng thái sang Ngừng kinh doanh: Sản phẩm vẫn còn tồn kho (" + std::to_string(total) + " cái).", 0};
                         }
                     }
                 }
@@ -751,7 +751,7 @@ namespace user_update
                       ? std::get<int>(pRec->get("scrapped_quantity")) : 0;
             int total = avail + warr + scrap;
             if (total > 0) {
-                return OperationResult{false, "Không thể chuyển trạng thái ngừng bán (is_sold = FALSE): Sản phẩm vẫn còn tồn kho (" + std::to_string(total) + " cái).", 0};
+                return OperationResult{false, "Không thể chuyển trạng thái sang Ngừng kinh doanh: Sản phẩm vẫn còn tồn kho (" + std::to_string(total) + " cái).", 0};
             }
         }
 
@@ -785,7 +785,7 @@ namespace user_update
         }
 
         db->commit();
-        return OperationResult{true, "Cập nhật trạng thái bán và ghi nhật ký lịch sử thành công!", 2};
+        return OperationResult{true, "Cập nhật trạng thái kinh doanh và ghi nhật ký lịch sử thành công!", 2};
     }
 
     OperationResult updateCustomerContact(

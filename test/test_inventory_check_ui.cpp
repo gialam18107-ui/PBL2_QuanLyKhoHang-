@@ -134,6 +134,23 @@ int main(int argc, char* argv[]) {
     qint64 dbLoadMs = tLoad.elapsed();
     assert(loaded && "Khong the nap du lieu tu data/");
 
+    // Close any pre-existing open inventory checks in-memory only so Stock Freeze
+    // from live data/ does not block isolated test scenarios (disk CSV untouched).
+    if (const Table* icTbl = db.getTable("inventory_check")) {
+        Vector<int> openCheckIds;
+        for (const auto& r : icTbl->view()) {
+            std::string st = (r.has("status") && std::holds_alternative<std::string>(r.get("status")))
+                ? std::get<std::string>(r.get("status")) : "";
+            if ((st == "PENDING" || st == "PROCESSING") &&
+                r.has("check_id") && std::holds_alternative<int>(r.get("check_id"))) {
+                openCheckIds.push_back(std::get<int>(r.get("check_id")));
+            }
+        }
+        for (size_t i = 0; i < openCheckIds.size(); ++i) {
+            user_update::updateInventoryCheckStatus(&db, openCheckIds[i], "COMPLETED");
+        }
+    }
+
     const Table* prodTbl = db.getTable("product");
     const Table* unitTbl = db.getTable("unit_inventory");
     const Table* cuTbl = db.getTable("inventory_check_unit");
@@ -655,6 +672,52 @@ int main(int argc, char* argv[]) {
         ordDlg.close();
     }
     std::cout << "  [OK] 12f. OrderDialog Step 2 Enter key verified.\n";
+
+    // 12g. is_sold UI localization & filter mapping verification
+    {
+        assert(UiLocalization::localizeColumnValue("product.is_sold", "1") == "Đang kinh doanh");
+        assert(UiLocalization::localizeColumnValue("product.is_sold", "true") == "Đang kinh doanh");
+        assert(UiLocalization::localizeColumnValue("product.is_sold", "0") == "Ngừng kinh doanh");
+        assert(UiLocalization::localizeColumnValue("product.is_sold", "false") == "Ngừng kinh doanh");
+        assert(UiLocalization::localizeColumnValue("old_status", "1") == "Đang kinh doanh");
+        assert(UiLocalization::localizeColumnValue("new_status", "0") == "Ngừng kinh doanh");
+        assert(UiLocalization::localizeColumnValue("old_status", "AVAILABLE") == "Khả dụng");
+        assert(UiLocalization::unlocalizeFilterValue("is_sold", "Đang kinh doanh") == "1");
+        assert(UiLocalization::unlocalizeFilterValue("is_sold", "Ngừng kinh doanh") == "0");
+
+        int zeroStockPid = 0;
+        for (const auto& p : prodTbl->view()) {
+            int av = (p.has("available_quantity") && std::holds_alternative<int>(p.get("available_quantity"))) ? std::get<int>(p.get("available_quantity")) : 0;
+            int wa = (p.has("warranty_quantity") && std::holds_alternative<int>(p.get("warranty_quantity"))) ? std::get<int>(p.get("warranty_quantity")) : 0;
+            int sc = (p.has("scrapped_quantity") && std::holds_alternative<int>(p.get("scrapped_quantity"))) ? std::get<int>(p.get("scrapped_quantity")) : 0;
+            if (av + wa + sc == 0 && p.has("product_id") && std::holds_alternative<int>(p.get("product_id"))) {
+                zeroStockPid = std::get<int>(p.get("product_id"));
+                break;
+            }
+        }
+        if (zeroStockPid > 0) {
+            assert(user_update::updateProductSellingStatus(&db, zeroStockPid, false).success);
+        }
+
+        Vector<Record> resSold;
+        user_query::product_quantity_query(&db, resSold, "is_sold", Value(std::string("Đang kinh doanh")));
+        assert(!resSold.empty());
+        for (const auto& r : resSold) {
+            assert(r.has("product.is_sold") && std::holds_alternative<bool>(r.get("product.is_sold")));
+            assert(std::get<bool>(r.get("product.is_sold")) == true);
+        }
+
+        Vector<Record> resStopped;
+        user_query::product_quantity_query(&db, resStopped, "is_sold", Value(std::string("Ngừng kinh doanh")));
+        if (zeroStockPid > 0) {
+            assert(!resStopped.empty());
+        }
+        for (const auto& r : resStopped) {
+            assert(r.has("product.is_sold") && std::holds_alternative<bool>(r.get("product.is_sold")));
+            assert(std::get<bool>(r.get("product.is_sold")) == false);
+        }
+    }
+    std::cout << "  [OK] 12g. is_sold UI localization & query filters verified.\n";
     std::cout << "==============================================================================\n\n";
 
     return 0;

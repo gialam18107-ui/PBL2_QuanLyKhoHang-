@@ -550,7 +550,7 @@ namespace user_create
             }
             if (inboundType != "ADJUSTMENT_IN" && inboundType != "ADJ") {
                 if (pRec->has("is_sold") && std::holds_alternative<bool>(pRec->get("is_sold")) && !std::get<bool>(pRec->get("is_sold"))) {
-                    return OperationResult{false, "Sản phẩm ID " + std::to_string(pid) + " đã ngừng kinh doanh (is_sold = FALSE), không thể nhập kho.", 0};
+                    return OperationResult{false, "Sản phẩm ID " + std::to_string(pid) + " đã ngừng kinh doanh, không thể nhập kho.", 0};
                 }
             }
         }
@@ -725,7 +725,7 @@ namespace user_create
             }
             if (outboundType != "ADJUSTMENT_OUT" && outboundType != "ADJ") {
                 if (pRec->has("is_sold") && std::holds_alternative<bool>(pRec->get("is_sold")) && !std::get<bool>(pRec->get("is_sold"))) {
-                    return OperationResult{false, "Sản phẩm ID " + std::to_string(pid) + " đã ngừng kinh doanh (is_sold = FALSE), không thể xuất kho.", 0};
+                    return OperationResult{false, "Sản phẩm ID " + std::to_string(pid) + " đã ngừng kinh doanh, không thể xuất kho.", 0};
                 }
             }
 

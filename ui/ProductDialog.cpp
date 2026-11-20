@@ -211,7 +211,7 @@ void ProductDialog::setupUI()
 
     subTitleLabel = new QLabel(
         isEditMode
-            ? "Cập nhật thông tin cơ bản, trạng thái mở bán và thông số kỹ thuật phần cứng (Danh mục & Mã sản phẩm được khóa cố định)."
+            ? "Cập nhật thông tin cơ bản, trạng thái kinh doanh và thông số kỹ thuật phần cứng (Danh mục & Mã sản phẩm được khóa cố định)."
             : "Nhập thông tin sản phẩm và các thông số phần cứng tương ứng. Tồn kho khởi tạo khả dụng = 0.",
         this
     );
@@ -261,7 +261,9 @@ void ProductDialog::setupUI()
     basicGrid->addWidget(new QLabel("Hãng sản xuất (*):", this), 1, 2);
     basicGrid->addLayout(brandRowLayout, 1, 3);
 
-    isSoldCheck = new QCheckBox("Đang mở bán / Kinh doanh (is_sold = TRUE)", this);
+    basicGrid->addWidget(new QLabel("Trạng thái:", this), 2, 0);
+    isSoldCheck = new QCheckBox("Đang kinh doanh", this);
+    isSoldCheck->setToolTip("Chọn = Đang kinh doanh, Bỏ chọn = Ngừng kinh doanh");
     isSoldCheck->setChecked(true);
     basicGrid->addWidget(isSoldCheck, 2, 1, 1, 3);
 

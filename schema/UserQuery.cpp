@@ -79,10 +79,11 @@ void product_quantity_query(Database *db, Vector<Record> &results,
 
 	Value filterVal = val;
 	if (col == "is_sold" && holds_alternative<string>(val)) {
-		string s = toLowerStr(get<string>(val));
-		if (s == "true" || s == "1" || s == "đang bán")
+		const string& rawStr = get<string>(val);
+		string s = toLowerStr(rawStr);
+		if (s == "true" || s == "1" || s == "đang bán" || s == "đang kinh doanh" || rawStr == "Đang kinh doanh")
 			filterVal = true;
-		else if (s == "false" || s == "0" || s == "ngừng bán")
+		else if (s == "false" || s == "0" || s == "ngừng bán" || s == "ngừng kinh doanh" || rawStr == "Ngừng kinh doanh")
 			filterVal = false;
 	}
 
@@ -1171,10 +1172,11 @@ void category_hardware_query(Database *db, const string &categoryName,
 
 	Value soldVal = val;
 	if (filterOnSold && holds_alternative<string>(val)) {
-		string s = toLowerStr(get<string>(val));
-		if (s == "true" || s == "1" || s == "đang bán")
+		const string& rawStr = get<string>(val);
+		string s = toLowerStr(rawStr);
+		if (s == "true" || s == "1" || s == "đang bán" || s == "đang kinh doanh" || rawStr == "Đang kinh doanh")
 			soldVal = true;
-		else if (s == "false" || s == "0" || s == "ngừng bán")
+		else if (s == "false" || s == "0" || s == "ngừng bán" || s == "ngừng kinh doanh" || rawStr == "Ngừng kinh doanh")
 			soldVal = false;
 	}
 

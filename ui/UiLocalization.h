@@ -73,12 +73,21 @@ inline QString localizeCheckType(const QString& raw)
     return s;
 }
 
+inline QString localizeSellingStatus(const QString& raw)
+{
+    QString s = raw.trimmed();
+    QString low = s.toLower();
+    if (low == "1" || low == "true" || low == "đang kinh doanh" || low == "đang bán") return "Đang kinh doanh";
+    if (low == "0" || low == "false" || low == "ngừng kinh doanh" || low == "ngừng bán") return "Ngừng kinh doanh";
+    return s;
+}
+
 inline bool isStatusColumnKey(const std::string& colKey)
 {
     QString col = stripTablePrefix(colKey);
     return (col == "status" || col == "system_status" || col == "scanned_status" ||
             col == "from_status" || col == "to_status" || col == "old_status" ||
-            col == "curr_status");
+            col == "curr_status" || col == "new_status" || col == "is_sold");
 }
 
 inline QString localizeColumnValue(const std::string& colKey, const QString& raw)
@@ -87,9 +96,18 @@ inline QString localizeColumnValue(const std::string& colKey, const QString& raw
     if (s.isEmpty() || s == "-") return raw;
 
     QString col = stripTablePrefix(colKey);
+    if (col == "is_sold") {
+        return localizeSellingStatus(s);
+    }
+    if (col == "old_status" || col == "new_status") {
+        QString low = s.toLower();
+        if (low == "1" || low == "0" || low == "true" || low == "false") {
+            return localizeSellingStatus(s);
+        }
+        return localizeStatus(s);
+    }
     if (col == "status" || col == "system_status" || col == "scanned_status" ||
-        col == "from_status" || col == "to_status" || col == "old_status" ||
-        col == "curr_status") {
+        col == "from_status" || col == "to_status" || col == "curr_status") {
         return localizeStatus(s);
     }
     if (col == "type") {
@@ -111,6 +129,10 @@ inline QString unlocalizeFilterValue(const std::string& colKey, const QString& d
     QString low = s.toLower();
     QString col = stripTablePrefix(colKey);
 
+    if (col == "is_sold") {
+        if (low == "đang kinh doanh" || low == "đang bán" || low == "true" || low == "1") return "1";
+        if (low == "ngừng kinh doanh" || low == "ngừng bán" || low == "false" || low == "0") return "0";
+    }
     if (isStatusColumnKey(colKey)) {
         if (low == "chờ xử lí" || low == "chờ xử lý") return "PENDING";
         if (low == "đang xử lí" || low == "đang xử lý" || low == "đang thực hiện") return "PROCESSING";
@@ -153,6 +175,12 @@ inline QColor statusTextColor(const QString& statusRawOrLocalized)
 {
     QString up = statusRawOrLocalized.trimmed().toUpper();
     QString low = statusRawOrLocalized.trimmed().toLower();
+    if (up == "1" || up == "TRUE" || low == "đang kinh doanh" || low == "đang bán") {
+        return QColor(22, 163, 74);
+    }
+    if (up == "0" || up == "FALSE" || low == "ngừng kinh doanh" || low == "ngừng bán") {
+        return QColor(220, 38, 38);
+    }
     if (up == "COMPLETED" || low == "hoàn thành" || low == "đã hoàn thành") {
         return QColor(16, 185, 129);
     }

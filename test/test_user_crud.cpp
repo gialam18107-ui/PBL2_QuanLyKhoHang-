@@ -16,6 +16,23 @@ int main()
     Database db("test_crud_db");
     Schema::loadDatabase(db, "data", true);
 
+    // Close any pre-existing open inventory checks in-memory only so Stock Freeze
+    // from live data/ does not block isolated test scenarios (disk CSV untouched).
+    if (const Table* icTbl = db.getTable("inventory_check")) {
+        Vector<int> openCheckIds;
+        for (const auto& r : icTbl->view()) {
+            std::string st = (r.has("status") && std::holds_alternative<std::string>(r.get("status")))
+                ? std::get<std::string>(r.get("status")) : "";
+            if ((st == "PENDING" || st == "PROCESSING") &&
+                r.has("check_id") && std::holds_alternative<int>(r.get("check_id"))) {
+                openCheckIds.push_back(std::get<int>(r.get("check_id")));
+            }
+        }
+        for (size_t i = 0; i < openCheckIds.size(); ++i) {
+            user_update::updateInventoryCheckStatus(&db, openCheckIds[i], "COMPLETED");
+        }
+    }
+
     // ==========================================
     // 1. TEST Product CRUD
     // ==========================================

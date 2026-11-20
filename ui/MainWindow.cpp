@@ -171,7 +171,7 @@ void MainWindow::setupMenuBar()
         "   ↳ 14. Chi tiết Linh kiện Kiểm kê (Toàn màn hình)",
         "15. Quản lý Phiếu Điều chuyển",
         "   ↳ 16. Chi tiết Điều chuyển Trạng thái (Toàn màn hình)",
-        "17. Lịch sử đổi trạng thái bán"
+        "17. Lịch sử đổi trạng thái kinh doanh"
     };
     for (int i = 0; i < whTitles.size(); ++i) {
         if (i == 3 || i == 7 || i == 11 || i == 14 || i == 16) {
@@ -444,7 +444,7 @@ void MainWindow::setupTopNavBar()
     addMoreItem("📋 Chi tiết kiểm kê đơn vị", 13);
     moreMenu->addSeparator();
     addMoreItem("🔄 Chi tiết điều chỉnh trạng thái", 15);
-    addMoreItem("🏷️ Lịch sử thay đổi trạng thái bán", 16);
+    addMoreItem("🏷️ Lịch sử đổi trạng thái kinh doanh", 16);
     moreMenu->addSeparator();
     addMoreItem("⚙️ Thông số phụ & Thương hiệu", 25);
     navMoreBtn->setMenu(moreMenu);
@@ -592,7 +592,7 @@ void MainWindow::updateCategoryFilterOptions()
     // Cập nhật danh mục sản phẩm (8 danh mục)
     if (cpuWidget) {
         cpuWidget->setFilterColumns({
-            {"Trạng thái bán", "is_sold", FilterType::SELECT_OR_TYPE, {"1", "0"}},
+            {"Trạng thái", "is_sold", FilterType::SELECT_OR_TYPE, {"1", "0"}},
             {"Socket CPU", "socket", FilterType::SELECT_OR_TYPE, loadSpecOptions("cpu_socket")},
             {"Phân khúc CPU", "tier", FilterType::SELECT_OR_TYPE, loadSpecOptions("cpu_tier")},
             {"Dòng CPU", "series", FilterType::SELECT_OR_TYPE, loadSpecOptions("cpu_series")}
@@ -600,7 +600,7 @@ void MainWindow::updateCategoryFilterOptions()
     }
     if (gpuWidget) {
         gpuWidget->setFilterColumns({
-            {"Trạng thái bán", "is_sold", FilterType::SELECT_OR_TYPE, {"1", "0"}},
+            {"Trạng thái", "is_sold", FilterType::SELECT_OR_TYPE, {"1", "0"}},
             {"Dòng GPU", "series", FilterType::SELECT_OR_TYPE, loadSpecOptions("gpu_series")},
             {"Hãng chip", "producer", FilterType::SELECT_OR_TYPE, loadSpecOptions("gpu_producer")},
             {"Dung lượng VRAM", "vram", FilterType::SELECT_OR_TYPE, loadSpecOptions("gpu_vram")}
@@ -608,7 +608,7 @@ void MainWindow::updateCategoryFilterOptions()
     }
     if (mainboardWidget) {
         mainboardWidget->setFilterColumns({
-            {"Trạng thái bán", "is_sold", FilterType::SELECT_OR_TYPE, {"1", "0"}},
+            {"Trạng thái", "is_sold", FilterType::SELECT_OR_TYPE, {"1", "0"}},
             {"Hỗ trợ CPU", "cpu_support", FilterType::SELECT_OR_TYPE, loadSpecOptions("mainboard_cpu_support")},
             {"Socket Mainboard", "socket", FilterType::SELECT_OR_TYPE, loadSpecOptions("mainboard_socket")},
             {"Kích cỡ bo mạch", "size", FilterType::SELECT_OR_TYPE, loadSpecOptions("mainboard_size")},
@@ -618,7 +618,7 @@ void MainWindow::updateCategoryFilterOptions()
     }
     if (ramWidget) {
         ramWidget->setFilterColumns({
-            {"Trạng thái bán", "is_sold", FilterType::SELECT_OR_TYPE, {"1", "0"}},
+            {"Trạng thái", "is_sold", FilterType::SELECT_OR_TYPE, {"1", "0"}},
             {"Thế hệ RAM", "generation", FilterType::SELECT_OR_TYPE, loadSpecOptions("ram_generation")},
             {"Dung lượng RAM", "capacity", FilterType::SELECT_OR_TYPE, loadSpecOptions("ram_capacity")},
             {"Tốc độ Bus", "bus", FilterType::SELECT_OR_TYPE, loadSpecOptions("ram_bus")}
@@ -626,7 +626,7 @@ void MainWindow::updateCategoryFilterOptions()
     }
     if (ssdWidget) {
         ssdWidget->setFilterColumns({
-            {"Trạng thái bán", "is_sold", FilterType::SELECT_OR_TYPE, {"1", "0"}},
+            {"Trạng thái", "is_sold", FilterType::SELECT_OR_TYPE, {"1", "0"}},
             {"Loại SSD", "type", FilterType::SELECT_OR_TYPE, loadSpecOptions("ssd_type")},
             {"Thế hệ giao tiếp", "gen", FilterType::SELECT_OR_TYPE, loadSpecOptions("ssd_gen")},
             {"Dung lượng SSD", "capacity", FilterType::SELECT_OR_TYPE, loadSpecOptions("ssd_capacity")}
@@ -634,7 +634,7 @@ void MainWindow::updateCategoryFilterOptions()
     }
     if (psuWidget) {
         psuWidget->setFilterColumns({
-            {"Trạng thái bán", "is_sold", FilterType::SELECT_OR_TYPE, {"1", "0"}},
+            {"Trạng thái", "is_sold", FilterType::SELECT_OR_TYPE, {"1", "0"}},
             {"Chuẩn hiệu suất", "quality", FilterType::SELECT_OR_TYPE, loadSpecOptions("psu_quality")},
             {"Công suất nguồn", "capacity", FilterType::SELECT_OR_TYPE, loadSpecOptions("psu_capacity")},
             {"Kích cỡ nguồn", "size", FilterType::SELECT_OR_TYPE, loadSpecOptions("psu_size")}
@@ -642,13 +642,13 @@ void MainWindow::updateCategoryFilterOptions()
     }
     if (coolingWidget) {
         coolingWidget->setFilterColumns({
-            {"Trạng thái bán", "is_sold", FilterType::SELECT_OR_TYPE, {"1", "0"}},
+            {"Trạng thái", "is_sold", FilterType::SELECT_OR_TYPE, {"1", "0"}},
             {"Loại tản nhiệt", "type", FilterType::SELECT_OR_TYPE, loadSpecOptions("cooling_type")}
         });
     }
     if (caseWidget) {
         caseWidget->setFilterColumns({
-            {"Trạng thái bán", "is_sold", FilterType::SELECT_OR_TYPE, {"1", "0"}},
+            {"Trạng thái", "is_sold", FilterType::SELECT_OR_TYPE, {"1", "0"}},
             {"Kích cỡ vỏ case", "size", FilterType::SELECT_OR_TYPE, loadSpecOptions("case_size")}
         });
     }
@@ -665,14 +665,14 @@ void MainWindow::setupPages()
         this
     );
     productQuantityWidget->setColumns(
-        {"Mã sản phẩm", "Mã vạch (Barcode)", "Mã SKU", "Tên sản phẩm", "Khả dụng", "Bảo hành", "Lỗi/hỏng", "Đang bán"},
+        {"Mã sản phẩm", "Mã vạch (Barcode)", "Mã SKU", "Tên sản phẩm", "Khả dụng", "Bảo hành", "Lỗi/hỏng", "Trạng thái"},
         {"product.product_code", "product.barcode", "product.sku", "product.product_name", "product_quantity.available_quan", "product_quantity.warranty_quan", "product_quantity.scrapped_quan", "product.is_sold"}
     );
     productQuantityWidget->setFilterColumns({
         {"Mã sản phẩm", "product_code", FilterType::EXACT_TEXT, {}},
         {"Mã SKU", "sku", FilterType::EXACT_TEXT, {}},
         {"Mã vạch (Barcode)", "barcode", FilterType::EXACT_TEXT, {}},
-        {"Trạng thái bán", "is_sold", FilterType::SELECT_OR_TYPE, {"1", "0"}}
+        {"Trạng thái", "is_sold", FilterType::SELECT_OR_TYPE, {"1", "0"}}
     });
     productQuantityWidget->setRefreshCallback([this]() { refreshQuery(0); });
     productQuantityWidget->setFilterCallback([this](const std::string& col, const QString& v1, const QString& /*v2*/, bool /*isRange*/) {
@@ -681,14 +681,15 @@ void MainWindow::setupPages()
         timer.start();
         Vector<Record> results;
         if (col == "is_sold") {
-            bool sold = (v1.compare("true", Qt::CaseInsensitive) == 0 || v1.startsWith("1") || v1.contains("đang bán", Qt::CaseInsensitive));
+            bool sold = (v1.compare("true", Qt::CaseInsensitive) == 0 || v1.startsWith("1") ||
+                         v1.contains("đang kinh doanh", Qt::CaseInsensitive) || v1.contains("đang bán", Qt::CaseInsensitive));
             user_query::product_quantity_query(db, results, "is_sold", Value(sold));
         } else {
             user_query::product_quantity_query(db, results, col, Value(v1.toStdString()));
         }
         productQuantityWidget->setData(results);
         statusLabel->setText(QString("Lọc dữ liệu trên PRODUCT_QUANTITY [%1 = %2]: %3 bản ghi (%4 ms)")
-            .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
+            .arg(QString::fromStdString(col)).arg(UiLocalization::localizeColumnValue(col, v1)).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(productQuantityWidget);
 
@@ -1367,7 +1368,7 @@ void MainWindow::setupPages()
     // 17. IS_SOLD_CHANGING_QUERY
     // ========================================================
     isSoldChangingWidget = new QueryTableWidget(
-        "Lịch sử đổi trạng thái bán",
+        "Lịch sử đổi trạng thái kinh doanh",
         "Nhật ký kiểm toán ghi lại mọi thay đổi trạng thái kinh doanh của sản phẩm",
         this
     );
@@ -1406,7 +1407,7 @@ void MainWindow::setupPages()
         this
     );
     cpuWidget->setColumns(
-        {"Mã sản phẩm", "Tên sản phẩm", "Socket CPU", "Phân khúc (Tier)", "Dòng CPU (Series)", "Đang bán (is_sold)"},
+        {"Mã sản phẩm", "Tên sản phẩm", "Socket CPU", "Phân khúc (Tier)", "Dòng CPU (Series)", "Trạng thái"},
         {"product.product_code", "product.product_name", "cpu.socket", "cpu.tier", "cpu.series", "product.is_sold"}
     );
     cpuWidget->setRefreshCallback([this]() { refreshQuery(17); });
@@ -1418,7 +1419,7 @@ void MainWindow::setupPages()
         user_query::cpu_query(db, results, col, Value(v1.toStdString()));
         cpuWidget->setData(results);
         statusLabel->setText(QString("Lọc dữ liệu trên CPU_QUERY [%1 = %2]: %3 bản ghi (%4 ms)")
-            .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
+            .arg(QString::fromStdString(col)).arg(UiLocalization::localizeColumnValue(col, v1)).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(cpuWidget);
 
@@ -1431,7 +1432,7 @@ void MainWindow::setupPages()
         this
     );
     gpuWidget->setColumns(
-        {"Mã sản phẩm", "Tên sản phẩm", "Dòng GPU (Series)", "Hãng chip (Producer)", "VRAM (GB)", "Đang bán (is_sold)"},
+        {"Mã sản phẩm", "Tên sản phẩm", "Dòng GPU (Series)", "Hãng chip (Producer)", "VRAM (GB)", "Trạng thái"},
         {"product.product_code", "product.product_name", "gpu.series", "gpu.producer", "gpu.vram", "product.is_sold"}
     );
     gpuWidget->setRefreshCallback([this]() { refreshQuery(18); });
@@ -1451,7 +1452,7 @@ void MainWindow::setupPages()
         user_query::gpu_query(db, results, col, val);
         gpuWidget->setData(results);
         statusLabel->setText(QString("Lọc dữ liệu trên GPU_QUERY [%1 = %2]: %3 bản ghi (%4 ms)")
-            .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
+            .arg(QString::fromStdString(col)).arg(UiLocalization::localizeColumnValue(col, v1)).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(gpuWidget);
 
@@ -1464,7 +1465,7 @@ void MainWindow::setupPages()
         this
     );
     mainboardWidget->setColumns(
-        {"Mã sản phẩm", "Tên sản phẩm", "Hỗ trợ CPU", "Socket", "Kích cỡ (Size)", "Chipset", "Chuẩn RAM", "Đang bán (is_sold)"},
+        {"Mã sản phẩm", "Tên sản phẩm", "Hỗ trợ CPU", "Socket", "Kích cỡ (Size)", "Chipset", "Chuẩn RAM", "Trạng thái"},
         {"product.product_code", "product.product_name", "mainboard.cpu_support", "mainboard.socket", "mainboard.size", "mainboard.chipset", "mainboard.ram_support", "product.is_sold"}
     );
     mainboardWidget->setRefreshCallback([this]() { refreshQuery(19); });
@@ -1476,7 +1477,7 @@ void MainWindow::setupPages()
         user_query::mainboard_query(db, results, col, Value(v1.toStdString()));
         mainboardWidget->setData(results);
         statusLabel->setText(QString("Lọc dữ liệu trên MAINBOARD_QUERY [%1 = %2]: %3 bản ghi (%4 ms)")
-            .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
+            .arg(QString::fromStdString(col)).arg(UiLocalization::localizeColumnValue(col, v1)).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(mainboardWidget);
 
@@ -1489,7 +1490,7 @@ void MainWindow::setupPages()
         this
     );
     ramWidget->setColumns(
-        {"Mã sản phẩm", "Tên sản phẩm", "Thế hệ RAM", "Số lượng thanh", "Dung lượng", "Tốc độ Bus", "Đang bán (is_sold)"},
+        {"Mã sản phẩm", "Tên sản phẩm", "Thế hệ RAM", "Số lượng thanh", "Dung lượng", "Tốc độ Bus", "Trạng thái"},
         {"product.product_code", "product.product_name", "ram.generation", "ram.quantity", "ram.capacity", "ram.bus", "product.is_sold"}
     );
     ramWidget->setRefreshCallback([this]() { refreshQuery(20); });
@@ -1501,7 +1502,7 @@ void MainWindow::setupPages()
         user_query::ram_query(db, results, col, Value(v1.toStdString()));
         ramWidget->setData(results);
         statusLabel->setText(QString("Lọc dữ liệu trên RAM_QUERY [%1 = %2]: %3 bản ghi (%4 ms)")
-            .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
+            .arg(QString::fromStdString(col)).arg(UiLocalization::localizeColumnValue(col, v1)).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(ramWidget);
 
@@ -1514,7 +1515,7 @@ void MainWindow::setupPages()
         this
     );
     ssdWidget->setColumns(
-        {"Mã sản phẩm", "Tên sản phẩm", "Loại SSD", "Thế hệ (Gen)", "Dung lượng", "Đang bán (is_sold)"},
+        {"Mã sản phẩm", "Tên sản phẩm", "Loại SSD", "Thế hệ (Gen)", "Dung lượng", "Trạng thái"},
         {"product.product_code", "product.product_name", "ssd.type", "ssd.gen", "ssd.capacity", "product.is_sold"}
     );
     ssdWidget->setRefreshCallback([this]() { refreshQuery(21); });
@@ -1526,7 +1527,7 @@ void MainWindow::setupPages()
         user_query::ssd_query(db, results, col, Value(v1.toStdString()));
         ssdWidget->setData(results);
         statusLabel->setText(QString("Lọc dữ liệu trên SSD_QUERY [%1 = %2]: %3 bản ghi (%4 ms)")
-            .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
+            .arg(QString::fromStdString(col)).arg(UiLocalization::localizeColumnValue(col, v1)).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(ssdWidget);
 
@@ -1539,7 +1540,7 @@ void MainWindow::setupPages()
         this
     );
     psuWidget->setColumns(
-        {"Mã sản phẩm", "Tên sản phẩm", "Chuẩn hiệu suất (Quality)", "Công suất (W)", "Kích thước (Size)", "Đang bán (is_sold)"},
+        {"Mã sản phẩm", "Tên sản phẩm", "Chuẩn hiệu suất (Quality)", "Công suất (W)", "Kích thước (Size)", "Trạng thái"},
         {"product.product_code", "product.product_name", "psu.quality", "psu.capacity", "psu.size", "product.is_sold"}
     );
     psuWidget->setRefreshCallback([this]() { refreshQuery(22); });
@@ -1559,7 +1560,7 @@ void MainWindow::setupPages()
         user_query::psu_query(db, results, col, val);
         psuWidget->setData(results);
         statusLabel->setText(QString("Lọc dữ liệu trên PSU_QUERY [%1 = %2]: %3 bản ghi (%4 ms)")
-            .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
+            .arg(QString::fromStdString(col)).arg(UiLocalization::localizeColumnValue(col, v1)).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(psuWidget);
 
@@ -1572,7 +1573,7 @@ void MainWindow::setupPages()
         this
     );
     coolingWidget->setColumns(
-        {"Mã sản phẩm", "Tên sản phẩm", "Loại tản nhiệt (Type)", "Đang bán (is_sold)"},
+        {"Mã sản phẩm", "Tên sản phẩm", "Loại tản nhiệt (Type)", "Trạng thái"},
         {"product.product_code", "product.product_name", "cooling.type", "product.is_sold"}
     );
     coolingWidget->setRefreshCallback([this]() { refreshQuery(23); });
@@ -1584,7 +1585,7 @@ void MainWindow::setupPages()
         user_query::cooling_query(db, results, col, Value(v1.toStdString()));
         coolingWidget->setData(results);
         statusLabel->setText(QString("Lọc dữ liệu trên COOLING_QUERY [%1 = %2]: %3 bản ghi (%4 ms)")
-            .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
+            .arg(QString::fromStdString(col)).arg(UiLocalization::localizeColumnValue(col, v1)).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(coolingWidget);
 
@@ -1597,7 +1598,7 @@ void MainWindow::setupPages()
         this
     );
     caseWidget->setColumns(
-        {"Mã sản phẩm", "Tên sản phẩm", "Kích cỡ vỏ (Size)", "Đang bán (is_sold)"},
+        {"Mã sản phẩm", "Tên sản phẩm", "Kích cỡ vỏ (Size)", "Trạng thái"},
         {"product.product_code", "product.product_name", "case.size", "product.is_sold"}
     );
     caseWidget->setRefreshCallback([this]() { refreshQuery(24); });
@@ -1609,7 +1610,7 @@ void MainWindow::setupPages()
         user_query::case_query(db, results, col, Value(v1.toStdString()));
         caseWidget->setData(results);
         statusLabel->setText(QString("Lọc dữ liệu trên CASE_QUERY [%1 = %2]: %3 bản ghi (%4 ms)")
-            .arg(QString::fromStdString(col)).arg(v1).arg(results.size()).arg(timer.elapsed()));
+            .arg(QString::fromStdString(col)).arg(UiLocalization::localizeColumnValue(col, v1)).arg(results.size()).arg(timer.elapsed()));
     });
     stackedWidget->addWidget(caseWidget);
 
@@ -2882,7 +2883,7 @@ void MainWindow::setupCrudWiring()
     }
 
     // Quick Toggle Selling Status (Rule 4.2: product.is_sold)
-        widget->setExtraAction("🔄 Đổi TT Bán", [this, catTable, widget](const Record& rec) {
+        widget->setExtraAction("🔄 Đổi trạng thái", [this, catTable, widget](const Record& rec) {
             int pid = resolveProductId(rec, catTable);
             if (pid <= 0 || !db) return;
             string pCodeStr, pNameStr; bool curSold = true;
@@ -2892,9 +2893,9 @@ void MainWindow::setupCrudWiring()
             bool nextSold = !curSold;
             auto reply = QMessageBox::question(
                 this,
-                "Đổi trạng thái kinh doanh (is_sold)",
+                "Đổi trạng thái kinh doanh",
                 QString("Chuyển trạng thái sản phẩm [%1] sang:\n➡ %2?")
-                    .arg(pCode, nextSold ? "ĐANG MỞ BÁN (is_sold = TRUE)" : "NGỪNG KINH DOANH (is_sold = FALSE)"),
+                    .arg(pCode, nextSold ? "Đang kinh doanh" : "Ngừng kinh doanh"),
                 QMessageBox::Yes | QMessageBox::No,
                 QMessageBox::Yes
             );
@@ -2902,7 +2903,7 @@ void MainWindow::setupCrudWiring()
 
             OperationResult res = user_update::updateProductSellingStatus(db, pid, nextSold);
             if (!res.success) {
-                QMessageBox::critical(this, "Không thể đổi trạng thái bán", QString::fromStdString(res.message));
+                QMessageBox::critical(this, "Không thể đổi trạng thái", QString::fromStdString(res.message));
                 return;
             }
 
@@ -2911,7 +2912,7 @@ void MainWindow::setupCrudWiring()
                 widget->updateRecordInPlace(curRow, "is_sold", Value(nextSold));
                 widget->updateRecordInPlace(curRow, "product.is_sold", Value(nextSold));
             }
-            markDirty(QString("Đã đổi trạng thái bán [%1] -> %2").arg(pCode, nextSold ? "1" : "0"));
+            markDirty(QString("Đã đổi trạng thái [%1] -> %2").arg(pCode, nextSold ? "Đang kinh doanh" : "Ngừng kinh doanh"));
         });
     };
 

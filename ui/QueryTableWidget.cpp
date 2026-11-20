@@ -719,7 +719,7 @@ void QueryTableWidget::renderRows()
     for (int c = 0; c < tableWidget->columnCount(); ++c) {
         QString colKey = (c < static_cast<int>(keys.size())) ? UiLocalization::stripTablePrefix(keys[c]) : QString();
         int minColW = (UiLocalization::isStatusColumnKey(colKey.toStdString()) || colKey == "type" || colKey == "reason" || colKey == "check_type")
-                        ? 150 : 120;
+                        ? 160 : 120;
         if (tableWidget->columnWidth(c) < minColW) {
             tableWidget->setColumnWidth(c, minColW);
         }

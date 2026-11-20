@@ -471,7 +471,7 @@ QWidget* OrderDialog::createStep2Widget()
     pageLayout->setContentsMargins(0, 2, 0, 0);
     pageLayout->setSpacing(8);
 
-    auto* sectionHdr = new QLabel("<b>2. Danh sách mặt hàng trong đơn</b> <span style='color:#64748b; font-weight:normal;'>(Chỉ sản phẩm đang mở bán: is_sold = TRUE)</span>", page);
+    auto* sectionHdr = new QLabel("<b>2. Danh sách mặt hàng trong đơn</b> <span style='color:#64748b; font-weight:normal;'>(Chỉ sản phẩm đang kinh doanh)</span>", page);
     sectionHdr->setStyleSheet("font-size: 13px; color: #2563eb;");
     pageLayout->addWidget(sectionHdr);
 
@@ -1258,7 +1258,7 @@ void OrderDialog::onQuickAddCustomer()
 void OrderDialog::onAddLineItem()
 {
     if (!db || productCombo->count() == 0) {
-        QMessageBox::warning(this, "Thông báo", "Không có sản phẩm đang mở bán nào để thêm vào đơn.");
+        QMessageBox::warning(this, "Thông báo", "Không có sản phẩm đang kinh doanh nào để thêm vào đơn.");
         return;
     }
 
@@ -1276,7 +1276,7 @@ void OrderDialog::onAddLineItem()
 
         if (matchedPid > 0 && isSoldOut) {
             QMessageBox::warning(this, "Sản phẩm ngừng kinh doanh",
-                QString("Sản phẩm ID %1 đã ngừng kinh doanh (is_sold = false), không thể thêm vào đơn.").arg(matchedPid));
+                QString("Sản phẩm ID %1 đã ngừng kinh doanh, không thể thêm vào đơn.").arg(matchedPid));
             return;
         }
 
