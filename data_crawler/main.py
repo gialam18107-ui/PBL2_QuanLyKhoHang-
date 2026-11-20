@@ -112,7 +112,10 @@ def validate_exported_data(data_dir: str) -> bool:
             if pid not in unit_counts:
                 unit_counts[pid] = {"AVAILABLE": 0, "WARRANTY": 0, "SCRAPPED": 0, "OUT": 0}
             unit_counts[pid][status] = unit_counts[pid].get(status, 0) + 1
-    print(f"  [OK] unit_inventory.csv: {len(unit_serials)} unique physical units.")
+    if len(unit_serials) <= 3000:
+        print(f"[-] Insufficient initial physical units: {len(unit_serials)} (expected > 3000)")
+        return False
+    print(f"  [OK] unit_inventory.csv: {len(unit_serials)} unique physical units (> 3000 required).")
 
     # Verify atomic bucket sync with product.csv (Rule 4.2)
     with open(prod_path, encoding="utf-8") as f:

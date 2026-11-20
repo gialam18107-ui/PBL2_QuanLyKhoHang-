@@ -91,7 +91,7 @@ namespace user_create
     /**
      * @brief Create an Outbound Transaction coupled with its primary Shipment.
      * Enforces active product check. Ordered quantity is permitted to exceed current stock (Rule 4.3).
-     * @param outboundType SELLING, ADJUSTMENT_OUT, RETURN_TO_SUPPLIER, WARRANTY_RETURN, WARRANTY_REPLACEMENT_TO_CUSTOMER
+     * @param outboundType SELLING, ADJUSTMENT_OUT, WARRANTY_RETURN, WARRANTY_REPLACEMENT_TO_CUSTOMER
      * @param customerCode Code of customer or partner (e.g. "IN-0000001", "BS-0000001"). Defaults to "BS-0000000" if empty for ADJUSTMENT_OUT.
      * @param items List of Pairs (productId, orderedQuantity)
      * @param orderDate Order date (YYYY-MM-DD)

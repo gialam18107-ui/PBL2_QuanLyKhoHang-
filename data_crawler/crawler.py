@@ -207,8 +207,8 @@ class DataCrawler:
             barcode = self.generate_ean13(product_id)
             sku = f"{cat_code}-{brand_code}-{product_id:04d}"
 
-            # Initial stock quantity between 25 and 45 (ensures product.quantity >= 20 for test_io.cpp)
-            initial_qty = self.rng.randint(25, 45)
+            # Initial stock quantity between 48 and 65 (guarantees > 3000 total units across 64 products)
+            initial_qty = self.rng.randint(48, 65)
 
             product_record = {
                 "product_id": product_id,
@@ -276,8 +276,8 @@ class DataCrawler:
                     "product_id": product_id,
                     "generation": gen_val,
                     "quantity": int(raw_specs.get("quantity", 2)),
-                    "capacity": str(raw_specs.get("capacity", "32GB")),
-                    "bus": str(raw_specs.get("bus", "6000MHz")),
+                    "capacity": str(raw_specs.get("capacity", "32")),
+                    "bus": str(raw_specs.get("bus", "6000")),
                 })
             elif cat_name == "SSD":
                 self.specs_by_category["SSD"].append({

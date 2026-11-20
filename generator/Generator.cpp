@@ -36,8 +36,11 @@ namespace Generator
 
     unsigned int DataGenerator::nextRandom()
     {
-        // 64-bit Linear Congruential Generator (LCG)
-        rngSeed = rngSeed * 6364136223846793005ULL + 1ULL;
+        // 32-bit xorshift PRNG (avoids low-bit periodicity of 32-bit LCG mod 2^k)
+        if (rngSeed == 0) rngSeed = 0x9E3779B9u;
+        rngSeed ^= rngSeed << 13;
+        rngSeed ^= rngSeed >> 17;
+        rngSeed ^= rngSeed << 5;
         return rngSeed;
     }
 
@@ -86,10 +89,204 @@ namespace Generator
             s = "SN-";
             s += chars[nextRandom() % 32];
             s += chars[nextRandom() % 32];
-            s += formatNumber(nextUnitId, 5);
+            s += formatNumber(nextUnitId % 100000, 5);
         } while (existingSerials.contains(s));
         existingSerials[s] = true;
         return s;
+    }
+
+    bool DataGenerator::isValidProduct(int productId, bool requireActive) const
+    {
+        const Table* prodTbl = db.getTable("product");
+        if (!prodTbl || productId <= 0) return false;
+        const Record* pRec = prodTbl->getRecordById(productId);
+        if (!pRec) return false;
+        if (requireActive)
+        {
+            bool isSold = true;
+            if (pRec->has("is_sold") && holds_alternative<bool>(pRec->get("is_sold")))
+            {
+                isSold = get<bool>(pRec->get("is_sold"));
+            }
+            if (!isSold) return false;
+        }
+        return true;
+    }
+
+    bool DataGenerator::isProductFrozen(int productId) const
+    {
+        const Table* chkTbl = db.getTable("inventory_check");
+        const Table* cqTbl = db.getTable("inventory_check_quantity");
+        if (!chkTbl || !cqTbl || productId <= 0) return false;
+
+        HashMap<int, bool> activeChecks;
+        for (const auto& c : chkTbl->view("status", Value(string("PENDING"))))
+        {
+            if (c.has("check_id") && holds_alternative<int>(c.get("check_id")))
+            {
+                activeChecks[get<int>(c.get("check_id"))] = true;
+            }
+        }
+        for (const auto& c : chkTbl->view("status", Value(string("PROCESSING"))))
+        {
+            if (c.has("check_id") && holds_alternative<int>(c.get("check_id")))
+            {
+                activeChecks[get<int>(c.get("check_id"))] = true;
+            }
+        }
+        if (activeChecks.empty()) return false;
+
+        for (const auto& cq : cqTbl->view("product_id", Value(productId)))
+        {
+            if (cq.has("check_id") && holds_alternative<int>(cq.get("check_id")))
+            {
+                if (activeChecks.contains(get<int>(cq.get("check_id"))))
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    int DataGenerator::countUnitsByStatus(int productId, const string& status) const
+    {
+        const Table* unitTbl = db.getTable("unit_inventory");
+        if (!unitTbl || productId <= 0) return 0;
+
+        int count = 0;
+        for (const auto& u : unitTbl->view("product_id", Value(productId)))
+        {
+            if (u.has("status") && holds_alternative<string>(u.get("status")) &&
+                get<string>(u.get("status")) == status)
+            {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    int DataGenerator::countEligibleOutboundUnits(int productId, const string& outboundType) const
+    {
+        const Table* unitTbl = db.getTable("unit_inventory");
+        if (!unitTbl || productId <= 0) return 0;
+
+        int count = 0;
+        for (const auto& u : unitTbl->view("product_id", Value(productId)))
+        {
+            if (!u.has("status") || !holds_alternative<string>(u.get("status"))) continue;
+            string st = get<string>(u.get("status"));
+            if (outboundType == "WARRANTY_RETURN" || outboundType == "WRT")
+            {
+                if (st == "WARRANTY" || st == "SCRAPPED") count++;
+            }
+            else if (outboundType == "WARRANTY_REPLACEMENT_TO_CUSTOMER" || outboundType == "WRC")
+            {
+                if (st == "AVAILABLE" || st == "WARRANTY") count++;
+            }
+            else if (outboundType == "ADJUSTMENT_OUT" || outboundType == "ADJ")
+            {
+                if (st == "AVAILABLE" || st == "WARRANTY" || st == "SCRAPPED") count++;
+            }
+            else if (outboundType == "SELLING" || outboundType == "SEL")
+            {
+                if (st == "AVAILABLE") count++;
+            }
+        }
+        return count;
+    }
+
+    bool DataGenerator::validateCompletedCheckScope(const string& checkCode,
+                                                    const Vector<int>& productIds,
+                                                    const string& uniquenessTable) const
+    {
+        if (checkCode.empty())
+        {
+            cerr << "[Generator Error] Missing required source_code referencing an inventory check.\n";
+            return false;
+        }
+        const Table* chkTbl = db.getTable("inventory_check");
+        const Table* cqTbl = db.getTable("inventory_check_quantity");
+        if (!chkTbl || !cqTbl)
+        {
+            cerr << "[Generator Error] Missing inventory_check tables for source_code validation.\n";
+            return false;
+        }
+
+        TableView matches = chkTbl->view("check_code", Value(checkCode));
+        if (matches.empty())
+        {
+            cerr << "[Generator Error] source_code '" << checkCode << "' does not exist in inventory_check.\n";
+            return false;
+        }
+
+        const Record& chkRec = *matches.begin();
+        string st = (chkRec.has("status") && holds_alternative<string>(chkRec.get("status")))
+                  ? get<string>(chkRec.get("status")) : "";
+        if (st != "COMPLETED")
+        {
+            cerr << "[Generator Error] Referenced inventory_check '" << checkCode
+                 << "' is in status '" << st << "' (must be COMPLETED).\n";
+            return false;
+        }
+
+        if (!uniquenessTable.empty())
+        {
+            const Table* uniqTbl = db.getTable(uniquenessTable);
+            if (uniqTbl && !uniqTbl->view("source_code", Value(checkCode)).empty())
+            {
+                cerr << "[Generator Error] source_code '" << checkCode
+                     << "' is already linked to an existing record in '" << uniquenessTable << "'.\n";
+                return false;
+            }
+        }
+
+        int chkId = get<int>(chkRec.get("check_id"));
+        HashMap<int, bool> allowedPids;
+        for (const auto& cq : cqTbl->view("check_id", Value(chkId)))
+        {
+            if (cq.has("product_id") && holds_alternative<int>(cq.get("product_id")))
+            {
+                allowedPids[get<int>(cq.get("product_id"))] = true;
+            }
+        }
+
+        for (size_t i = 0; i < productIds.size(); ++i)
+        {
+            if (!allowedPids.contains(productIds[i]))
+            {
+                cerr << "[Generator Error] Product ID " << productIds[i]
+                     << " is outside the audited scope of check '" << checkCode << "'.\n";
+                return false;
+            }
+        }
+        return true;
+    }
+
+    void DataGenerator::updateLookupNextCodeNo(const string& tableName,
+                                               const string& keyCol,
+                                               const string& keyVal,
+                                               int nextSeq)
+    {
+        const Table* tbl = db.getTable(tableName);
+        if (!tbl) return;
+        string pkCol = tbl->getPrimaryKeyColumn();
+        if (pkCol.empty()) return;
+
+        for (const auto& r : tbl->view(keyCol, Value(keyVal)))
+        {
+            if (!r.has(pkCol) || !holds_alternative<int>(r.get(pkCol))) continue;
+            int pkId = get<int>(r.get(pkCol));
+            int curNext = (r.has("next_code_no") && holds_alternative<int>(r.get("next_code_no")))
+                        ? get<int>(r.get("next_code_no")) : 0;
+            if (nextSeq > curNext)
+            {
+                Record upd;
+                upd.set("next_code_no", nextSeq);
+                db.update(tableName, pkId, upd);
+            }
+            break;
+        }
     }
 
         void DataGenerator::scanExistingDatabase()
@@ -471,108 +668,156 @@ namespace Generator
         return false;
     }
 
-        string DataGenerator::generateInventoryCheck(const string& checkType,
-                                                 const string& checkDate,
-                                                 const Vector<int>& productIds)
+    string DataGenerator::generateAuditCheckWithDiscrepancies(const string& checkDate,
+                                                              const Vector<int>& productIds,
+                                                              const HashMap<int, int>& surplusUnrecordedAvail,
+                                                              const HashMap<int, bool>& rediscoveredOutUnits,
+                                                              const HashMap<int, bool>& missingUnitIds,
+                                                              const HashMap<int, string>& shiftedUnitTargets)
     {
-        (void)checkType;
         const Table* chkTbl = db.getTable("inventory_check");
+        const Table* chkQuanTbl = db.getTable("inventory_check_quantity");
+        const Table* chkUnitTbl = db.getTable("inventory_check_unit");
+        const Table* unitTbl = db.getTable("unit_inventory");
+        const Table* prodTbl = db.getTable("product");
         if (!chkTbl) return "";
 
-        string actualType = "UNIT";
         string date = checkDate.empty() ? getCurrentDate() : checkDate;
-
         int chkId = nextInventoryCheckId++;
-        string code = "CHK-" + actualType + "-" + formatNumber(nextCheckSeq++, 6);
+        int seq = nextCheckSeq++;
+        string code = "CHK-UNIT-" + formatNumber(seq, 6);
 
         Record chkRec;
         chkRec.set("check_id", chkId);
         chkRec.set("check_code", code);
-        chkRec.set("check_type", actualType);
+        chkRec.set("check_type", string("UNIT"));
         chkRec.set("check_at", date);
         chkRec.set("status", string("COMPLETED"));
-        chkRec.set("note", string("Inventory check audit (" + actualType + ") completed"));
+        chkRec.set("note", string("Inventory check audit (UNIT) completed"));
         db.insert("inventory_check", chkRec);
+        updateLookupNextCodeNo("check_type", "check_type", "UNIT", seq + 1);
 
-        const Table* chkQuanTbl = db.getTable("inventory_check_quantity");
-        const Table* unitTbl = db.getTable("unit_inventory");
-        const Table* prodTbl = db.getTable("product");
-
-        Vector<int> pids = productIds;
-        if (pids.empty() && prodTbl)
+        Vector<int> dedupPids;
+        HashMap<int, bool> seenPids;
+        if (productIds.empty() && prodTbl)
         {
             for (const auto& r : prodTbl->view())
             {
-                pids.push_back(get<int>(r.get("product_id")));
+                int pid = get<int>(r.get("product_id"));
+                if (!seenPids.contains(pid))
+                {
+                    seenPids[pid] = true;
+                    dedupPids.push_back(pid);
+                }
+            }
+        }
+        else
+        {
+            for (size_t i = 0; i < productIds.size(); ++i)
+            {
+                int pid = productIds[i];
+                if (pid > 0 && !seenPids.contains(pid))
+                {
+                    seenPids[pid] = true;
+                    dedupPids.push_back(pid);
+                }
             }
         }
 
-        HashMap<int, int> pidToCqId;
-
-        if (chkQuanTbl)
+        struct UnitAuditRow
         {
-            for (size_t i = 0; i < pids.size(); i++)
+            string serial;
+            string systemStatus;
+            Value scannedStatus;
+        };
+
+        for (size_t i = 0; i < dedupPids.size(); ++i)
+        {
+            int pid = dedupPids[i];
+            int sysAvail = 0, sysWarr = 0, sysScrap = 0;
+            int actAvail = 0, actWarr = 0, actScrap = 0;
+            Vector<UnitAuditRow> auditRows;
+
+            if (unitTbl)
             {
-                int pid = pids[i];
-                int avail = 0, warr = 0, scrap = 0;
-                if (unitTbl)
+                for (const auto& u : unitTbl->view("product_id", Value(pid)))
                 {
-                    for (const auto& u : unitTbl->view())
+                    if (!u.has("status") || !holds_alternative<string>(u.get("status"))) continue;
+                    int uId = get<int>(u.get("unit_id"));
+                    string st = get<string>(u.get("status"));
+                    string sn = get<string>(u.get("serial"));
+
+                    if (st == "OUT")
                     {
-                        if (get<int>(u.get("product_id")) == pid && holds_alternative<string>(u.get("status")))
+                        if (rediscoveredOutUnits.contains(uId))
                         {
-                            string st = get<string>(u.get("status"));
-                            if (st == "AVAILABLE") avail++;
-                            else if (st == "WARRANTY") warr++;
-                            else if (st == "SCRAPPED") scrap++;
+                            actAvail++;
+                            auditRows.push_back({sn, "OUT", Value(string("AVAILABLE"))});
                         }
+                        continue;
                     }
+
+                    if (st == "AVAILABLE") sysAvail++;
+                    else if (st == "WARRANTY") sysWarr++;
+                    else if (st == "SCRAPPED") sysScrap++;
+
+                    Value scanVal;
+                    if (missingUnitIds.contains(uId))
+                    {
+                        scanVal = Value{}; // NULL -> Missing
+                    }
+                    else if (shiftedUnitTargets.contains(uId))
+                    {
+                        string targetSt = shiftedUnitTargets.find(uId)->second;
+                        scanVal = Value(targetSt);
+                        if (targetSt == "AVAILABLE") actAvail++;
+                        else if (targetSt == "WARRANTY") actWarr++;
+                        else if (targetSt == "SCRAPPED") actScrap++;
+                    }
+                    else
+                    {
+                        scanVal = Value(st);
+                        if (st == "AVAILABLE") actAvail++;
+                        else if (st == "WARRANTY") actWarr++;
+                        else if (st == "SCRAPPED") actScrap++;
+                    }
+                    auditRows.push_back({sn, st, scanVal});
                 }
+            }
 
-                int cqId = nextCheckQuantityId++;
-                pidToCqId[pid] = cqId;
+            if (surplusUnrecordedAvail.contains(pid))
+            {
+                actAvail += surplusUnrecordedAvail.find(pid)->second;
+            }
 
+            int cqId = nextCheckQuantityId++;
+            if (chkQuanTbl)
+            {
                 Record qRec;
                 qRec.set("check_quantity_id", cqId);
                 qRec.set("check_id", chkId);
                 qRec.set("product_id", pid);
-                qRec.set("system_available_quan", avail);
-                qRec.set("system_warranty_quan", warr);
-                qRec.set("system_scrapped_quan", scrap);
-                qRec.set("actual_available_quan", avail);
-                qRec.set("actual_warranty_quan", warr);
-                qRec.set("actual_scrapped_quan", scrap);
+                qRec.set("system_available_quan", sysAvail);
+                qRec.set("system_warranty_quan", sysWarr);
+                qRec.set("system_scrapped_quan", sysScrap);
+                qRec.set("actual_available_quan", actAvail);
+                qRec.set("actual_warranty_quan", actWarr);
+                qRec.set("actual_scrapped_quan", actScrap);
                 qRec.set("note", string(""));
                 db.insert("inventory_check_quantity", qRec);
             }
-        }
 
-        if (actualType == "UNIT")
-        {
-            const Table* chkUnitTbl = db.getTable("inventory_check_unit");
-            if (chkUnitTbl && unitTbl)
+            if (chkUnitTbl)
             {
-                HashMap<int, bool> filterPids;
-                for (size_t i = 0; i < pids.size(); i++) filterPids[pids[i]] = true;
-
-                for (const auto& u : unitTbl->view())
+                for (size_t k = 0; k < auditRows.size(); ++k)
                 {
-                    int pid = get<int>(u.get("product_id"));
-                    if (!filterPids.contains(pid)) continue;
-
-                    string st = get<string>(u.get("status"));
-                    if (st == "OUT") continue; // Chỉ kiểm kê các đơn vị hiện vật đang thực tế tồn tại trong kho
-
-                    string sn = get<string>(u.get("serial"));
-                    int cqId = pidToCqId.contains(pid) ? pidToCqId[pid] : 1;
-
                     Record uRec;
                     uRec.set("check_unit_id", nextCheckUnitId++);
                     uRec.set("check_id", chkId);
                     uRec.set("check_quantity_id", cqId);
-                    uRec.set("serial", sn);
-                    uRec.set("system_status", st);
-                    uRec.set("scanned_status", st);
+                    uRec.set("serial", auditRows[k].serial);
+                    uRec.set("system_status", auditRows[k].systemStatus);
+                    uRec.set("scanned_status", auditRows[k].scannedStatus);
                     db.insert("inventory_check_unit", uRec);
                 }
             }
@@ -580,6 +825,32 @@ namespace Generator
 
         cout << "[+] Generated Inventory Check: " << code << " (ID: " << chkId << ")\n";
         return code;
+    }
+
+    string DataGenerator::generateInventoryCheck(const string& checkType,
+                                                 const string& checkDate,
+                                                 const Vector<int>& productIds)
+    {
+        (void)checkType;
+        for (size_t i = 0; i < productIds.size(); ++i)
+        {
+            if (!isValidProduct(productIds[i], false))
+            {
+                cerr << "[Generator Error] Invalid product ID " << productIds[i] << " in inventory check.\n";
+                return "";
+            }
+            if (isProductFrozen(productIds[i]))
+            {
+                cerr << "[Generator Error] Product ID " << productIds[i]
+                     << " is already frozen in an open inventory check.\n";
+                return "";
+            }
+        }
+        HashMap<int, int> emptySurplus;
+        HashMap<int, bool> emptyRedisc;
+        HashMap<int, bool> emptyMissing;
+        HashMap<int, string> emptyShift;
+        return generateAuditCheckWithDiscrepancies(checkDate, productIds, emptySurplus, emptyRedisc, emptyMissing, emptyShift);
     }
 
     int DataGenerator::generateInbound(const string& inboundType,
@@ -592,6 +863,21 @@ namespace Generator
         if (items.empty())
         {
             cerr << "[Generator Error] Inbound transaction requires at least one product.\n";
+            return -1;
+        }
+
+        string normType = inboundType;
+        if (normType == "PUR") normType = "PURCHASING";
+        else if (normType == "ADJ") normType = "ADJUSTMENT_IN";
+        else if (normType == "WCK") normType = "WARRANTY_CHECKING";
+        else if (normType == "WRP") normType = "WARRANTY_REPLACEMENT";
+        else if (normType == "CRT") normType = "CUSTOMER_RETURN";
+
+        if (normType != "PURCHASING" && normType != "ADJUSTMENT_IN" &&
+            normType != "WARRANTY_CHECKING" && normType != "WARRANTY_REPLACEMENT" &&
+            normType != "CUSTOMER_RETURN")
+        {
+            cerr << "[Generator Error] Invalid inbound type: " << inboundType << "\n";
             return -1;
         }
 
@@ -609,59 +895,156 @@ namespace Generator
             return -1;
         }
 
-        // Determine Type Code
-        string typeCode = "PUR";
-        if (inboundType == "ADJUSTMENT_IN") typeCode = "ADJ";
-        else if (inboundType == "WARRANTY_CHECKING") typeCode = "WCK";
-        else if (inboundType == "WARRANTY_REPLACEMENT") typeCode = "WRP";
-        else if (inboundType == "CUSTOMER_RETURN") typeCode = "CRT";
+        // Merge duplicate product entries and validate quantities
+        Vector<Pair<int, int>> mergedItems;
+        HashMap<int, size_t> pidToIdx;
+        for (size_t i = 0; i < items.size(); ++i)
+        {
+            int pid = items[i].first;
+            int qty = items[i].second;
+            if (qty <= 0)
+            {
+                cerr << "[Generator Error] Inbound quantity for product ID " << pid << " must be > 0.\n";
+                return -1;
+            }
+            if (!pidToIdx.contains(pid))
+            {
+                pidToIdx[pid] = mergedItems.size();
+                mergedItems.push_back(Pair<int, int>(pid, qty));
+            }
+            else
+            {
+                mergedItems[pidToIdx[pid]].second += qty;
+            }
+        }
 
-        int seq = (inboundTypeCounters.contains(typeCode) ? inboundTypeCounters[typeCode] : 0) + 1;
-        inboundTypeCounters[typeCode] = seq;
-        string inboundCode = "IN-" + typeCode + "-" + formatNumber(seq, 6);
+        Vector<int> pids;
+        HashMap<int, Vector<int>> outUnitPoolByPid;
+        for (size_t i = 0; i < mergedItems.size(); ++i)
+        {
+            int pid = mergedItems[i].first;
+            int qty = mergedItems[i].second;
+            if (!isValidProduct(pid, true))
+            {
+                cerr << "[Generator Error] Product ID " << pid << " does not exist or has is_sold = FALSE.\n";
+                return -1;
+            }
+            if (isProductFrozen(pid))
+            {
+                cerr << "[Generator Error] Product ID " << pid << " is frozen in an active inventory check.\n";
+                return -1;
+            }
 
-        if (numDeliveries < 1) numDeliveries = 1;
+            if (normType == "WARRANTY_CHECKING" || normType == "CUSTOMER_RETURN" || normType == "ADJUSTMENT_IN")
+            {
+                Vector<int> outPool;
+                for (const auto& uRec : unitTbl->view("product_id", Value(pid)))
+                {
+                    if (uRec.has("status") && holds_alternative<string>(uRec.get("status")) &&
+                        get<string>(uRec.get("status")) == "OUT")
+                    {
+                        outPool.push_back(get<int>(uRec.get("unit_id")));
+                    }
+                }
+                if ((normType == "WARRANTY_CHECKING" || normType == "CUSTOMER_RETURN") &&
+                    static_cast<int>(outPool.size()) < qty)
+                {
+                    cerr << "[Generator Error] Inbound type " << normType << " requires OUT units. Product ID "
+                         << pid << " requested " << qty << ", available OUT units: " << outPool.size() << ".\n";
+                    return -1;
+                }
+                outUnitPoolByPid[pid] = outPool;
+            }
+            pids.push_back(pid);
+        }
+
         string date = orderDate.empty() ? getCurrentDate() : orderDate;
 
-        // Rule: For ADJUSTMENT_IN, customer_id MUST be NULL; otherwise valid customer
-        Value customerVal;
-        if (inboundType == "ADJUSTMENT_IN")
-        {
-            customerVal = Value{}; // NULL
-        }
-        else if (inboundType == "WARRANTY_CHECKING" || inboundType == "CUSTOMER_RETURN")
-        {
-            customerVal = 1; // Individual customer
-        }
-        else
-        {
-            customerVal = 4; // Supplier / Business
-        }
-
-        // Rule: For ADJUSTMENT_IN, source_code MUST reference a check_code from inventory_check
+        // Validate / prepare source_code for ADJUSTMENT_IN before committing counter changes
         Value sourceCodeVal;
-        if (inboundType == "ADJUSTMENT_IN")
+        HashMap<int, int> surplusUnrecordedAvail;
+        HashMap<int, bool> rediscoveredOutUnits;
+        if (normType == "ADJUSTMENT_IN")
         {
-            string finalSource = sourceCode;
-            if (finalSource.empty())
+            if (!sourceCode.empty())
             {
-                // Auto-generate quantity audit check for the items involved
-                Vector<int> pids;
-                for (const auto& item : items) pids.push_back(item.first);
-                finalSource = generateInventoryCheck("UNIT", date, pids);
+                if (!validateCompletedCheckScope(sourceCode, pids, "inbound_transaction"))
+                {
+                    return -1;
+                }
+                sourceCodeVal = sourceCode;
             }
-            sourceCodeVal = finalSource;
+            else
+            {
+                for (size_t i = 0; i < mergedItems.size(); ++i)
+                {
+                    int pid = mergedItems[i].first;
+                    int qty = mergedItems[i].second;
+                    const Vector<int>& outPool = outUnitPoolByPid[pid];
+                    int takeOut = static_cast<int>(outPool.size()) < qty ? static_cast<int>(outPool.size()) : qty;
+                    for (int k = 0; k < takeOut; ++k)
+                    {
+                        rediscoveredOutUnits[outPool[k]] = true;
+                    }
+                    int newUnrecorded = qty - takeOut;
+                    if (newUnrecorded > 0)
+                    {
+                        surplusUnrecordedAvail[pid] = newUnrecorded;
+                    }
+                }
+                HashMap<int, bool> emptyMissing;
+                HashMap<int, string> emptyShift;
+                string genCode = generateAuditCheckWithDiscrepancies(
+                    date, pids, surplusUnrecordedAvail, rediscoveredOutUnits, emptyMissing, emptyShift
+                );
+                if (genCode.empty()) return -1;
+                sourceCodeVal = genCode;
+            }
         }
         else
         {
             if (!sourceCode.empty())
             {
+                if (!inTxnTbl->view("source_code", Value(sourceCode)).empty())
+                {
+                    cerr << "[Generator Error] Duplicate source_code '" << sourceCode << "' in inbound_transaction.\n";
+                    return -1;
+                }
                 sourceCodeVal = sourceCode;
             }
             else
             {
                 sourceCodeVal = Value{}; // NULL
             }
+        }
+
+        // Determine Type Code
+        string typeCode = "PUR";
+        if (normType == "ADJUSTMENT_IN") typeCode = "ADJ";
+        else if (normType == "WARRANTY_CHECKING") typeCode = "WCK";
+        else if (normType == "WARRANTY_REPLACEMENT") typeCode = "WRP";
+        else if (normType == "CUSTOMER_RETURN") typeCode = "CRT";
+
+        int seq = (inboundTypeCounters.contains(typeCode) ? inboundTypeCounters[typeCode] : 0) + 1;
+        inboundTypeCounters[typeCode] = seq;
+        string inboundCode = "IN-" + typeCode + "-" + formatNumber(seq, 6);
+        updateLookupNextCodeNo("inbound_type", "code", typeCode, seq + 1);
+
+        if (numDeliveries < 1) numDeliveries = 1;
+
+        // Rule 4.1: For ADJUSTMENT_IN, customer_id MUST be NULL; otherwise valid customer
+        Value customerVal;
+        if (normType == "ADJUSTMENT_IN")
+        {
+            customerVal = Value{}; // NULL
+        }
+        else if (normType == "WARRANTY_CHECKING" || normType == "CUSTOMER_RETURN")
+        {
+            customerVal = 1; // Individual customer
+        }
+        else
+        {
+            customerVal = 4; // Supplier / Business
         }
 
         // 1. Create InboundTransaction record
@@ -672,22 +1055,24 @@ namespace Generator
         inTxn.set("source_code", sourceCodeVal);
         inTxn.set("customer_id", customerVal);
         inTxn.set("order_at", date);
-        inTxn.set("type", inboundType);
+        inTxn.set("type", normType);
         inTxn.set("status", string("COMPLETED"));
         inTxn.set("next_delivery_no", numDeliveries + 1);
-        inTxn.set("note", note.empty() ? ("Inbound " + inboundType + " received successfully") : note);
+        inTxn.set("note", note.empty() ? ("Inbound " + normType + " received successfully") : note);
 
         db.insert("inbound_transaction", inTxn);
 
         // 2. Create InboundDetail records
-        for (const auto& item : items)
+        HashMap<int, int> inDetIdByPid;
+        for (size_t i = 0; i < mergedItems.size(); ++i)
         {
-            int pid = item.first;
-            int qty = item.second;
-            if (qty <= 0) continue;
+            int pid = mergedItems[i].first;
+            int qty = mergedItems[i].second;
+            int detId = nextInboundDetailId++;
+            inDetIdByPid[pid] = detId;
 
             Record inDet;
-            inDet.set("inbound_detail_id", nextInboundDetailId++);
+            inDet.set("inbound_detail_id", detId);
             inDet.set("inbound_transaction_id", txnId);
             inDet.set("product_id", pid);
             inDet.set("ordered_quantity", qty);
@@ -695,7 +1080,10 @@ namespace Generator
             db.insert("inbound_detail", inDet);
         }
 
-        // 3. Create Delivery and DeliveryUnitDetail records
+        HashMap<int, size_t> outCursorByPid;
+        HashMap<int, int> inActualByPid;
+
+        // 3. Create Delivery and DeliveryDetail records
         for (int d = 1; d <= numDeliveries; d++)
         {
             int delId = nextDeliveryId++;
@@ -711,18 +1099,20 @@ namespace Generator
             delRecord.set("status", string("COMPLETED"));
             db.insert("delivery", delRecord);
 
-            for (const auto& item : items)
+            for (size_t i = 0; i < mergedItems.size(); ++i)
             {
-                int pid = item.first;
-                int totalQty = item.second;
+                int pid = mergedItems[i].first;
+                int totalQty = mergedItems[i].second;
                 int baseQty = totalQty / numDeliveries;
                 int rem = totalQty % numDeliveries;
                 int deliveryQty = baseQty + (d <= rem ? 1 : 0);
 
+                int delDetId = 0;
                 if (delDetTbl != nullptr && deliveryQty > 0)
                 {
+                    delDetId = nextDeliveryDetailId++;
                     Record delDet;
-                    delDet.set("delivery_detail_id", nextDeliveryDetailId++);
+                    delDet.set("delivery_detail_id", delDetId);
                     delDet.set("delivery_id", delId);
                     delDet.set("product_id", pid);
                     delDet.set("received_quantity", deliveryQty);
@@ -730,197 +1120,115 @@ namespace Generator
                     db.insert("delivery_detail", delDet);
                 }
 
-                // Inbound Unit Processing
-                // RULE: Inbound operations ONLY permit transitioning units from OUT or NULL!
-                // Never modify units currently in AVAILABLE, WARRANTY, or SCRAPPED!
+                // Inbound Unit Processing (Rule 4.4.1)
                 for (int u = 0; u < deliveryQty; u++)
                 {
                     int uId = 0;
                     string serial;
+                    bool fromNull = false;
                     string oldStatus = "";
                     string targetStatus = "AVAILABLE";
 
-                    if (inboundType == "PURCHASING")
+                    if (normType == "PURCHASING")
                     {
-                        // PUR: NULL -> AVAILABLE (or small chance of SCRAPPED on inspection)
-                        oldStatus = "";
+                        fromNull = true;
                         targetStatus = (nextRandom() % 25 == 0) ? "SCRAPPED" : "AVAILABLE";
-                        uId = nextUnitId++;
-                        serial = generateUniqueSerial();
-
-                        Record unitRecord;
-                        unitRecord.set("unit_id", uId);
-                        unitRecord.set("product_id", pid);
-                        unitRecord.set("serial", serial);
-                        unitRecord.set("status", targetStatus);
-                        db.insert("unit_inventory", unitRecord);
                     }
-                    else if (inboundType == "WARRANTY_REPLACEMENT")
+                    else if (normType == "WARRANTY_REPLACEMENT")
                     {
-                        // WRP: NULL -> WARRANTY (new replacement unit from vendor)
-                        oldStatus = "";
+                        fromNull = true;
                         targetStatus = "WARRANTY";
-                        uId = nextUnitId++;
-                        serial = generateUniqueSerial();
-
-                        Record unitRecord;
-                        unitRecord.set("unit_id", uId);
-                        unitRecord.set("product_id", pid);
-                        unitRecord.set("serial", serial);
-                        unitRecord.set("status", targetStatus);
-                        db.insert("unit_inventory", unitRecord);
                     }
-                    else if (inboundType == "WARRANTY_CHECKING")
+                    else if (normType == "WARRANTY_CHECKING")
                     {
-                        // WCK: OUT -> WARRANTY (previously sold unit returned for RMA checking)
                         oldStatus = "OUT";
                         targetStatus = "WARRANTY";
-                        bool foundOut = false;
-                        for (const auto& uRec : unitTbl->view())
-                        {
-                            if (get<int>(uRec.get("product_id")) == pid &&
-                                get<string>(uRec.get("status")) == "OUT")
-                            {
-                                uId = get<int>(uRec.get("unit_id"));
-                                serial = get<string>(uRec.get("serial"));
-                                Record uUpd;
-                                uUpd.set("status", string("WARRANTY"));
-                                db.update("unit_inventory", uId, uUpd);
-                                foundOut = true;
-                                break;
-                            }
-                        }
-                        if (!foundOut)
-                        {
-                            // If no OUT unit exists, create a new unit from NULL
-                            oldStatus = "";
-                            uId = nextUnitId++;
-                            serial = generateUniqueSerial();
-                            Record unitRecord;
-                            unitRecord.set("unit_id", uId);
-                            unitRecord.set("product_id", pid);
-                            unitRecord.set("serial", serial);
-                            unitRecord.set("status", string("WARRANTY"));
-                            db.insert("unit_inventory", unitRecord);
-                        }
+                        const Vector<int>& outPool = outUnitPoolByPid[pid];
+                        size_t curIdx = outCursorByPid.contains(pid) ? outCursorByPid[pid] : 0;
+                        uId = outPool[curIdx];
+                        outCursorByPid[pid] = curIdx + 1;
                     }
-                    else if (inboundType == "CUSTOMER_RETURN")
+                    else if (normType == "CUSTOMER_RETURN")
                     {
-                        // CRT: OUT -> AVAILABLE
                         oldStatus = "OUT";
                         targetStatus = "AVAILABLE";
-                        bool foundOut = false;
-                        for (const auto& uRec : unitTbl->view())
-                        {
-                            if (get<int>(uRec.get("product_id")) == pid &&
-                                get<string>(uRec.get("status")) == "OUT")
-                            {
-                                uId = get<int>(uRec.get("unit_id"));
-                                serial = get<string>(uRec.get("serial"));
-                                Record uUpd;
-                                uUpd.set("status", string("AVAILABLE"));
-                                db.update("unit_inventory", uId, uUpd);
-                                foundOut = true;
-                                break;
-                            }
-                        }
-                        if (!foundOut)
-                        {
-                            oldStatus = "";
-                            uId = nextUnitId++;
-                            serial = generateUniqueSerial();
-                            Record unitRecord;
-                            unitRecord.set("unit_id", uId);
-                            unitRecord.set("product_id", pid);
-                            unitRecord.set("serial", serial);
-                            unitRecord.set("status", string("AVAILABLE"));
-                            db.insert("unit_inventory", unitRecord);
-                        }
+                        const Vector<int>& outPool = outUnitPoolByPid[pid];
+                        size_t curIdx = outCursorByPid.contains(pid) ? outCursorByPid[pid] : 0;
+                        uId = outPool[curIdx];
+                        outCursorByPid[pid] = curIdx + 1;
                     }
                     else // ADJUSTMENT_IN
                     {
-                        // Rule: ADJUSTMENT_IN may transition from OUT or NULL -> AVAILABLE/SCRAPPED/WARRANTY
-                        // First see if there is an OUT unit to restore; otherwise create new from NULL
-                        bool foundOut = false;
-                        for (const auto& uRec : unitTbl->view())
+                        const Vector<int>& outPool = outUnitPoolByPid[pid];
+                        size_t curIdx = outCursorByPid.contains(pid) ? outCursorByPid[pid] : 0;
+                        if (curIdx < outPool.size())
                         {
-                            if (get<int>(uRec.get("product_id")) == pid &&
-                                get<string>(uRec.get("status")) == "OUT")
-                            {
-                                uId = get<int>(uRec.get("unit_id"));
-                                serial = get<string>(uRec.get("serial"));
-                                oldStatus = "OUT";
-                                targetStatus = "AVAILABLE";
-                                Record uUpd;
-                                uUpd.set("status", targetStatus);
-                                db.update("unit_inventory", uId, uUpd);
-                                foundOut = true;
-                                break;
-                            }
-                        }
-                        if (!foundOut)
-                        {
-                            oldStatus = "";
+                            oldStatus = "OUT";
                             targetStatus = "AVAILABLE";
-                            uId = nextUnitId++;
-                            serial = generateUniqueSerial();
-
-                            Record unitRecord;
-                            unitRecord.set("unit_id", uId);
-                            unitRecord.set("product_id", pid);
-                            unitRecord.set("serial", serial);
-                            unitRecord.set("status", targetStatus);
-                            db.insert("unit_inventory", unitRecord);
+                            uId = outPool[curIdx];
+                            outCursorByPid[pid] = curIdx + 1;
+                        }
+                        else
+                        {
+                            fromNull = true;
+                            targetStatus = "AVAILABLE";
                         }
                     }
 
-                    // Insert Status History
+                    if (fromNull)
+                    {
+                        uId = nextUnitId++;
+                        serial = generateUniqueSerial();
+
+                        Record unitRecord;
+                        unitRecord.set("unit_id", uId);
+                        unitRecord.set("product_id", pid);
+                        unitRecord.set("serial", serial);
+                        unitRecord.set("status", targetStatus);
+                        db.insert("unit_inventory", unitRecord);
+                    }
+                    else
+                    {
+                        Record uUpd;
+                        uUpd.set("status", targetStatus);
+                        db.update("unit_inventory", uId, uUpd);
+                    }
+
+                    // Insert Status History (Rule 6.8: NULL via monostate when fromNull)
                     if (histTbl != nullptr)
                     {
                         Record histRecord;
                         histRecord.set("history_id", nextStatusHistoryId++);
                         histRecord.set("unit_id", uId);
-                        histRecord.set("old_status", oldStatus);
+                        histRecord.set("old_status", fromNull ? Value{} : Value(oldStatus));
                         histRecord.set("curr_status", targetStatus);
                         histRecord.set("transaction", delId);
                         histRecord.set("type", string("INBOUND"));
                         db.insert("status_history", histRecord);
                     }
+                }
 
-                    // Increment actual_quantity on delivery_detail
-                    if (delDetTbl != nullptr)
+                if (deliveryQty > 0)
+                {
+                    if (delDetTbl != nullptr && delDetId > 0)
                     {
-                        for (const auto& dd : delDetTbl->view())
-                        {
-                            if (get<int>(dd.get("delivery_id")) == delId &&
-                                get<int>(dd.get("product_id")) == pid)
-                            {
-                                int ddId = get<int>(dd.get("delivery_detail_id"));
-                                int curActual = get<int>(dd.get("actual_quantity"));
-                                Record upd;
-                                upd.set("actual_quantity", curActual + 1);
-                                db.update("delivery_detail", ddId, upd);
-                                break;
-                            }
-                        }
+                        Record ddUpd;
+                        ddUpd.set("actual_quantity", deliveryQty);
+                        db.update("delivery_detail", delDetId, ddUpd);
                     }
-
-                    // Increment actual_quantity on inbound_detail
-                    for (const auto& idRec : inDetTbl->view())
-                    {
-                        if (get<int>(idRec.get("inbound_transaction_id")) == txnId &&
-                            get<int>(idRec.get("product_id")) == pid)
-                        {
-                            int inDetId = get<int>(idRec.get("inbound_detail_id"));
-                            int curActual = get<int>(idRec.get("actual_quantity"));
-                            Record upd;
-                            upd.set("actual_quantity", curActual + 1);
-                            db.update("inbound_detail", inDetId, upd);
-                            break;
-                        }
-                    }
+                    inActualByPid[pid] = (inActualByPid.contains(pid) ? inActualByPid[pid] : 0) + deliveryQty;
                 }
             }
+        }
+
+        for (size_t i = 0; i < mergedItems.size(); ++i)
+        {
+            int pid = mergedItems[i].first;
+            int detId = inDetIdByPid[pid];
+            int actQty = inActualByPid.contains(pid) ? inActualByPid[pid] : 0;
+            Record idUpd;
+            idUpd.set("actual_quantity", actQty);
+            db.update("inbound_detail", detId, idUpd);
         }
 
         // 4. Update Product stock quantities
@@ -947,6 +1255,24 @@ namespace Generator
             return -1;
         }
 
+        string normType = outboundType;
+        if (normType == "SEL") normType = "SELLING";
+        else if (normType == "ADJ") normType = "ADJUSTMENT_OUT";
+        else if (normType == "WRT") normType = "WARRANTY_RETURN";
+        else if (normType == "WRC") normType = "WARRANTY_REPLACEMENT_TO_CUSTOMER";
+
+        if (normType == "RETURN_TO_SUPPLIER" || normType == "RTS")
+        {
+            cerr << "[Generator Error] Outbound type RETURN_TO_SUPPLIER (RTS) has been removed from the system.\n";
+            return -1;
+        }
+        if (normType != "SELLING" && normType != "ADJUSTMENT_OUT" &&
+            normType != "WARRANTY_RETURN" && normType != "WARRANTY_REPLACEMENT_TO_CUSTOMER")
+        {
+            cerr << "[Generator Error] Invalid outbound type: " << outboundType << "\n";
+            return -1;
+        }
+
         const Table* outTxnTbl = db.getTable("outbound_transaction");
         const Table* outDetTbl = db.getTable("outbound_detail");
         const Table* shipTbl = db.getTable("shipment");
@@ -961,93 +1287,168 @@ namespace Generator
             return -1;
         }
 
-        // Validate stock availability before altering database
-        for (const auto& item : items)
+        // Merge duplicate product entries and validate quantities
+        Vector<Pair<int, int>> mergedItems;
+        HashMap<int, size_t> pidToIdx;
+        for (size_t i = 0; i < items.size(); ++i)
         {
-            int pid = item.first;
-            int requested = item.second;
-            int eligibleCount = 0;
-
-            for (const auto& u : unitTbl->view())
+            int pid = items[i].first;
+            int qty = items[i].second;
+            if (qty <= 0)
             {
-                if (get<int>(u.get("product_id")) == pid)
-                {
-                    string st = get<string>(u.get("status"));
-                    if (outboundType == "WARRANTY_RETURN")
-                    {
-                        if (st == "WARRANTY" || st == "SCRAPPED") eligibleCount++;
-                    }
-                    else if (outboundType == "WARRANTY_REPLACEMENT_TO_CUSTOMER")
-                    {
-                        if (st == "AVAILABLE" || st == "WARRANTY") eligibleCount++;
-                    }
+                cerr << "[Generator Error] Outbound quantity for product ID " << pid << " must be > 0.\n";
+                return -1;
+            }
+            if (!pidToIdx.contains(pid))
+            {
+                pidToIdx[pid] = mergedItems.size();
+                mergedItems.push_back(Pair<int, int>(pid, qty));
+            }
+            else
+            {
+                mergedItems[pidToIdx[pid]].second += qty;
+            }
+        }
 
-                    else
-                    {
-                        if (st == "AVAILABLE") eligibleCount++;
-                    }
+        // Validate product existence, active status, stock freeze, and eligible stock availability
+        Vector<int> pids;
+        HashMap<int, Vector<Pair<int, string>>> eligibleUnitsByPid;
+        for (size_t i = 0; i < mergedItems.size(); ++i)
+        {
+            int pid = mergedItems[i].first;
+            int requested = mergedItems[i].second;
+
+            if (!isValidProduct(pid, true))
+            {
+                cerr << "[Generator Error] Product ID " << pid << " does not exist or has is_sold = FALSE.\n";
+                return -1;
+            }
+            if (isProductFrozen(pid))
+            {
+                cerr << "[Generator Error] Product ID " << pid << " is frozen in an active inventory check.\n";
+                return -1;
+            }
+
+            Vector<Pair<int, string>> pool;
+            for (const auto& u : unitTbl->view("product_id", Value(pid)))
+            {
+                if (!u.has("status") || !holds_alternative<string>(u.get("status"))) continue;
+                string st = get<string>(u.get("status"));
+                bool eligible = false;
+                if (normType == "WARRANTY_RETURN")
+                {
+                    eligible = (st == "WARRANTY" || st == "SCRAPPED");
+                }
+                else if (normType == "WARRANTY_REPLACEMENT_TO_CUSTOMER")
+                {
+                    eligible = (st == "AVAILABLE" || st == "WARRANTY");
+                }
+                else if (normType == "ADJUSTMENT_OUT")
+                {
+                    eligible = (st == "AVAILABLE" || st == "WARRANTY" || st == "SCRAPPED");
+                }
+                else
+                {
+                    eligible = (st == "AVAILABLE");
+                }
+
+                if (eligible)
+                {
+                    pool.push_back(Pair<int, string>(get<int>(u.get("unit_id")), st));
                 }
             }
 
-            if (eligibleCount < requested)
+            if (static_cast<int>(pool.size()) < requested)
             {
                 cerr << "[Generator Error] Insufficient eligible stock for product ID " << pid
-                     << ". Requested: " << requested << ", Eligible in stock: " << eligibleCount << ".\n";
+                     << ". Requested: " << requested << ", Eligible in stock: " << pool.size() << ".\n";
                 return -1;
             }
+
+            eligibleUnitsByPid[pid] = pool;
+            pids.push_back(pid);
         }
 
-        // Determine Type Code
-        string typeCode = "SEL";
-        if (outboundType == "ADJUSTMENT_OUT") typeCode = "ADJ";
-        else if (outboundType == "WARRANTY_RETURN" || outboundType == "WRT") typeCode = "WRT";
-        else if (outboundType == "WARRANTY_REPLACEMENT_TO_CUSTOMER" || outboundType == "WRC") typeCode = "WRC";
-
-        int seq = (outboundTypeCounters.contains(typeCode) ? outboundTypeCounters[typeCode] : 0) + 1;
-        outboundTypeCounters[typeCode] = seq;
-        string outboundCode = "OUT-" + typeCode + "-" + formatNumber(seq, 6);
-
-        if (numShipments < 1) numShipments = 1;
         string date = orderDate.empty() ? getCurrentDate() : orderDate;
 
-        // Rule: For ADJUSTMENT_OUT, customer_id MUST be NULL; otherwise valid customer
-        Value customerVal;
-        if (outboundType == "ADJUSTMENT_OUT")
-        {
-            customerVal = Value{}; // NULL
-        }
-        else if (outboundType == "WARRANTY_RETURN" || outboundType == "WRT")
-        {
-            customerVal = 4; // Supplier / Business
-        }
-        else
-        {
-            customerVal = 1; // Individual customer
-        }
-
-        // Rule: For ADJUSTMENT_OUT, source_code MUST reference a check_code from inventory_check
+        // Validate / prepare source_code for ADJUSTMENT_OUT before mutating DB
         Value sourceCodeVal;
-        if (outboundType == "ADJUSTMENT_OUT")
+        if (normType == "ADJUSTMENT_OUT")
         {
-            string finalSource = sourceCode;
-            if (finalSource.empty())
+            if (!sourceCode.empty())
             {
-                Vector<int> pids;
-                for (const auto& item : items) pids.push_back(item.first);
-                finalSource = generateInventoryCheck("UNIT", date, pids);
+                if (!validateCompletedCheckScope(sourceCode, pids, "outbound_transaction"))
+                {
+                    return -1;
+                }
+                sourceCodeVal = sourceCode;
             }
-            sourceCodeVal = finalSource;
+            else
+            {
+                HashMap<int, bool> missingUnitIds;
+                for (size_t i = 0; i < mergedItems.size(); ++i)
+                {
+                    int pid = mergedItems[i].first;
+                    int qty = mergedItems[i].second;
+                    const auto& pool = eligibleUnitsByPid[pid];
+                    for (int k = 0; k < qty; ++k)
+                    {
+                        missingUnitIds[pool[k].first] = true;
+                    }
+                }
+                HashMap<int, int> emptySurplus;
+                HashMap<int, bool> emptyRedisc;
+                HashMap<int, string> emptyShift;
+                string genCode = generateAuditCheckWithDiscrepancies(
+                    date, pids, emptySurplus, emptyRedisc, missingUnitIds, emptyShift
+                );
+                if (genCode.empty()) return -1;
+                sourceCodeVal = genCode;
+            }
         }
         else
         {
             if (!sourceCode.empty())
             {
+                if (!outTxnTbl->view("source_code", Value(sourceCode)).empty())
+                {
+                    cerr << "[Generator Error] Duplicate source_code '" << sourceCode << "' in outbound_transaction.\n";
+                    return -1;
+                }
                 sourceCodeVal = sourceCode;
             }
             else
             {
                 sourceCodeVal = Value{}; // NULL
             }
+        }
+
+        // Determine Type Code
+        string typeCode = "SEL";
+        if (normType == "ADJUSTMENT_OUT") typeCode = "ADJ";
+        else if (normType == "WARRANTY_RETURN") typeCode = "WRT";
+        else if (normType == "WARRANTY_REPLACEMENT_TO_CUSTOMER") typeCode = "WRC";
+
+        int seq = (outboundTypeCounters.contains(typeCode) ? outboundTypeCounters[typeCode] : 0) + 1;
+        outboundTypeCounters[typeCode] = seq;
+        string outboundCode = "OUT-" + typeCode + "-" + formatNumber(seq, 6);
+        updateLookupNextCodeNo("outbound_type", "code", typeCode, seq + 1);
+
+        if (numShipments < 1) numShipments = 1;
+
+        // Rule 4.1: For ADJUSTMENT_OUT, customer_id MUST be NULL; otherwise valid customer
+        Value customerVal;
+        if (normType == "ADJUSTMENT_OUT")
+        {
+            customerVal = Value{}; // NULL
+        }
+        else if (normType == "WARRANTY_RETURN")
+        {
+            customerVal = 4; // Supplier / Business
+        }
+        else
+        {
+            customerVal = 1; // Individual customer
         }
 
         // 1. Create OutboundTransaction record
@@ -1058,22 +1459,24 @@ namespace Generator
         outTxn.set("source_code", sourceCodeVal);
         outTxn.set("customer_id", customerVal);
         outTxn.set("order_at", date);
-        outTxn.set("type", outboundType);
+        outTxn.set("type", normType);
         outTxn.set("status", string("COMPLETED"));
         outTxn.set("next_ship_no", numShipments + 1);
-        outTxn.set("note", note.empty() ? ("Outbound " + outboundType + " fulfilled successfully") : note);
+        outTxn.set("note", note.empty() ? ("Outbound " + normType + " fulfilled successfully") : note);
 
         db.insert("outbound_transaction", outTxn);
 
         // 2. Create OutboundDetail records
-        for (const auto& item : items)
+        HashMap<int, int> outDetIdByPid;
+        for (size_t i = 0; i < mergedItems.size(); ++i)
         {
-            int pid = item.first;
-            int qty = item.second;
-            if (qty <= 0) continue;
+            int pid = mergedItems[i].first;
+            int qty = mergedItems[i].second;
+            int detId = nextOutboundDetailId++;
+            outDetIdByPid[pid] = detId;
 
             Record outDet;
-            outDet.set("outbound_detail_id", nextOutboundDetailId++);
+            outDet.set("outbound_detail_id", detId);
             outDet.set("outbound_transaction_id", txnId);
             outDet.set("product_id", pid);
             outDet.set("ordered_quantity", qty);
@@ -1081,7 +1484,10 @@ namespace Generator
             db.insert("outbound_detail", outDet);
         }
 
-                // 3. Create Shipments and dispatch Units
+        HashMap<int, size_t> poolCursorByPid;
+        HashMap<int, int> outActualByPid;
+
+        // 3. Create Shipments and dispatch Units
         for (int s = 1; s <= numShipments; s++)
         {
             int shipId = nextShipmentId++;
@@ -1097,18 +1503,20 @@ namespace Generator
             shipRecord.set("status", string("COMPLETED"));
             db.insert("shipment", shipRecord);
 
-            for (const auto& item : items)
+            for (size_t i = 0; i < mergedItems.size(); ++i)
             {
-                int pid = item.first;
-                int totalQty = item.second;
+                int pid = mergedItems[i].first;
+                int totalQty = mergedItems[i].second;
                 int baseQty = totalQty / numShipments;
                 int rem = totalQty % numShipments;
                 int shipmentQty = baseQty + (s <= rem ? 1 : 0);
 
+                int shipDetId = 0;
                 if (shipDetTbl != nullptr && shipmentQty > 0)
                 {
+                    shipDetId = nextShipmentDetailId++;
                     Record shipDet;
-                    shipDet.set("shipment_detail_id", nextShipmentDetailId++);
+                    shipDet.set("shipment_detail_id", shipDetId);
                     shipDet.set("shipment_id", shipId);
                     shipDet.set("product_id", pid);
                     shipDet.set("received_quantity", shipmentQty);
@@ -1116,90 +1524,56 @@ namespace Generator
                     db.insert("shipment_detail", shipDet);
                 }
 
-                int dispatched = 0;
-                for (const auto& uRec : unitTbl->view())
+                const auto& pool = eligibleUnitsByPid[pid];
+                size_t curIdx = poolCursorByPid.contains(pid) ? poolCursorByPid[pid] : 0;
+                for (int k = 0; k < shipmentQty; ++k)
                 {
-                    if (dispatched >= shipmentQty) break;
-                    if (get<int>(uRec.get("product_id")) == pid)
+                    int uId = pool[curIdx].first;
+                    string currentStatus = pool[curIdx].second;
+                    curIdx++;
+
+                    Record uUpd;
+                    uUpd.set("status", string("OUT"));
+                    db.update("unit_inventory", uId, uUpd);
+
+                    if (histTbl != nullptr)
                     {
-                        string currentStatus = get<string>(uRec.get("status"));
-                        bool isEligible = false;
-                        if (outboundType == "WARRANTY_RETURN")
-                        {
-                            isEligible = (currentStatus == "WARRANTY" || currentStatus == "SCRAPPED");
-                        }
-                        else if (outboundType == "WARRANTY_REPLACEMENT_TO_CUSTOMER")
-                        {
-                            isEligible = (currentStatus == "AVAILABLE" || currentStatus == "WARRANTY");
-                        }
-                        else
-                        {
-                            isEligible = (currentStatus == "AVAILABLE");
-                        }
-
-                        if (isEligible)
-                        {
-                            int uId = get<int>(uRec.get("unit_id"));
-
-                            // Transition unit status to OUT
-                            Record uUpd;
-                            uUpd.set("status", string("OUT"));
-                            db.update("unit_inventory", uId, uUpd);
-
-                            // Create StatusHistory record
-                            if (histTbl != nullptr)
-                            {
-                                Record histRecord;
-                                histRecord.set("history_id", nextStatusHistoryId++);
-                                histRecord.set("unit_id", uId);
-                                histRecord.set("old_status", currentStatus);
-                                histRecord.set("curr_status", string("OUT"));
-                                histRecord.set("transaction", shipId);
-                                histRecord.set("type", string("OUTBOUND"));
-                                db.insert("status_history", histRecord);
-                            }
-
-                            // Increment actual_quantity on shipment_detail
-                            if (shipDetTbl != nullptr)
-                            {
-                                for (const auto& sd : shipDetTbl->view())
-                                {
-                                    if (get<int>(sd.get("shipment_id")) == shipId &&
-                                        get<int>(sd.get("product_id")) == pid)
-                                    {
-                                        int sdId = get<int>(sd.get("shipment_detail_id"));
-                                        int curActual = get<int>(sd.get("actual_quantity"));
-                                        Record upd;
-                                        upd.set("actual_quantity", curActual + 1);
-                                        db.update("shipment_detail", sdId, upd);
-                                        break;
-                                    }
-                                }
-                            }
-
-                            // Increment actual_quantity on outbound_detail
-                            for (const auto& od : outDetTbl->view())
-                            {
-                                int odTxnId = od.has("outbound_trainsaction_id") ? get<int>(od.get("outbound_trainsaction_id")) : get<int>(od.get("outbound_transaction_id"));
-                                if (odTxnId == txnId && get<int>(od.get("product_id")) == pid)
-                                {
-                                    int odId = get<int>(od.get("outbound_detail_id"));
-                                    int curActual = get<int>(od.get("actual_quantity"));
-                                    Record upd;
-                                    upd.set("actual_quantity", curActual + 1);
-                                    db.update("outbound_detail", odId, upd);
-                                    break;
-                                }
-                            }
-
-                            dispatched++;
-                        }
+                        Record histRecord;
+                        histRecord.set("history_id", nextStatusHistoryId++);
+                        histRecord.set("unit_id", uId);
+                        histRecord.set("old_status", currentStatus);
+                        histRecord.set("curr_status", string("OUT"));
+                        histRecord.set("transaction", shipId);
+                        histRecord.set("type", string("OUTBOUND"));
+                        db.insert("status_history", histRecord);
                     }
+                }
+                poolCursorByPid[pid] = curIdx;
+
+                if (shipmentQty > 0)
+                {
+                    if (shipDetTbl != nullptr && shipDetId > 0)
+                    {
+                        Record sdUpd;
+                        sdUpd.set("actual_quantity", shipmentQty);
+                        db.update("shipment_detail", shipDetId, sdUpd);
+                    }
+                    outActualByPid[pid] = (outActualByPid.contains(pid) ? outActualByPid[pid] : 0) + shipmentQty;
                 }
             }
         }
-        
-// 4. Update Product stock quantities
+
+        for (size_t i = 0; i < mergedItems.size(); ++i)
+        {
+            int pid = mergedItems[i].first;
+            int detId = outDetIdByPid[pid];
+            int actQty = outActualByPid.contains(pid) ? outActualByPid[pid] : 0;
+            Record odUpd;
+            odUpd.set("actual_quantity", actQty);
+            db.update("outbound_detail", detId, odUpd);
+        }
+
+        // 4. Update Product stock quantities
         if (prodTbl != nullptr)
         {
             syncProductQuantities();
@@ -1210,85 +1584,224 @@ namespace Generator
         return txnId;
     }
 
-        int DataGenerator::generateAdjustmentMovement(const string& reason,
+    int DataGenerator::generateAdjustmentMovement(const string& reason,
                                                   const Vector<AdjustItem>& items,
                                                   const string& adjustDate,
                                                   const string& sourceCode,
                                                   const string& note)
     {
+        if (items.empty())
+        {
+            cerr << "[Generator Error] Adjustment movement requires at least one item.\n";
+            return -1;
+        }
+
         const Table* adjTbl = db.getTable("adjustment_movement");
         const Table* adjDetTbl = db.getTable("adjust_movement_detail");
         const Table* unitTbl = db.getTable("unit_inventory");
         const Table* histTbl = db.getTable("status_history");
         const Table* prodTbl = db.getTable("product");
 
-        if (!adjTbl || !adjDetTbl)
+        if (!adjTbl || !adjDetTbl || !unitTbl)
         {
-            cerr << "[Generator Error] adjustment_movement or adjust_movement_detail table missing.\n";
+            cerr << "[Generator Error] adjustment_movement, adjust_movement_detail, or unit_inventory missing.\n";
             return -1;
         }
 
-        string fullReason = "STOCKTAKE_DIFF";
-        string reasonCode = "STD";
-        if (reason == "DAMAGED" || reason == "DMG") { fullReason = "DAMAGED"; reasonCode = "DMG"; }
+        string fullReason;
+        string reasonCode;
+        if (reason == "STOCKTAKE_DIFF" || reason == "STD") { fullReason = "STOCKTAKE_DIFF"; reasonCode = "STD"; }
+        else if (reason == "DAMAGED" || reason == "DMG") { fullReason = "DAMAGED"; reasonCode = "DMG"; }
         else if (reason == "OTHER" || reason == "OTH") { fullReason = "OTHER"; reasonCode = "OTH"; }
-        else { fullReason = "STOCKTAKE_DIFF"; reasonCode = "STD"; }
+        else
+        {
+            cerr << "[Generator Error] Invalid adjustment movement reason: " << reason << "\n";
+            return -1;
+        }
+
+        // Merge duplicate (productId, fromStatus, toStatus) lines
+        Vector<AdjustItem> effectiveItems;
+        for (size_t i = 0; i < items.size(); ++i)
+        {
+            const auto& item = items[i];
+            if (item.quantity <= 0)
+            {
+                cerr << "[Generator Error] Adjustment movement quantity must be > 0.\n";
+                return -1;
+            }
+            if (!isValidProduct(item.productId, false))
+            {
+                cerr << "[Generator Error] Product ID " << item.productId << " does not exist.\n";
+                return -1;
+            }
+            if (isProductFrozen(item.productId))
+            {
+                cerr << "[Generator Error] Product ID " << item.productId << " is frozen in an active inventory check.\n";
+                return -1;
+            }
+            if (item.fromStatus != "AVAILABLE" && item.fromStatus != "WARRANTY" && item.fromStatus != "SCRAPPED")
+            {
+                cerr << "[Generator Error] Invalid from_status '" << item.fromStatus << "'.\n";
+                return -1;
+            }
+            if (item.toStatus != "AVAILABLE" && item.toStatus != "WARRANTY" && item.toStatus != "SCRAPPED")
+            {
+                cerr << "[Generator Error] Invalid to_status '" << item.toStatus << "' (must be internal warehouse status).\n";
+                return -1;
+            }
+            if (item.fromStatus == item.toStatus)
+            {
+                cerr << "[Generator Error] from_status and to_status must differ.\n";
+                return -1;
+            }
+            if (fullReason == "DAMAGED" && item.toStatus != "SCRAPPED")
+            {
+                cerr << "[Generator Error] DAMAGED adjustment movement requires to_status = SCRAPPED.\n";
+                return -1;
+            }
+
+            bool merged = false;
+            for (size_t j = 0; j < effectiveItems.size(); ++j)
+            {
+                if (effectiveItems[j].productId == item.productId &&
+                    effectiveItems[j].fromStatus == item.fromStatus &&
+                    effectiveItems[j].toStatus == item.toStatus)
+                {
+                    effectiveItems[j].quantity += item.quantity;
+                    merged = true;
+                    break;
+                }
+            }
+            if (!merged)
+            {
+                effectiveItems.push_back(item);
+            }
+        }
+
+        // Verify cumulative unit availability per (productId, fromStatus) and pre-pick units
+        HashMap<string, int> requestedByKey;
+        HashMap<string, Vector<int>> poolByKey;
+        Vector<int> pids;
+        HashMap<int, bool> seenPids;
+        for (size_t i = 0; i < effectiveItems.size(); ++i)
+        {
+            const auto& item = effectiveItems[i];
+            if (!seenPids.contains(item.productId))
+            {
+                seenPids[item.productId] = true;
+                pids.push_back(item.productId);
+            }
+
+            string key = to_string(item.productId) + "|" + item.fromStatus;
+            requestedByKey[key] = (requestedByKey.contains(key) ? requestedByKey[key] : 0) + item.quantity;
+            if (!poolByKey.contains(key))
+            {
+                Vector<int> pool;
+                for (const auto& uRec : unitTbl->view("product_id", Value(item.productId)))
+                {
+                    if (uRec.has("status") && holds_alternative<string>(uRec.get("status")) &&
+                        get<string>(uRec.get("status")) == item.fromStatus)
+                    {
+                        pool.push_back(get<int>(uRec.get("unit_id")));
+                    }
+                }
+                poolByKey[key] = pool;
+            }
+            if (static_cast<int>(poolByKey[key].size()) < requestedByKey[key])
+            {
+                cerr << "[Generator Error] Insufficient units in '" << item.fromStatus << "' for product ID "
+                     << item.productId << " (need " << requestedByKey[key]
+                     << ", have " << poolByKey[key].size() << ").\n";
+                return -1;
+            }
+        }
+
+        Vector<Vector<int>> pickedUnitIdsByLine;
+        HashMap<string, size_t> poolCursorByKey;
+        HashMap<int, string> shiftedUnitTargets;
+        for (size_t i = 0; i < effectiveItems.size(); ++i)
+        {
+            const auto& item = effectiveItems[i];
+            string key = to_string(item.productId) + "|" + item.fromStatus;
+            const auto& pool = poolByKey[key];
+            size_t cur = poolCursorByKey.contains(key) ? poolCursorByKey[key] : 0;
+            Vector<int> lineUnits;
+            for (int k = 0; k < item.quantity; ++k)
+            {
+                int uId = pool[cur++];
+                lineUnits.push_back(uId);
+                shiftedUnitTargets[uId] = item.toStatus;
+            }
+            poolCursorByKey[key] = cur;
+            pickedUnitIdsByLine.push_back(lineUnits);
+        }
 
         string date = adjustDate.empty() ? getCurrentDate() : adjustDate;
 
-        string finalSource = sourceCode;
-        if (finalSource.empty())
+        // Validate / prepare source_code per Rule 5.3 & 5.4
+        Value sourceCodeVal;
+        if (!sourceCode.empty())
         {
-            Vector<int> pids;
-            for (size_t i = 0; i < items.size(); ++i) pids.push_back(items[i].productId);
-            finalSource = generateInventoryCheck("UNIT", date, pids);
+            if (!validateCompletedCheckScope(sourceCode, pids, "adjustment_movement"))
+            {
+                return -1;
+            }
+            sourceCodeVal = sourceCode;
+        }
+        else if (fullReason == "STOCKTAKE_DIFF")
+        {
+            HashMap<int, int> emptySurplus;
+            HashMap<int, bool> emptyRedisc;
+            HashMap<int, bool> emptyMissing;
+            string genCode = generateAuditCheckWithDiscrepancies(
+                date, pids, emptySurplus, emptyRedisc, emptyMissing, shiftedUnitTargets
+            );
+            if (genCode.empty()) return -1;
+            sourceCodeVal = genCode;
+        }
+        else
+        {
+            sourceCodeVal = Value{}; // NULL for DAMAGED / OTHER without check
         }
 
         int adjId = nextAdjustmentMovementId++;
-        string adjCode = "ADJ-" + reasonCode + "-" + formatNumber(nextAdjustSeq++, 6);
+        int seq = nextAdjustSeq++;
+        string adjCode = "ADJ-" + reasonCode + "-" + formatNumber(seq, 6);
+        updateLookupNextCodeNo("reason", "code", reasonCode, seq + 1);
 
         Record adjRec;
         adjRec.set("adjust_id", adjId);
         adjRec.set("adjust_code", adjCode);
-        adjRec.set("source_code", finalSource);
+        adjRec.set("source_code", sourceCodeVal);
         adjRec.set("reason", fullReason);
         adjRec.set("adjusted_at", date);
         adjRec.set("status", string("COMPLETED"));
         adjRec.set("note", note.empty() ? string("Internal adjustment movement " + adjCode) : note);
         db.insert("adjustment_movement", adjRec);
 
-        for (size_t i = 0; i < items.size(); ++i)
+        for (size_t i = 0; i < effectiveItems.size(); ++i)
         {
-            const auto& item = items[i];
+            const auto& item = effectiveItems[i];
+            const Vector<int>& lineUnits = pickedUnitIdsByLine[i];
             int detId = nextAdjustDetailId++;
 
-            int moved = 0;
-            if (unitTbl)
+            for (size_t k = 0; k < lineUnits.size(); ++k)
             {
-                for (const auto& uRec : unitTbl->view())
-                {
-                    if (moved >= item.quantity) break;
-                    if (get<int>(uRec.get("product_id")) == item.productId &&
-                        get<string>(uRec.get("status")) == item.fromStatus)
-                    {
-                        int uId = get<int>(uRec.get("unit_id"));
-                        Record uUpd;
-                        uUpd.set("status", item.toStatus);
-                        db.update("unit_inventory", uId, uUpd);
+                int uId = lineUnits[k];
+                Record uUpd;
+                uUpd.set("status", item.toStatus);
+                db.update("unit_inventory", uId, uUpd);
 
-                        if (histTbl)
-                        {
-                            Record hRec;
-                            hRec.set("history_id", nextStatusHistoryId++);
-                            hRec.set("unit_id", uId);
-                            hRec.set("old_status", item.fromStatus);
-                            hRec.set("curr_status", item.toStatus);
-                            hRec.set("transaction", adjId);
-                            hRec.set("type", string("ADJUSTMENT"));
-                            db.insert("status_history", hRec);
-                        }
-                        moved++;
-                    }
+                if (histTbl)
+                {
+                    Record hRec;
+                    hRec.set("history_id", nextStatusHistoryId++);
+                    hRec.set("unit_id", uId);
+                    hRec.set("old_status", item.fromStatus);
+                    hRec.set("curr_status", item.toStatus);
+                    hRec.set("transaction", adjId);
+                    hRec.set("type", string("ADJUSTMENT"));
+                    db.insert("status_history", hRec);
                 }
             }
 
@@ -1299,7 +1812,7 @@ namespace Generator
             dRec.set("from_status", item.fromStatus);
             dRec.set("to_status", item.toStatus);
             dRec.set("adjust_quantity", item.quantity);
-            dRec.set("actual_quantity", moved);
+            dRec.set("actual_quantity", static_cast<int>(lineUnits.size()));
             db.insert("adjust_movement_detail", dRec);
         }
 
@@ -1322,52 +1835,80 @@ namespace Generator
             return summary;
         }
 
-        // Rule: Only active products (is_sold == TRUE) may participate in generated transactions
+        // Rule 4.2 & 5.1.3: Only active (is_sold == TRUE), unfrozen products participate in generated transactions
         Vector<int> productIds;
         for (const auto& p : prodTbl->view())
         {
-            bool isSold = true;
-            if (holds_alternative<bool>(p.get("is_sold")))
+            int pid = get<int>(p.get("product_id"));
+            if (isValidProduct(pid, true) && !isProductFrozen(pid))
             {
-                isSold = get<bool>(p.get("is_sold"));
-            }
-            if (isSold)
-            {
-                productIds.push_back(get<int>(p.get("product_id")));
+                productIds.push_back(pid);
             }
         }
 
         if (productIds.empty())
         {
-            cerr << "[Generator Error] No active products (is_sold == TRUE) found for batch generation.\n";
+            cerr << "[Generator Error] No active unfrozen products (is_sold == TRUE) found for batch generation.\n";
             return summary;
         }
 
         string curDate = startDate.empty() ? "2026-09-10" : startDate;
 
-        // Generate Inbound Transactions
-        const string inboundTypes[] = {"PURCHASING", "ADJUSTMENT_IN", "WARRANTY_CHECKING", "CUSTOMER_RETURN"};
+        // Generate Outbound Transactions FIRST or interleaved?
+        // Actually, generating Inbounds first with PUR/WRP/ADJ, or choosing OUT products for WCK/CRT dynamically handles both!
+        // Let's run Inbound (5 valid types) -> Outbound (4 valid types) -> Checks -> Optional Movement.
+        const string inboundTypes[] = {
+            "PURCHASING", "ADJUSTMENT_IN", "WARRANTY_CHECKING", "WARRANTY_REPLACEMENT", "CUSTOMER_RETURN"
+        };
         for (int i = 0; i < numInbound; i++)
         {
-            string inType = inboundTypes[nextRandom() % 4];
+            string inType = inboundTypes[nextRandom() % 5];
             int numItems = 1 + (nextRandom() % 3);
             int numDeliveries = 1 + (nextRandom() % 2);
 
             Vector<Pair<int, int>> items;
             HashMap<int, bool> usedPids;
-            for (int j = 0; j < numItems; j++)
+
+            if (inType == "WARRANTY_CHECKING" || inType == "CUSTOMER_RETURN")
             {
-                int pid = productIds[nextRandom() % productIds.size()];
-                if (usedPids.contains(pid)) continue;
-                usedPids[pid] = true;
-                int qty = 5 + (nextRandom() % 15);
-                items.push_back(Pair<int, int>(pid, qty));
-                summary.unitsCreated += qty;
+                // Pick from products that currently have OUT units
+                Vector<int> outEligiblePids;
+                for (size_t idx = 0; idx < productIds.size(); ++idx)
+                {
+                    if (countUnitsByStatus(productIds[idx], "OUT") > 0)
+                    {
+                        outEligiblePids.push_back(productIds[idx]);
+                    }
+                }
+                if (outEligiblePids.empty())
+                {
+                    inType = (nextRandom() % 2 == 0) ? "PURCHASING" : "WARRANTY_REPLACEMENT";
+                }
+                else
+                {
+                    for (int j = 0; j < numItems; j++)
+                    {
+                        int pid = outEligiblePids[nextRandom() % outEligiblePids.size()];
+                        if (usedPids.contains(pid)) continue;
+                        usedPids[pid] = true;
+                        int outAvail = countUnitsByStatus(pid, "OUT");
+                        int maxTake = outAvail < 5 ? outAvail : 5;
+                        int qty = 1 + (nextRandom() % maxTake);
+                        items.push_back(Pair<int, int>(pid, qty));
+                    }
+                }
             }
 
-            if (inType == "ADJUSTMENT_IN")
+            if (items.empty())
             {
-                summary.inventoryChecksGenerated++;
+                for (int j = 0; j < numItems; j++)
+                {
+                    int pid = productIds[nextRandom() % productIds.size()];
+                    if (usedPids.contains(pid)) continue;
+                    usedPids[pid] = true;
+                    int qty = 5 + (nextRandom() % 15);
+                    items.push_back(Pair<int, int>(pid, qty));
+                }
             }
 
             int id = generateInbound(inType, items, numDeliveries, curDate);
@@ -1375,48 +1916,84 @@ namespace Generator
             {
                 summary.inboundTxnsGenerated++;
                 summary.deliveriesGenerated += numDeliveries;
+                for (size_t k = 0; k < items.size(); ++k)
+                {
+                    summary.unitsCreated += items[k].second;
+                }
+                if (inType == "ADJUSTMENT_IN")
+                {
+                    summary.inventoryChecksGenerated++;
+                }
             }
             curDate = advanceDate(curDate, 1);
         }
 
-        // Generate Outbound Transactions
-        const string outboundTypes[] = {"SELLING", "ADJUSTMENT_OUT", "SELLING", "WARRANTY_RETURN"};
+        // Generate Outbound Transactions (all 4 valid types, no RTS)
+        const string outboundTypes[] = {
+            "SELLING", "ADJUSTMENT_OUT", "WARRANTY_RETURN", "WARRANTY_REPLACEMENT_TO_CUSTOMER"
+        };
         for (int i = 0; i < numOutbound; i++)
         {
             string outType = outboundTypes[nextRandom() % 4];
             int numItems = 1 + (nextRandom() % 2);
             int numShipments = 1;
 
-            Vector<Pair<int, int>> items;
-            HashMap<int, bool> usedPids;
-            for (int j = 0; j < numItems; j++)
+            Vector<int> eligiblePids;
+            for (size_t idx = 0; idx < productIds.size(); ++idx)
             {
-                int pid = productIds[nextRandom() % productIds.size()];
-                if (usedPids.contains(pid)) continue;
-                int avail = getAvailableStock(pid);
-                if (avail > 2)
+                if (countEligibleOutboundUnits(productIds[idx], outType) > 0)
                 {
-                    int maxQty = min(avail / 2, 4);
-                    if (maxQty < 1) maxQty = 1;
-                    int qty = 1 + (nextRandom() % maxQty);
-                    items.push_back(Pair<int, int>(pid, qty));
-                    usedPids[pid] = true;
-                    summary.unitsShipped += qty;
+                    eligiblePids.push_back(productIds[idx]);
+                }
+            }
+            if (eligiblePids.empty())
+            {
+                outType = "SELLING";
+                for (size_t idx = 0; idx < productIds.size(); ++idx)
+                {
+                    if (countEligibleOutboundUnits(productIds[idx], outType) > 0)
+                    {
+                        eligiblePids.push_back(productIds[idx]);
+                    }
+                }
+            }
+
+            Vector<Pair<int, int>> items;
+            if (!eligiblePids.empty())
+            {
+                HashMap<int, bool> usedPids;
+                for (int j = 0; j < numItems; j++)
+                {
+                    int pid = eligiblePids[nextRandom() % eligiblePids.size()];
+                    if (usedPids.contains(pid)) continue;
+                    int elig = countEligibleOutboundUnits(pid, outType);
+                    if (elig >= 1)
+                    {
+                        int maxQty = elig / 2;
+                        if (maxQty > 4) maxQty = 4;
+                        if (maxQty < 1) maxQty = 1;
+                        int qty = 1 + (nextRandom() % maxQty);
+                        items.push_back(Pair<int, int>(pid, qty));
+                        usedPids[pid] = true;
+                    }
                 }
             }
 
             if (!items.empty())
             {
-                if (outType == "ADJUSTMENT_OUT")
-                {
-                    summary.inventoryChecksGenerated++;
-                }
-
                 int id = generateOutbound(outType, items, numShipments, curDate);
                 if (id > 0)
                 {
                     summary.outboundTxnsGenerated++;
                     summary.shipmentsGenerated += numShipments;
+                    for (size_t k = 0; k < items.size(); ++k)
+                    {
+                        summary.unitsShipped += items[k].second;
+                    }
+                    if (outType == "ADJUSTMENT_OUT")
+                    {
+                        summary.inventoryChecksGenerated++;
+                    }
                 }
             }
             curDate = advanceDate(curDate, 1);
@@ -1425,11 +2002,10 @@ namespace Generator
         // Generate Standalone Inventory Checks (always UNIT)
         for (int k = 0; k < numChecks; k++)
         {
-            string checkType = "UNIT";
             int numAuditProducts = 2 + (nextRandom() % 4);
             if (numAuditProducts > static_cast<int>(productIds.size()))
             {
-                numAuditProducts = productIds.size();
+                numAuditProducts = static_cast<int>(productIds.size());
             }
 
             Vector<int> auditPids;
@@ -1442,7 +2018,7 @@ namespace Generator
                 auditPids.push_back(pid);
             }
 
-            string code = generateInventoryCheck(checkType, curDate, auditPids);
+            string code = generateInventoryCheck("UNIT", curDate, auditPids);
             if (!code.empty())
             {
                 summary.inventoryChecksGenerated++;
@@ -1450,16 +2026,28 @@ namespace Generator
             curDate = advanceDate(curDate, 1);
         }
 
-        // Optionally generate an adjustment movement linked to stock inspection
+        // Optionally generate an internal DAMAGED adjustment movement (source_code = NULL per Rule 5.3)
         if (numChecks > 0 && !productIds.empty())
         {
-            int pid = productIds[nextRandom() % productIds.size()];
-            Vector<AdjustItem> adjItems;
-            adjItems.push_back({pid, "AVAILABLE", "SCRAPPED", 1});
-            int movId = generateAdjustmentMovement("DAMAGED", adjItems, curDate);
-            if (movId > 0)
+            int chosenPid = -1;
+            for (size_t idx = 0; idx < productIds.size(); ++idx)
             {
-                summary.adjustmentMovementsGenerated++;
+                int candidate = productIds[(nextRandom() + idx) % productIds.size()];
+                if (countUnitsByStatus(candidate, "AVAILABLE") >= 1)
+                {
+                    chosenPid = candidate;
+                    break;
+                }
+            }
+            if (chosenPid > 0)
+            {
+                Vector<AdjustItem> adjItems;
+                adjItems.push_back({chosenPid, "AVAILABLE", "SCRAPPED", 1});
+                int movId = generateAdjustmentMovement("DAMAGED", adjItems, curDate, "");
+                if (movId > 0)
+                {
+                    summary.adjustmentMovementsGenerated++;
+                }
             }
         }
 
@@ -1509,25 +2097,75 @@ namespace Generator
             seenSerials[serial] = true;
         }
 
-        // 2. Build map of inventory check codes
+        // 2. Build map of inventory check codes, statuses, and audited product scopes
         HashMap<string, bool> validCheckCodes;
+        HashMap<string, string> checkStatusByCode;
+        HashMap<string, int> checkIdByCode;
+        HashMap<int, HashMap<int, bool>> checkScopeById;
         if (chkTbl != nullptr)
         {
             for (const auto& c : chkTbl->view())
             {
                 if (holds_alternative<string>(c.get("check_code")))
                 {
-                    validCheckCodes[get<string>(c.get("check_code"))] = true;
+                    string code = get<string>(c.get("check_code"));
+                    validCheckCodes[code] = true;
+                    checkIdByCode[code] = get<int>(c.get("check_id"));
+                    checkStatusByCode[code] = holds_alternative<string>(c.get("status"))
+                                            ? get<string>(c.get("status")) : "";
                 }
+            }
+        }
+        const Table* cqTbl = db.getTable("inventory_check_quantity");
+        if (cqTbl != nullptr)
+        {
+            for (const auto& cq : cqTbl->view())
+            {
+                int cId = get<int>(cq.get("check_id"));
+                int pid = get<int>(cq.get("product_id"));
+                checkScopeById[cId][pid] = true;
+            }
+        }
+
+        // Pre-index detail product IDs by transaction ID
+        const Table* inDetTbl = db.getTable("inbound_detail");
+        HashMap<int, Vector<int>> inDetailPidsByTxn;
+        if (inDetTbl != nullptr)
+        {
+            for (const auto& row : inDetTbl->view())
+            {
+                inDetailPidsByTxn[get<int>(row.get("inbound_transaction_id"))].push_back(get<int>(row.get("product_id")));
+            }
+        }
+        const Table* outDetTbl = db.getTable("outbound_detail");
+        HashMap<int, Vector<int>> outDetailPidsByTxn;
+        if (outDetTbl != nullptr)
+        {
+            for (const auto& row : outDetTbl->view())
+            {
+                int oTxnId = row.has("outbound_transaction_id") ? get<int>(row.get("outbound_transaction_id")) : get<int>(row.get("outbound_trainsaction_id"));
+                outDetailPidsByTxn[oTxnId].push_back(get<int>(row.get("product_id")));
             }
         }
 
         // 3. Verify Inbound Transactions & ADJUSTMENT_IN rules
         HashMap<int, bool> validInboundTxns;
+        HashMap<string, bool> seenInboundSourceCodes;
         for (const auto& t : inTxnTbl->view())
         {
             int txnId = get<int>(t.get("inbound_transaction_id"));
             validInboundTxns[txnId] = true;
+
+            string src = holds_alternative<string>(t.get("source_code")) ? get<string>(t.get("source_code")) : "";
+            if (!src.empty())
+            {
+                if (seenInboundSourceCodes.contains(src))
+                {
+                    cerr << "[-] Duplicate source_code in inbound_transaction: " << src << "\n";
+                    return false;
+                }
+                seenInboundSourceCodes[src] = true;
+            }
 
             string type = get<string>(t.get("type"));
             if (type == "ADJUSTMENT_IN")
@@ -1538,17 +2176,38 @@ namespace Generator
                     cerr << "[-] Inbound Transaction " << txnId << " (ADJUSTMENT_IN) must NOT have customer_id.\n";
                     return false;
                 }
-                // source_code MUST reference a valid check_code
-                if (!holds_alternative<string>(t.get("source_code")))
-                {
-                    cerr << "[-] Inbound Transaction " << txnId << " (ADJUSTMENT_IN) missing required source_code.\n";
-                    return false;
-                }
-                string src = get<string>(t.get("source_code"));
+                // source_code MUST reference a valid COMPLETED check_code
                 if (src.empty() || !validCheckCodes.contains(src))
                 {
                     cerr << "[-] Inbound Transaction " << txnId << " (ADJUSTMENT_IN) source_code (" << src
                          << ") does not reference a valid inventory_check code.\n";
+                    return false;
+                }
+                if (checkStatusByCode[src] != "COMPLETED")
+                {
+                    cerr << "[-] Inbound Transaction " << txnId << " (ADJUSTMENT_IN) references non-COMPLETED check '" << src << "'.\n";
+                    return false;
+                }
+                int chkId = checkIdByCode[src];
+                if (inDetailPidsByTxn.contains(txnId))
+                {
+                    const auto& pids = inDetailPidsByTxn[txnId];
+                    for (size_t i = 0; i < pids.size(); ++i)
+                    {
+                        if (!checkScopeById[chkId].contains(pids[i]))
+                        {
+                            cerr << "[-] Inbound Transaction " << txnId << " product ID " << pids[i]
+                                 << " is outside scope of check '" << src << "'.\n";
+                            return false;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                if (holds_alternative<monostate>(t.get("customer_id")))
+                {
+                    cerr << "[-] Commercial Inbound Transaction " << txnId << " (" << type << ") must have a customer_id.\n";
                     return false;
                 }
             }
@@ -1567,12 +2226,29 @@ namespace Generator
 
         // 4. Verify Outbound Transactions & ADJUSTMENT_OUT rules
         HashMap<int, bool> validOutboundTxns;
+        HashMap<string, bool> seenOutboundSourceCodes;
         for (const auto& t : outTxnTbl->view())
         {
             int txnId = get<int>(t.get("outbound_trainsaction_id"));
             validOutboundTxns[txnId] = true;
 
+            string src = holds_alternative<string>(t.get("source_code")) ? get<string>(t.get("source_code")) : "";
+            if (!src.empty())
+            {
+                if (seenOutboundSourceCodes.contains(src))
+                {
+                    cerr << "[-] Duplicate source_code in outbound_transaction: " << src << "\n";
+                    return false;
+                }
+                seenOutboundSourceCodes[src] = true;
+            }
+
             string type = get<string>(t.get("type"));
+            if (type == "RETURN_TO_SUPPLIER" || type == "RTS")
+            {
+                cerr << "[-] Outbound Transaction " << txnId << " uses removed type '" << type << "'.\n";
+                return false;
+            }
             if (type == "ADJUSTMENT_OUT")
             {
                 // Must NOT have customer
@@ -1581,17 +2257,38 @@ namespace Generator
                     cerr << "[-] Outbound Transaction " << txnId << " (ADJUSTMENT_OUT) must NOT have customer_id.\n";
                     return false;
                 }
-                // source_code MUST reference a valid check_code
-                if (!holds_alternative<string>(t.get("source_code")))
-                {
-                    cerr << "[-] Outbound Transaction " << txnId << " (ADJUSTMENT_OUT) missing required source_code.\n";
-                    return false;
-                }
-                string src = get<string>(t.get("source_code"));
+                // source_code MUST reference a valid COMPLETED check_code
                 if (src.empty() || !validCheckCodes.contains(src))
                 {
                     cerr << "[-] Outbound Transaction " << txnId << " (ADJUSTMENT_OUT) source_code (" << src
                          << ") does not reference a valid inventory_check code.\n";
+                    return false;
+                }
+                if (checkStatusByCode[src] != "COMPLETED")
+                {
+                    cerr << "[-] Outbound Transaction " << txnId << " (ADJUSTMENT_OUT) references non-COMPLETED check '" << src << "'.\n";
+                    return false;
+                }
+                int chkId = checkIdByCode[src];
+                if (outDetailPidsByTxn.contains(txnId))
+                {
+                    const auto& pids = outDetailPidsByTxn[txnId];
+                    for (size_t i = 0; i < pids.size(); ++i)
+                    {
+                        if (!checkScopeById[chkId].contains(pids[i]))
+                        {
+                            cerr << "[-] Outbound Transaction " << txnId << " product ID " << pids[i]
+                                 << " is outside scope of check '" << src << "'.\n";
+                            return false;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                if (holds_alternative<monostate>(t.get("customer_id")))
+                {
+                    cerr << "[-] Commercial Outbound Transaction " << txnId << " (" << type << ") must have a customer_id.\n";
                     return false;
                 }
             }
@@ -1609,7 +2306,6 @@ namespace Generator
         }
 
         // 5. Verify actual_quantity constraints on detail tables
-        const Table* inDetTbl = db.getTable("inbound_detail");
         if (inDetTbl != nullptr)
         {
             for (const auto& row : inDetTbl->view())
@@ -1639,7 +2335,6 @@ namespace Generator
             }
         }
 
-        const Table* outDetTbl = db.getTable("outbound_detail");
         if (outDetTbl != nullptr)
         {
             for (const auto& row : outDetTbl->view())
@@ -1669,7 +2364,7 @@ namespace Generator
             }
         }
 
-        // 6. Verify Inbound status history rule: old_status must ONLY be "" (NULL) or "OUT"
+        // 6. Verify Inbound status history rule: old_status must ONLY be NULL (monostate / "") or "OUT"
         if (histTbl != nullptr)
         {
             for (const auto& row : histTbl->view())
@@ -1682,11 +2377,11 @@ namespace Generator
                 if (transType == "INBOUND")
                 {
                     string oldSt = "";
-                    if (holds_alternative<string>(row.get("old_status")))
+                    if (!isNull(row.get("old_status")) && holds_alternative<string>(row.get("old_status")))
                     {
                         oldSt = get<string>(row.get("old_status"));
                     }
-                    if (oldSt != "" && oldSt != "OUT")
+                    if (!oldSt.empty() && oldSt != "OUT")
                     {
                         cerr << "[-] Status history violation: INBOUND operation had old_status = '" << oldSt
                              << "' (only NULL or OUT permitted).\n";
@@ -1718,15 +2413,23 @@ namespace Generator
             }
         }
 
-        // 8. Verify Adjustment Movements & single-check uniqueness (Rule 5.4 & 5.5)
+        // 8. Verify Adjustment Movements & single-check uniqueness (Rule 5.3 & 5.4)
         const Table* adjTbl = db.getTable("adjustment_movement");
         const Table* adjDetTbl = db.getTable("adjust_movement_detail");
+        HashMap<int, string> adjReasonById;
+        HashMap<int, string> adjSourceById;
         if (adjTbl != nullptr)
         {
             HashMap<string, bool> seenAdjustCodes;
             HashMap<string, bool> seenSourceCodes;
             for (const auto& row : adjTbl->view())
             {
+                int aId = get<int>(row.get("adjust_id"));
+                string reason = holds_alternative<string>(row.get("reason")) ? get<string>(row.get("reason")) : "";
+                string src = holds_alternative<string>(row.get("source_code")) ? get<string>(row.get("source_code")) : "";
+                adjReasonById[aId] = reason;
+                adjSourceById[aId] = src;
+
                 if (holds_alternative<string>(row.get("adjust_code")))
                 {
                     string code = get<string>(row.get("adjust_code"));
@@ -1738,23 +2441,30 @@ namespace Generator
                     seenAdjustCodes[code] = true;
                 }
 
-                if (holds_alternative<string>(row.get("source_code")))
+                if (reason == "STOCKTAKE_DIFF" && src.empty())
                 {
-                    string src = get<string>(row.get("source_code"));
-                    if (!src.empty())
-                    {
-                        if (seenSourceCodes.contains(src))
-                        {
-                            cerr << "[-] Duplicate source_code in adjustment_movement: " << src << "\n";
-                            return false;
-                        }
-                        seenSourceCodes[src] = true;
+                    cerr << "[-] AdjustmentMovement " << aId << " (STOCKTAKE_DIFF) missing required source_code.\n";
+                    return false;
+                }
 
-                        if (!validCheckCodes.contains(src))
-                        {
-                            cerr << "[-] AdjustmentMovement references invalid check_code: " << src << "\n";
-                            return false;
-                        }
+                if (!src.empty())
+                {
+                    if (seenSourceCodes.contains(src))
+                    {
+                        cerr << "[-] Duplicate source_code in adjustment_movement: " << src << "\n";
+                        return false;
+                    }
+                    seenSourceCodes[src] = true;
+
+                    if (!validCheckCodes.contains(src))
+                    {
+                        cerr << "[-] AdjustmentMovement references invalid check_code: " << src << "\n";
+                        return false;
+                    }
+                    if (checkStatusByCode[src] != "COMPLETED")
+                    {
+                        cerr << "[-] AdjustmentMovement " << aId << " references non-COMPLETED check '" << src << "'.\n";
+                        return false;
                     }
                 }
             }
@@ -1794,7 +2504,22 @@ namespace Generator
                     string toSt = get<string>(row.get("to_status"));
                     if (toSt == "OUT")
                     {
-                        cerr << "[-] AdjustMovementDetail to_status must not be OUT (Rule 5.4)\n";
+                        cerr << "[-] AdjustMovementDetail to_status must not be OUT (Rule 5.3)\n";
+                        return false;
+                    }
+                    if (adjReasonById.contains(aId) && adjReasonById[aId] == "DAMAGED" && toSt != "SCRAPPED")
+                    {
+                        cerr << "[-] AdjustMovementDetail for DAMAGED must have to_status == SCRAPPED (Rule 5.3)\n";
+                        return false;
+                    }
+                }
+                if (adjSourceById.contains(aId) && !adjSourceById[aId].empty())
+                {
+                    int chkId = checkIdByCode[adjSourceById[aId]];
+                    if (!checkScopeById[chkId].contains(pid))
+                    {
+                        cerr << "[-] AdjustMovementDetail product ID " << pid
+                             << " is outside scope of check '" << adjSourceById[aId] << "'.\n";
                         return false;
                     }
                 }
@@ -1931,7 +2656,7 @@ namespace Generator
             cout << "======================================================\n";
             cout << "  1. Generate Inbound Transaction (Receiving Flow)    \n";
             cout << "  2. Generate Outbound Transaction (Dispatch Flow)    \n";
-            cout << "  3. Perform Inventory Check (Audit: QUAN or UNIT)    \n";
+            cout << "  3. Perform Inventory Check (Unit Audit: CHK-UNIT)   \n";
             cout << "  4. Generate Adjustment Movement (Internal Shift)    \n";
             cout << "  5. Toggle Product is_sold Status                    \n";
             cout << "  6. Display Products & Stock Levels                  \n";
@@ -2025,18 +2750,16 @@ namespace Generator
                 cout << "\n--- SELECT OUTBOUND TYPE ---\n";
                 cout << "  1. SELLING (Retail / Order dispatch)\n";
                 cout << "  2. ADJUSTMENT_OUT (Stock correction decrease)\n";
-                cout << "  3. RETURN_TO_SUPPLIER (Vendor return)\n";
-                cout << "  4. WARRANTY_RETURN (Return defective part to vendor)\n";
-                cout << "  5. WARRANTY_REPLACEMENT_TO_CUSTOMER (Replacement to customer)\n";
-                cout << "Select type (1-5): ";
+                cout << "  3. WARRANTY_RETURN (Return defective part to vendor)\n";
+                cout << "  4. WARRANTY_REPLACEMENT_TO_CUSTOMER (Replacement to customer)\n";
+                cout << "Select type (1-4): ";
                 int typeChoice = 1;
                 cin >> typeChoice;
 
                 string outType = "SELLING";
                 if (typeChoice == 2) outType = "ADJUSTMENT_OUT";
-                else if (typeChoice == 3) outType = "RETURN_TO_SUPPLIER";
-                else if (typeChoice == 4) outType = "WARRANTY_RETURN";
-                else if (typeChoice == 5) outType = "WARRANTY_REPLACEMENT_TO_CUSTOMER";
+                else if (typeChoice == 3) outType = "WARRANTY_RETURN";
+                else if (typeChoice == 4) outType = "WARRANTY_REPLACEMENT_TO_CUSTOMER";
 
                 string sourceCode = "";
                 if (outType == "ADJUSTMENT_OUT")
@@ -2129,7 +2852,7 @@ namespace Generator
                 int qty = 1;
                 cin >> qty;
 
-                cout << "Enter Source Check Code (leave empty to auto-generate): ";
+                cout << "Enter Source Check Code (required for STOCKTAKE_DIFF if existing, leave empty to auto-generate for STOCKTAKE_DIFF or NULL for DAMAGED/OTHER): ";
                 string dummy, srcCode;
                 getline(cin, dummy);
                 getline(cin, srcCode);

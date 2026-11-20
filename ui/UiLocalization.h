@@ -46,7 +46,6 @@ inline QString localizeOrderType(const QString& raw)
     if (up == "ADJUSTMENT_OUT") return "Xuất điều chỉnh";
     if (up == "WARRANTY_RETURN" || up == "WRT") return "Gửi BH hãng";
     if (up == "WARRANTY_REPLACEMENT_TO_CUSTOMER" || up == "WRC") return "Đổi BH khách";
-    if (up == "RETURN_TO_SUPPLIER" || up == "RTS") return "Trả NCC";
 
     if (up == "INBOUND") return "Nhập kho";
     if (up == "OUTBOUND") return "Xuất kho";

@@ -50,10 +50,10 @@ void test_code_formats(Database& db)
     }
     printSub("Inbound Transaction Code Format (IN-<TYPE>-000000)", validInCodes > 0, to_string(validInCodes) + " checked");
 
-    // 1.2 Outbound Code format: OUT-(SEL|ADJ|WRT|WRC|RTS)-XXXXXX (6 digits)
+    // 1.2 Outbound Code format: OUT-(SEL|ADJ|WRT|WRC)-XXXXXX (6 digits)
     const Table* outTxnTbl = db.getTable("outbound_transaction");
     assert(outTxnTbl != nullptr);
-    regex outCodeRegex(R"(^OUT-(SEL|ADJ|WRT|WRC|RTS)-\d{6}$)");
+    regex outCodeRegex(R"(^OUT-(SEL|ADJ|WRT|WRC)-\d{6}$)");
     int validOutCodes = 0;
     for (const auto& r : outTxnTbl->view())
     {
@@ -79,7 +79,7 @@ void test_code_formats(Database& db)
     // 1.4 Shipment Code format: <outbound_code>-SXX (2 digits)
     const Table* shipTbl = db.getTable("shipment");
     assert(shipTbl != nullptr);
-    regex shipCodeRegex(R"(^OUT-(SEL|ADJ|WRT|WRC|RTS)-\d{6}-S\d{2}$)");
+    regex shipCodeRegex(R"(^OUT-(SEL|ADJ|WRT|WRC)-\d{6}-S\d{2}$)");
     int validShipCodes = 0;
     for (const auto& r : shipTbl->view())
     {

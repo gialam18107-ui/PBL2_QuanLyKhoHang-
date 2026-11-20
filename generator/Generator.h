@@ -95,6 +95,24 @@ namespace Generator
         string getCurrentDate() const;
         unsigned int nextRandom();
 
+        bool isValidProduct(int productId, bool requireActive = true) const;
+        bool isProductFrozen(int productId) const;
+        int countUnitsByStatus(int productId, const string& status) const;
+        int countEligibleOutboundUnits(int productId, const string& outboundType) const;
+        bool validateCompletedCheckScope(const string& checkCode,
+                                         const Vector<int>& productIds,
+                                         const string& uniquenessTable) const;
+        void updateLookupNextCodeNo(const string& tableName,
+                                    const string& keyCol,
+                                    const string& keyVal,
+                                    int nextSeq);
+        string generateAuditCheckWithDiscrepancies(const string& checkDate,
+                                                   const Vector<int>& productIds,
+                                                   const HashMap<int, int>& surplusUnrecordedAvail,
+                                                   const HashMap<int, bool>& rediscoveredOutUnits,
+                                                   const HashMap<int, bool>& missingUnitIds,
+                                                   const HashMap<int, string>& shiftedUnitTargets);
+
     public:
         /**
          * @brief Construct generator bound to an active Database instance.
@@ -140,7 +158,7 @@ namespace Generator
         /**
          * @brief Generate an outbound transaction pipeline sequentially and consistently.
          * OutboundTransaction -> OutboundDetail -> Shipment -> ShipmentDetail -> Unit status update -> (StatusHistory).
-         * @param outboundType SELLING, ADJUSTMENT_OUT, RETURN_TO_SUPPLIER, WARRANTY_RETURN, WARRANTY_REPLACEMENT_TO_CUSTOMER.
+         * @param outboundType SELLING, ADJUSTMENT_OUT, WARRANTY_RETURN, WARRANTY_REPLACEMENT_TO_CUSTOMER.
          * @param items Vector of Pairs (productId, orderedQuantity).
          * @param numShipments Number of shipments required (>= 1).
          * @param orderDate Date in YYYY-MM-DD format (or generated if empty).

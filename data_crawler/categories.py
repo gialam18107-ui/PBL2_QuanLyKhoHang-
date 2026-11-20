@@ -76,9 +76,8 @@ DELIVERY_STATUSES: List[Dict[str, Any]] = [
 OUTBOUND_TYPES: List[Dict[str, Any]] = [
     {"id": 1, "type": "SELLING", "code": "SEL", "next_code_no": 2},
     {"id": 2, "type": "ADJUSTMENT_OUT", "code": "ADJ", "next_code_no": 1},
-    {"id": 3, "type": "RETURN_TO_SUPPLIER", "code": "RTS", "next_code_no": 1},
-    {"id": 4, "type": "WARRANTY_RETURN", "code": "WRT", "next_code_no": 1},
-    {"id": 5, "type": "WARRANTY_REPLACEMENT_TO_CUSTOMER", "code": "WRC", "next_code_no": 1},
+    {"id": 3, "type": "WARRANTY_RETURN", "code": "WRT", "next_code_no": 1},
+    {"id": 4, "type": "WARRANTY_REPLACEMENT_TO_CUSTOMER", "code": "WRC", "next_code_no": 1},
 ]
 
 # Master Outbound Statuses

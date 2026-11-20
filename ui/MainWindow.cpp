@@ -556,8 +556,6 @@ void MainWindow::updateCategoryFilterOptions()
     }
     if (outboundTxnWidget) {
         QStringList outTypes = loadColumnOptions("outbound_type", "type");
-        outTypes.removeAll("RETURN_TO_SUPPLIER");
-        outTypes.removeAll("RTS");
         if (outTypes.isEmpty()) outTypes = {"SELLING", "ADJUSTMENT_OUT", "WARRANTY_RETURN", "WARRANTY_REPLACEMENT_TO_CUSTOMER"};
         QStringList outStatuses = loadColumnOptions("outbound_status", "status");
         if (outStatuses.isEmpty()) outStatuses = {"PENDING", "PROCESSING", "COMPLETED", "CANCELLED"};

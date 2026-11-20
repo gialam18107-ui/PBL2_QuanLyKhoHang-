@@ -181,8 +181,8 @@ Unit status transitions must adhere strictly to the business rules of each trans
   - **`WRC` (Warranty Replacement to Customer)**:
     - Precondition: Selected units must have current status `AVAILABLE` or `WARRANTY`.
     - Transition: `AVAILABLE / WARRANTY -> OUT`.
-  - **`RTS` (Return to Supplier — Deprecated / Removed)**:
-    - No longer supported for creation in the system or UI (lookup entry is retained in CSV solely to preserve historical referential integrity).
+  - **`RTS` (Return to Supplier — Removed)**:
+    - Completely removed from the system, UI, crawler, generator, and CSV lookup table (`outbound_type.csv`).
   - **`ADJ` (Adjustment Out)**:
     - Precondition: Selected units must currently exist in warehouse (status `AVAILABLE`, `WARRANTY`, or `SCRAPPED`).
     - Transition: `AVAILABLE / WARRANTY / SCRAPPED -> OUT`.

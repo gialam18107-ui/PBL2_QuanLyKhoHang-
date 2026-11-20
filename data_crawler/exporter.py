@@ -1,7 +1,7 @@
 """
 CSV Exporter for Warehouse Management System database tables.
-Exports all 32 tables adhering strictly to QuanLyKhoHang_schema.json,
-C++ Schema.cpp, and project_rules.md (Section 10 File Organization Rules).
+Exports all 41 physical schema tables + 23 category spec sub-tables adhering strictly to QuanLyKhoHang_schema.json,
+C++ Schema.cpp, and project_rules.md (Section 2.2 File Organization Rules).
 """
 
 import os
@@ -116,8 +116,8 @@ class SchemaExporter:
 
     def _write_csv(self, filename: str, headers: List[str], rows: List[Dict[str, Any]]) -> None:
         """
-        Write CSV file to its canonical business domain subfolder (Section 10).
-        Also writes to root output_dir for backward compatibility (Section 3 protection).
+        Write CSV file strictly into its canonical business domain subfolder (Rule 2.2),
+        keeping the root output_dir free of loose CSV files.
         """
         table_name = filename[:-4] if filename.endswith(".csv") else filename
         domain = TABLE_DOMAINS.get(table_name)
@@ -181,7 +181,7 @@ class SchemaExporter:
         return spec_summary
 
     def export_all(self, crawler: DataCrawler) -> Dict[str, int]:
-        """Export all 32 schema tables + status_history + compatibility tables + category specs."""
+        """Export all 41 physical schema tables and 23 category spec sub-tables."""
         summary: Dict[str, int] = {}
 
         # 1. CATEGORY (products/)
