@@ -33,7 +33,7 @@ public:
         return new CountingConstraint(*this);
     }
 
-    bool validate(const Value&, const Table&, int) const override
+    bool validate(const Value&, const Table&) const override
     {
         if (counter != nullptr)
         {
@@ -48,12 +48,12 @@ void test_option_a_constraints_and_defaults()
     cout << "[1] Testing Option A Column -> Auto Constraints, NotNull, Unique, PK, Defaults..." << endl;
 
     Table tbl("items");
-    tbl.addColumn(Column("item_id", DataType::INTEGER, 0, true), true, true, true);
-    tbl.addColumn(Column("code", DataType::VARCHAR, 50), false, true, true);
-    tbl.addColumn(Column("tag", DataType::VARCHAR, 50), false, true, false);
-    tbl.addColumn(Column("active", DataType::BOOLEAN, 0, false, Value(true)), false, false, true);
-    tbl.addColumn(Column("qty", DataType::INTEGER, 0, false, Value(0)), false, false, true);
-    tbl.addColumn(Column("note", DataType::TEXT, 0), false, false, false);
+    tbl.addColumn(Column("item_id", DataType::INTEGER, true), true, true, true);
+    tbl.addColumn(Column("code", DataType::VARCHAR), false, true, true);
+    tbl.addColumn(Column("tag", DataType::VARCHAR), false, true, false);
+    tbl.addColumn(Column("active", DataType::BOOLEAN, false, Value(true)), false, false, true);
+    tbl.addColumn(Column("qty", DataType::INTEGER, false, Value(0)), false, false, true);
+    tbl.addColumn(Column("note", DataType::TEXT), false, false, false);
 
     assert(tbl.getPrimaryKeyColumn() == "item_id");
     assert(tbl.isColumnNotNull("item_id"));
@@ -150,13 +150,13 @@ void test_foreign_key_in_constraint_and_move()
 
     Database db("fk_db");
     Table* parent = db.createTable("parent");
-    parent->addColumn(Column("pid", DataType::INTEGER, 0, true), true, true, true);
-    parent->addColumn(Column("pcode", DataType::VARCHAR, 20), false, true, true);
+    parent->addColumn(Column("pid", DataType::INTEGER, true), true, true, true);
+    parent->addColumn(Column("pcode", DataType::VARCHAR), false, true, true);
 
     Table* child = db.createTable("child");
-    child->addColumn(Column("cid", DataType::INTEGER, 0, true), true, true, true);
-    child->addColumn(Column("pid_fk", DataType::INTEGER, 0), false, false, false);
-    child->addColumn(Column("label", DataType::VARCHAR, 50), false, false, true);
+    child->addColumn(Column("cid", DataType::INTEGER, true), true, true, true);
+    child->addColumn(Column("pid_fk", DataType::INTEGER), false, false, false);
+    child->addColumn(Column("label", DataType::VARCHAR), false, false, true);
     assert(child->addConstraint(new ForeignKeyConstraint("fk_child_parent", "pid_fk", "parent", "pid")));
 
     Record p1; p1.set("pcode", string("P1"));
@@ -233,9 +233,9 @@ void test_boolean_0_1_and_csv_roundtrip()
     assert(valueToString(Value{}) == "NULL");
 
     Table t("bool_io");
-    t.addColumn(Column("id", DataType::INTEGER, 0, true), true, true, true);
-    t.addColumn(Column("flag", DataType::BOOLEAN, 0, false, Value(true)), false, false, true);
-    t.addColumn(Column("opt", DataType::VARCHAR, 50), false, false, false);
+    t.addColumn(Column("id", DataType::INTEGER, true), true, true, true);
+    t.addColumn(Column("flag", DataType::BOOLEAN, false, Value(true)), false, false, true);
+    t.addColumn(Column("opt", DataType::VARCHAR), false, false, false);
 
     Record r1; r1.set("flag", true); r1.set("opt", string("hello"));
     Record r2; r2.set("flag", false); r2.set("opt", Value{});
@@ -246,9 +246,9 @@ void test_boolean_0_1_and_csv_roundtrip()
     assert(TableIO::writeToFile(t, tmpCsv));
 
     Table tReload("bool_io");
-    tReload.addColumn(Column("id", DataType::INTEGER, 0, true), true, true, true);
-    tReload.addColumn(Column("flag", DataType::BOOLEAN, 0, false, Value(true)), false, false, true);
-    tReload.addColumn(Column("opt", DataType::VARCHAR, 50), false, false, false);
+    tReload.addColumn(Column("id", DataType::INTEGER, true), true, true, true);
+    tReload.addColumn(Column("flag", DataType::BOOLEAN, false, Value(true)), false, false, true);
+    tReload.addColumn(Column("opt", DataType::VARCHAR), false, false, false);
     assert(TableIO::readFromFile(tReload, tmpCsv));
     assert(tReload.getRowCount() == 2);
     assert(get<bool>(tReload.getRecordById(1)->get("flag")) == true);
@@ -265,17 +265,17 @@ void test_pk_no_heuristics_and_range_fallback_and_compaction()
 
     // Table with status_id / id columns that are NOT primary keys
     Table noPk("plain_status");
-    noPk.addColumn(Column("status_id", DataType::INTEGER, 0), false, false, true);
-    noPk.addColumn(Column("id", DataType::INTEGER, 0), false, false, true);
+    noPk.addColumn(Column("status_id", DataType::INTEGER), false, false, true);
+    noPk.addColumn(Column("id", DataType::INTEGER), false, false, true);
     assert(noPk.getPrimaryKeyColumn().empty());
     assert(noPk.getRecordById(1) == nullptr);
 
     // Custom PK name + HASH index range fallback + HASH_TREE range fallback
     Table tbl("custom_tbl");
-    tbl.addColumn(Column("custom_key", DataType::INTEGER, 0, true), true, true, true);
-    tbl.addColumn(Column("code", DataType::VARCHAR, 20), false, true, true);
-    tbl.addColumn(Column("grp", DataType::VARCHAR, 20), false, false, true);
-    tbl.addColumn(Column("dt", DataType::DATE, 0), false, false, true);
+    tbl.addColumn(Column("custom_key", DataType::INTEGER, true), true, true, true);
+    tbl.addColumn(Column("code", DataType::VARCHAR), false, true, true);
+    tbl.addColumn(Column("grp", DataType::VARCHAR), false, false, true);
+    tbl.addColumn(Column("dt", DataType::DATE), false, false, true);
     tbl.createIndex("grp", IndexType::HASH_TREE);
     tbl.createIndex("dt", IndexType::AVL);
     assert(tbl.getPrimaryKeyColumn() == "custom_key");
@@ -329,19 +329,66 @@ void test_pk_no_heuristics_and_range_fallback_and_compaction()
     cout << "  [PASS]" << endl;
 }
 
+void test_string_primary_key_value_id()
+{
+    cout << "[5] Testing const Value& ID (String/VARCHAR Primary Key in Table & Database)..." << endl;
+
+    Database db("str_pk_db");
+    Table* cfg = db.createTable("app_config");
+    cfg->addColumn(Column("config_key", DataType::VARCHAR), true, true, true);
+    cfg->addColumn(Column("config_val", DataType::VARCHAR), false, false, true);
+
+    assert(cfg->getPrimaryKeyColumn() == "config_key");
+
+    Record c1;
+    c1.set("config_key", string("THEME"));
+    c1.set("config_val", string("DARK"));
+    assert(db.insert("app_config", c1));
+
+    Record c2;
+    c2.set("config_key", string("LANG"));
+    c2.set("config_val", string("VI"));
+    assert(db.insert("app_config", c2));
+
+    // Lookup by Value(string)
+    const Record* rec = cfg->getRecordById(string("THEME"));
+    assert(rec != nullptr);
+    assert(get<string>(rec->get("config_val")) == "DARK");
+    assert(cfg->getRecordById(Value{}) == nullptr);
+    assert(cfg->getRecordById(string("MISSING")) == nullptr);
+
+    // Update by Value(string) through Database
+    Record upd;
+    upd.set("config_val", string("LIGHT"));
+    assert(db.update("app_config", string("THEME"), upd).success);
+    assert(get<string>(cfg->getRecordById(string("THEME"))->get("config_val")) == "LIGHT");
+
+    // Duplicate PK still rejected even when updating PK to another existing key
+    Record dupPk;
+    dupPk.set("config_key", string("LANG"));
+    assert(!db.update("app_config", string("THEME"), dupPk).success);
+
+    // Remove by Value(string) through Database
+    assert(db.remove("app_config", string("THEME")).success);
+    assert(cfg->getRecordById(string("THEME")) == nullptr);
+    assert(cfg->getRowCount() == 1);
+
+    cout << "  [PASS]" << endl;
+}
+
 void test_selective_column_validation()
 {
-    cout << "[5] Testing selective changed-column validation on updateById..." << endl;
+    cout << "[6] Testing selective changed-column validation on updateById..." << endl;
 
     int countA = 0;
     int countB = 0;
     int countC = 0;
 
     Table tbl("selective");
-    tbl.addColumn(Column("id", DataType::INTEGER, 0, true), true, true, true);
-    tbl.addColumn(Column("col_a", DataType::VARCHAR, 50), false, false, true);
-    tbl.addColumn(Column("col_b", DataType::VARCHAR, 50), false, false, true);
-    tbl.addColumn(Column("col_c", DataType::INTEGER, 0), false, false, true);
+    tbl.addColumn(Column("id", DataType::INTEGER, true), true, true, true);
+    tbl.addColumn(Column("col_a", DataType::VARCHAR), false, false, true);
+    tbl.addColumn(Column("col_b", DataType::VARCHAR), false, false, true);
+    tbl.addColumn(Column("col_c", DataType::INTEGER), false, false, true);
 
     assert(tbl.addConstraint(new CountingConstraint("cnt_a", "col_a", &countA)));
     assert(tbl.addConstraint(new CountingConstraint("cnt_b", "col_b", &countB)));
@@ -379,35 +426,23 @@ void test_selective_column_validation()
 
 void test_time_complexity_scaling()
 {
-    cout << "[6] Testing O(1) Complexity Scaling (N = 2,000 -> 10,000 -> 40,000)..." << endl;
+    cout << "[7] Testing O(1) Complexity Scaling (N = 2,000 -> 10,000 -> 40,000)..." << endl;
 
     const int sizes[] = {2000, 10000, 40000};
     double lookupUs[3] = {0, 0, 0};
     double updateUs[3] = {0, 0, 0};
 
-    // Also measure insert batch scaling on 40k table with PK + Unique + FK + NotNull
     int pkCount = 0;
     int uqCount = 0;
     int fkCount = 0;
     int valCount = 0;
-
-    Database db("perf_db");
-    Table* parents = db.createTable("parents");
-    parents->addColumn(Column("pid", DataType::INTEGER, 0, true), true, true, true);
-    parents->addColumn(Column("pcode", DataType::VARCHAR, 32), false, true, true);
-    for (int i = 1; i <= 40000; ++i)
-    {
-        Record p;
-        p.set("pcode", string("P") + to_string(i));
-        assert(parents->insert(p));
-    }
 
     for (int sIdx = 0; sIdx < 3; ++sIdx)
     {
         int n = sizes[sIdx];
         Database benchDb("bench");
         Table* pTbl = benchDb.createTable("parents");
-        pTbl->addColumn(Column("pid", DataType::INTEGER, 0, true), true, true, true);
+        pTbl->addColumn(Column("pid", DataType::INTEGER, true), true, true, true);
         for (int i = 1; i <= n; ++i)
         {
             Record p;
@@ -416,10 +451,10 @@ void test_time_complexity_scaling()
         }
 
         Table* cTbl = benchDb.createTable("children");
-        cTbl->addColumn(Column("cid", DataType::INTEGER, 0, true), true, true, true);
-        cTbl->addColumn(Column("code", DataType::VARCHAR, 32), false, true, true);
-        cTbl->addColumn(Column("pid", DataType::INTEGER, 0), false, false, true);
-        cTbl->addColumn(Column("val", DataType::INTEGER, 0), false, false, true);
+        cTbl->addColumn(Column("cid", DataType::INTEGER, true), true, true, true);
+        cTbl->addColumn(Column("code", DataType::VARCHAR), false, true, true);
+        cTbl->addColumn(Column("pid", DataType::INTEGER), false, false, true);
+        cTbl->addColumn(Column("val", DataType::INTEGER), false, false, true);
         assert(cTbl->addConstraint(new ForeignKeyConstraint("fk_c_p", "pid", "parents", "pid")));
 
         pkCount = uqCount = fkCount = valCount = 0;
@@ -512,9 +547,7 @@ void test_time_complexity_scaling()
                 for (int k = 0; k < 500; ++k)
                 {
                     Record noop;
-                    noop.set("val", 1000000 + k);
                     int targetId = ((k * 17) % n) + 1;
-                    // Retrieve actual current value to guarantee no-op
                     noop.set("val", cTbl->getRecordById(targetId)->get("val"));
                     assert(cTbl->updateById(targetId, noop));
                 }
@@ -570,6 +603,7 @@ int main()
     test_foreign_key_in_constraint_and_move();
     test_boolean_0_1_and_csv_roundtrip();
     test_pk_no_heuristics_and_range_fallback_and_compaction();
+    test_string_primary_key_value_id();
     test_selective_column_validation();
     test_time_complexity_scaling();
 

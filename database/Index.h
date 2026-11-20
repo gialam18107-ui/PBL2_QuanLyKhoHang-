@@ -63,9 +63,9 @@ public:
     virtual void clear() = 0;
 
     /**
-     * @brief Zero-allocation check whether any active indexed entry matches value (optionally ignoring a row).
+     * @brief Zero-allocation check whether any active indexed entry matches value.
      */
-    virtual bool contains(const Value& value, int ignoreRowIndex = -1) const = 0;
+    bool contains(const Value& value) const;
 
     /**
      * @brief Zero-allocation lookup for the first matching rowIndex.
@@ -108,7 +108,6 @@ public:
     void remove(const Value& value, size_t rowIndex) override;
     void clear() override;
 
-    bool contains(const Value& value, int ignoreRowIndex = -1) const override;
     bool findFirst(const Value& value, size_t& outRowIndex) const override;
     Vector<size_t> find(const Value& value) const override;
     Vector<size_t> findRange(const Value& minVal, const Value& maxVal) const override;
@@ -136,7 +135,6 @@ public:
     void remove(const Value& value, size_t rowIndex) override;
     void clear() override;
 
-    bool contains(const Value& value, int ignoreRowIndex = -1) const override;
     bool findFirst(const Value& value, size_t& outRowIndex) const override;
     Vector<size_t> find(const Value& value) const override;
     Vector<size_t> findRange(const Value& minVal, const Value& maxVal) const override;
@@ -163,7 +161,6 @@ public:
     void remove(const Value& value, size_t rowIndex) override;
     void clear() override;
 
-    bool contains(const Value& value, int ignoreRowIndex = -1) const override;
     bool findFirst(const Value& value, size_t& outRowIndex) const override;
     Vector<size_t> find(const Value& value) const override;
     Vector<size_t> findRange(const Value& minVal, const Value& maxVal) const override;

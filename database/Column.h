@@ -21,7 +21,6 @@ class Column
 private:
     string name;
     DataType type;
-    int size;
     bool autoIncrement;
     Value defaultValue;
 
@@ -30,14 +29,12 @@ public:
      * @brief Construct a new Column descriptor.
      * @param name Column name.
      * @param type Data type (INTEGER, VARCHAR, TEXT, etc.).
-     * @param size Max length for VARCHAR/CHAR (0 for unlimited/auto).
      * @param autoIncrement Whether column auto-increments on insert.
      * @param defaultValue Typed default Value (monostate{} for no default).
      */
     Column(
-        const string& name,
-        DataType type,
-        int size = 0,
+        const string& name = "",
+        DataType type = DataType::VARCHAR,
         bool autoIncrement = false,
         const Value& defaultValue = Value{}
     );
@@ -47,9 +44,6 @@ public:
 
     /// Get column data type.
     DataType getType() const;
-
-    /// Get column size / length.
-    int getSize() const;
 
     /// Check if marked as AUTO_INCREMENT.
     bool isAutoIncrement() const;
@@ -62,9 +56,6 @@ public:
 
     /// Set column data type.
     void setType(DataType type);
-
-    /// Set column size / length limit.
-    void setSize(int size);
 
     /// Set auto increment flag.
     void setAutoIncrement(bool value);

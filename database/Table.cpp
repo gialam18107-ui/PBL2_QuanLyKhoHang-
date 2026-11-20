@@ -30,7 +30,7 @@ string indexTypeToString(IndexType type)
 Table::Table(const string& name)
     : name(name),
       database(nullptr),
-      columnIndexMap(8),
+      columns(8),
       constraints(8),
       indexes(8)
 {
@@ -41,7 +41,6 @@ Table::Table(const Table& other)
       primaryKeyColumn(other.primaryKeyColumn),
       database(nullptr),
       columns(other.columns),
-      columnIndexMap(other.columnIndexMap),
       rows(other.rows),
       deletedRows(other.deletedRows),
       deletedRowCount(other.deletedRowCount),
@@ -70,7 +69,6 @@ Table::Table(Table&& other) noexcept
       primaryKeyColumn(std::move(other.primaryKeyColumn)),
       database(nullptr),
       columns(std::move(other.columns)),
-      columnIndexMap(std::move(other.columnIndexMap)),
       rows(std::move(other.rows)),
       deletedRows(std::move(other.deletedRows)),
       deletedRowCount(other.deletedRowCount),
@@ -106,7 +104,6 @@ Table& Table::operator=(const Table& other)
         primaryKeyColumn = other.primaryKeyColumn;
         database = nullptr;
         columns = other.columns;
-        columnIndexMap = other.columnIndexMap;
         rows = other.rows;
         deletedRows = other.deletedRows;
         deletedRowCount = other.deletedRowCount;
@@ -153,7 +150,6 @@ Table& Table::operator=(Table&& other) noexcept
         primaryKeyColumn = std::move(other.primaryKeyColumn);
         database = nullptr;
         columns = std::move(other.columns);
-        columnIndexMap = std::move(other.columnIndexMap);
         rows = std::move(other.rows);
         deletedRows = std::move(other.deletedRows);
         deletedRowCount = other.deletedRowCount;
@@ -207,8 +203,7 @@ void Table::addColumn(const Column& column, bool primaryKey, bool unique, bool n
         throw runtime_error("Column already exists: " + colName);
     }
 
-    columnIndexMap[colName] = columns.size();
-    columns.push_back(column);
+    columns.insert(colName, column);
 
     if (column.isAutoIncrement())
     {
@@ -235,27 +230,27 @@ void Table::addColumn(const Column& column, bool primaryKey, bool unique, bool n
 
 bool Table::hasColumn(const string& columnName) const
 {
-    return columnIndexMap.contains(columnName);
+    return columns.contains(columnName);
 }
 
 Column* Table::getColumn(const string& columnName)
 {
-    auto it = columnIndexMap.find(columnName);
-    if (it == columnIndexMap.end())
+    auto it = columns.find(columnName);
+    if (it == columns.end())
     {
         return nullptr;
     }
-    return &columns[it->second];
+    return &it->second;
 }
 
 const Column* Table::getColumn(const string& columnName) const
 {
-    auto it = columnIndexMap.find(columnName);
-    if (it == columnIndexMap.end())
+    auto it = columns.find(columnName);
+    if (it == columns.end())
     {
         return nullptr;
     }
-    return &columns[it->second];
+    return &it->second;
 }
 
 int Table::getColumnCount() const
@@ -263,7 +258,7 @@ int Table::getColumnCount() const
     return static_cast<int>(columns.size());
 }
 
-const Vector<Column>& Table::getColumns() const
+const HashMap<string, Column>& Table::getColumns() const
 {
     return columns;
 }
@@ -506,7 +501,7 @@ bool Table::checkDataType(const Column& column, const Value& value) const
     return true;
 }
 
-bool Table::checkColumnConstraints(const string& columnName, const Value& value, int ignoreRowIndex) const
+bool Table::checkConstraints(const string& columnName, const Value& value) const
 {
     auto it = constraints.find(columnName);
     if (it == constraints.end())
@@ -518,35 +513,10 @@ bool Table::checkColumnConstraints(const string& columnName, const Value& value,
     for (size_t i = 0; i < colConstraints.size(); ++i)
     {
         const Constraint* c = colConstraints[i];
-        if (!c->validate(value, *this, ignoreRowIndex))
+        if (!c->validate(value, *this))
         {
             cout << "Constraint failed: " << c->getName() << " on table '" << name << "'" << endl;
             return false;
-        }
-    }
-    return true;
-}
-
-bool Table::checkConstraints(const Record& record, int ignoreRowIndex) const
-{
-    static const Value nullVal{};
-    const auto& recMap = record.getValues();
-
-    for (const auto& entry : constraints)
-    {
-        const string& colName = entry.first;
-        const Vector<Constraint*>& colConstraints = entry.second;
-        auto valIt = recMap.find(colName);
-        const Value& val = (valIt != recMap.end()) ? valIt->second : nullVal;
-
-        for (size_t i = 0; i < colConstraints.size(); ++i)
-        {
-            const Constraint* c = colConstraints[i];
-            if (!c->validate(val, *this, ignoreRowIndex))
-            {
-                cout << "Constraint failed: " << c->getName() << " on table '" << name << "'" << endl;
-                return false;
-            }
         }
     }
     return true;
@@ -601,11 +571,11 @@ bool Table::insert(const Record& record)
     Record recordToInsert = record;
     Vector<Pair<string, int>> pendingAutoInc;
 
-    // Handle auto-increment (deferred commit until validation passes) and typed defaults
-    for (size_t i = 0; i < columns.size(); ++i)
+    // Single pass over schema columns: fill auto-increment / typed defaults, check data types & constraints
+    for (const auto& colEntry : columns)
     {
-        const Column& col = columns[i];
-        const string& colName = col.getName();
+        const string& colName = colEntry.first;
+        const Column& col = colEntry.second;
 
         if (col.isAutoIncrement())
         {
@@ -637,25 +607,20 @@ bool Table::insert(const Record& record)
                 recordToInsert.set(colName, monostate{});
             }
         }
-    }
 
-    // Verify data types
-    const auto& insertMap = recordToInsert.getValues();
-    for (size_t i = 0; i < columns.size(); ++i)
-    {
-        const Column& col = columns[i];
-        auto it = insertMap.find(col.getName());
-        if (it != insertMap.end() && !checkDataType(col, it->second))
+        auto valIt = recordToInsert.getValues().find(colName);
+        if (valIt != recordToInsert.getValues().end())
         {
-            cout << "Invalid data type for column: " << col.getName() << endl;
-            return false;
+            if (!checkDataType(col, valIt->second))
+            {
+                cout << "Invalid data type for column: " << colName << endl;
+                return false;
+            }
+            if (!checkConstraints(colName, valIt->second))
+            {
+                return false;
+            }
         }
-    }
-
-    // Verify all constraints (NOT NULL, PK, UNIQUE, FOREIGN KEY)
-    if (!checkConstraints(recordToInsert, -1))
-    {
-        return false;
     }
 
     // Commit auto-increment counters only after full validation succeeds
@@ -664,6 +629,7 @@ bool Table::insert(const Record& record)
         autoIncrementCounters[pendingAutoInc[i].first] = pendingAutoInc[i].second;
     }
 
+    const auto& insertMap = recordToInsert.getValues();
     size_t newRowIdx = rows.size();
     for (const auto& idxEntry : indexes)
     {
@@ -684,19 +650,18 @@ const string& Table::getPrimaryKeyColumn() const
     return primaryKeyColumn;
 }
 
-int Table::findRowIndexById(int id) const
+int Table::findRowIndexById(const Value& id) const
 {
-    if (primaryKeyColumn.empty())
+    if (primaryKeyColumn.empty() || isNull(id))
     {
         return -1;
     }
 
-    Value idVal(id);
     auto idxIt = indexes.find(primaryKeyColumn);
     if (idxIt != indexes.end())
     {
         size_t rIdx = 0;
-        if (idxIt->second->findFirst(idVal, rIdx) && !isRowDeleted(rIdx))
+        if (idxIt->second->findFirst(id, rIdx) && !isRowDeleted(rIdx))
         {
             return static_cast<int>(rIdx);
         }
@@ -707,7 +672,7 @@ int Table::findRowIndexById(int id) const
     {
         if (isRowDeleted(i)) continue;
         auto valIt = rows[i].getValues().find(primaryKeyColumn);
-        if (valIt != rows[i].getValues().end() && holds_alternative<int>(valIt->second) && get<int>(valIt->second) == id)
+        if (valIt != rows[i].getValues().end() && valIt->second == id)
         {
             return static_cast<int>(i);
         }
@@ -715,14 +680,14 @@ int Table::findRowIndexById(int id) const
     return -1;
 }
 
-const Record* Table::getRecordById(int id) const
+const Record* Table::getRecordById(const Value& id) const
 {
     int idx = findRowIndexById(id);
     if (idx < 0 || idx >= static_cast<int>(rows.size())) return nullptr;
     return &rows[static_cast<size_t>(idx)];
 }
 
-bool Table::removeById(int id, bool allowCompact)
+bool Table::removeById(const Value& id, bool allowCompact)
 {
     int idx = findRowIndexById(id);
     if (idx < 0) return false;
@@ -748,7 +713,7 @@ bool Table::removeById(int id, bool allowCompact)
     return true;
 }
 
-bool Table::updateById(int id, const Record& newValues)
+bool Table::updateById(const Value& id, const Record& newValues)
 {
     int idx = findRowIndexById(id);
     if (idx < 0) return false;
@@ -783,7 +748,7 @@ bool Table::updateById(int id, const Record& newValues)
             continue; // Unchanged value: skip constraint check and index update
         }
 
-        if (!checkColumnConstraints(colName, newVal, idx))
+        if (!checkConstraints(colName, newVal))
         {
             return false;
         }
@@ -824,17 +789,17 @@ bool Table::isRowDeleted(size_t rowIndex) const
     return rowIndex < deletedRows.size() && deletedRows[rowIndex] != 0;
 }
 
-bool Table::contains(const string& columnName, const Value& value, int ignoreRowIndex) const
+bool Table::contains(const string& columnName, const Value& value) const
 {
     auto idxIt = indexes.find(columnName);
     if (idxIt != indexes.end())
     {
-        return idxIt->second->contains(value, ignoreRowIndex);
+        return idxIt->second->contains(value);
     }
 
     for (size_t i = 0; i < rows.size(); ++i)
     {
-        if (static_cast<int>(i) == ignoreRowIndex || isRowDeleted(i)) continue;
+        if (isRowDeleted(i)) continue;
         auto valIt = rows[i].getValues().find(columnName);
         if (valIt != rows[i].getValues().end() && valIt->second == value)
         {
@@ -1066,9 +1031,9 @@ void Table::printStructure() const
     cout << "TABLE: " << name << endl;
     cout << "-----------------------------" << endl;
 
-    for (size_t i = 0; i < columns.size(); i++)
+    for (const auto& entry : columns)
     {
-        columns[i].print();
+        entry.second.print();
     }
 
     cout << "\nCONSTRAINTS:" << endl;

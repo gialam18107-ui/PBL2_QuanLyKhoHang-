@@ -1201,8 +1201,8 @@ void category_hardware_query(Database *db, const string &categoryName,
 		if (prow->has("product_name"))
 			out.set("product.product_name", prow->get("product_name"));
 
-		for (size_t c = 0; c < catCols.size(); ++c) {
-			const string &colName = catCols[c].getName();
+		for (const auto& entry : catCols) {
+			const string &colName = entry.first;
 			if (colName == cat + "_id" || colName == "id" || colName == "product_id")
 				continue;
 			if (cat == "case" && colName == "product_name")
@@ -1290,8 +1290,8 @@ void auxiliary_spec_query(Database *db, const string &tableName,
 				continue;
 		}
 		Record out;
-		for (size_t c = 0; c < cols.size(); ++c) {
-			const string &colName = cols[c].getName();
+		for (const auto& entry : cols) {
+			const string &colName = entry.first;
 			if (r.has(colName)) {
 				out.set(tblName + "." + colName, r.get(colName));
 				out.set(colName, r.get(colName));

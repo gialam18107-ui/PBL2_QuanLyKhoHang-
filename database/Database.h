@@ -136,20 +136,20 @@ public:
     /**
      * @brief Update a record directly by record ID in the primary key column (Rule 6.3).
      * @param tableName Target table name.
-     * @param recordId ID of the record in primary key column.
+     * @param recordId ID value of the record in primary key column.
      * @param newValues Column-value mappings to update.
      * @return OperationResult status.
      */
-    OperationResult update(const string& tableName, int recordId, const Record& newValues);
+    OperationResult update(const string& tableName, const Value& recordId, const Record& newValues);
 
     /**
      * @brief Delete a record directly by table name and ID (Rule 6.3).
      * Validates existence and enforces referential integrity (Rule 2 & 4) before deletion.
      * @param tableName Target table name.
-     * @param recordId ID of the record to remove.
+     * @param recordId ID value of the record to remove.
      * @return OperationResult status and affected row count.
      */
-    OperationResult remove(const string& tableName, int recordId);
+    OperationResult remove(const string& tableName, const Value& recordId);
 
     /// Remove all tables and free all allocated table memory.
     void clear();

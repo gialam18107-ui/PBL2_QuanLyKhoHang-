@@ -47,13 +47,11 @@ public:
      * @brief Validate a single column value against this constraint on the given table.
      * @param value Value of target column being inserted or updated.
      * @param table Owning Table (for index lookup and Database access).
-     * @param ignoreRowIndex Physical row index to ignore on update (-1 for insert).
      * @return true if constraint is satisfied.
      */
     virtual bool validate(
         const Value& value,
-        const Table& table,
-        int ignoreRowIndex = -1
+        const Table& table
     ) const = 0;
 };
 
@@ -77,8 +75,7 @@ public:
 
     bool validate(
         const Value& value,
-        const Table& table,
-        int ignoreRowIndex = -1
+        const Table& table
     ) const override;
 };
 
@@ -102,8 +99,7 @@ public:
 
     bool validate(
         const Value& value,
-        const Table& table,
-        int ignoreRowIndex = -1
+        const Table& table
     ) const override;
 };
 
@@ -139,8 +135,7 @@ public:
 
     bool validate(
         const Value& value,
-        const Table& table,
-        int ignoreRowIndex = -1
+        const Table& table
     ) const override;
 };
 
@@ -163,8 +158,7 @@ public:
 
     bool validate(
         const Value& value,
-        const Table& table,
-        int ignoreRowIndex = -1
+        const Table& table
     ) const override;
 };
 

@@ -175,18 +175,19 @@ namespace DataIO
             return false;
         }
 
-        const Vector<Column>& columns = table.getColumns();
+        const HashMap<string, Column>& columns = table.getColumns();
         Vector<string> headerNames;
-        for (const auto& col : columns)
+        headerNames.reserve(columns.size());
+        for (const auto& entry : columns)
         {
-            headerNames.push_back(col.getName());
+            headerNames.push_back(entry.first);
         }
 
         file << CSVHelper::formatLine(headerNames) << "\n";
 
         for (const auto& r : table.view())
         {
-            file << CSVHelper::formatLine(r, columns) << "\n";
+            file << CSVHelper::formatLine(r, headerNames) << "\n";
         }
 
         return true;

@@ -29,8 +29,7 @@ private:
     string name;
     string primaryKeyColumn;
     const Database* database = nullptr;
-    Vector<Column> columns;
-    HashMap<string, size_t> columnIndexMap;
+    HashMap<string, Column> columns;
     Vector<Record> rows;
     Vector<unsigned char> deletedRows;
     size_t deletedRowCount = 0;
@@ -46,8 +45,7 @@ private:
     void setDatabase(const Database* db) { database = db; }
 
     bool checkDataType(const Column& column, const Value& value) const;
-    bool checkColumnConstraints(const string& columnName, const Value& value, int ignoreRowIndex = -1) const;
-    bool checkConstraints(const Record& record, int ignoreRowIndex = -1) const;
+    bool checkConstraints(const string& columnName, const Value& value) const;
     void rebuildIndexes();
 
     // Internal physical access for TableView and internal friends
@@ -57,7 +55,7 @@ private:
     bool isRowDeleted(size_t rowIndex) const;
 
     // Internal row lookup and referential integrity check for Database
-    int findRowIndexById(int id) const;
+    int findRowIndexById(const Value& id) const;
     bool isReferencingRecord(const string& parentTableName, const Record& parentRecord) const;
 
     // Transaction & compaction management (Database only)
@@ -97,7 +95,7 @@ public:
 
     /**
      * @brief Add a column definition to the table schema and auto-create column constraints.
-     * @param column Column descriptor (name, type, size, autoIncrement, defaultValue).
+     * @param column Column descriptor (name, type, autoIncrement, defaultValue).
      * @param primaryKey Auto-create PrimaryKeyConstraint and NotNullConstraint.
      * @param unique Auto-create UniqueConstraint (when not primaryKey).
      * @param notNull Auto-create NotNullConstraint.
@@ -113,8 +111,8 @@ public:
     /// Get the number of columns defined in this table.
     int getColumnCount() const;
 
-    /// Get reference to vector of all column definitions.
-    const Vector<Column>& getColumns() const;
+    /// Get reference to hash map of all column definitions keyed by column name.
+    const HashMap<string, Column>& getColumns() const;
 
     /// Check whether a column has a constraint of the given type.
     bool hasConstraint(const string& columnName, ConstraintType type) const;
@@ -151,30 +149,30 @@ public:
     /// Get the primary key column name of this table (O(1)).
     const string& getPrimaryKeyColumn() const;
 
-    /// Get pointer to record by record ID in the primary key column (nullptr if not found or deleted).
-    const Record* getRecordById(int id) const;
+    /// Get pointer to record by primary key Value (nullptr if not found or deleted).
+    const Record* getRecordById(const Value& id) const;
 
     /**
-     * @brief Update a record directly by its primary key ID (validates only changed columns).
+     * @brief Update a record directly by its primary key Value (validates only changed columns).
      * @param id Value of the primary key.
      * @param newValues Column-value updates.
      * @return true if updated, false if not found or constraint failed.
      */
-    bool updateById(int id, const Record& newValues);
+    bool updateById(const Value& id, const Record& newValues);
 
     /**
-     * @brief Remove a record directly by its primary key ID.
+     * @brief Remove a record directly by its primary key Value.
      * @param id Value of the primary key.
      * @param allowCompact Compact deleted rows immediately if threshold met and no active views.
      * @return true if found and removed.
      */
-    bool removeById(int id, bool allowCompact = true);
+    bool removeById(const Value& id, bool allowCompact = true);
 
     /// Get total number of active rows in the table.
     int getRowCount() const;
 
-    /// Check if table contains a specific value in a column (optionally ignoring a physical row index).
-    bool contains(const string& columnName, const Value& value, int ignoreRowIndex = -1) const;
+    /// Check if table contains a specific value in a column.
+    bool contains(const string& columnName, const Value& value) const;
 
     // ========================================================
     // TABLE VIEW: UNIFIED ITERATION (ZERO-COPY & DELETED-SAFE)

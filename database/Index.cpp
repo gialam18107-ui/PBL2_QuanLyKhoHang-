@@ -18,6 +18,12 @@ IndexType Index::getType() const
     return type;
 }
 
+bool Index::contains(const Value& value) const
+{
+    size_t dummy = 0;
+    return findFirst(value, dummy);
+}
+
 // ============================================================
 // HASH INDEX
 // ============================================================
@@ -51,17 +57,6 @@ void HashIndex::remove(const Value& value, size_t rowIndex)
 void HashIndex::clear()
 {
     indexMap.clear();
-}
-
-bool HashIndex::contains(const Value& value, int ignoreRowIndex) const
-{
-    string key = valueToHashKey(value);
-    auto it = indexMap.find(key);
-    if (it == indexMap.end())
-    {
-        return false;
-    }
-    return static_cast<int>(it->second) != ignoreRowIndex;
 }
 
 bool HashIndex::findFirst(const Value& value, size_t& outRowIndex) const
@@ -120,18 +115,6 @@ void AVLTreeIndex::remove(const Value& value, size_t rowIndex)
 void AVLTreeIndex::clear()
 {
     tree.clear();
-}
-
-bool AVLTreeIndex::contains(const Value& value, int ignoreRowIndex) const
-{
-    for (auto it = tree.lower_bound(value); it != tree.end() && it->key == value; ++it)
-    {
-        if (static_cast<int>(it->key.second) != ignoreRowIndex)
-        {
-            return true;
-        }
-    }
-    return false;
 }
 
 bool AVLTreeIndex::findFirst(const Value& value, size_t& outRowIndex) const
@@ -204,28 +187,6 @@ void HashTreeIndex::remove(const Value& value, size_t rowIndex)
 void HashTreeIndex::clear()
 {
     indexMap.clear();
-}
-
-bool HashTreeIndex::contains(const Value& value, int ignoreRowIndex) const
-{
-    string key = valueToHashKey(value);
-    auto it = indexMap.find(key);
-    if (it == indexMap.end() || it->second.empty())
-    {
-        return false;
-    }
-    if (ignoreRowIndex < 0)
-    {
-        return true;
-    }
-    for (const auto& node : it->second)
-    {
-        if (static_cast<int>(node.key) != ignoreRowIndex)
-        {
-            return true;
-        }
-    }
-    return false;
 }
 
 bool HashTreeIndex::findFirst(const Value& value, size_t& outRowIndex) const

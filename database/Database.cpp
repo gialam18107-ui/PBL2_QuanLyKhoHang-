@@ -184,7 +184,7 @@ OperationResult Database::insertRecord(const string& tableName, const Record& re
     return OperationResult(true, "Thêm bản ghi thành công.", 1);
 }
 
-OperationResult Database::update(const string& tableName, int recordId, const Record& newValues)
+OperationResult Database::update(const string& tableName, const Value& recordId, const Record& newValues)
 {
     Table* table = getMutableTable(tableName);
     if (table == nullptr)
@@ -194,7 +194,7 @@ OperationResult Database::update(const string& tableName, int recordId, const Re
     int rowIndex = table->findRowIndexById(recordId);
     if (rowIndex < 0)
     {
-        return OperationResult(false, "Không tìm thấy bản ghi với ID " + to_string(recordId) + " trong bảng '" + tableName + "'.", 0);
+        return OperationResult(false, "Không tìm thấy bản ghi với ID " + valueToString(recordId) + " trong bảng '" + tableName + "'.", 0);
     }
     Record oldRecord;
     if (inTransaction)
@@ -217,7 +217,7 @@ OperationResult Database::update(const string& tableName, int recordId, const Re
     return OperationResult(true, "Cập nhật bản ghi thành công.", 1);
 }
 
-OperationResult Database::remove(const string& tableName, int recordId)
+OperationResult Database::remove(const string& tableName, const Value& recordId)
 {
     Table* table = getMutableTable(tableName);
     if (table == nullptr)
@@ -232,7 +232,7 @@ OperationResult Database::remove(const string& tableName, int recordId)
     int rowIndex = table->findRowIndexById(recordId);
     if (rowIndex < 0)
     {
-        return OperationResult(false, "Không tìm thấy bản ghi với ID " + to_string(recordId) + " trong bảng '" + tableName + "'.", 0);
+        return OperationResult(false, "Không tìm thấy bản ghi với ID " + valueToString(recordId) + " trong bảng '" + tableName + "'.", 0);
     }
     const Record& record = table->getRawRow(static_cast<size_t>(rowIndex));
     if (isReferenced(*this, tableName, record))

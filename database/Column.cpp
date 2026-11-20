@@ -6,13 +6,11 @@ using namespace std;
 Column::Column(
     const string& name,
     DataType type,
-    int size,
     bool autoIncrement,
     const Value& defaultValue
 )
     : name(name),
       type(type),
-      size(size),
       autoIncrement(autoIncrement),
       defaultValue(defaultValue)
 {
@@ -26,11 +24,6 @@ const string& Column::getName() const
 DataType Column::getType() const
 {
     return type;
-}
-
-int Column::getSize() const
-{
-    return size;
 }
 
 bool Column::isAutoIncrement() const
@@ -51,11 +44,6 @@ void Column::setName(const string& name)
 void Column::setType(DataType type)
 {
     this->type = type;
-}
-
-void Column::setSize(int size)
-{
-    this->size = size;
 }
 
 void Column::setAutoIncrement(bool value)
@@ -97,11 +85,6 @@ string Column::getTypeName() const
 void Column::print() const
 {
     cout << name << " " << getTypeName();
-
-    if (size > 0)
-    {
-        cout << "(" << size << ")";
-    }
 
     if (autoIncrement)
     {

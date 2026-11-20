@@ -31,15 +31,14 @@ Constraint* PrimaryKeyConstraint::clone() const { return new PrimaryKeyConstrain
 
 bool PrimaryKeyConstraint::validate(
     const Value& value,
-    const Table& table,
-    int ignoreRowIndex
+    const Table& table
 ) const
 {
     if (isNull(value))
     {
         return false;
     }
-    return !table.contains(columnName, value, ignoreRowIndex);
+    return !table.contains(columnName, value);
 }
 
 // ============================================================
@@ -58,8 +57,7 @@ Constraint* UniqueConstraint::clone() const { return new UniqueConstraint(*this)
 
 bool UniqueConstraint::validate(
     const Value& value,
-    const Table& table,
-    int ignoreRowIndex
+    const Table& table
 ) const
 {
     if (isNull(value))
@@ -70,7 +68,7 @@ bool UniqueConstraint::validate(
     {
         return true;
     }
-    return !table.contains(columnName, value, ignoreRowIndex);
+    return !table.contains(columnName, value);
 }
 
 // ============================================================
@@ -95,8 +93,7 @@ const string& ForeignKeyConstraint::getReferenceColumn() const { return referenc
 
 bool ForeignKeyConstraint::validate(
     const Value& value,
-    const Table& table,
-    int /*ignoreRowIndex*/
+    const Table& table
 ) const
 {
     if (isNull(value))
@@ -132,8 +129,7 @@ Constraint* NotNullConstraint::clone() const { return new NotNullConstraint(*thi
 
 bool NotNullConstraint::validate(
     const Value& value,
-    const Table& /*table*/,
-    int /*ignoreRowIndex*/
+    const Table& /*table*/
 ) const
 {
     return !isNull(value);
