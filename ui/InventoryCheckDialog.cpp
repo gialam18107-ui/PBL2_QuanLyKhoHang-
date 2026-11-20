@@ -941,16 +941,15 @@ void InventoryCheckReconciliationDialog::setupUI()
     b3Layout->addLayout(b3ToolBar);
 
     movementDetailTable = new QTableWidget(b3Widget);
-    movementDetailTable->setColumnCount(8);
-    movementDetailTable->setHorizontalHeaderLabels({"Chọn", "STT", "Số Serial (SN)", "Mã SP", "Tên sản phẩm", "Từ trạng thái", "Đến trạng thái", "Đối soát live"});
+    movementDetailTable->setColumnCount(7);
+    movementDetailTable->setHorizontalHeaderLabels({"Chọn", "STT", "Số Serial (SN)", "Mã SP", "Tên sản phẩm", "Từ trạng thái", "Đến trạng thái"});
     movementDetailTable->setColumnWidth(0, 55);
     movementDetailTable->setColumnWidth(1, 45);
     movementDetailTable->setColumnWidth(2, 150);
     movementDetailTable->setColumnWidth(3, 155);
     movementDetailTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Stretch);
-    movementDetailTable->setColumnWidth(5, 130);
-    movementDetailTable->setColumnWidth(6, 130);
-    movementDetailTable->setColumnWidth(7, 165);
+    movementDetailTable->setColumnWidth(5, 145);
+    movementDetailTable->setColumnWidth(6, 145);
     movementDetailTable->setAlternatingRowColors(true);
     TableClipboardHelper::setupClipboardForTable(movementDetailTable);
     movementDetailTable->verticalHeader()->setDefaultSectionSize(32);
@@ -1129,26 +1128,26 @@ void InventoryCheckReconciliationDialog::loadReconciliationData()
                         // Type 1 Surplus (Rediscovered OUT Unit)
                         if (!scanSt.isEmpty() && scanSt != "OUT") {
                             surplusCount++;
-                            surplusUnitList.push_back({"REDISCOVERED_OUT", pid, sn, pCode, pName, "OUT", scanSt, 1, false, ""});
+                            surplusUnitList.push_back({"REDISCOVERED_OUT", pid, sn, pCode, pName, "OUT", scanSt, 1});
                         }
                     } else if (sysSt.isEmpty()) {
                         // Type 2 Surplus (Brand-new Unrecorded Unit recorded in inventory_check_unit)
                         if (!scanSt.isEmpty() && scanSt != "OUT") {
                             surplusCount++;
-                            surplusUnitList.push_back({"NEW_SURPLUS", pid, sn, pCode, pName, "NULL", scanSt, 1, false, ""});
+                            surplusUnitList.push_back({"NEW_SURPLUS", pid, sn, pCode, pName, "NULL", scanSt, 1});
                         }
                     } else {
                         // Candidate unit in warehouse
                         if (scanSt.isEmpty() || scanSt == "UNCHECKED" || scanSt == "OUT") {
                             // Missing unit
                             missingCount++;
-                            missingUnitList.push_back({cuId, pid, sn, pCode, pName, sysSt, false, ""});
+                            missingUnitList.push_back({cuId, pid, sn, pCode, pName, sysSt});
                         } else if (scanSt == sysSt) {
                             matchedCount++;
                         } else {
                             // Status shift
                             shiftCount++;
-                            statusShiftUnitList.push_back({cuId, pid, sn, pCode, pName, sysSt, scanSt, false, ""});
+                            statusShiftUnitList.push_back({cuId, pid, sn, pCode, pName, sysSt, scanSt});
                         }
                     }
                 }
@@ -1160,9 +1159,9 @@ void InventoryCheckReconciliationDialog::loadReconciliationData()
             int unrecScrap = std::max(0, actScrap - scanScrapCount);
             unrecordedSurplus = unrecAvail + unrecWarr + unrecScrap;
 
-            if (unrecAvail > 0) surplusUnitList.push_back({"UNRECORDED", pid, "(Chưa định danh)", pCode, pName, "NULL", "AVAILABLE", unrecAvail, false, ""});
-            if (unrecWarr > 0) surplusUnitList.push_back({"UNRECORDED", pid, "(Chưa định danh)", pCode, pName, "NULL", "WARRANTY", unrecWarr, false, ""});
-            if (unrecScrap > 0) surplusUnitList.push_back({"UNRECORDED", pid, "(Chưa định danh)", pCode, pName, "NULL", "SCRAPPED", unrecScrap, false, ""});
+            if (unrecAvail > 0) surplusUnitList.push_back({"UNRECORDED", pid, "(Chưa định danh)", pCode, pName, "NULL", "AVAILABLE", unrecAvail});
+            if (unrecWarr > 0) surplusUnitList.push_back({"UNRECORDED", pid, "(Chưa định danh)", pCode, pName, "NULL", "WARRANTY", unrecWarr});
+            if (unrecScrap > 0) surplusUnitList.push_back({"UNRECORDED", pid, "(Chưa định danh)", pCode, pName, "NULL", "SCRAPPED", unrecScrap});
 
             surplusCount += unrecordedSurplus;
         } else {
@@ -1170,10 +1169,10 @@ void InventoryCheckReconciliationDialog::loadReconciliationData()
             int diff = actTotal - sysTotal;
             if (diff > 0) {
                 surplusCount = diff;
-                surplusUnitList.push_back({"UNRECORDED", pid, "(Số lượng thừa)", pCode, pName, "NULL", "AVAILABLE", diff, false, ""});
+                surplusUnitList.push_back({"UNRECORDED", pid, "(Số lượng thừa)", pCode, pName, "NULL", "AVAILABLE", diff});
             } else if (diff < 0) {
                 missingCount = -diff;
-                missingUnitList.push_back({0, pid, "(Số lượng thiếu)", pCode, pName, "AVAILABLE", false, ""});
+                missingUnitList.push_back({0, pid, "(Số lượng thiếu)", pCode, pName, "AVAILABLE"});
             }
             matchedCount = std::min(sysTotal, actTotal);
 
@@ -1184,10 +1183,10 @@ void InventoryCheckReconciliationDialog::loadReconciliationData()
             if (diff == 0 && (diffAvail != 0 || diffWarr != 0 || diffScrap != 0)) {
                 shiftCount = (std::abs(diffAvail) + std::abs(diffWarr) + std::abs(diffScrap)) / 2;
                 if (diffAvail < 0 && diffScrap > 0) {
-                    statusShiftUnitList.push_back({0, pid, "(Điều chuyển số lượng)", pCode, pName, "AVAILABLE", "SCRAPPED", false, ""});
+                    statusShiftUnitList.push_back({0, pid, "(Điều chuyển số lượng)", pCode, pName, "AVAILABLE", "SCRAPPED"});
                 }
                 if (diffAvail < 0 && diffWarr > 0) {
-                    statusShiftUnitList.push_back({0, pid, "(Điều chuyển số lượng)", pCode, pName, "AVAILABLE", "WARRANTY", false, ""});
+                    statusShiftUnitList.push_back({0, pid, "(Điều chuyển số lượng)", pCode, pName, "AVAILABLE", "WARRANTY"});
                 }
             }
         }
@@ -1258,64 +1257,6 @@ void InventoryCheckReconciliationDialog::loadReconciliationData()
     matrixTable->blockSignals(false);
     matrixTable->setUpdatesEnabled(true);
 
-    // Live Re-validation against unit_inventory before rendering Bucket 1..3
-    for (auto& u : surplusUnitList) {
-        u.isConflict = false;
-        u.conflictReason.clear();
-        if (u.type != "UNRECORDED" && !u.serial.startsWith("(")) {
-            int livePid = 0;
-            std::string liveSt;
-            if (user_query::get_unit_live_info_by_serial(db, u.serial.toStdString(), livePid, liveSt)) {
-                if (livePid != u.productId) {
-                    u.isConflict = true;
-                    u.conflictReason = "⚠️ Serial thuộc SP khác";
-                } else if (liveSt != "OUT") {
-                    u.isConflict = true;
-                    u.conflictReason = QString("⚠️ Đã nhập kho (%1)")
-                        .arg(UiLocalization::localizeStatus(QString::fromStdString(liveSt)));
-                }
-            }
-        }
-    }
-
-    for (auto& u : missingUnitList) {
-        u.isConflict = false;
-        u.conflictReason.clear();
-        if (!u.serial.startsWith("(")) {
-            int livePid = 0;
-            std::string liveSt;
-            bool found = user_query::get_unit_live_info_by_serial(db, u.serial.toStdString(), livePid, liveSt);
-            if (!found || livePid != u.productId) {
-                u.isConflict = true;
-                u.conflictReason = "⚠️ Không tồn tại / lệch SP";
-            } else if (liveSt == "OUT") {
-                u.isConflict = true;
-                u.conflictReason = "⚠️ Đã xuất kho trước đó";
-            }
-        }
-    }
-
-    for (auto& u : statusShiftUnitList) {
-        u.isConflict = false;
-        u.conflictReason.clear();
-        if (!u.serial.startsWith("(")) {
-            int livePid = 0;
-            std::string liveSt;
-            bool found = user_query::get_unit_live_info_by_serial(db, u.serial.toStdString(), livePid, liveSt);
-            if (!found || livePid != u.productId) {
-                u.isConflict = true;
-                u.conflictReason = "⚠️ Không tồn tại / lệch SP";
-            } else if (liveSt == "OUT") {
-                u.isConflict = true;
-                u.conflictReason = "⚠️ Đã xuất kho trước đó";
-            } else if (liveSt != u.fromStatus.toStdString()) {
-                u.isConflict = true;
-                u.conflictReason = QString("⚠️ Trạng thái đổi thành %1")
-                    .arg(UiLocalization::localizeStatus(QString::fromStdString(liveSt)));
-            }
-        }
-    }
-
     // Update Bucket 1 (Hàng cần nhập điều chỉnh - surplus/unrecorded items needing ADJUSTMENT_IN)
     missingUnitTable->setUpdatesEnabled(false);
     missingUnitTable->blockSignals(true);
@@ -1323,34 +1264,19 @@ void InventoryCheckReconciliationDialog::loadReconciliationData()
     for (int r = 0; r < static_cast<int>(surplusUnitList.size()); ++r) {
         const auto& u = surplusUnitList[r];
         auto* chkItem = makeItem("");
-        if (u.isConflict) {
-            chkItem->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
-            chkItem->setCheckState(Qt::Unchecked);
-        } else {
-            chkItem->setFlags(Qt::ItemIsUserCheckable | Qt::ItemIsEnabled | Qt::ItemIsSelectable);
-            chkItem->setCheckState(Qt::Checked);
-        }
+        chkItem->setFlags(Qt::ItemIsUserCheckable | Qt::ItemIsEnabled | Qt::ItemIsSelectable);
+        chkItem->setCheckState(Qt::Checked);
         missingUnitTable->setItem(r, 0, chkItem);
         missingUnitTable->setItem(r, 1, makeItem(QString::number(r + 1), Qt::AlignCenter));
         missingUnitTable->setItem(r, 2, makeItem(u.serial));
         missingUnitTable->setItem(r, 3, makeItem(u.productCode));
         missingUnitTable->setItem(r, 4, makeItem(u.productName));
         missingUnitTable->setItem(r, 5, makeItem(UiLocalization::localizeStatus(u.physicalCondition)));
-        QString typeDesc = u.isConflict
-            ? u.conflictReason
-            : (u.type == "REDISCOVERED_OUT" ? "Tái phát hiện"
-               : (u.type == "UNRECORDED" && u.quantity > 1
-                  ? QString("Hàng thừa (%1 cái)").arg(u.quantity)
-                  : QString("Hàng thừa thực tế")));
+        QString typeDesc = (u.type == "REDISCOVERED_OUT" ? "Tái phát hiện"
+            : (u.type == "UNRECORDED" && u.quantity > 1
+               ? QString("Hàng thừa (%1 cái)").arg(u.quantity)
+               : QString("Hàng thừa thực tế")));
         missingUnitTable->setItem(r, 6, makeItem(typeDesc));
-        if (u.isConflict) {
-            for (int c = 0; c < missingUnitTable->columnCount(); ++c) {
-                if (auto* it = missingUnitTable->item(r, c)) {
-                    it->setForeground(QColor("#94a3b8"));
-                    if (c == 6) it->setForeground(QColor("#dc2626"));
-                }
-            }
-        }
     }
     missingUnitTable->blockSignals(false);
     missingUnitTable->setUpdatesEnabled(true);
@@ -1362,28 +1288,15 @@ void InventoryCheckReconciliationDialog::loadReconciliationData()
     for (int r = 0; r < static_cast<int>(missingUnitList.size()); ++r) {
         const auto& u = missingUnitList[r];
         auto* chkItem = makeItem("");
-        if (u.isConflict) {
-            chkItem->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
-            chkItem->setCheckState(Qt::Unchecked);
-        } else {
-            chkItem->setFlags(Qt::ItemIsUserCheckable | Qt::ItemIsEnabled | Qt::ItemIsSelectable);
-            chkItem->setCheckState(Qt::Checked);
-        }
+        chkItem->setFlags(Qt::ItemIsUserCheckable | Qt::ItemIsEnabled | Qt::ItemIsSelectable);
+        chkItem->setCheckState(Qt::Checked);
         surplusDetailTable->setItem(r, 0, chkItem);
         surplusDetailTable->setItem(r, 1, makeItem(QString::number(r + 1), Qt::AlignCenter));
         surplusDetailTable->setItem(r, 2, makeItem(u.serial));
         surplusDetailTable->setItem(r, 3, makeItem(u.productCode));
         surplusDetailTable->setItem(r, 4, makeItem(u.productName));
         surplusDetailTable->setItem(r, 5, makeItem(UiLocalization::localizeStatus(u.systemStatus)));
-        surplusDetailTable->setItem(r, 6, makeItem(u.isConflict ? u.conflictReason : "Hàng thiếu trên thực tế"));
-        if (u.isConflict) {
-            for (int c = 0; c < surplusDetailTable->columnCount(); ++c) {
-                if (auto* it = surplusDetailTable->item(r, c)) {
-                    it->setForeground(QColor("#94a3b8"));
-                    if (c == 6) it->setForeground(QColor("#dc2626"));
-                }
-            }
-        }
+        surplusDetailTable->setItem(r, 6, makeItem("Hàng thiếu trên thực tế"));
     }
     surplusDetailTable->blockSignals(false);
     surplusDetailTable->setUpdatesEnabled(true);
@@ -1395,13 +1308,8 @@ void InventoryCheckReconciliationDialog::loadReconciliationData()
     for (int r = 0; r < static_cast<int>(statusShiftUnitList.size()); ++r) {
         const auto& u = statusShiftUnitList[r];
         auto* chkItem = makeItem("");
-        if (u.isConflict) {
-            chkItem->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
-            chkItem->setCheckState(Qt::Unchecked);
-        } else {
-            chkItem->setFlags(Qt::ItemIsUserCheckable | Qt::ItemIsEnabled | Qt::ItemIsSelectable);
-            chkItem->setCheckState(Qt::Checked);
-        }
+        chkItem->setFlags(Qt::ItemIsUserCheckable | Qt::ItemIsEnabled | Qt::ItemIsSelectable);
+        chkItem->setCheckState(Qt::Checked);
         movementDetailTable->setItem(r, 0, chkItem);
         movementDetailTable->setItem(r, 1, makeItem(QString::number(r + 1), Qt::AlignCenter));
         movementDetailTable->setItem(r, 2, makeItem(u.serial));
@@ -1409,17 +1317,6 @@ void InventoryCheckReconciliationDialog::loadReconciliationData()
         movementDetailTable->setItem(r, 4, makeItem(u.productName));
         movementDetailTable->setItem(r, 5, makeItem(UiLocalization::localizeStatus(u.fromStatus)));
         movementDetailTable->setItem(r, 6, makeItem(UiLocalization::localizeStatus(u.toStatus)));
-        movementDetailTable->setItem(r, 7, makeItem(u.isConflict ? u.conflictReason : "✅ Sẵn sàng"));
-        if (u.isConflict) {
-            for (int c = 0; c < movementDetailTable->columnCount(); ++c) {
-                if (auto* it = movementDetailTable->item(r, c)) {
-                    it->setForeground(QColor("#94a3b8"));
-                    if (c == 7) it->setForeground(QColor("#dc2626"));
-                }
-            }
-        } else if (auto* it7 = movementDetailTable->item(r, 7)) {
-            it7->setForeground(QColor("#15803d"));
-        }
     }
     movementDetailTable->blockSignals(false);
     movementDetailTable->setUpdatesEnabled(true);
@@ -1443,23 +1340,14 @@ void InventoryCheckReconciliationDialog::updateLockingState()
     bool hasMovOrder = !movCodeStd.empty();
     QString movCode = QString::fromStdString(movCodeStd);
 
-    int validInCount = 0;
-    for (const auto& u : surplusUnitList) if (!u.isConflict) validInCount++;
-    int validOutCount = 0;
-    for (const auto& u : missingUnitList) if (!u.isConflict) validOutCount++;
-    int validMovCount = 0;
-    for (const auto& u : statusShiftUnitList) if (!u.isConflict) validMovCount++;
-
     if (hasInOrder) {
         createInboundBtn->setEnabled(false);
         createInboundBtn->setText(QString("🔒 Đã tạo đơn nhập: %1").arg(inCode));
         createInboundBtn->setStyleSheet("background-color: #e2e8f0; color: #475569; font-weight: 600; padding: 8px 16px; border-radius: 6px;");
         inboundStatusLabel->setText(QString("✅ Đơn nhập điều chỉnh: <b style='color:#15803d;'>%1</b>").arg(inCode));
-    } else if (surplusUnitList.empty() || validInCount == 0) {
+    } else if (surplusUnitList.empty()) {
         createInboundBtn->setEnabled(false);
-        createInboundBtn->setText(surplusUnitList.empty()
-            ? "Không có linh kiện cần nhập điều chỉnh"
-            : "Tất cả linh kiện đã nhập kho / trùng");
+        createInboundBtn->setText("Không có linh kiện cần nhập điều chỉnh");
         createInboundBtn->setStyleSheet("background-color: #f1f5f9; color: #94a3b8; font-weight: 500; padding: 8px 16px; border-radius: 6px;");
         inboundStatusLabel->setText("");
     } else {
@@ -1476,11 +1364,9 @@ void InventoryCheckReconciliationDialog::updateLockingState()
         createOutboundBtn->setText(QString("🔒 Đã tạo đơn xuất: %1").arg(outCode));
         createOutboundBtn->setStyleSheet("background-color: #e2e8f0; color: #475569; font-weight: 600; padding: 8px 16px; border-radius: 6px;");
         outboundStatusLabel->setText(QString("✅ Đơn xuất điều chỉnh: <b style='color:#15803d;'>%1</b>").arg(outCode));
-    } else if (missingUnitList.empty() || validOutCount == 0) {
+    } else if (missingUnitList.empty()) {
         createOutboundBtn->setEnabled(false);
-        createOutboundBtn->setText(missingUnitList.empty()
-            ? "Không có linh kiện cần xuất điều chỉnh"
-            : "Tất cả linh kiện đã xuất kho trước đó");
+        createOutboundBtn->setText("Không có linh kiện cần xuất điều chỉnh");
         createOutboundBtn->setStyleSheet("background-color: #f1f5f9; color: #94a3b8; font-weight: 500; padding: 8px 16px; border-radius: 6px;");
         outboundStatusLabel->setText("");
     } else {
@@ -1497,11 +1383,9 @@ void InventoryCheckReconciliationDialog::updateLockingState()
         createMovementBtn->setText(QString("🔒 Đã lập phiếu điều chỉnh trạng thái: %1").arg(movCode));
         createMovementBtn->setStyleSheet("background-color: #e2e8f0; color: #475569; font-weight: 600; padding: 8px 16px; border-radius: 6px;");
         movementStatusLabel->setText(QString("✅ Phiếu điều chỉnh trạng thái: <b style='color:#15803d;'>%1</b>").arg(movCode));
-    } else if (statusShiftUnitList.empty() || validMovCount == 0) {
+    } else if (statusShiftUnitList.empty()) {
         createMovementBtn->setEnabled(false);
-        createMovementBtn->setText(statusShiftUnitList.empty()
-            ? "Không có linh kiện cần điều chỉnh trạng thái"
-            : "Không có linh kiện hợp lệ để điều chỉnh");
+        createMovementBtn->setText("Không có linh kiện cần điều chỉnh trạng thái");
         createMovementBtn->setStyleSheet("background-color: #f1f5f9; color: #94a3b8; font-weight: 500; padding: 8px 16px; border-radius: 6px;");
         movementStatusLabel->setText("");
     } else {
@@ -1524,7 +1408,6 @@ void InventoryCheckReconciliationDialog::onCreateInboundAdj()
         if (chk && (chk->flags() & Qt::ItemIsUserCheckable) && chk->checkState() == Qt::Checked) {
             if (r < static_cast<int>(surplusUnitList.size())) {
                 const auto& u = surplusUnitList[r];
-                if (u.isConflict) continue;
                 bool isUnrec = (u.type == "UNRECORDED" || u.serial.startsWith("("));
                 int qty = isUnrec ? std::max(1, u.quantity) : 1;
                 std::string sn = isUnrec ? "" : u.serial.toStdString();
@@ -1577,7 +1460,6 @@ void InventoryCheckReconciliationDialog::onCreateOutboundAdj()
         if (chk && (chk->flags() & Qt::ItemIsUserCheckable) && chk->checkState() == Qt::Checked) {
             if (r < static_cast<int>(missingUnitList.size())) {
                 const auto& u = missingUnitList[r];
-                if (u.isConflict) continue;
                 entries.push_back({u.productId, u.serial.toStdString()});
                 prodCounts[u.productId]++;
             }
@@ -1625,7 +1507,6 @@ void InventoryCheckReconciliationDialog::onCreateMovementAdj()
         if (chk && (chk->flags() & Qt::ItemIsUserCheckable) && chk->checkState() == Qt::Checked) {
             if (r < static_cast<int>(statusShiftUnitList.size())) {
                 const auto& u = statusShiftUnitList[r];
-                if (u.isConflict) continue;
                 std::string fSt = u.fromStatus.toStdString();
                 std::string tSt = u.toStatus.toStdString();
                 entries.push_back({u.productId, fSt, tSt, u.serial.toStdString()});

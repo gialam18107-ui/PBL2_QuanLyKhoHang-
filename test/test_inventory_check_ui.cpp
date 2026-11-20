@@ -5,6 +5,7 @@
 #include <QDateTime>
 #include <QElapsedTimer>
 #include <QEvent>
+#include <QFile>
 #include <QGuiApplication>
 #include <QImage>
 #include <QItemSelectionModel>
@@ -138,7 +139,6 @@ void printStep(const std::string& label, qint64 ms, const std::string& extra = "
 int main(int argc, char* argv[]) {
     qputenv("QT_QPA_PLATFORM", "offscreen");
     QApplication app(argc, argv);
-    app.setProperty("skipCsvDiskPersistence", true);
 
     AutoModalDismisser dismisser(&app);
     app.installEventFilter(&dismisser);
@@ -1035,6 +1035,7 @@ int main(int argc, char* argv[]) {
         // --------------------------------------------------------------------
         // 13b. Post-check Bucket 1 (REDISCOVERED_OUT + NEW_SURPLUS):
         //      import -> export -> re-import with exact recorded audit status
+        //      Snapshot UI keeps checkboxes enabled; atomic 1-tx rejects & rolls back cleanly
         // --------------------------------------------------------------------
         // Phase 1: Import both Bucket 1 units into warehouse with DIFFERENT status than audit
         importSerial("CUSTOMER_RETURN", pidA, "AVAILABLE", snOutA, "13b diff status OutA");
@@ -1046,23 +1047,28 @@ int main(int argc, char* argv[]) {
             auto* tabW = recon1.findChild<QTabWidget*>();
             assert(tabW && tabW->count() >= 3);
             auto* b1Tbl = tabW->widget(0)->findChild<QTableWidget*>();
-            assert(b1Tbl);
+            assert(b1Tbl && b1Tbl->columnCount() == 7);
             int rOut = findRowBySerial(b1Tbl, 2, snOutA);
             int rNew = findRowBySerial(b1Tbl, 2, snNewSurplusA);
             assert(rOut >= 0 && rNew >= 0);
-            assert(b1Tbl->item(rOut, 6)->text().contains("⚠️ Đã nhập kho"));
-            assert(b1Tbl->item(rNew, 6)->text().contains("⚠️ Đã nhập kho"));
-            assert(!(b1Tbl->item(rOut, 0)->flags() & Qt::ItemIsUserCheckable));
-            assert(!(b1Tbl->item(rNew, 0)->flags() & Qt::ItemIsUserCheckable));
-            assert(b1Tbl->item(rOut, 0)->checkState() == Qt::Unchecked);
-            auto* b1LockBtn = findButtonContaining(tabW->widget(0), "Tất cả linh kiện đã nhập kho / trùng");
-            assert(b1LockBtn && !b1LockBtn->isEnabled());
+            assert(!b1Tbl->item(rOut, 6)->text().contains("⚠️"));
+            assert(!b1Tbl->item(rNew, 6)->text().contains("⚠️"));
+            assert(b1Tbl->item(rOut, 0)->flags() & Qt::ItemIsUserCheckable);
+            assert(b1Tbl->item(rNew, 0)->flags() & Qt::ItemIsUserCheckable);
+            assert(b1Tbl->item(rOut, 0)->checkState() == Qt::Checked);
+            assert(b1Tbl->item(rNew, 0)->checkState() == Qt::Checked);
+            auto* b1Btn = findButtonContaining(tabW->widget(0), "Tạo đơn nhập điều chỉnh");
+            assert(b1Btn && b1Btn->isEnabled());
             recon1.close();
         }
-        assert(!user_create::createAndReceiveAdjustmentInbound(&db, chk13Code, "2026-11-20", {{pidA, "WARRANTY", snOutA}}, "Should fail 13b-1").success);
-        assert(!user_create::createAndReceiveAdjustmentInbound(&db, chk13Code, "2026-11-20", {{pidA, "AVAILABLE", snNewSurplusA}}, "Should fail 13b-2").success);
+        {
+            int inTxCountBefore = inTxnTbl->getRowCount();
+            assert(!user_create::createAndReceiveAdjustmentInbound(&db, chk13Code, "2026-11-20", {{pidA, "WARRANTY", snOutA}}, "Should fail 13b-1").success);
+            assert(!user_create::createAndReceiveAdjustmentInbound(&db, chk13Code, "2026-11-20", {{pidA, "AVAILABLE", snNewSurplusA}}, "Should fail 13b-2").success);
+            assert(inTxnTbl->getRowCount() == inTxCountBefore);
+        }
 
-        // Phase 2: Export both out -> Bucket 1 becomes un-conflicted and eligible again
+        // Phase 2: Export both out -> Bucket 1 executes / ready
         exportSerial("SELLING", pidA, snOutA, "13b export OutA");
         exportSerial("WARRANTY_RETURN", pidA, snNewSurplusA, "13b export NewSurplusA");
         {
@@ -1097,16 +1103,22 @@ int main(int argc, char* argv[]) {
             int rOut = findRowBySerial(b1Tbl, 2, snOutA);
             int rNew = findRowBySerial(b1Tbl, 2, snNewSurplusA);
             assert(rOut >= 0 && rNew >= 0);
-            assert(b1Tbl->item(rOut, 6)->text().contains("⚠️ Đã nhập kho (Bảo hành)"));
-            assert(b1Tbl->item(rNew, 6)->text().contains("⚠️ Đã nhập kho (Khả dụng)"));
-            assert(!(b1Tbl->item(rOut, 0)->flags() & Qt::ItemIsUserCheckable));
-            assert(!(b1Tbl->item(rNew, 0)->flags() & Qt::ItemIsUserCheckable));
-            auto* b1LockBtn = findButtonContaining(tabW->widget(0), "Tất cả linh kiện đã nhập kho / trùng");
-            assert(b1LockBtn && !b1LockBtn->isEnabled());
+            assert(!b1Tbl->item(rOut, 6)->text().contains("⚠️"));
+            assert(!b1Tbl->item(rNew, 6)->text().contains("⚠️"));
+            assert(b1Tbl->item(rOut, 0)->flags() & Qt::ItemIsUserCheckable);
+            assert(b1Tbl->item(rNew, 0)->flags() & Qt::ItemIsUserCheckable);
+            assert(b1Tbl->item(rOut, 0)->checkState() == Qt::Checked);
+            assert(b1Tbl->item(rNew, 0)->checkState() == Qt::Checked);
+            auto* b1ReadyBtn = findButtonContaining(tabW->widget(0), "Tạo đơn nhập điều chỉnh");
+            assert(b1ReadyBtn && b1ReadyBtn->isEnabled());
             recon3.close();
         }
-        assert(!user_create::createAndReceiveAdjustmentInbound(&db, chk13Code, "2026-11-20", {{pidA, "WARRANTY", snOutA}}, "Reject exact re-import OutA").success);
-        assert(!user_create::createAndReceiveAdjustmentInbound(&db, chk13Code, "2026-11-20", {{pidA, "AVAILABLE", snNewSurplusA}}, "Reject exact re-import NewSurplusA").success);
+        {
+            int inTxCountBefore = inTxnTbl->getRowCount();
+            assert(!user_create::createAndReceiveAdjustmentInbound(&db, chk13Code, "2026-11-20", {{pidA, "WARRANTY", snOutA}}, "Reject exact re-import OutA").success);
+            assert(!user_create::createAndReceiveAdjustmentInbound(&db, chk13Code, "2026-11-20", {{pidA, "AVAILABLE", snNewSurplusA}}, "Reject exact re-import NewSurplusA").success);
+            assert(inTxnTbl->getRowCount() == inTxCountBefore);
+        }
 
         // Verify UnitEntryDialog also rejects duplicate existing serial & wrong product serial cleanly
         {
@@ -1160,8 +1172,9 @@ int main(int argc, char* argv[]) {
 
         // --------------------------------------------------------------------
         // 13c. Similar post-check cycles on Bucket 2 (Missing) & Bucket 3 (Status Shift)
+        //      Snapshot UI keeps checkboxes enabled (Bucket 2 & 3 = 7 columns); atomic 1-tx handles validation & rollback
         // --------------------------------------------------------------------
-        // Bucket 2: export snMissA -> conflict -> re-import with audit systemStatus -> ready -> execute
+        // Bucket 2: export snMissA -> atomic reject & rollback -> re-import with audit systemStatus -> execute
         exportSerial("SELLING", pidA, snMissA, "13c export MissA");
         {
             InventoryCheckReconciliationDialog reconB2a(&db, chk13Id);
@@ -1169,15 +1182,21 @@ int main(int argc, char* argv[]) {
             QApplication::processEvents();
             auto* tabW = reconB2a.findChild<QTabWidget*>();
             auto* b2Tbl = tabW->widget(1)->findChild<QTableWidget*>();
+            assert(b2Tbl && b2Tbl->columnCount() == 7);
             int rMiss = findRowBySerial(b2Tbl, 2, snMissA);
             assert(rMiss >= 0);
-            assert(b2Tbl->item(rMiss, 6)->text().contains("⚠️ Đã xuất kho trước đó"));
-            assert(!(b2Tbl->item(rMiss, 0)->flags() & Qt::ItemIsUserCheckable));
-            auto* b2LockBtn = findButtonContaining(tabW->widget(1), "Tất cả linh kiện đã xuất kho trước đó");
-            assert(b2LockBtn && !b2LockBtn->isEnabled());
+            assert(!b2Tbl->item(rMiss, 6)->text().contains("⚠️"));
+            assert(b2Tbl->item(rMiss, 0)->flags() & Qt::ItemIsUserCheckable);
+            assert(b2Tbl->item(rMiss, 0)->checkState() == Qt::Checked);
+            auto* b2Btn = findButtonContaining(tabW->widget(1), "Tạo đơn xuất điều chỉnh");
+            assert(b2Btn && b2Btn->isEnabled());
             reconB2a.close();
         }
-        assert(!user_update::createAndDispatchAdjustmentOutbound(&db, chk13Code, "2026-11-20", {{pidA, snMissA}}, "Reject already OUT MissA").success);
+        {
+            int outTxCountBefore = outTxnTbl->getRowCount();
+            assert(!user_update::createAndDispatchAdjustmentOutbound(&db, chk13Code, "2026-11-20", {{pidA, snMissA}}, "Reject already OUT MissA").success);
+            assert(outTxnTbl->getRowCount() == outTxCountBefore);
+        }
         {
             Vector<Record> candOut;
             user_query::get_candidate_units_for_order_dispatch(&db, pidA, chk13Code, {}, candOut);
@@ -1216,7 +1235,7 @@ int main(int argc, char* argv[]) {
             reconB2c.close();
         }
 
-        // Bucket 3: export -> re-import with toStatus WARRANTY (conflict!) -> export & re-import with fromStatus AVAILABLE -> ready -> execute
+        // Bucket 3: export -> re-import with toStatus WARRANTY (atomic reject!) -> export & re-import with fromStatus AVAILABLE -> execute
         exportSerial("SELLING", pidA, snShiftA, "13c export ShiftA");
         {
             InventoryCheckReconciliationDialog reconB3a(&db, chk13Id);
@@ -1224,15 +1243,20 @@ int main(int argc, char* argv[]) {
             QApplication::processEvents();
             auto* tabW = reconB3a.findChild<QTabWidget*>();
             auto* b3Tbl = tabW->widget(2)->findChild<QTableWidget*>();
+            assert(b3Tbl && b3Tbl->columnCount() == 7);
             int rShift = findRowBySerial(b3Tbl, 2, snShiftA);
             assert(rShift >= 0);
-            assert(b3Tbl->item(rShift, 7)->text().contains("⚠️ Đã xuất kho trước đó"));
-            assert(!(b3Tbl->item(rShift, 0)->flags() & Qt::ItemIsUserCheckable));
-            auto* b3LockBtn = findButtonContaining(tabW->widget(2), "Không có linh kiện hợp lệ để điều chỉnh");
-            assert(b3LockBtn && !b3LockBtn->isEnabled());
+            assert(b3Tbl->item(rShift, 0)->flags() & Qt::ItemIsUserCheckable);
+            assert(b3Tbl->item(rShift, 0)->checkState() == Qt::Checked);
+            auto* b3Btn = findButtonContaining(tabW->widget(2), "Tạo phiếu điều chỉnh trạng thái");
+            assert(b3Btn && b3Btn->isEnabled());
             reconB3a.close();
         }
-        assert(!user_update::createAndExecuteAdjustmentMovement(&db, chk13Code, "2026-11-20", {{pidA, "AVAILABLE", "WARRANTY", snShiftA}}, "Reject OUT ShiftA").success);
+        {
+            int adjMovCountBefore = adjMovTbl->getRowCount();
+            assert(!user_update::createAndExecuteAdjustmentMovement(&db, chk13Code, "2026-11-20", {{pidA, "AVAILABLE", "WARRANTY", snShiftA}}, "Reject OUT ShiftA").success);
+            assert(adjMovTbl->getRowCount() == adjMovCountBefore);
+        }
         {
             Vector<Record> candMov;
             user_query::get_candidate_units_for_adjustment(&db, pidA, "AVAILABLE", "WARRANTY", chk13Code, {}, candMov);
@@ -1246,15 +1270,20 @@ int main(int argc, char* argv[]) {
             QApplication::processEvents();
             auto* tabW = reconB3b.findChild<QTabWidget*>();
             auto* b3Tbl = tabW->widget(2)->findChild<QTableWidget*>();
+            assert(b3Tbl && b3Tbl->columnCount() == 7);
             int rShift = findRowBySerial(b3Tbl, 2, snShiftA);
             assert(rShift >= 0);
-            assert(b3Tbl->item(rShift, 7)->text().contains("⚠️ Trạng thái đổi thành Bảo hành"));
-            assert(!(b3Tbl->item(rShift, 0)->flags() & Qt::ItemIsUserCheckable));
-            auto* b3LockBtn = findButtonContaining(tabW->widget(2), "Không có linh kiện hợp lệ để điều chỉnh");
-            assert(b3LockBtn && !b3LockBtn->isEnabled());
+            assert(b3Tbl->item(rShift, 0)->flags() & Qt::ItemIsUserCheckable);
+            assert(b3Tbl->item(rShift, 0)->checkState() == Qt::Checked);
+            auto* b3Btn = findButtonContaining(tabW->widget(2), "Tạo phiếu điều chỉnh trạng thái");
+            assert(b3Btn && b3Btn->isEnabled());
             reconB3b.close();
         }
-        assert(!user_update::createAndExecuteAdjustmentMovement(&db, chk13Code, "2026-11-20", {{pidA, "AVAILABLE", "WARRANTY", snShiftA}}, "Reject WARRANTY ShiftA").success);
+        {
+            int adjMovCountBefore = adjMovTbl->getRowCount();
+            assert(!user_update::createAndExecuteAdjustmentMovement(&db, chk13Code, "2026-11-20", {{pidA, "AVAILABLE", "WARRANTY", snShiftA}}, "Reject WARRANTY ShiftA").success);
+            assert(adjMovTbl->getRowCount() == adjMovCountBefore);
+        }
         {
             Vector<Record> candMov;
             user_query::get_candidate_units_for_adjustment(&db, pidA, "AVAILABLE", "WARRANTY", chk13Code, {}, candMov);
@@ -1269,9 +1298,9 @@ int main(int argc, char* argv[]) {
             QApplication::processEvents();
             auto* tabW = reconB3c.findChild<QTabWidget*>();
             auto* b3Tbl = tabW->widget(2)->findChild<QTableWidget*>();
+            assert(b3Tbl && b3Tbl->columnCount() == 7);
             int rShift = findRowBySerial(b3Tbl, 2, snShiftA);
             assert(rShift >= 0);
-            assert(b3Tbl->item(rShift, 7)->text().contains("✅ Sẵn sàng"));
             assert(b3Tbl->item(rShift, 0)->flags() & Qt::ItemIsUserCheckable);
             assert(b3Tbl->item(rShift, 0)->checkState() == Qt::Checked);
             auto* b3ReadyBtn = findButtonContaining(tabW->widget(2), "Tạo phiếu điều chỉnh trạng thái");
@@ -1296,8 +1325,18 @@ int main(int argc, char* argv[]) {
         std::cout << "  [OK] 13c. Bucket 2 & Bucket 3 export -> re-import cycles & candidate fallback verified.\n";
 
         // --------------------------------------------------------------------
-        // 13d. AdjustmentMovementDetailDialog Save, Finalize & Cancel UI (no crash)
+        // 13d. AdjustmentMovementDetailDialog Save, Finalize & Cancel UI
+        //      + No partial disk writes + logistics_units_history_query product-scope filter
         // --------------------------------------------------------------------
+        auto readFileBytes = [](const QString& path) -> QByteArray {
+            QFile f(path);
+            bool opened = f.open(QIODevice::ReadOnly);
+            assert(opened);
+            return f.readAll();
+        };
+        QByteArray adjCsvBefore = readFileBytes("data/inventory_check/adjustment_movement.csv");
+        QByteArray histCsvBefore = readFileBytes("data/unit/status_history.csv");
+
         std::string snAdjSave = user_create::generateUniqueSerial(&db);
         importSerial("PURCHASING", pidB, "AVAILABLE", snAdjSave, "13d adj save unit");
 
@@ -1347,6 +1386,10 @@ int main(int argc, char* argv[]) {
             adjSaveDlg.close();
         }
 
+        // Verify AdjustmentMovementDetailDialog did NOT perform partial CSV writes on disk
+        assert(readFileBytes("data/inventory_check/adjustment_movement.csv") == adjCsvBefore);
+        assert(readFileBytes("data/unit/status_history.csv") == histCsvBefore);
+
         assert(user_create::createAdjustmentMovement(
             &db, "", "OTHER", "2026-11-20", {{pidB, "AVAILABLE", "WARRANTY", 1}}, "Test 13d Cancel").success);
         int mov2Id = getLatestId(adjMovTbl, "adjust_id");
@@ -1369,7 +1412,43 @@ int main(int argc, char* argv[]) {
             assert(!cancelCombo->isEnabled());
             adjCancelDlg.close();
         }
-        std::cout << "  [OK] 13d. AdjustmentMovementDetailDialog Save, Finalize & Cancel UI verified (zero crash).\n";
+
+        // Verify logistics_units_history_query filters out foreign-product status_history rows
+        {
+            std::string snLegitA = user_create::generateUniqueSerial(&db);
+            importSerial("PURCHASING", pidA, "AVAILABLE", snLegitA, "13d legit pidA");
+            std::string snForeignB = user_create::generateUniqueSerial(&db);
+            importSerial("PURCHASING", pidB, "AVAILABLE", snForeignB, "13d foreign pidB");
+            int uidForeignB = 0, tmpPid = 0;
+            std::string tmpSt;
+            bool tmpSold = false;
+            assert(user_query::get_unit_details_by_serial(&db, snForeignB, uidForeignB, tmpPid, tmpSt, tmpSold));
+            assert(uidForeignB > 0 && tmpPid == pidB);
+
+            std::string ordA, shipA;
+            int shipIdA = createOutShip("SELLING", inCustCode, pidA, 1, "13d scope test", ordA, shipA);
+            assert(user_update::dispatchUnitsForShipmentBatch(&db, shipIdA, {{pidA, snLegitA}}).success);
+
+            Record fakeSh;
+            fakeSh.set("unit_id", Value(uidForeignB));
+            fakeSh.set("old_status", Value(std::string("AVAILABLE")));
+            fakeSh.set("curr_status", Value(std::string("OUT")));
+            fakeSh.set("transaction", Value(shipIdA));
+            fakeSh.set("type", Value(std::string("OUTBOUND")));
+            assert(db.insertRecord("status_history", fakeSh).success);
+
+            Vector<Record> logHist;
+            user_query::logistics_units_history_query(&db, shipA, logHist);
+            bool foundLegitA = false;
+            bool foundForeignB = false;
+            for (size_t i = 0; i < logHist.size(); ++i) {
+                std::string sn = std::get<std::string>(logHist[i].get("serial"));
+                if (sn == snLegitA) foundLegitA = true;
+                if (sn == snForeignB) foundForeignB = true;
+            }
+            assert(foundLegitA && !foundForeignB);
+        }
+        std::cout << "  [OK] 13d. AdjustmentMovementDetailDialog Save/Finalize/Cancel, no partial CSV writes & logistics product filter verified.\n";
     }
     std::cout << "==============================================================================\n\n";
 

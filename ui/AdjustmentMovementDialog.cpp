@@ -3,8 +3,6 @@
 #include "ui/InventoryCheckDialog.h"
 #include "ui/TableClipboardHelper.h"
 #include "ui/UiLocalization.h"
-#include "data_io/DatabaseIO.h"
-#include "schema/Schema.h"
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
@@ -15,7 +13,6 @@
 #include <QInputDialog>
 #include <QCompleter>
 #include <QAbstractItemView>
-#include <QCoreApplication>
 #include <algorithm>
 
 static QString commonDialogStyleSheet() {
@@ -2482,16 +2479,6 @@ void AdjustmentMovementDetailDialog::onConfirmSaveUnits()
         return;
     }
 
-    // Persist changes to CSV files according to canonical business domains (Rule 2.2)
-    if (!QCoreApplication::instance() || !QCoreApplication::instance()->property("skipCsvDiskPersistence").toBool()) {
-        DataIO::DatabaseIO dbIO = Schema::createDatabaseIO("data", false);
-        dbIO.writeTable(*db, "unit_inventory");
-        dbIO.writeTable(*db, "product");
-        dbIO.writeTable(*db, "status_history");
-        dbIO.writeTable(*db, "adjustment_movement");
-        dbIO.writeTable(*db, "adjust_movement_detail");
-    }
-
     isExecuted = true;
     stagedUnits.clear();
     syncStagedCache();
@@ -2550,11 +2537,6 @@ void AdjustmentMovementDetailDialog::onFinalizeMovement()
     if (!res.success) {
         QMessageBox::critical(this, "Lỗi hoàn tất", QString::fromStdString(res.message));
         return;
-    }
-
-    if (!QCoreApplication::instance() || !QCoreApplication::instance()->property("skipCsvDiskPersistence").toBool()) {
-        DataIO::DatabaseIO dbIO = Schema::createDatabaseIO("data", false);
-        dbIO.writeTable(*db, "adjustment_movement");
     }
 
     isExecuted = true;

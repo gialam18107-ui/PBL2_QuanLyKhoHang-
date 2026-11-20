@@ -235,8 +235,6 @@ private:
         QString productCode;
         QString productName;
         QString systemStatus;
-        bool isConflict = false;
-        QString conflictReason;
     };
     std::vector<MissingUnitItem> missingUnitList;
 
@@ -249,8 +247,6 @@ private:
         QString currentStatus;
         QString physicalCondition;
         int quantity;
-        bool isConflict = false;
-        QString conflictReason;
     };
     std::vector<SurplusUnitItem> surplusUnitList;
 
@@ -262,8 +258,6 @@ private:
         QString productName;
         QString fromStatus;
         QString toStatus;
-        bool isConflict = false;
-        QString conflictReason;
     };
     std::vector<StatusShiftUnitItem> statusShiftUnitList;
 };

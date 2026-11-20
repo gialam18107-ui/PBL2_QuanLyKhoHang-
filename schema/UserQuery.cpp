@@ -1765,14 +1765,16 @@ void logistics_units_history_query(Database *db, const string& logisticsCode, Ve
 	if (!shTable || !uTable || !pTable)
 		return;
 
-	// Resolve logistics ID and type
+	// Resolve logistics ID, parent order transaction ID, and type
 	int targetLogisticsId = -1;
+	int parentTxnId = -1;
 	string expectedType = "";
 
 	if (dTable) {
 		for (const auto& d : dTable->view("delivery_code", Value(logisticsCode))) {
 			if (d.has("delivery_id")) {
 				targetLogisticsId = safeGetInt(d, "delivery_id", -1);
+				parentTxnId = safeGetInt(d, "inbound_transaction_id", -1);
 				expectedType = "INBOUND";
 				break;
 			}
@@ -1782,6 +1784,7 @@ void logistics_units_history_query(Database *db, const string& logisticsCode, Ve
 		for (const auto& s : sTable->view("shipment_code", Value(logisticsCode))) {
 			if (s.has("shipment_id")) {
 				targetLogisticsId = safeGetInt(s, "shipment_id", -1);
+				parentTxnId = safeGetInt(s, "outbound_transaction_id", -1);
 				expectedType = "OUTBOUND";
 				break;
 			}
@@ -1790,6 +1793,26 @@ void logistics_units_history_query(Database *db, const string& logisticsCode, Ve
 
 	if (targetLogisticsId <= 0)
 		return;
+
+	// Build allowed product_id scope from parent inbound_detail / outbound_detail
+	HashMap<int, bool> allowedProductIds;
+	if (parentTxnId > 0) {
+		if (expectedType == "INBOUND") {
+			if (const Table* inDetTbl = db->getTable("inbound_detail")) {
+				for (const auto& r : inDetTbl->view("inbound_transaction_id", Value(parentTxnId))) {
+					int prodId = safeGetInt(r, "product_id", 0);
+					if (prodId > 0) allowedProductIds[prodId] = true;
+				}
+			}
+		} else if (expectedType == "OUTBOUND") {
+			if (const Table* outDetTbl = db->getTable("outbound_detail")) {
+				for (const auto& r : outDetTbl->view("outbound_transaction_id", Value(parentTxnId))) {
+					int prodId = safeGetInt(r, "product_id", 0);
+					if (prodId > 0) allowedProductIds[prodId] = true;
+				}
+			}
+		}
+	}
 
 	struct UnitHistoryTrack {
 		int unitId = 0;
@@ -1817,6 +1840,12 @@ void logistics_units_history_query(Database *db, const string& logisticsCode, Ve
 		int uid = safeGetInt(r, "unit_id", 0);
 		if (uid <= 0) continue;
 
+		const Record *uRec = uTable->getRecordById(uid);
+		int unitPid = uRec ? safeGetInt(*uRec, "product_id", 0) : 0;
+		if (!allowedProductIds.empty() && !allowedProductIds.contains(unitPid)) {
+			continue;
+		}
+
 		string oldSt = safeGetString(r, "old_status", "");
 		string currSt = safeGetString(r, "curr_status", "");
 		string tType = safeGetString(r, "type", expectedType);
@@ -1830,10 +1859,9 @@ void logistics_units_history_query(Database *db, const string& logisticsCode, Ve
 			tr.type = tType;
 			tr.date = tDate;
 
-			const Record *uRec = uTable->getRecordById(uid);
 			if (uRec) {
 				tr.serial = safeGetString(*uRec, "serial");
-				tr.productId = safeGetInt(*uRec, "product_id", 0);
+				tr.productId = unitPid;
 				const Record *pRec = pTable->getRecordById(tr.productId);
 				if (pRec) {
 					tr.productName = safeGetString(*pRec, "product_name");
