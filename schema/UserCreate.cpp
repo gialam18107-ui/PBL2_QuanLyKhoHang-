@@ -1,5 +1,6 @@
 #include "UserCreate.h"
 #include "UserQuery.h"
+#include "SchemaLocalization.h"
 #include "query/Query.h"
 #include <sstream>
 #include <iomanip>
@@ -176,7 +177,7 @@ namespace user_create
         }
 
         if (!productRecord.has("brand") || isNull(productRecord.get("brand"))) {
-            return OperationResult{false, "Hãng sản xuất (Brand) không được để trống.", 0};
+            return OperationResult{false, "Hãng sản xuất không được để trống.", 0};
         }
         std::string brandName = std::get<std::string>(productRecord.get("brand"));
 
@@ -217,11 +218,11 @@ namespace user_create
 
         // Validate Barcode
         if (!productRecord.has("barcode") || isNull(productRecord.get("barcode"))) {
-            return OperationResult{false, "Mã vạch (Barcode) không được để trống.", 0};
+            return OperationResult{false, "Mã vạch không được để trống.", 0};
         }
         std::string barcode = std::get<std::string>(productRecord.get("barcode"));
         if (barcode.length() != 13) {
-            return OperationResult{false, "Mã vạch (Barcode) phải đúng 13 ký số (chuẩn EAN-13).", 0};
+            return OperationResult{false, "Mã vạch phải đúng 13 ký số (chuẩn EAN-13).", 0};
         }
         if (!isBarcodeUnique(db, barcode)) {
             return OperationResult{false, "Mã vạch '" + barcode + "' đã tồn tại trong CSDL.", 0};
@@ -248,7 +249,7 @@ namespace user_create
 
         // Atomic Transaction Execution
         if (!db->beginTransaction()) {
-            return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
+            return OperationResult{false, "Không thể bắt đầu giao dịch CSDL.", 0};
         }
 
         if (!db->insert("product", finalProductRecord)) {
@@ -306,7 +307,7 @@ namespace user_create
         std::string custCode = oss.str();
 
         if (!db->beginTransaction()) {
-            return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
+            return OperationResult{false, "Không thể bắt đầu giao dịch CSDL.", 0};
         }
 
         Record rCust;
@@ -379,7 +380,7 @@ namespace user_create
         std::string custCode = oss.str();
 
         if (!db->beginTransaction()) {
-            return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
+            return OperationResult{false, "Không thể bắt đầu giao dịch CSDL.", 0};
         }
 
         Record rCust;
@@ -483,16 +484,16 @@ namespace user_create
         std::string effectiveCustomerCode = customerCode;
         if (isAdj) {
             if (!customerCode.empty()) {
-                return OperationResult{false, "Đối với đơn điều chỉnh nhập kho (ADJ), không được có khách hàng/đối tác.", 0};
+                return OperationResult{false, "Đối với đơn nhập điều chỉnh, không được có khách hàng/đối tác.", 0};
             }
             if (sourceCode.empty()) {
-                return OperationResult{false, "Đơn điều chỉnh nhập kho (ADJ) bắt buộc phải có source_code tham chiếu đến đợt kiểm kho (check_code) hợp lệ.", 0};
+                return OperationResult{false, "Đơn nhập điều chỉnh bắt buộc phải có mã đợt kiểm kho tham chiếu hợp lệ.", 0};
             }
             const Table* chkTbl = db->getTable("inventory_check");
             if (!chkTbl) return OperationResult{false, "Bảng 'inventory_check' không tồn tại.", 0};
             TableView chkRecs = chkTbl->view("check_code", Value(sourceCode));
             if (chkRecs.empty()) {
-                return OperationResult{false, "Mã đợt kiểm kho source_code '" + sourceCode + "' không tồn tại trong hệ thống.", 0};
+                return OperationResult{false, "Mã đợt kiểm kho '" + sourceCode + "' không tồn tại trong hệ thống.", 0};
             }
             const Table* cqTbl = db->getTable("inventory_check_quantity");
             if (cqTbl) {
@@ -572,7 +573,7 @@ namespace user_create
         std::string delCode = inCode + "-D01";
 
         if (!db->beginTransaction()) {
-            return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
+            return OperationResult{false, "Không thể bắt đầu giao dịch CSDL.", 0};
         }
 
         Record inTxn;
@@ -656,16 +657,16 @@ namespace user_create
         std::string effectiveCustomerCode = customerCode;
         if (isAdj) {
             if (!customerCode.empty()) {
-                return OperationResult{false, "Đối với đơn điều chỉnh xuất kho (ADJ), không được có khách hàng/đối tác.", 0};
+                return OperationResult{false, "Đối với đơn xuất điều chỉnh, không được có khách hàng/đối tác.", 0};
             }
             if (sourceCode.empty()) {
-                return OperationResult{false, "Đơn điều chỉnh xuất kho (ADJ) bắt buộc phải có source_code tham chiếu đến đợt kiểm kho (check_code) hợp lệ.", 0};
+                return OperationResult{false, "Đơn xuất điều chỉnh bắt buộc phải có mã đợt kiểm kho tham chiếu hợp lệ.", 0};
             }
             const Table* chkTbl = db->getTable("inventory_check");
             if (!chkTbl) return OperationResult{false, "Bảng 'inventory_check' không tồn tại.", 0};
             TableView chkRecs = chkTbl->view("check_code", Value(sourceCode));
             if (chkRecs.empty()) {
-                return OperationResult{false, "Mã đợt kiểm kho source_code '" + sourceCode + "' không tồn tại trong hệ thống.", 0};
+                return OperationResult{false, "Mã đợt kiểm kho '" + sourceCode + "' không tồn tại trong hệ thống.", 0};
             }
             const Table* cqTbl = db->getTable("inventory_check_quantity");
             if (cqTbl) {
@@ -734,7 +735,7 @@ namespace user_create
         }
 
         if (outboundType == "RETURN_TO_SUPPLIER" || outboundType == "RTS") {
-            return OperationResult{false, "Loại xuất kho RETURN_TO_SUPPLIER (RTS) không còn được hỗ trợ trong hệ thống.", 0};
+            return OperationResult{false, "Loại xuất trả nhà cung cấp không còn được hỗ trợ trong hệ thống.", 0};
         }
 
         std::string typeCode = "SEL";
@@ -754,7 +755,7 @@ namespace user_create
         std::string shipCode = outCode + "-S01";
 
         if (!db->beginTransaction()) {
-            return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
+            return OperationResult{false, "Không thể bắt đầu giao dịch CSDL.", 0};
         }
 
         Record outTxn;
@@ -895,7 +896,7 @@ namespace user_create
         if (!inTxnRec) {
             return OperationResult{false, "Không tìm thấy đơn nhập kho với ID " + std::to_string(inboundTransactionId) + ".", 0};
         }
-        return OperationResult{false, "Không được phép tạo thêm đợt giao hàng (delivery) sau khi đã xác nhận đơn transaction.", 0};
+        return OperationResult{false, "Không được phép tạo thêm đợt giao hàng sau khi đã xác nhận đơn nhập.", 0};
     }
 
     OperationResult createShipmentBatch(
@@ -913,7 +914,7 @@ namespace user_create
         if (!outTxnRec) {
             return OperationResult{false, "Không tìm thấy đơn xuất kho với ID " + std::to_string(outboundTransactionId) + ".", 0};
         }
-        return OperationResult{false, "Không được phép tạo thêm đợt xuất hàng (shipment) sau khi đã xác nhận đơn transaction.", 0};
+        return OperationResult{false, "Không được phép tạo thêm đợt xuất hàng sau khi đã xác nhận đơn xuất.", 0};
     }
 
     OperationResult createInboundOrderWithDeliveries(
@@ -931,16 +932,16 @@ namespace user_create
         std::string effectiveCustomerCode = customerCode;
         if (isAdj) {
             if (!customerCode.empty()) {
-                return OperationResult{false, "Đối với đơn điều chỉnh nhập kho (ADJ), không được có khách hàng/đối tác.", 0};
+                return OperationResult{false, "Đối với đơn nhập điều chỉnh, không được có khách hàng/đối tác.", 0};
             }
             if (sourceCode.empty()) {
-                return OperationResult{false, "Đơn điều chỉnh nhập kho (ADJ) bắt buộc phải có source_code tham chiếu đến đợt kiểm kho (check_code) hợp lệ.", 0};
+                return OperationResult{false, "Đơn nhập điều chỉnh bắt buộc phải có mã đợt kiểm kho tham chiếu hợp lệ.", 0};
             }
             const Table* chkTbl = db->getTable("inventory_check");
             if (!chkTbl) return OperationResult{false, "Bảng 'inventory_check' không tồn tại.", 0};
             TableView chkRecs = chkTbl->view("check_code", Value(sourceCode));
             if (chkRecs.empty()) {
-                return OperationResult{false, "Mã đợt kiểm kho source_code '" + sourceCode + "' không tồn tại trong hệ thống.", 0};
+                return OperationResult{false, "Mã đợt kiểm kho '" + sourceCode + "' không tồn tại trong hệ thống.", 0};
             }
             const Table* cqTbl = db->getTable("inventory_check_quantity");
             if (cqTbl) {
@@ -1022,7 +1023,7 @@ namespace user_create
             int allocQty = totalAllocated.contains(pid) ? totalAllocated[pid] : 0;
             if (allocQty != ordQty) {
                 return OperationResult{false, "Tổng số lượng của từng đợt nhận hàng (" + std::to_string(allocQty) +
-                    ") phải bằng đúng số lượng của đơn transaction (" + std::to_string(ordQty) + ") cho sản phẩm ID " + std::to_string(pid) + ".", 0};
+                    ") phải bằng đúng số lượng của đơn nhập (" + std::to_string(ordQty) + ") cho sản phẩm ID " + std::to_string(pid) + ".", 0};
             }
         }
 
@@ -1042,7 +1043,7 @@ namespace user_create
         std::string inCode = inOss.str();
 
         if (!db->beginTransaction()) {
-            return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
+            return OperationResult{false, "Không thể bắt đầu giao dịch CSDL.", 0};
         }
 
         Record inTxn;
@@ -1136,16 +1137,16 @@ namespace user_create
         std::string effectiveCustomerCode = customerCode;
         if (isAdj) {
             if (!customerCode.empty()) {
-                return OperationResult{false, "Đối với đơn điều chỉnh xuất kho (ADJ), không được có khách hàng/đối tác.", 0};
+                return OperationResult{false, "Đối với đơn xuất điều chỉnh, không được có khách hàng/đối tác.", 0};
             }
             if (sourceCode.empty()) {
-                return OperationResult{false, "Đơn điều chỉnh xuất kho (ADJ) bắt buộc phải có source_code tham chiếu đến đợt kiểm kho (check_code) hợp lệ.", 0};
+                return OperationResult{false, "Đơn xuất điều chỉnh bắt buộc phải có mã đợt kiểm kho tham chiếu hợp lệ.", 0};
             }
             const Table* chkTbl = db->getTable("inventory_check");
             if (!chkTbl) return OperationResult{false, "Bảng 'inventory_check' không tồn tại.", 0};
             TableView chkRecs = chkTbl->view("check_code", Value(sourceCode));
             if (chkRecs.empty()) {
-                return OperationResult{false, "Mã đợt kiểm kho source_code '" + sourceCode + "' không tồn tại trong hệ thống.", 0};
+                return OperationResult{false, "Mã đợt kiểm kho '" + sourceCode + "' không tồn tại trong hệ thống.", 0};
             }
             const Table* cqTbl = db->getTable("inventory_check_quantity");
             if (cqTbl) {
@@ -1229,12 +1230,12 @@ namespace user_create
             int allocQty = totalAllocated.contains(pid) ? totalAllocated[pid] : 0;
             if (allocQty != ordQty) {
                 return OperationResult{false, "Tổng số lượng của từng đợt xuất hàng (" + std::to_string(allocQty) +
-                    ") phải bằng đúng số lượng của đơn transaction (" + std::to_string(ordQty) + ") cho sản phẩm ID " + std::to_string(pid) + ".", 0};
+                    ") phải bằng đúng số lượng của đơn xuất (" + std::to_string(ordQty) + ") cho sản phẩm ID " + std::to_string(pid) + ".", 0};
             }
         }
 
         if (outboundType == "RETURN_TO_SUPPLIER" || outboundType == "RTS") {
-            return OperationResult{false, "Loại xuất kho RETURN_TO_SUPPLIER (RTS) không còn được hỗ trợ trong hệ thống.", 0};
+            return OperationResult{false, "Loại xuất trả nhà cung cấp không còn được hỗ trợ trong hệ thống.", 0};
         }
 
         std::string typeCode = "SEL";
@@ -1253,7 +1254,7 @@ namespace user_create
         std::string outCode = outOss.str();
 
         if (!db->beginTransaction()) {
-            return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
+            return OperationResult{false, "Không thể bắt đầu giao dịch CSDL.", 0};
         }
 
         Record outTxn;
@@ -1350,7 +1351,7 @@ namespace user_create
         std::string delStatus = delRec->has("status") && std::holds_alternative<std::string>(delRec->get("status"))
                               ? std::get<std::string>(delRec->get("status")) : "";
         if (delStatus == "COMPLETED" || delStatus == "completed" || delStatus == "CANCELLED") {
-            return OperationResult{false, "Đợt nhận hàng này đã ở trạng thái HOÀN THÀNH hoặc BỊ HỦY, không thể nhận thêm linh kiện.", 0};
+            return OperationResult{false, "Đợt nhận hàng này đã ở trạng thái Hoàn thành hoặc Đã hủy, không thể nhận thêm linh kiện.", 0};
         }
 
         int inTxnId = -1;
@@ -1365,7 +1366,7 @@ namespace user_create
         std::string inTxnSt = inTxnRec->has("status") && std::holds_alternative<std::string>(inTxnRec->get("status"))
                             ? std::get<std::string>(inTxnRec->get("status")) : "";
         if (inTxnSt == "COMPLETED" || inTxnSt == "CANCELLED") {
-            return OperationResult{false, "Đơn nhập kho (" + inTxnSt + ") đã hoàn tất hoặc bị hủy. Toàn bộ các đợt nhận hàng đã bị khóa vĩnh viễn.", 0};
+            return OperationResult{false, "Đơn nhập kho (" + schema_i18n::statusVi(inTxnSt) + ") đã hoàn tất hoặc bị hủy. Toàn bộ các đợt nhận hàng đã bị khóa vĩnh viễn.", 0};
         }
 
         std::string inType = inTxnRec->has("type") && std::holds_alternative<std::string>(inTxnRec->get("type"))
@@ -1383,44 +1384,44 @@ namespace user_create
         for (size_t i = 0; i < entries.size(); ++i) {
             int pid = entries[i].productId;
             if (pid <= 0) {
-                return OperationResult{false, "Mã sản phẩm (productId) trong danh sách nhận hàng không hợp lệ.", 0};
+                return OperationResult{false, "Mã sản phẩm trong danh sách nhận hàng không hợp lệ.", 0};
             }
 
             std::string effTarget = entries[i].targetStatus;
             if (inType == "PURCHASING" || inType == "PUR") {
                 if (effTarget.empty()) effTarget = "AVAILABLE";
                 if (effTarget != "AVAILABLE" && effTarget != "SCRAPPED") {
-                    return OperationResult{false, "Đơn mua hàng mới (PUR) chỉ được nhận linh kiện với trạng thái AVAILABLE hoặc SCRAPPED.", 0};
+                    return OperationResult{false, "Đơn mua mới chỉ được nhận linh kiện với trạng thái 'Khả dụng' hoặc 'Lỗi/hỏng'.", 0};
                 }
             } else if (inType == "WARRANTY_REPLACEMENT" || inType == "WRP") {
                 if (effTarget.empty()) effTarget = "WARRANTY";
                 if (effTarget != "WARRANTY") {
-                    return OperationResult{false, "Đơn đổi bảo hành từ nhà cung cấp (WRP) chỉ được nhận linh kiện với trạng thái WARRANTY.", 0};
+                    return OperationResult{false, "Đơn đổi bảo hành hãng chỉ được nhận linh kiện với trạng thái 'Bảo hành'.", 0};
                 }
             } else if (inType == "WARRANTY_CHECKING" || inType == "WCK") {
                 if (effTarget.empty()) effTarget = "WARRANTY";
                 if (effTarget != "WARRANTY") {
-                    return OperationResult{false, "Đơn nhận bảo hành từ khách (WCK) chỉ được nhận linh kiện với trạng thái WARRANTY.", 0};
+                    return OperationResult{false, "Đơn nhận bảo hành chỉ được nhận linh kiện với trạng thái 'Bảo hành'.", 0};
                 }
             } else if (inType == "CUSTOMER_RETURN" || inType == "CRT") {
                 if (effTarget.empty()) effTarget = "AVAILABLE";
                 if (effTarget != "AVAILABLE" && effTarget != "WARRANTY" && effTarget != "SCRAPPED") {
-                    return OperationResult{false, "Đơn khách hàng trả hàng (CRT) chỉ được nhận linh kiện với trạng thái AVAILABLE, WARRANTY, hoặc SCRAPPED.", 0};
+                    return OperationResult{false, "Đơn khách trả hàng chỉ được nhận linh kiện với trạng thái 'Khả dụng', 'Bảo hành' hoặc 'Lỗi/hỏng'.", 0};
                 }
             } else if (isAdjustmentIn) {
                 if (effTarget.empty()) effTarget = "AVAILABLE";
                 if (effTarget != "AVAILABLE" && effTarget != "WARRANTY" && effTarget != "SCRAPPED") {
-                    return OperationResult{false, "Đơn nhập điều chỉnh kho (ADJ) chỉ được nhận linh kiện với trạng thái AVAILABLE, WARRANTY, hoặc SCRAPPED.", 0};
+                    return OperationResult{false, "Đơn nhập điều chỉnh chỉ được nhận linh kiện với trạng thái 'Khả dụng', 'Bảo hành' hoặc 'Lỗi/hỏng'.", 0};
                 }
             } else {
                 if (effTarget.empty()) effTarget = "AVAILABLE";
             }
 
             if (effTarget == "OUT") {
-                return OperationResult{false, "Trạng thái nhận của đơn nhập kho tuyệt đối không được là 'OUT'.", 0};
+                return OperationResult{false, "Trạng thái nhận của đơn nhập kho không được là 'Đã xuất'.", 0};
             }
             if (!isNewAcquisition && !isAdjustmentIn && entries[i].serial.empty()) {
-                return OperationResult{false, "Đơn nhận lại hàng (" + inType + ") yêu cầu cung cấp mã serial cho từng linh kiện.", 0};
+                return OperationResult{false, "Đơn " + schema_i18n::orderTypeVi(inType) + " yêu cầu cung cấp mã serial cho từng linh kiện.", 0};
             }
 
             resolvedStatuses.push_back(effTarget);
@@ -1494,7 +1495,7 @@ namespace user_create
         }
 
         if (manageTransaction && !db->beginTransaction()) {
-            return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
+            return OperationResult{false, "Không thể bắt đầu giao dịch CSDL.", 0};
         }
 
         auto failRollback = [&](const OperationResult& err) -> OperationResult {
@@ -1545,7 +1546,7 @@ namespace user_create
                             return failRollback(OperationResult{false, "Linh kiện serial '" + sn + "' thuộc sản phẩm khác, không khớp sản phẩm ID " + std::to_string(productId) + ".", 0});
                         }
                         if (currentUnitStatus != "OUT") {
-                            return failRollback(OperationResult{false, "Đơn nhập điều chỉnh (ADJ) chỉ được nhận linh kiện có old_status là 'OUT' (tái phát hiện) hoặc 'NULL' (hàng mới). Linh kiện '" + sn + "' hiện đang có trạng thái '" + currentUnitStatus + "' trong kho.", 0});
+                            return failRollback(OperationResult{false, "Đơn nhập điều chỉnh chỉ được nhận linh kiện có trạng thái cũ là 'Đã xuất' (tái phát hiện) hoặc chưa có trong kho (hàng mới). Linh kiện '" + sn + "' hiện đang có trạng thái '" + schema_i18n::statusVi(currentUnitStatus) + "' trong kho.", 0});
                         }
                         Record uUp;
                         uUp.set("status", effTarget);
@@ -1651,7 +1652,7 @@ namespace user_create
                         return failRollback(OperationResult{false, "Không tìm thấy linh kiện có serial '" + sn + "' của sản phẩm ID " + std::to_string(productId) + ".", 0});
                     }
                     if (currentUnitStatus != "OUT") {
-                        return failRollback(OperationResult{false, "Linh kiện có serial '" + sn + "' hiện đang có trạng thái '" + currentUnitStatus + "', không phải 'OUT'.", 0});
+                        return failRollback(OperationResult{false, "Linh kiện có mã serial '" + sn + "' hiện đang có trạng thái '" + schema_i18n::statusVi(currentUnitStatus) + "', không phải 'Đã xuất'.", 0});
                     }
 
                     Record uUp;
@@ -1721,7 +1722,7 @@ namespace user_create
         if (manageTransaction) {
             db->commit();
         }
-        return OperationResult{true, "Đã nhận " + std::to_string(entries.size()) + " unit vào đợt giao " + std::to_string(deliveryId) + " thành công!", totalAffected};
+        return OperationResult{true, "Đã nhận " + std::to_string(entries.size()) + " linh kiện vào đợt giao " + std::to_string(deliveryId) + " thành công!", totalAffected};
     }
 
     OperationResult receiveUnitsForDeliveryBatch(
@@ -1740,7 +1741,7 @@ namespace user_create
         int quantity,
         const Vector<std::string>& customSerials
     ) {
-        if (quantity <= 0) return OperationResult{false, "Số lượng unit cần nhận phải lớn hơn 0.", 0};
+        if (quantity <= 0) return OperationResult{false, "Số lượng linh kiện cần nhận phải lớn hơn 0.", 0};
         Vector<BatchReceiveUnitEntry> entries;
         entries.reserve(static_cast<size_t>(quantity));
         for (int k = 0; k < quantity; ++k) {
@@ -1761,7 +1762,7 @@ namespace user_create
         const std::string& note
     ) {
         if (!db) return OperationResult{false, "Cơ sở dữ liệu chưa được khởi tạo.", 0};
-        if (checkCode.empty()) return OperationResult{false, "Mã đợt kiểm kho (source_code) không được để trống.", 0};
+        if (checkCode.empty()) return OperationResult{false, "Mã đợt kiểm kho tham chiếu không được để trống.", 0};
         if (orderDate.empty()) return OperationResult{false, "Ngày lập đơn nhập điều chỉnh không được để trống.", 0};
         if (entries.empty()) return OperationResult{false, "Danh sách linh kiện cần nhập điều chỉnh không được để trống.", 0};
 
@@ -1827,7 +1828,7 @@ namespace user_create
         std::string delCode = inCode + "-D01";
 
         if (!db->beginTransaction()) {
-            return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
+            return OperationResult{false, "Không thể bắt đầu giao dịch CSDL.", 0};
         }
 
         Record inTxn;
@@ -2005,7 +2006,7 @@ namespace user_create
     ) {
         if (!db) return OperationResult{false, "Cơ sở dữ liệu chưa được khởi tạo.", 0};
         if (checkType != "UNIT") {
-            return OperationResult{false, "Loại kiểm kho không hợp lệ (hệ thống hiện tại chỉ áp dụng kiểm kê chi tiết theo đơn vị 'UNIT').", 0};
+            return OperationResult{false, "Loại kiểm kho không hợp lệ (hệ thống hiện tại chỉ áp dụng kiểm kê chi tiết theo Serial).", 0};
         }
         if (checkDate.empty()) {
             return OperationResult{false, "Ngày kiểm kho không được để trống.", 0};
@@ -2042,7 +2043,7 @@ namespace user_create
         }
 
         if (!db->beginTransaction()) {
-            return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
+            return OperationResult{false, "Không thể bắt đầu giao dịch CSDL.", 0};
         }
 
         std::string checkCode = generateUniqueCheckCode(db, checkType);
@@ -2163,14 +2164,14 @@ namespace user_create
 
         if (reason == "STOCKTAKE_DIFF" || reason == "STOCK_DIFF") {
             if (sourceCheckCode.empty()) {
-                return OperationResult{false, "Điều chuyển do lệch kiểm kê (STOCKTAKE_DIFF) bắt buộc phải có source_code tham chiếu đến đợt kiểm kho (check_code).", 0};
+                return OperationResult{false, "Điều chuyển do lệch kiểm kê bắt buộc phải có mã đợt kiểm kho tham chiếu.", 0};
             }
         }
 
         const Table* rTable = db->getTable("reason");
         if (rTable) {
             if (!rTable->contains("reason", Value(reason))) {
-                return OperationResult{false, "Lý do điều chuyển '" + reason + "' không tồn tại trong danh mục reason.", 0};
+                return OperationResult{false, "Lý do điều chuyển '" + schema_i18n::reasonVi(reason) + "' không tồn tại trong hệ thống.", 0};
             }
         }
 
@@ -2180,7 +2181,7 @@ namespace user_create
             if (chkTbl) {
                 TableView cRecs = chkTbl->view("check_code", Value(sourceCheckCode));
                 if (cRecs.empty()) {
-                    return OperationResult{false, "Mã đợt kiểm kho source_code '" + sourceCheckCode + "' không tồn tại.", 0};
+                    return OperationResult{false, "Mã đợt kiểm kho '" + sourceCheckCode + "' không tồn tại.", 0};
                 }
                 if (cqTbl) {
                     int chkId = std::get<int>((*cRecs.begin()).get("check_id"));
@@ -2218,18 +2219,18 @@ namespace user_create
                 return OperationResult{false, "Trạng thái nguồn và trạng thái đích không được trùng nhau.", 0};
             }
             if (item.fromStatus != "AVAILABLE" && item.fromStatus != "WARRANTY" && item.fromStatus != "SCRAPPED") {
-                return OperationResult{false, "Trạng thái nguồn '" + item.fromStatus + "' không hợp lệ.", 0};
+                return OperationResult{false, "Trạng thái nguồn '" + schema_i18n::statusVi(item.fromStatus) + "' không hợp lệ.", 0};
             }
             if (item.toStatus != "AVAILABLE" && item.toStatus != "WARRANTY" && item.toStatus != "SCRAPPED") {
-                return OperationResult{false, "Trạng thái đích '" + item.toStatus + "' không hợp lệ (không được là OUT).", 0};
+                return OperationResult{false, "Trạng thái đích '" + schema_i18n::statusVi(item.toStatus) + "' không hợp lệ (không được là 'Đã xuất').", 0};
             }
             if (reason == "DAMAGED" && item.toStatus != "SCRAPPED") {
-                return OperationResult{false, "Khi lý do điều chuyển là DAMAGED (Hư hỏng), trạng thái đích (to_status) chỉ được phép là SCRAPPED.", 0};
+                return OperationResult{false, "Khi lý do điều chuyển là Hư hỏng, trạng thái đích chỉ được phép là 'Lỗi/hỏng'.", 0};
             }
         }
 
         if (!db->beginTransaction()) {
-            return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
+            return OperationResult{false, "Không thể bắt đầu giao dịch CSDL.", 0};
         }
 
         std::string adjCode = generateUniqueAdjustCode(db, reason);
@@ -2287,7 +2288,7 @@ namespace user_create
         std::string curStatus = (chkRec->has("status") && std::holds_alternative<std::string>(chkRec->get("status")))
                               ? std::get<std::string>(chkRec->get("status")) : "";
         if (curStatus != "COMPLETED") {
-            return OperationResult{false, "Chỉ có thể tạo đơn điều chỉnh sau khi đợt kiểm kê đã được chuyển sang trạng thái HOÀN THÀNH (COMPLETED).", 0};
+            return OperationResult{false, "Chỉ có thể tạo đơn điều chỉnh sau khi đợt kiểm kê đã được chuyển sang trạng thái Hoàn thành.", 0};
         }
 
         std::string checkCode = std::get<std::string>(chkRec->get("check_code"));
@@ -2380,7 +2381,7 @@ namespace user_create
             );
             if (rIn.success) {
                 createdCount++;
-                resultMsg += "- Đã tạo đơn nhập điều chỉnh (ADJUSTMENT_IN).\\n";
+                resultMsg += "- Đã tạo đơn nhập điều chỉnh.\\n";
             } else {
                 resultMsg += "- Lỗi tạo đơn nhập điều chỉnh: " + rIn.message + "\\n";
             }
@@ -2393,7 +2394,7 @@ namespace user_create
             );
             if (rOut.success) {
                 createdCount++;
-                resultMsg += "- Đã tạo đơn xuất điều chỉnh (ADJUSTMENT_OUT).\\n";
+                resultMsg += "- Đã tạo đơn xuất điều chỉnh.\\n";
             } else {
                 resultMsg += "- Lỗi tạo đơn xuất điều chỉnh: " + rOut.message + "\\n";
             }
@@ -2406,7 +2407,7 @@ namespace user_create
             );
             if (rMov.success) {
                 createdCount++;
-                resultMsg += "- Đã tạo phiếu điều chuyển trạng thái (ADJUSTMENT_MOVEMENT).\\n";
+                resultMsg += "- Đã tạo phiếu điều chuyển trạng thái.\\n";
             } else {
                 resultMsg += "- Lỗi tạo phiếu điều chuyển: " + rMov.message + "\\n";
             }

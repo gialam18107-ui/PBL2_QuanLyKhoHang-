@@ -50,29 +50,29 @@ namespace user_delete
 
         // 3. History Checks (Transactions, Units, Inventory Checks, Movements, Status Changing)
         if (hasMatchingRecord(db->getTable("inbound_detail"), "product_id", productId)) {
-            return OperationResult{false, "Không thể xóa sản phẩm: Đã có lịch sử trong Đơn nhập kho (inbound_detail).", 0};
+            return OperationResult{false, "Không thể xóa sản phẩm: Đã có lịch sử trong Đơn nhập kho.", 0};
         }
         if (hasMatchingRecord(db->getTable("outbound_detail"), "product_id", productId)) {
-            return OperationResult{false, "Không thể xóa sản phẩm: Đã có lịch sử trong Đơn xuất kho (outbound_detail).", 0};
+            return OperationResult{false, "Không thể xóa sản phẩm: Đã có lịch sử trong Đơn xuất kho.", 0};
         }
         if (hasMatchingRecord(db->getTable("unit_inventory"), "product_id", productId)) {
-            return OperationResult{false, "Không thể xóa sản phẩm: Đang có Unit / Serial tồn tại cho sản phẩm này.", 0};
+            return OperationResult{false, "Không thể xóa sản phẩm: Đang có linh kiện tồn tại cho sản phẩm này.", 0};
         }
         if (hasMatchingRecord(db->getTable("inventory_check_quantity"), "product_id", productId)) {
-            return OperationResult{false, "Không thể xóa sản phẩm: Đã có lịch sử trong Đợt kiểm kho (inventory_check_quantity).", 0};
+            return OperationResult{false, "Không thể xóa sản phẩm: Đã có lịch sử trong Đợt kiểm kho.", 0};
         }
         if (hasMatchingRecord(db->getTable("adjust_movement_detail"), "product_id", productId)) {
-            return OperationResult{false, "Không thể xóa sản phẩm: Đã có lịch sử trong Phiếu điều chuyển (adjust_movement_detail).", 0};
+            return OperationResult{false, "Không thể xóa sản phẩm: Đã có lịch sử trong Phiếu điều chuyển.", 0};
         }
         if (hasMatchingRecord(db->getTable("is_sold_changing"), "product_id", productId)) {
-            return OperationResult{false, "Không thể xóa sản phẩm: Đã có lịch sử thay đổi trạng thái bán (is_sold_changing).", 0};
+            return OperationResult{false, "Không thể xóa sản phẩm: Đã có lịch sử thay đổi trạng thái kinh doanh.", 0};
         }
 
         std::string specTable = getSpecTableName(categoryName);
 
         // 4. Atomic Multi-table Deletion
         if (!db->beginTransaction()) {
-            return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
+            return OperationResult{false, "Không thể bắt đầu giao dịch CSDL.", 0};
         }
 
         // Delete from hardware spec table first (child)
@@ -128,15 +128,15 @@ namespace user_delete
 
         // 1. Transaction History Precondition Check (Accounting / Economic Rule)
         if (hasMatchingRecord(db->getTable("inbound_transaction"), "customer_id", customerId)) {
-            return OperationResult{false, "Không thể xóa khách hàng: Đã có lịch sử trong Đơn nhập kho (inbound_transaction). Quy định kế toán yêu cầu bảo lưu chứng từ.", 0};
+            return OperationResult{false, "Không thể xóa khách hàng: Đã có lịch sử trong Đơn nhập kho. Quy định kế toán yêu cầu bảo lưu chứng từ.", 0};
         }
         if (hasMatchingRecord(db->getTable("outbound_transaction"), "customer_id", customerId)) {
-            return OperationResult{false, "Không thể xóa khách hàng: Đã có lịch sử trong Đơn xuất kho (outbound_transaction). Quy định kế toán yêu cầu bảo lưu chứng từ.", 0};
+            return OperationResult{false, "Không thể xóa khách hàng: Đã có lịch sử trong Đơn xuất kho. Quy định kế toán yêu cầu bảo lưu chứng từ.", 0};
         }
 
         // 2. Safe deletion in transaction
         if (!db->beginTransaction()) {
-            return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
+            return OperationResult{false, "Không thể bắt đầu giao dịch CSDL.", 0};
         }
 
         // Remove from individual_info or business_info first

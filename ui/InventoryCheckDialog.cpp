@@ -1440,13 +1440,13 @@ void InventoryCheckReconciliationDialog::onCreateInboundAdj()
 
     if (!res.success) {
         QMessageBox::critical(this, "Không thể tạo đơn nhập điều chỉnh", QString::fromStdString(res.message));
-        loadReconciliationData();
+        updateLockingState();
         return;
     }
 
     orderGenerated = true;
     QMessageBox::information(this, "Thành công", QString("Đã tạo Đơn Nhập Điều Chỉnh và tự động nhập kho thành công cho %1 linh kiện!").arg(entries.size()));
-    loadReconciliationData();
+    updateLockingState();
 }
 
 void InventoryCheckReconciliationDialog::onCreateOutboundAdj()
@@ -1487,13 +1487,13 @@ void InventoryCheckReconciliationDialog::onCreateOutboundAdj()
 
     if (!res.success) {
         QMessageBox::critical(this, "Không thể tạo đơn xuất điều chỉnh", QString::fromStdString(res.message));
-        loadReconciliationData();
+        updateLockingState();
         return;
     }
 
     orderGenerated = true;
     QMessageBox::information(this, "Thành công", QString("Đã tạo Đơn Xuất Điều Chỉnh và tự động xuất kho thành công cho %1 linh kiện!").arg(entries.size()));
-    loadReconciliationData();
+    updateLockingState();
 }
 
 void InventoryCheckReconciliationDialog::onCreateMovementAdj()
@@ -1536,13 +1536,13 @@ void InventoryCheckReconciliationDialog::onCreateMovementAdj()
 
     if (!res.success) {
         QMessageBox::critical(this, "Không thể tạo phiếu điều chuyển", QString::fromStdString(res.message));
-        loadReconciliationData();
+        updateLockingState();
         return;
     }
 
     orderGenerated = true;
     QMessageBox::information(this, "Thành công", QString("Đã tạo Phiếu Điều Chỉnh Trạng Thái và tự động cập nhật kho thành công cho %1 linh kiện!").arg(entries.size()));
-    loadReconciliationData();
+    updateLockingState();
 }
 
 

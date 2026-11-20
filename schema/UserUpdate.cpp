@@ -1,6 +1,7 @@
 #include "UserUpdate.h"
 #include "UserCreate.h"
 #include "UserQuery.h"
+#include "SchemaLocalization.h"
 #include "query/Query.h"
 #include "database/Constraint.h"
 #include "datastructure/hashmap/HashMap.h"
@@ -125,7 +126,7 @@ namespace user_update
 
             // NOT NULL check
             if (table->isColumnNotNull(colName) && isNull(val)) {
-                return OperationResult{false, "Cột '" + colName + "' có thuộc tính NOT NULL, không thể nhận giá trị rỗng.", 0};
+                return OperationResult{false, "Trường '" + colName + "' bắt buộc nhập, không thể để trống.", 0};
             }
 
             // UNIQUE check
@@ -136,7 +137,7 @@ namespace user_update
                             std::get<int>(mRec.get(pkCol)) == recordId) {
                             continue;
                         }
-                        return OperationResult{false, "Giá trị cập nhật của cột '" + colName + "' đã tồn tại (vi phạm ràng buộc UNIQUE).", 0};
+                        return OperationResult{false, "Giá trị cập nhật của trường '" + colName + "' đã tồn tại (bị trùng lặp).", 0};
                     }
                 }
             }
@@ -154,21 +155,21 @@ namespace user_update
             for (size_t i = 0; i < modifiedColumns.size(); ++i) {
                 const std::string& colName = modifiedColumns[i];
                 if (colName != "status" && colName != "note") {
-                    return OperationResult{false, "Chỉ được phép cập nhật trạng thái (status) hoặc ghi chú (note) của đơn giao dịch.", 0};
+                    return OperationResult{false, "Chỉ được phép cập nhật trạng thái hoặc ghi chú của đơn giao dịch.", 0};
                 }
                 if (colName == "status") {
                     std::string newTxnSt = std::holds_alternative<std::string>(modifyingValues[i])
                                          ? std::get<std::string>(modifyingValues[i]) : "";
                     if ((oldTxnSt == "COMPLETED" || oldTxnSt == "completed") && newTxnSt != oldTxnSt) {
-                        return OperationResult{false, "Đơn giao dịch đã ở trạng thái HOÀN TẤT (" + oldTxnSt + "), không thể chuyển ngược trạng thái.", 0};
+                        return OperationResult{false, "Đơn giao dịch đã ở trạng thái " + schema_i18n::statusVi(oldTxnSt) + ", không thể chuyển ngược trạng thái.", 0};
                     }
                     if (oldTxnSt == "CANCELLED" && newTxnSt != "CANCELLED") {
-                        return OperationResult{false, "Đơn giao dịch đã bị HỦY (CANCELLED), trạng thái bị khóa vĩnh viễn.", 0};
+                        return OperationResult{false, "Đơn giao dịch đã ở trạng thái Đã hủy, trạng thái bị khóa vĩnh viễn.", 0};
                     }
 
                     if (newTxnSt == "CANCELLED") {
                         if (oldTxnSt != "PENDING") {
-                            return OperationResult{false, "Chỉ được phép hủy đơn giao dịch khi đơn đang ở trạng thái PENDING.", 0};
+                            return OperationResult{false, "Chỉ được phép hủy đơn giao dịch khi đơn đang ở trạng thái Chờ xử lí.", 0};
                         }
                         if (tableName == "inbound_transaction") {
                             const Table* dTable = db->getTable("delivery");
@@ -259,7 +260,7 @@ namespace user_update
                         }
                         // Note: Under-fulfilled confirmation to COMPLETED is permitted with UI dialog confirmation & logistics lock (Rule 5.6).
                     } else if (newTxnSt == "PENDING" && oldTxnSt != "PENDING") {
-                        return OperationResult{false, "Không thể chuyển ngược trạng thái đơn giao dịch về PENDING.", 0};
+                        return OperationResult{false, "Không thể chuyển ngược trạng thái đơn giao dịch về Chờ xử lí.", 0};
                     }
                 }
             }
@@ -279,7 +280,7 @@ namespace user_update
                     if (inRec && inRec->has("status") && std::holds_alternative<std::string>(inRec->get("status"))) {
                         std::string pSt = std::get<std::string>(inRec->get("status"));
                         if (pSt == "COMPLETED" || pSt == "CANCELLED") {
-                            return OperationResult{false, "Đơn hàng (" + pSt + ") đã hoàn tất hoặc bị hủy. Toàn bộ các đợt nhận hàng đã bị khóa vĩnh viễn.", 0};
+                            return OperationResult{false, "Đơn hàng (" + schema_i18n::statusVi(pSt) + ") đã hoàn tất hoặc bị hủy. Toàn bộ các đợt nhận hàng đã bị khóa vĩnh viễn.", 0};
                         }
                     }
                 }
@@ -290,16 +291,18 @@ namespace user_update
             for (size_t i = 0; i < modifiedColumns.size(); ++i) {
                 const std::string& colName = modifiedColumns[i];
                 if (colName != "status" && colName != "delivery_at") {
-                    return OperationResult{false, "Chỉ được phép chỉnh sửa 'status' và 'delivery_at' của đợt nhận hàng.", 0};
+                    return OperationResult{false, "Chỉ được phép chỉnh sửa trạng thái và ngày giao nhận thực tế của đợt nhận hàng.", 0};
                 }
                 if (colName == "status") {
                     std::string newDelSt = std::holds_alternative<std::string>(modifyingValues[i])
                                          ? std::get<std::string>(modifyingValues[i]) : "";
-                    if ((oldDelSt == "COMPLETED" || oldDelSt == "completed") && newDelSt != "COMPLETED") {
-                        return OperationResult{false, "Đợt giao nhận đã ở trạng thái HOÀN THÀNH (COMPLETED), không thể chuyển ngược trạng thái.", 0};
+                    if (oldDelSt == "COMPLETED" || oldDelSt == "completed") {
+                        if (newDelSt != "COMPLETED") {
+                            return OperationResult{false, "Đợt nhận hàng đã ở trạng thái Hoàn thành, không thể chuyển ngược trạng thái.", 0};
+                        }
                     }
                     if (oldDelSt == "CANCELLED" && newDelSt != "CANCELLED") {
-                        return OperationResult{false, "Đợt nhận hàng đã bị HỦY (CANCELLED), trạng thái bị khóa vĩnh viễn.", 0};
+                        return OperationResult{false, "Đợt nhận hàng đã ở trạng thái Đã hủy, trạng thái bị khóa vĩnh viễn.", 0};
                     }
                     if (newDelSt == "CANCELLED") {
                         const Table* ddTable = db->getTable("delivery_detail");
@@ -332,7 +335,7 @@ namespace user_update
                             if (inRec && inRec->has("order_at") && std::holds_alternative<std::string>(inRec->get("order_at"))) {
                                 std::string orderAt = std::get<std::string>(inRec->get("order_at"));
                                 if (newDeliveryAt < orderAt) {
-                                    return OperationResult{false, "Ngày giao nhận thực tế (delivery_at: " + newDeliveryAt + ") không được sớm hơn ngày đặt hàng (order_at: " + orderAt + ").", 0};
+                                    return OperationResult{false, "Ngày giao nhận thực tế (" + newDeliveryAt + ") không được sớm hơn ngày đặt hàng (" + orderAt + ").", 0};
                                 }
                             }
                         }
@@ -357,7 +360,7 @@ namespace user_update
                     if (outRec && outRec->has("status") && std::holds_alternative<std::string>(outRec->get("status"))) {
                         std::string pSt = std::get<std::string>(outRec->get("status"));
                         if (pSt == "COMPLETED" || pSt == "CANCELLED") {
-                            return OperationResult{false, "Đơn hàng (" + pSt + ") đã hoàn tất hoặc bị hủy. Toàn bộ các đợt xuất hàng đã bị khóa vĩnh viễn.", 0};
+                            return OperationResult{false, "Đơn hàng (" + schema_i18n::statusVi(pSt) + ") đã hoàn tất hoặc bị hủy. Toàn bộ các đợt xuất hàng đã bị khóa vĩnh viễn.", 0};
                         }
                     }
                 }
@@ -368,16 +371,16 @@ namespace user_update
             for (size_t i = 0; i < modifiedColumns.size(); ++i) {
                 const std::string& colName = modifiedColumns[i];
                 if (colName != "status" && colName != "ship_at") {
-                    return OperationResult{false, "Chỉ được phép chỉnh sửa 'status' và 'ship_at' của đợt xuất hàng.", 0};
+                    return OperationResult{false, "Chỉ được phép chỉnh sửa trạng thái và ngày xuất thực tế của đợt xuất hàng.", 0};
                 }
                 if (colName == "status") {
                     std::string newShipSt = std::holds_alternative<std::string>(modifyingValues[i])
                                           ? std::get<std::string>(modifyingValues[i]) : "";
                     if ((oldShipSt == "COMPLETED" || oldShipSt == "completed") && newShipSt != "COMPLETED") {
-                        return OperationResult{false, "Đợt xuất hàng đã ở trạng thái HOÀN THÀNH (COMPLETED), không thể chuyển ngược trạng thái.", 0};
+                        return OperationResult{false, "Đợt xuất hàng đã ở trạng thái Hoàn thành, không thể chuyển ngược trạng thái.", 0};
                     }
                     if (oldShipSt == "CANCELLED" && newShipSt != "CANCELLED") {
-                        return OperationResult{false, "Đợt xuất hàng đã bị HỦY (CANCELLED), trạng thái bị khóa vĩnh viễn.", 0};
+                        return OperationResult{false, "Đợt xuất hàng đã ở trạng thái Đã hủy, trạng thái bị khóa vĩnh viễn.", 0};
                     }
                     if (newShipSt == "CANCELLED") {
                         const Table* sdTable = db->getTable("shipment_detail");
@@ -412,7 +415,7 @@ namespace user_update
                             if (outRec && outRec->has("order_at") && std::holds_alternative<std::string>(outRec->get("order_at"))) {
                                 std::string orderAt = std::get<std::string>(outRec->get("order_at"));
                                 if (newShipAt < orderAt) {
-                                    return OperationResult{false, "Ngày xuất hàng thực tế (ship_at: " + newShipAt + ") không được sớm hơn ngày đặt hàng (order_at: " + orderAt + ").", 0};
+                                    return OperationResult{false, "Ngày xuất hàng thực tế (" + newShipAt + ") không được sớm hơn ngày đặt hàng (" + orderAt + ").", 0};
                                 }
                             }
                         }
@@ -432,21 +435,21 @@ namespace user_update
             for (size_t i = 0; i < modifiedColumns.size(); ++i) {
                 const std::string& colName = modifiedColumns[i];
                 if (colName != "status" && colName != "note") {
-                    return OperationResult{false, "Chỉ được phép cập nhật trạng thái (status) hoặc ghi chú (note) của đợt kiểm kho.", 0};
+                    return OperationResult{false, "Chỉ được phép cập nhật trạng thái hoặc ghi chú của đợt kiểm kho.", 0};
                 }
                 if (colName == "status") {
                     std::string newChkSt = std::holds_alternative<std::string>(modifyingValues[i])
                                          ? std::get<std::string>(modifyingValues[i]) : "";
                     if (newChkSt != "PENDING" && newChkSt != "PROCESSING" &&
                         newChkSt != "COMPLETED" && newChkSt != "CANCELLED") {
-                        return OperationResult{false, "Trạng thái kiểm kho '" + newChkSt + "' không hợp lệ.", 0};
+                        return OperationResult{false, "Trạng thái kiểm kho '" + schema_i18n::statusVi(newChkSt) + "' không hợp lệ.", 0};
                     }
                     if (newChkSt == "PENDING" && oldChkSt != "PENDING") {
-                        return OperationResult{false, "Không thể chuyển ngược trạng thái đợt kiểm kho về Chờ xử lí (PENDING).", 0};
+                        return OperationResult{false, "Không thể chuyển ngược trạng thái đợt kiểm kho về Chờ xử lí.", 0};
                     }
                     if (newChkSt == "CANCELLED") {
                         if (oldChkSt != "PENDING") {
-                            return OperationResult{false, "Chỉ được phép hủy đợt kiểm kho khi đang ở trạng thái Chờ xử lí (PENDING).", 0};
+                            return OperationResult{false, "Chỉ được phép hủy đợt kiểm kho khi đang ở trạng thái Chờ xử lí.", 0};
                         }
                         if (hasInventoryCheckScannedProgress(db, recordId)) {
                             return OperationResult{false, "Không thể hủy đợt kiểm kho: Đã có linh kiện hoặc số lượng kiểm đếm được ghi nhận.", 0};
@@ -461,20 +464,20 @@ namespace user_update
             for (size_t i = 0; i < modifiedColumns.size(); ++i) {
                 const std::string& colName = modifiedColumns[i];
                 if (colName != "status" && colName != "note") {
-                    return OperationResult{false, "Chỉ được phép cập nhật trạng thái (status) hoặc ghi chú (note) của phiếu điều chuyển.", 0};
+                    return OperationResult{false, "Chỉ được phép cập nhật trạng thái hoặc ghi chú của phiếu điều chuyển.", 0};
                 }
                 if (colName == "status") {
                     std::string newAdjSt = std::holds_alternative<std::string>(modifyingValues[i])
                                          ? std::get<std::string>(modifyingValues[i]) : "";
                     if (oldAdjSt == "CANCELLED" && newAdjSt != "CANCELLED") {
-                        return OperationResult{false, "Phiếu điều chuyển đã bị HỦY (CANCELLED), trạng thái bị khóa vĩnh viễn.", 0};
+                        return OperationResult{false, "Phiếu điều chuyển đã ở trạng thái Đã hủy, trạng thái bị khóa vĩnh viễn.", 0};
                     }
                     if ((oldAdjSt == "COMPLETED" || oldAdjSt == "completed") && newAdjSt != oldAdjSt) {
-                        return OperationResult{false, "Phiếu điều chuyển đã ở trạng thái HOÀN THÀNH (COMPLETED), không thể chuyển ngược trạng thái.", 0};
+                        return OperationResult{false, "Phiếu điều chuyển đã ở trạng thái Hoàn thành, không thể chuyển ngược trạng thái.", 0};
                     }
                     if (newAdjSt == "CANCELLED") {
                         if (oldAdjSt != "PENDING") {
-                            return OperationResult{false, "Chỉ được phép hủy phiếu điều chuyển khi phiếu đang ở trạng thái PENDING.", 0};
+                            return OperationResult{false, "Chỉ được phép hủy phiếu điều chuyển khi phiếu đang ở trạng thái Chờ xử lí.", 0};
                         }
                         const Table* detTbl = db->getTable("adjust_movement_detail");
                         if (detTbl) {
@@ -489,7 +492,7 @@ namespace user_update
                     } else if (newAdjSt == "COMPLETED") {
                         // Allowed to transition to COMPLETED even if not 100% fulfilled (handled by UI confirmation & checkbox) (Rule 5.6)
                     } else if (newAdjSt == "PENDING" && oldAdjSt != "PENDING") {
-                        return OperationResult{false, "Không thể chuyển ngược trạng thái phiếu điều chuyển về PENDING.", 0};
+                        return OperationResult{false, "Không thể chuyển ngược trạng thái phiếu điều chuyển về Chờ xử lí.", 0};
                     }
                 }
             }
@@ -507,7 +510,7 @@ namespace user_update
             for (size_t i = 0; i < modifiedColumns.size(); ++i) {
                 const std::string& col = modifiedColumns[i];
                 if (col != "scanned_status") {
-                    return OperationResult{false, "Chỉ được phép cập nhật trạng thái quét 'scanned_status' cho linh kiện kiểm kê.", 0};
+                    return OperationResult{false, "Chỉ được phép cập nhật trạng thái quét cho linh kiện kiểm kê.", 0};
                 }
             }
         }
@@ -562,7 +565,7 @@ namespace user_update
                     if (prodTable && oldRecord.has("brand") && std::holds_alternative<std::string>(oldRecord.get("brand"))) {
                         std::string bName = std::get<std::string>(oldRecord.get("brand"));
                         if (prodTable->contains("brand", Value(bName))) {
-                            return OperationResult{false, "Không được phép sửa mã thương hiệu (code) khi đã có sản phẩm trong danh mục.", 0};
+                            return OperationResult{false, "Không được phép sửa mã thương hiệu khi đã có sản phẩm trong danh mục.", 0};
                         }
                     }
                 }
@@ -767,7 +770,7 @@ namespace user_update
         }
 
         if (!db->beginTransaction()) {
-            return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
+            return OperationResult{false, "Không thể bắt đầu giao dịch CSDL.", 0};
         }
 
         Record pUp;
@@ -825,7 +828,7 @@ namespace user_update
                              ? std::get<std::string>(cRec->get("type")) : "";
 
         if (!db->beginTransaction()) {
-            return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
+            return OperationResult{false, "Không thể bắt đầu giao dịch CSDL.", 0};
         }
 
         // Update name in customer table if provided
@@ -928,7 +931,7 @@ namespace user_update
         std::string shipStatus = shipRec->has("status") && std::holds_alternative<std::string>(shipRec->get("status"))
                                ? std::get<std::string>(shipRec->get("status")) : "";
         if (shipStatus == "COMPLETED" || shipStatus == "completed" || shipStatus == "CANCELLED") {
-            return OperationResult{false, "Đợt xuất hàng này đã ở trạng thái HOÀN THÀNH hoặc BỊ HỦY, không thể xuất thêm linh kiện.", 0};
+            return OperationResult{false, "Đợt xuất hàng này đã ở trạng thái Hoàn thành hoặc Đã hủy, không thể xuất thêm linh kiện.", 0};
         }
 
         int outTxnId = -1;
@@ -945,7 +948,7 @@ namespace user_update
         std::string outTxnSt = outTxnRec->has("status") && std::holds_alternative<std::string>(outTxnRec->get("status"))
                              ? std::get<std::string>(outTxnRec->get("status")) : "";
         if (outTxnSt == "COMPLETED" || outTxnSt == "CANCELLED") {
-            return OperationResult{false, "Đơn xuất kho (" + outTxnSt + ") đã hoàn tất hoặc bị hủy. Toàn bộ các đợt xuất hàng đã bị khóa vĩnh viễn.", 0};
+            return OperationResult{false, "Đơn xuất kho (" + schema_i18n::statusVi(outTxnSt) + ") đã hoàn tất hoặc bị hủy. Toàn bộ các đợt xuất hàng đã bị khóa vĩnh viễn.", 0};
         }
 
         std::string outType = outTxnRec->has("type") && std::holds_alternative<std::string>(outTxnRec->get("type"))
@@ -1027,7 +1030,7 @@ namespace user_update
         }
 
         if (manageTransaction && !db->beginTransaction()) {
-            return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
+            return OperationResult{false, "Không thể bắt đầu giao dịch CSDL.", 0};
         }
 
         auto failRollback = [&](const OperationResult& err) -> OperationResult {
@@ -1066,27 +1069,27 @@ namespace user_update
 
                 if (outType == "SELLING" || outType == "SEL") {
                     if (curStatus != "AVAILABLE") {
-                        return failRollback(OperationResult{false, "Linh kiện serial '" + sn + "' có trạng thái '" + curStatus +
-                            "', không thỏa mãn điều kiện AVAILABLE của đơn bán hàng (SEL).", 0});
+                        return failRollback(OperationResult{false, "Linh kiện serial '" + sn + "' đang có trạng thái '" + schema_i18n::statusVi(curStatus) +
+                            "', không thỏa mãn điều kiện 'Khả dụng' của đơn bán hàng.", 0});
                     }
                     decrementedAvail++;
                 } else if (outType == "WARRANTY_RETURN" || outType == "WRT") {
                     if (curStatus != "SCRAPPED" && curStatus != "WARRANTY") {
-                        return failRollback(OperationResult{false, "Linh kiện serial '" + sn + "' có trạng thái '" + curStatus +
-                            "', không thỏa mãn điều kiện SCRAPPED/WARRANTY của đơn xuất trả bảo hành (WRT).", 0});
+                        return failRollback(OperationResult{false, "Linh kiện serial '" + sn + "' đang có trạng thái '" + schema_i18n::statusVi(curStatus) +
+                            "', không thỏa mãn điều kiện 'Lỗi/hỏng' hoặc 'Bảo hành' của đơn gửi bảo hành hãng.", 0});
                     }
                     if (curStatus == "SCRAPPED") decrementedScrap++;
                     else decrementedWarr++;
                 } else if (outType == "WARRANTY_REPLACEMENT_TO_CUSTOMER" || outType == "WRC") {
                     if (curStatus != "AVAILABLE" && curStatus != "WARRANTY") {
-                        return failRollback(OperationResult{false, "Linh kiện serial '" + sn + "' có trạng thái '" + curStatus +
-                            "', không thỏa mãn điều kiện AVAILABLE/WARRANTY của đơn đổi bảo hành (WRC).", 0});
+                        return failRollback(OperationResult{false, "Linh kiện serial '" + sn + "' đang có trạng thái '" + schema_i18n::statusVi(curStatus) +
+                            "', không thỏa mãn điều kiện 'Khả dụng' hoặc 'Bảo hành' của đơn đổi bảo hành khách.", 0});
                     }
                     if (curStatus == "AVAILABLE") decrementedAvail++;
                     else decrementedWarr++;
                 } else {
                     if (curStatus == "OUT") {
-                        return failRollback(OperationResult{false, "Linh kiện serial '" + sn + "' đã ở trạng thái OUT.", 0});
+                        return failRollback(OperationResult{false, "Linh kiện serial '" + sn + "' đã ở trạng thái 'Đã xuất'.", 0});
                     }
                     if (curStatus == "AVAILABLE") decrementedAvail++;
                     else if (curStatus == "WARRANTY") decrementedWarr++;
@@ -1164,7 +1167,7 @@ namespace user_update
         if (manageTransaction) {
             db->commit();
         }
-        return OperationResult{true, "Đã xuất " + std::to_string(entries.size()) + " unit cho đợt xuất " + std::to_string(shipmentId) + " thành công!", totalAffected};
+        return OperationResult{true, "Đã xuất " + std::to_string(entries.size()) + " linh kiện cho đợt xuất " + std::to_string(shipmentId) + " thành công!", totalAffected};
     }
 
     OperationResult dispatchUnitsForShipmentBatch(
@@ -1201,7 +1204,7 @@ namespace user_update
         const std::string& note
     ) {
         if (!db) return OperationResult{false, "Cơ sở dữ liệu chưa được khởi tạo.", 0};
-        if (checkCode.empty()) return OperationResult{false, "Mã đợt kiểm kho (source_code) không được để trống.", 0};
+        if (checkCode.empty()) return OperationResult{false, "Mã đợt kiểm kho tham chiếu không được để trống.", 0};
         if (orderDate.empty()) return OperationResult{false, "Ngày lập đơn xuất điều chỉnh không được để trống.", 0};
         if (entries.empty()) return OperationResult{false, "Danh sách linh kiện cần xuất điều chỉnh không được để trống.", 0};
 
@@ -1270,7 +1273,7 @@ namespace user_update
         std::string shipCode = outCode + "-S01";
 
         if (!db->beginTransaction()) {
-            return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
+            return OperationResult{false, "Không thể bắt đầu giao dịch CSDL.", 0};
         }
 
         Record outTxn;
@@ -1404,10 +1407,10 @@ namespace user_update
             currentLogStatus = std::get<std::string>(logRec.get("status"));
         }
         if (currentLogStatus == "COMPLETED" || currentLogStatus == "completed") {
-            return OperationResult{false, "Đợt giao nhận này đã ở trạng thái HOÀN THÀNH (COMPLETED). Toàn bộ thao tác thay đổi trạng thái linh kiện đã bị khóa vĩnh viễn.", 0};
+            return OperationResult{false, "Đợt giao nhận này đã ở trạng thái Hoàn thành. Toàn bộ thao tác thay đổi trạng thái linh kiện đã bị khóa vĩnh viễn.", 0};
         }
         if (currentLogStatus == "CANCELLED" || currentLogStatus == "cancelled") {
-            return OperationResult{false, "Đợt giao nhận này đã bị HỦY (CANCELLED). Toàn bộ thao tác thay đổi trạng thái linh kiện đã bị khóa vĩnh viễn.", 0};
+            return OperationResult{false, "Đợt giao nhận này đã ở trạng thái Đã hủy. Toàn bộ thao tác thay đổi trạng thái linh kiện đã bị khóa vĩnh viễn.", 0};
         }
 
         // 2. Resolve transaction type and parent status for business rule constraints (Rule 5.6 Logistics Lock)
@@ -1456,31 +1459,31 @@ namespace user_update
         }
 
         if (txnStatus == "COMPLETED" || txnStatus == "CANCELLED") {
-            return OperationResult{false, "Đơn hàng (" + txnStatus + ") đã đóng/hủy. Toàn bộ các đợt vận chuyển liên quan đã bị khóa vĩnh viễn.", 0};
+            return OperationResult{false, "Đơn hàng (" + schema_i18n::statusVi(txnStatus) + ") đã hoàn tất hoặc bị hủy. Toàn bộ các đợt vận chuyển liên quan đã bị khóa vĩnh viễn.", 0};
         }
 
         // 3. Validate permitted target statuses (Rule 4.4, 4.5)
         if (!isInbound) {
             if (newStatus != "OUT") {
-                return OperationResult{false, "Đơn xuất hàng chỉ cho phép trạng thái kết thúc là OUT.", 0};
+                return OperationResult{false, "Đơn xuất hàng chỉ cho phép trạng thái kết thúc là 'Đã xuất'.", 0};
             }
         } else {
             if (newStatus == "OUT") {
-                return OperationResult{false, "Đơn nhập kho nghiêm cấm linh kiện có trạng thái OUT.", 0};
+                return OperationResult{false, "Đơn nhập kho không cho phép linh kiện có trạng thái 'Đã xuất'.", 0};
             }
             if (txnType == "PURCHASING" || txnType == "PUR") {
                 if (newStatus != "AVAILABLE" && newStatus != "SCRAPPED") {
-                    return OperationResult{false, "Đơn mua hàng mới (PUR) chỉ cho phép chuyển đổi giữa AVAILABLE và SCRAPPED.", 0};
+                    return OperationResult{false, "Đơn mua mới chỉ cho phép chuyển đổi giữa 'Khả dụng' và 'Lỗi/hỏng'.", 0};
                 }
             } else if (txnType == "WARRANTY_REPLACEMENT" || txnType == "WRP" ||
                        txnType == "WARRANTY_CHECKING" || txnType == "WCK") {
                 if (newStatus != "WARRANTY") {
-                    return OperationResult{false, "Đơn bảo hành (" + txnType + ") chỉ cho phép trạng thái WARRANTY.", 0};
+                    return OperationResult{false, "Đơn " + schema_i18n::orderTypeVi(txnType) + " chỉ cho phép trạng thái 'Bảo hành'.", 0};
                 }
             } else if (txnType == "CUSTOMER_RETURN" || txnType == "CRT" ||
                        txnType == "ADJUSTMENT_IN" || txnType == "ADJ") {
                 if (newStatus != "AVAILABLE" && newStatus != "WARRANTY" && newStatus != "SCRAPPED") {
-                    return OperationResult{false, "Đơn " + txnType + " chỉ cho phép chọn trạng thái AVAILABLE, WARRANTY hoặc SCRAPPED.", 0};
+                    return OperationResult{false, "Đơn " + schema_i18n::orderTypeVi(txnType) + " chỉ cho phép chọn trạng thái 'Khả dụng', 'Bảo hành' hoặc 'Lỗi/hỏng'.", 0};
                 }
             }
         }
@@ -1496,7 +1499,7 @@ namespace user_update
         std::string oldStatus = std::get<std::string>(uRec.get("status"));
 
         if (oldStatus == newStatus) {
-            return OperationResult{true, "Linh kiện " + serial + " hiện tại đã có trạng thái '" + newStatus + "'.", 0};
+            return OperationResult{true, "Linh kiện " + serial + " hiện tại đã có trạng thái '" + schema_i18n::statusVi(newStatus) + "'.", 0};
         }
 
         // Stock Freeze Check
@@ -1591,7 +1594,7 @@ namespace user_update
         }
 
         db->commit();
-        return OperationResult{true, "Đã cập nhật trạng thái linh kiện " + serial + " từ '" + oldStatus + "' sang '" + newStatus + "' thành công!", 3};
+        return OperationResult{true, "Đã cập nhật trạng thái linh kiện " + serial + " từ '" + schema_i18n::statusVi(oldStatus) + "' sang '" + schema_i18n::statusVi(newStatus) + "' thành công!", 3};
     }
 
 
@@ -1651,7 +1654,7 @@ namespace user_update
 
         int cqId = std::get<int>(cuRec->get("check_quantity_id"));
 
-        if (!db->beginTransaction()) return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
+        if (!db->beginTransaction()) return OperationResult{false, "Không thể bắt đầu giao dịch CSDL.", 0};
 
         Record cuUp;
         cuUp.set("scanned_status", scannedStatus);
@@ -1722,7 +1725,7 @@ namespace user_update
             }
         }
 
-        if (!db->beginTransaction()) return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
+        if (!db->beginTransaction()) return OperationResult{false, "Không thể bắt đầu giao dịch CSDL.", 0};
 
         Record cuRec;
         cuRec.set("check_id", checkId);
@@ -1795,10 +1798,10 @@ namespace user_update
         std::string checkSt = chkRec->has("status") && std::holds_alternative<std::string>(chkRec->get("status"))
             ? std::get<std::string>(chkRec->get("status")) : "";
         if (checkSt == "COMPLETED") {
-            return OperationResult{false, "Đợt kiểm kê đã HOÀN THÀNH (COMPLETED), không thể chỉnh sửa dữ liệu.", 0};
+            return OperationResult{false, "Đợt kiểm kê đã Hoàn thành, không thể chỉnh sửa dữ liệu.", 0};
         }
         if (checkSt == "CANCELLED") {
-            return OperationResult{false, "Đợt kiểm kê đã bị HỦY (CANCELLED), không thể chỉnh sửa dữ liệu.", 0};
+            return OperationResult{false, "Đợt kiểm kê đã bị Hủy, không thể chỉnh sửa dữ liệu.", 0};
         }
 
         // Validate serials for surplus units upfront
@@ -1810,7 +1813,7 @@ namespace user_update
         }
 
         if (!db->beginTransaction()) {
-            return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
+            return OperationResult{false, "Không thể bắt đầu giao dịch CSDL.", 0};
         }
 
         // Track affected check_quantity_ids using custom HashMap
@@ -1929,7 +1932,7 @@ namespace user_update
             return OperationResult{false, "Đợt kiểm kê đã ở trạng thái Đã hủy.", 0};
         }
         if (curSt != "PENDING") {
-            return OperationResult{false, "Chỉ được phép hủy đợt kiểm kê khi đang ở trạng thái Chờ xử lí (PENDING).", 0};
+            return OperationResult{false, "Chỉ được phép hủy đợt kiểm kê khi đang ở trạng thái Chờ xử lí.", 0};
         }
         if (hasInventoryCheckScannedProgress(db, checkId)) {
             return OperationResult{false, "Không thể hủy đợt kiểm kê: Đã có linh kiện hoặc số lượng kiểm đếm được ghi nhận.", 0};
@@ -1985,7 +1988,7 @@ namespace user_update
 
         std::string adjStatus = std::get<std::string>(adjRec->get("status"));
         if (adjStatus == "COMPLETED" || adjStatus == "CANCELLED") {
-            return OperationResult{false, "Phiếu điều chuyển này đã ở trạng thái " + adjStatus + ".", 0};
+            return OperationResult{false, "Phiếu điều chuyển này đã ở trạng thái " + schema_i18n::statusVi(adjStatus) + ".", 0};
         }
 
         TableView details = detTbl->view("adjust_id", Value(adjustId));
@@ -2008,7 +2011,7 @@ namespace user_update
             };
         }
 
-        if (!db->beginTransaction()) return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
+        if (!db->beginTransaction()) return OperationResult{false, "Không thể bắt đầu giao dịch CSDL.", 0};
 
         std::string sourceCode = (adjRec->has("source_code") && std::holds_alternative<std::string>(adjRec->get("source_code")))
             ? std::get<std::string>(adjRec->get("source_code")) : "";
@@ -2156,7 +2159,7 @@ namespace user_update
 
         std::string adjStatus = std::get<std::string>(adjRec->get("status"));
         if (adjStatus == "COMPLETED" || adjStatus == "CANCELLED") {
-            return OperationResult{false, "Phiếu điều chuyển đã ở trạng thái " + adjStatus + ", không thể thực hiện.", 0};
+            return OperationResult{false, "Phiếu điều chuyển đã ở trạng thái " + schema_i18n::statusVi(adjStatus) + ", không thể thực hiện.", 0};
         }
 
         // Group staged units by detailId
@@ -2185,7 +2188,7 @@ namespace user_update
         }
 
         if (manageTransaction && !db->beginTransaction()) {
-            return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
+            return OperationResult{false, "Không thể bắt đầu giao dịch CSDL.", 0};
         }
 
         auto failRollback = [&](const OperationResult& err) -> OperationResult {
@@ -2231,7 +2234,7 @@ namespace user_update
                     return failRollback(OperationResult{false, "Linh kiện " + sn + " không thuộc sản phẩm ID " + std::to_string(pid), 0});
                 }
                 if (uSt != fromSt) {
-                    return failRollback(OperationResult{false, "Linh kiện " + sn + " hiện có trạng thái '" + uSt + "' thay vì '" + fromSt + "'", 0});
+                    return failRollback(OperationResult{false, "Linh kiện " + sn + " hiện có trạng thái '" + schema_i18n::statusVi(uSt) + "' thay vì '" + schema_i18n::statusVi(fromSt) + "'.", 0});
                 }
 
                 Record uUp;
@@ -2326,7 +2329,7 @@ namespace user_update
         const std::string& note
     ) {
         if (!db) return OperationResult{false, "Cơ sở dữ liệu chưa được khởi tạo.", 0};
-        if (checkCode.empty()) return OperationResult{false, "Mã đợt kiểm kho (source_code) không được để trống.", 0};
+        if (checkCode.empty()) return OperationResult{false, "Mã đợt kiểm kho tham chiếu không được để trống.", 0};
         if (adjustedAt.empty()) return OperationResult{false, "Ngày điều chuyển không được để trống.", 0};
         if (entries.empty()) return OperationResult{false, "Danh sách linh kiện cần điều chuyển trạng thái không được để trống.", 0};
 
@@ -2384,10 +2387,10 @@ namespace user_update
                 return OperationResult{false, "Trạng thái nguồn và trạng thái đích không được trùng nhau.", 0};
             }
             if (ent.fromStatus != "AVAILABLE" && ent.fromStatus != "WARRANTY" && ent.fromStatus != "SCRAPPED") {
-                return OperationResult{false, "Trạng thái nguồn '" + ent.fromStatus + "' không hợp lệ.", 0};
+                return OperationResult{false, "Trạng thái nguồn '" + schema_i18n::statusVi(ent.fromStatus) + "' không hợp lệ.", 0};
             }
             if (ent.toStatus != "AVAILABLE" && ent.toStatus != "WARRANTY" && ent.toStatus != "SCRAPPED") {
-                return OperationResult{false, "Trạng thái đích '" + ent.toStatus + "' không hợp lệ.", 0};
+                return OperationResult{false, "Trạng thái đích '" + schema_i18n::statusVi(ent.toStatus) + "' không hợp lệ.", 0};
             }
             if (ent.serial.empty()) {
                 return OperationResult{false, "Mã serial cần điều chuyển không được để trống.", 0};
@@ -2419,7 +2422,7 @@ namespace user_update
         std::string adjCode = user_create::generateUniqueAdjustCode(db, "STOCKTAKE_DIFF");
 
         if (!db->beginTransaction()) {
-            return OperationResult{false, "Không thể bắt đầu Transaction CSDL.", 0};
+            return OperationResult{false, "Không thể bắt đầu giao dịch CSDL.", 0};
         }
 
         Record adjRec;

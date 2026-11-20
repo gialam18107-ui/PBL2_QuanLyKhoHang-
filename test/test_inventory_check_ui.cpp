@@ -1059,11 +1059,30 @@ int main(int argc, char* argv[]) {
             assert(b1Tbl->item(rNew, 0)->checkState() == Qt::Checked);
             auto* b1Btn = findButtonContaining(tabW->widget(0), "Tạo đơn nhập điều chỉnh");
             assert(b1Btn && b1Btn->isEnabled());
+
+            // Untick rNew, trigger failing creation via UI button, verify checkbox states are preserved!
+            b1Tbl->item(rNew, 0)->setCheckState(Qt::Unchecked);
+            QApplication::processEvents();
+            int inTxCountBeforeUi = inTxnTbl->getRowCount();
+            b1Btn->click();
+            QApplication::processEvents();
+            assert(inTxnTbl->getRowCount() == inTxCountBeforeUi);
+            assert(b1Tbl->item(rNew, 0)->checkState() == Qt::Unchecked);
+            assert(b1Tbl->item(rOut, 0)->checkState() == Qt::Checked);
+            assert(b1Btn->isEnabled());
             recon1.close();
         }
         {
             int inTxCountBefore = inTxnTbl->getRowCount();
-            assert(!user_create::createAndReceiveAdjustmentInbound(&db, chk13Code, "2026-11-20", {{pidA, "WARRANTY", snOutA}}, "Should fail 13b-1").success);
+            OperationResult rFailOut = user_create::createAndReceiveAdjustmentInbound(&db, chk13Code, "2026-11-20", {{pidA, "WARRANTY", snOutA}}, "Should fail 13b-1");
+            assert(!rFailOut.success);
+            assert(rFailOut.message.find("Khả dụng") != std::string::npos);
+            assert(rFailOut.message.find("Đã xuất") != std::string::npos);
+            assert(rFailOut.message.find("old_status") == std::string::npos);
+            assert(rFailOut.message.find("'OUT'") == std::string::npos);
+            assert(rFailOut.message.find("'NULL'") == std::string::npos);
+            assert(rFailOut.message.find("'AVAILABLE'") == std::string::npos);
+            assert(rFailOut.message.find("(ADJ)") == std::string::npos);
             assert(!user_create::createAndReceiveAdjustmentInbound(&db, chk13Code, "2026-11-20", {{pidA, "AVAILABLE", snNewSurplusA}}, "Should fail 13b-2").success);
             assert(inTxnTbl->getRowCount() == inTxCountBefore);
         }
@@ -1194,7 +1213,10 @@ int main(int argc, char* argv[]) {
         }
         {
             int outTxCountBefore = outTxnTbl->getRowCount();
-            assert(!user_update::createAndDispatchAdjustmentOutbound(&db, chk13Code, "2026-11-20", {{pidA, snMissA}}, "Reject already OUT MissA").success);
+            OperationResult rFailOut = user_update::createAndDispatchAdjustmentOutbound(&db, chk13Code, "2026-11-20", {{pidA, snMissA}}, "Reject already OUT MissA");
+            assert(!rFailOut.success);
+            assert(rFailOut.message.find("Đã xuất") != std::string::npos);
+            assert(rFailOut.message.find(" OUT.") == std::string::npos);
             assert(outTxnTbl->getRowCount() == outTxCountBefore);
         }
         {
@@ -1281,7 +1303,12 @@ int main(int argc, char* argv[]) {
         }
         {
             int adjMovCountBefore = adjMovTbl->getRowCount();
-            assert(!user_update::createAndExecuteAdjustmentMovement(&db, chk13Code, "2026-11-20", {{pidA, "AVAILABLE", "WARRANTY", snShiftA}}, "Reject WARRANTY ShiftA").success);
+            OperationResult rFailMov = user_update::createAndExecuteAdjustmentMovement(&db, chk13Code, "2026-11-20", {{pidA, "AVAILABLE", "WARRANTY", snShiftA}}, "Reject WARRANTY ShiftA");
+            assert(!rFailMov.success);
+            assert(rFailMov.message.find("Bảo hành") != std::string::npos);
+            assert(rFailMov.message.find("Khả dụng") != std::string::npos);
+            assert(rFailMov.message.find("'WARRANTY'") == std::string::npos);
+            assert(rFailMov.message.find("'AVAILABLE'") == std::string::npos);
             assert(adjMovTbl->getRowCount() == adjMovCountBefore);
         }
         {
